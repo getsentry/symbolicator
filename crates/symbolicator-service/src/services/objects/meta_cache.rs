@@ -7,14 +7,13 @@
 //! Object metadata must be kept for longer than the data cache itself for cache
 //! consistency.
 
-use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, SourceId};
+use tempfile::NamedTempFile;
 
 use crate::cache::{CacheEntry, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
@@ -90,7 +89,7 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, path: PathBuf) -> CacheEntry<()> {
+    async fn compute_file_meta(self, mut temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
@@ -100,7 +99,6 @@ impl FetchFileMetaRequest {
             .await?;
 
         let object = object_handle.object();
-        let mut new_cache = fs::File::create(path)?;
 
         let meta = ObjectFeatures {
             has_debug_info: object.has_debug_info(),
@@ -110,9 +108,9 @@ impl FetchFileMetaRequest {
         };
 
         tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
-        serde_json::to_writer(&mut new_cache, &meta)?;
+        serde_json::to_writer(temp_file.as_file_mut(), &meta)?;
 
-        Ok(())
+        Ok(temp_file)
     }
 }
 
@@ -123,8 +121,8 @@ impl CacheItemRequest for FetchFileMetaRequest {
         self.file_source.cache_key(self.scope.clone())
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
-        let future = self.clone().compute_file_meta(path.to_owned());
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+        let future = self.clone().compute_file_meta(temp_file);
         Box::pin(future)
     }
 

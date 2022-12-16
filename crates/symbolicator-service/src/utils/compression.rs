@@ -95,7 +95,8 @@ pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
     }
 }
 
-fn tempfile_in_parent(file: &NamedTempFile) -> io::Result<NamedTempFile> {
+// FIXME(swatinem): this fn needs a better place
+pub fn tempfile_in_parent(file: &NamedTempFile) -> io::Result<NamedTempFile> {
     let dir = file
         .path()
         .parent()

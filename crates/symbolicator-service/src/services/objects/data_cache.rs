@@ -8,10 +8,7 @@
 
 use std::cmp;
 use std::fmt;
-use std::fs;
 use std::io;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,6 +26,7 @@ use crate::services::cacher::{CacheItemRequest, CacheKey};
 use crate::services::download::{DownloadService, RemoteDif};
 use crate::services::fetch_file;
 use crate::types::Scope;
+use crate::utils::compression::tempfile_in_parent;
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
@@ -123,31 +121,30 @@ impl fmt::Display for ObjectHandle {
 /// code.
 #[tracing::instrument(skip_all)]
 async fn fetch_object_file(
-    path: PathBuf,
     cache_key: CacheKey,
     object_id: ObjectId,
     file_id: RemoteDif,
     downloader: Arc<DownloadService>,
-    temp_file: std::io::Result<NamedTempFile>,
-) -> CacheEntry<()> {
+    temp_file: NamedTempFile,
+) -> CacheEntry<NamedTempFile> {
     tracing::trace!("Fetching file data for {}", cache_key);
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
         object_id.to_scope(scope);
     });
 
-    let temp_file = fetch_file(downloader, file_id, temp_file?).await?;
+    let temp_file = fetch_file(downloader, file_id, temp_file).await?;
 
     // Since objects in Sentry (and potentially also other sources) might be
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
     // extract the wanted file.
-    let view = ByteView::map_file(temp_file.into_file())?;
+    let view = ByteView::map_file_ref(temp_file.as_file())?;
     let archive = match Archive::parse(&view) {
         Ok(archive) => archive,
         Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
-    let mut persist_file = fs::File::create(&path)?;
-    if archive.is_multi() {
+
+    let temp_file = if archive.is_multi() {
         let object_opt = archive
             .objects()
             .filter_map(Result::ok)
@@ -164,7 +161,10 @@ async fn fetch_object_file(
             }
         };
 
-        io::copy(&mut object.data(), &mut persist_file)?;
+        let mut temp_file = tempfile_in_parent(&temp_file)?;
+
+        io::copy(&mut object.data(), temp_file.as_file_mut())?;
+        temp_file
     } else {
         // Attempt to parse the object to capture errors. The result can be
         // discarded as the object's data is the entire ByteView.
@@ -172,10 +172,10 @@ async fn fetch_object_file(
             return Err(CacheError::Malformed(err.to_string()));
         }
 
-        io::copy(&mut view.as_ref(), &mut persist_file)?;
-    }
+        temp_file
+    };
 
-    Ok(())
+    Ok(temp_file)
 }
 
 /// Validates that the object matches expected identifiers.
@@ -211,14 +211,13 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
         let future = fetch_object_file(
-            path.to_owned(),
             self.get_cache_key(),
             self.0.object_id.clone(),
             self.0.file_source.clone(),
             self.0.download_svc.clone(),
-            self.0.data_cache.tempfile(),
+            temp_file,
         )
         .bind_hub(Hub::current());
 

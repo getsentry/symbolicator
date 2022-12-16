@@ -1,11 +1,11 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Error;
 use futures::future::BoxFuture;
+use tempfile::NamedTempFile;
 use thiserror::Error;
 
 use symbolic::common::{ByteView, SelfCell};
@@ -172,20 +172,20 @@ struct FetchSymCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_symcache", skip_all)]
 async fn fetch_difs_and_compute_symcache(
-    path: PathBuf,
+    mut temp_file: NamedTempFile,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<()> {
+) -> CacheEntry<NamedTempFile> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    if let Err(err) = write_symcache(&path, &object_handle, secondary_sources) {
+    if let Err(err) = write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources) {
         tracing::warn!("Failed to write symcache: {}", err);
         sentry::capture_error(&err);
 
         return Err((&err).into());
     }
-    Ok(())
+    Ok(temp_file)
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -197,9 +197,9 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
         let future = fetch_difs_and_compute_symcache(
-            path.to_owned(),
+            temp_file,
             self.object_meta.clone(),
             self.objects_actor.clone(),
             self.secondary_sources.clone(),
@@ -319,7 +319,7 @@ impl SymCacheActor {
 /// Any secondary source can only exist for a positive cache so does not have this issue.
 #[tracing::instrument(skip_all)]
 fn write_symcache(
-    path: &Path,
+    file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
 ) -> Result<(), SymCacheError> {
@@ -371,7 +371,6 @@ fn write_symcache(
         .process_object(symbolic_object)
         .map_err(SymCacheError::Writing)?;
 
-    let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
     converter
         .serialize(&mut writer)
@@ -389,6 +388,7 @@ fn write_symcache(
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use symbolic::common::{DebugId, Uuid};

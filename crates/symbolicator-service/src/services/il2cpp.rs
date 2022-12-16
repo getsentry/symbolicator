@@ -3,9 +3,6 @@
 //! This service downloads and caches the [`LineMapping`] used to map
 //! generated C++ source files back to the original C# sources.
 
-use std::fs::File;
-use std::io::{self, Cursor};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,6 +13,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
+use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
@@ -63,32 +61,24 @@ struct FetchFileRequest {
     file_source: RemoteDif,
     debug_id: DebugId,
     download_svc: Arc<DownloadService>,
-    // FIXME: this is used only to put the tempfile in the right place
-    cache: Arc<Cacher<FetchFileRequest>>,
 }
 
 impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
-        let temp_file =
-            fetch_file(self.download_svc, self.file_source, self.cache.tempfile()?).await?;
+    async fn fetch_file(self, temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
+        let temp_file = fetch_file(self.download_svc, self.file_source, temp_file).await?;
 
-        let view = ByteView::map_file(temp_file.into_file())?;
+        let view = ByteView::map_file_ref(temp_file.as_file())?;
 
         if LineMapping::parse(&view).is_none() {
             metric!(counter("services.il2cpp.loaderrror") += 1);
             tracing::debug!("Failed to parse il2cpp");
             return Err(CacheError::Malformed("Failed to parse il2cpp".to_string()));
         }
-        // The file is valid, lets save it.
-        let mut destination = File::create(path)?;
-        let mut cursor = Cursor::new(&view);
-        io::copy(&mut cursor, &mut destination)?;
 
-        Ok(())
+        Ok(temp_file)
     }
 }
 
@@ -102,11 +92,8 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
-        let fut = self
-            .clone()
-            .fetch_file(path.to_path_buf())
-            .bind_hub(Hub::current());
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+        let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
 
         let source_name = self.file_source.source_type_name().into();
 
@@ -231,7 +218,6 @@ impl Il2cppService {
                 file_source,
                 debug_id,
                 download_svc: self.download_svc.clone(),
-                cache: self.cache.clone(),
             };
             self.cache
                 .compute_memoized(request)

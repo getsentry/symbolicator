@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::io::{Error, ErrorKind};
+use std::io::{self, Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -142,7 +142,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>>;
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -262,7 +262,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             return Ok(item);
         }
 
-        let mut temp_file = self.tempfile()?;
+        let temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
             name: self.config.name(),
             version: T::VERSIONS.current,
@@ -274,8 +274,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             .shared_cache_service
             .fetch(&shared_cache_key, temp_fd)
             .await;
-
-        let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
 
         let status = match shared_cache_hit {
             true => {
@@ -292,14 +290,17 @@ impl<T: CacheItemRequest> Cacher<T> {
             metric!(counter("shared_cache.file.discarded") += 1);
         }
 
-        let status = match status {
-            Some(status) => status,
-            None => match request.compute(temp_file.path()).await {
-                Ok(_) => CacheStatus::Positive,
+        let (status, temp_file) = match status {
+            Some(status) => (status, temp_file),
+            None => match request.compute(temp_file).await {
+                Ok(temp_file) => (CacheStatus::Positive, temp_file),
                 Err(err) => {
                     let status = err.as_cache_status();
+                    // FIXME(swatinem): We are creating a new tempfile in the hot err/not-found path
+                    let temp_file = self.tempfile()?;
+                    let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
                     status.write(&mut temp_fd).await?;
-                    status
+                    (status, temp_file)
                 }
             },
         };
@@ -308,56 +309,16 @@ impl<T: CacheItemRequest> Cacher<T> {
         // is fine as it does not move filesystem boundaries there.
         let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
 
-        if let Some(cache_dir) = self.config.cache_dir() {
+        let file = if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
             let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
-            tracing::trace!(
-                "Creating {} at path {:?}",
-                self.config.name(),
-                cache_path.display()
-            );
-            let parent = cache_path.parent().ok_or_else(|| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "no parent directory to persist item",
-                )
-            })?;
-
-            // The `cleanup` process could potentially remove the parent directories we are
-            // operating in, so be defensive here and retry the fs operations.
-            const MAX_RETRIES: usize = 2;
-            let mut retries = 0;
-            loop {
-                retries += 1;
-
-                if let Err(e) = fs::create_dir_all(parent).await {
-                    sentry::with_scope(
-                        |scope| scope.set_extra("path", parent.display().to_string().into()),
-                        || tracing::error!("Failed to create cache directory: {:?}", e),
-                    );
-                    if retries > MAX_RETRIES {
-                        return Err(e.into());
-                    }
-                    continue;
-                }
-
-                if let Err(e) = temp_file.persist(&cache_path) {
-                    temp_file = e.file;
-                    let err = e.error;
-                    sentry::with_scope(
-                        |scope| scope.set_extra("path", cache_path.display().to_string().into()),
-                        || tracing::error!("Failed to create cache file: {:?}", err),
-                    );
-                    if retries > MAX_RETRIES {
-                        return Err(err.into());
-                    }
-                    continue;
-                }
-
-                break;
-            }
-
+            sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    &format!("cache.{}.cache_path", self.config.name()),
+                    cache_path.to_string_lossy().into(),
+                );
+            });
             metric!(
                 counter(&format!("caches.{}.file.write", self.config.name())) += 1,
                 "status" => status.as_ref(),
@@ -368,21 +329,27 @@ impl<T: CacheItemRequest> Cacher<T> {
                 "hit" => "false",
                 "is_refresh" => &is_refresh.to_string(),
             );
-            sentry::configure_scope(|scope| {
-                scope.set_extra(
-                    &format!("cache.{}.cache_path", self.config.name()),
-                    cache_path.to_string_lossy().into(),
-                );
-            });
+
+            tracing::trace!(
+                "Creating {} at path {:?}",
+                self.config.name(),
+                cache_path.display()
+            );
+
+            persist_tempfile(temp_file, cache_path).await?
+        } else {
+            temp_file.into_file()
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
-        // NOTE: temp_fd is still a valid filedescriptor to the file's data, even after we
-        // persisted the file.
         if !shared_cache_hit && status == CacheStatus::Positive {
             self.shared_cache_service
-                .store(shared_cache_key, temp_fd, CacheStoreReason::New)
+                .store(
+                    shared_cache_key,
+                    tokio::fs::File::from_std(file),
+                    CacheStoreReason::New,
+                )
                 .await;
         }
 
@@ -570,6 +537,54 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
+async fn persist_tempfile(
+    mut temp_file: NamedTempFile,
+    cache_path: PathBuf,
+) -> io::Result<std::fs::File> {
+    let parent = cache_path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "no parent directory to persist item",
+        )
+    })?;
+
+    // The `cleanup` process could potentially remove the parent directories we are
+    // operating in, so be defensive here and retry the fs operations.
+    const MAX_RETRIES: usize = 2;
+    let mut retries = 0;
+    let file = loop {
+        retries += 1;
+
+        if let Err(e) = fs::create_dir_all(parent).await {
+            sentry::with_scope(
+                |scope| scope.set_extra("path", parent.display().to_string().into()),
+                || tracing::error!("Failed to create cache directory: {:?}", e),
+            );
+            if retries > MAX_RETRIES {
+                return Err(e);
+            }
+            continue;
+        }
+
+        match temp_file.persist(&cache_path) {
+            Ok(file) => break file,
+            Err(e) => {
+                temp_file = e.file;
+                let err = e.error;
+                sentry::with_scope(
+                    |scope| scope.set_extra("path", cache_path.display().to_string().into()),
+                    || tracing::error!("Failed to create cache file: {:?}", err),
+                );
+                if retries > MAX_RETRIES {
+                    return Err(err);
+                }
+                continue;
+            }
+        }
+    };
+    Ok(file)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
@@ -611,15 +626,17 @@ mod tests {
             }
         }
 
-        fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
+        fn compute(
+            &self,
+            temp_file: NamedTempFile,
+        ) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
             self.computations.fetch_add(1, Ordering::SeqCst);
 
-            let path = path.to_owned();
             Box::pin(async move {
                 tokio::time::sleep(Duration::from_millis(100)).await;
 
-                std::fs::write(path, "some new cached contents")?;
-                Ok(())
+                std::fs::write(temp_file.path(), "some new cached contents")?;
+                Ok(temp_file)
             })
         }
 
