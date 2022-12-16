@@ -3,13 +3,11 @@ use std::io::{self, BufWriter};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Error;
 use futures::future::BoxFuture;
 use tempfile::NamedTempFile;
-use thiserror::Error;
 
 use symbolic::common::{ByteView, SelfCell};
-use symbolic::symcache::{self, SymCache, SymCacheConverter};
+use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
@@ -82,45 +80,6 @@ fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, Ca
     })
 }
 
-/// Errors happening while generating a symcache.
-#[derive(Debug, Error)]
-pub enum SymCacheError {
-    #[error("failed to write symcache")]
-    Io(#[from] io::Error),
-
-    #[error("failed to write symcache")]
-    Writing(#[source] symcache::Error),
-
-    #[error("failed to handle auxiliary BCSymbolMap file")]
-    BcSymbolMapError(#[source] Error),
-
-    #[error("failed to handle auxiliary il2cpp line mapping file")]
-    Il2cppError(#[source] Error),
-}
-
-impl From<&SymCacheError> for CacheError {
-    fn from(error: &SymCacheError) -> Self {
-        match error {
-            SymCacheError::Io(e) => {
-                tracing::error!(error = %e, "failed to write symcache");
-                Self::InternalError
-            }
-            SymCacheError::Writing(e) => {
-                tracing::error!(error = %e, "failed to write symcache");
-                Self::InternalError
-            }
-            SymCacheError::BcSymbolMapError(e) => {
-                tracing::error!(error = %e, "failed to handle auxiliary BCSymbolMap file");
-                Self::InternalError
-            }
-            SymCacheError::Il2cppError(e) => {
-                tracing::error!(error = %e, "failed to handle auxiliary il2cpp line mapping file");
-                Self::InternalError
-            }
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
@@ -179,12 +138,8 @@ async fn fetch_difs_and_compute_symcache(
 ) -> CacheEntry<NamedTempFile> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    if let Err(err) = write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources) {
-        tracing::warn!("Failed to write symcache: {}", err);
-        sentry::capture_error(&err);
+    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)?;
 
-        return Err((&err).into());
-    }
     Ok(temp_file)
 }
 
@@ -322,7 +277,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
-) -> Result<(), SymCacheError> {
+) -> CacheEntry<()> {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();
@@ -331,9 +286,14 @@ fn write_symcache(
 
     let bcsymbolmap_transformer = match secondary_sources.bcsymbolmap_handle {
         Some(ref handle) => {
-            let bcsymbolmap = handle
-                .bc_symbol_map()
-                .map_err(SymCacheError::BcSymbolMapError)?;
+            let bcsymbolmap = handle.bc_symbol_map().map_err(|e| {
+                // FIXME(swatinem): this should really be an InternalError?
+
+                let dynerr: &dyn std::error::Error = e.as_ref(); // tracing expects a `&dyn Error`
+                tracing::error!(error = dynerr, "Failed to parse BcSymbolMap");
+
+                CacheError::Malformed(e.to_string())
+            })?;
             tracing::debug!(
                 "Adding BCSymbolMap {} to dSYM {}",
                 handle.uuid,
@@ -345,7 +305,14 @@ fn write_symcache(
     };
     let linemapping_transformer = match secondary_sources.il2cpp_handle {
         Some(handle) => {
-            let il2cpp = handle.line_mapping().map_err(SymCacheError::Il2cppError)?;
+            let il2cpp = handle.line_mapping().map_err(|e| {
+                // FIXME(swatinem): this should really be an InternalError?
+
+                let dynerr: &dyn std::error::Error = e.as_ref(); // tracing expects a `&dyn Error`
+                tracing::error!(error = dynerr, "Failed to parse il2cpp mapping");
+
+                CacheError::Malformed(e.to_string())
+            })?;
             tracing::debug!(
                 "Adding il2cpp line mapping {} to object {}",
                 handle.debug_id,
@@ -367,19 +334,17 @@ fn write_symcache(
         converter.add_transformer(linemapping);
     }
 
-    converter
-        .process_object(symbolic_object)
-        .map_err(SymCacheError::Writing)?;
+    converter.process_object(symbolic_object).map_err(|e| {
+        let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
+        tracing::error!(error = dynerr, "Could not process SymCache");
+
+        CacheError::Malformed(e.to_string())
+    })?;
 
     let mut writer = BufWriter::new(file);
-    converter
-        .serialize(&mut writer)
-        .map_err(SymCacheError::Io)?;
-
+    converter.serialize(&mut writer)?;
     let mut file = writer.into_inner().map_err(io::Error::from)?;
-
     markers.write_to(&mut file)?;
-
     file.sync_all()?;
 
     Ok(())

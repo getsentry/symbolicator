@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
-use thiserror::Error;
 
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
@@ -12,9 +11,9 @@ use crate::cache::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
 use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
-    FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor, PortablePdbCacheError,
+    FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor,
 };
-use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor, SymCacheError};
+use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
     RawStacktrace, Scope,
@@ -34,14 +33,6 @@ pub fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> Ob
         Err(CacheError::Malformed(_)) => ObjectFileStatus::Malformed,
         Err(CacheError::InternalError) => ObjectFileStatus::Other,
     }
-}
-
-#[derive(Debug, Error)]
-pub enum CacheFileError {
-    #[error(transparent)]
-    SymCache(#[from] Arc<SymCacheError>),
-    #[error(transparent)]
-    PortablePdbCache(#[from] Arc<PortablePdbCacheError>),
 }
 
 #[derive(Debug, Clone)]
