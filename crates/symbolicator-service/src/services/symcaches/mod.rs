@@ -305,20 +305,11 @@ fn write_symcache(
     };
     let linemapping_transformer = match secondary_sources.il2cpp_handle {
         Some(handle) => {
-            let il2cpp = handle.line_mapping().map_err(|e| {
-                // FIXME(swatinem): this should really be an InternalError?
-
-                let dynerr: &dyn std::error::Error = e.as_ref(); // tracing expects a `&dyn Error`
-                tracing::error!(error = dynerr, "Failed to parse il2cpp mapping");
-
-                CacheError::Malformed(e.to_string())
+            let mapping = handle.line_mapping().ok_or_else(|| {
+                tracing::error!("cached il2cpp LineMapping should have been parsable");
+                CacheError::InternalError
             })?;
-            tracing::debug!(
-                "Adding il2cpp line mapping {} to object {}",
-                handle.debug_id,
-                object_handle
-            );
-            Some(il2cpp)
+            Some(mapping)
         }
         None => None,
     };
@@ -331,6 +322,7 @@ fn write_symcache(
         converter.add_transformer(bcsymbolmap);
     }
     if let Some(linemapping) = linemapping_transformer {
+        tracing::debug!("Adding il2cpp line mapping to object {}", object_handle);
         converter.add_transformer(linemapping);
     }
 
