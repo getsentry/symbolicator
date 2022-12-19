@@ -1,0 +1,69 @@
+name: image
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - release/**
+jobs:
+  build-image:
+    strategy:
+      matrix:
+        arch: [amd64]
+    runs-on: ubuntu-latest
+    env:
+      # IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
+      IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
+      NIGHTLY_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-nightly
+      BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - run: docker run --rm --privileged tonistiigi/binfmt --install arm64
+        if: matrix.arch == 'arm64'
+
+      - name: build builder img
+        run: |
+          set -euxo pipefail
+          args=()
+          if docker pull -q "$BUILDER_IMG_CACHE"; then
+            args+=(--cache-from "$BUILDER_IMG_CACHE")
+          fi
+          docker buildx build \
+              "${args[@]}" \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --platform linux/${{ matrix.arch }} \
+              --tag "$BUILDER_IMG_CACHE" \
+              --target symbolicator-build \
+              .
+
+      - name: build nightly img
+        run: |
+          set -euxo pipefail
+          args=()
+          if docker pull -q "$NIGHTLY_IMG_CACHE"; then
+            args+=(--cache-from "$NIGHTLY_IMG_CACHE")
+          fi
+          docker buildx build \
+              "${args[@]}" \
+              --build-arg BUILDKIT_INLINE_CACHE=1 \
+              --platform linux/${{ matrix.arch }} \
+              --tag "$NIGHTLY_IMG_CACHE" \
+              --tag "$IMG_VERSIONED" \
+              --cache-from "${BUILDER_IMG_CACHE}" \
+              --cache-from "${NIGHTLY_IMG_CACHE}" \
+              .
+
+      - name: push all images
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euxo pipefail
+          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+          docker push "$BUILDER_IMG_CACHE"
+          docker push "$NIGHTLY_IMG_CACHE"
+          docker push "$IMG_VERSIONED"
+
+          # for now arm64 is too slow so just retag this as latest
+          docker tag "$IMG_VERSIONED" ghcr.io/getsentry/symbolicator:latest
+          docker push ghcr.io/getsentry/symbolicator:latest
