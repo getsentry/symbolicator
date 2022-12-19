@@ -809,7 +809,7 @@ mod tests {
         let buf = section.get_contents().unwrap();
 
         let parsed = parse_stacktraces_from_raw_extension(&buf);
-        println!("{:#?}", parsed);
+        println!("{parsed:#?}");
         // frames are parsed as threads
         assert!(parsed.is_ok());
     }
@@ -837,7 +837,7 @@ mod tests {
         let buf = section.get_contents().unwrap();
 
         let parsed = parse_stacktraces_from_raw_extension(&buf);
-        println!("{:#?}", parsed);
+        println!("{parsed:#?}");
         // threads are parsed as frames
         assert!(parsed.is_ok());
     }
@@ -871,7 +871,7 @@ mod tests {
         let buf = section.get_contents().unwrap();
 
         let parsed = parse_stacktraces_from_raw_extension(&buf);
-        println!("{:#?}", parsed);
+        println!("{parsed:#?}");
         assert!(parsed.is_ok());
     }
 }
