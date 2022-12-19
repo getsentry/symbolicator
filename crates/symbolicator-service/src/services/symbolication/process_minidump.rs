@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -86,14 +85,9 @@ impl MinidumpState {
             },
             crashed: process_state.crashed(),
             crash_reason: process_state
-                .crash_reason
-                .map(|reason| {
-                    let mut reason = reason.to_string();
-                    if let Some(addr) = process_state.crash_address {
-                        let _ = write!(&mut reason, " / {addr:#x}");
-                    }
-                    reason
-                })
+                .exception_info
+                .as_ref()
+                .map(|info| format!("{} / {:#x}", info.reason, info.address))
                 .unwrap_or_default(),
             assertion: process_state.assertion.clone().unwrap_or_default(),
         }

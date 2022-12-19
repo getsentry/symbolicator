@@ -13,7 +13,7 @@ pub struct PollSymbolicationRequestQueryParams {
 }
 
 pub async fn poll_request(
-    extract::Extension(service): extract::Extension<RequestService>,
+    extract::State(service): extract::State<RequestService>,
     extract::Path(request_id): extract::Path<RequestId>,
     extract::Query(query): extract::Query<PollSymbolicationRequestQueryParams>,
 ) -> Result<Json<SymbolicationResponse>, StatusCode> {

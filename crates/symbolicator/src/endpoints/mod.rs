@@ -32,20 +32,19 @@ pub async fn healthcheck() -> &'static str {
 pub fn create_app(service: RequestService) -> Router {
     // The layers here go "top to bottom" according to the reading order here.
     let layer = ServiceBuilder::new()
-        .layer(axum::extract::Extension(service))
         .layer(NewSentryLayer::new_from_top())
         .layer(SentryHttpLayer::with_transaction())
         .layer(MetricsLayer)
-        .layer(DefaultBodyLimit::disable());
-    // XXX: Adding a limit would lead to a confusing trait error that I don't know how to solve:
-    // > the trait `tower_service::Service<axum::http::Request<http_body::limited::Limited<_>>>` is not implemented for `Route`
-    // .layer(RequestBodyLimitLayer::new(100 * 1024 * 1024)) // ~100MB;
+        .layer(DefaultBodyLimit::max(100 * 1024 * 1024));
+    // We have a global 100M body limit, but a 5M symbolicate body limit
+    let symbolicate_route = post(symbolicate).layer(DefaultBodyLimit::max(5 * 1024 * 1024));
     Router::new()
         .route("/proxy/*path", get(proxy).head(proxy))
         .route("/requests/:request_id", get(requests))
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
-        .route("/symbolicate", post(symbolicate))
+        .route("/symbolicate", symbolicate_route)
+        .with_state(service)
         .layer(layer)
         // the healthcheck is last, as it will bypass all the middlewares
         .route("/healthcheck", get(healthcheck))

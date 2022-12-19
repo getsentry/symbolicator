@@ -13,7 +13,7 @@ use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_minidump_request(
-    extract::Extension(service): extract::Extension<RequestService>,
+    extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
@@ -162,5 +162,62 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_body_limit() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let len = 96 * 1024 * 1024;
+        let mut buf = vec![b'.'; len];
+        buf[0..4].copy_from_slice(b"MDMP");
+
+        let file_part =
+            multipart::Part::stream_with_length(buf, len as u64).file_name("minidump.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // well, the minidump is obviously invalid :-)
+        let body = response.text().await.unwrap();
+        assert_eq!(
+            &body,
+            "{\"status\":\"failed\",\"message\":\"Minidump version mismatch\"}"
+        );
+
+        let len = 112 * 1024 * 1024;
+        let mut buf = vec![b'.'; len];
+        buf[0..4].copy_from_slice(b"MDMP");
+
+        let file_part =
+            multipart::Part::stream_with_length(buf, len as u64).file_name("minidump.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await;
+
+        // FIXME(swatinem): it is a bit unclear which error we get exactly, and from which internal
+        // parts. This can give us an internal server error or a connection reset depending on OS
+        // right now. Ideally, it should give us a `PAYLOAD_TOO_LARGE`, but that might require some
+        // more work inside of `axum`, see <https://github.com/tokio-rs/axum/issues/1623>.
+        assert!(response.is_err() || !response.unwrap().status().is_success());
     }
 }
