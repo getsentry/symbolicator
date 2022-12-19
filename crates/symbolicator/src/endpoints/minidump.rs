@@ -208,12 +208,9 @@ mod tests {
             .post(server.url("/minidump"))
             .multipart(form)
             .send()
-            .await;
+            .await
+            .unwrap();
 
-        // XXX: the connection is aborted instead of getting a `PAYLOAD_TOO_LARGE` error.
-        // That is because the `Part::bytes` above does not report its content-length ahead of time.
-        // If we would use `Part::stream_with_length` instead, we would get the expected error.
-        assert!(response.is_err());
-        // assert_eq!(response.unwrap().status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
