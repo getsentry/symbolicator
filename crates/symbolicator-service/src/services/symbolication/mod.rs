@@ -42,6 +42,8 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     }
 }
 
+// we should really rename this here to the `SymbolicatorService`, as it does a lot more
+// than just symbolication ;-)
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     objects: ObjectsActor,
