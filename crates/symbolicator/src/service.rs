@@ -574,8 +574,7 @@ mod tests {
 
             assert!(
                 matches!(&response, SymbolicationResponse::Completed(_)),
-                "Not a complete response: {:#?}",
-                response
+                "Not a complete response: {response:#?}"
             );
         }
     }

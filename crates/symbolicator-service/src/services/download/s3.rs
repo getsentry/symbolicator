@@ -115,8 +115,7 @@ impl S3Downloader {
                         match rusoto_credential::AutoRefreshingProvider::new(container_provider) {
                             Ok(provider) => provider,
                             Err(err) => panic!(
-                            "Unable to instantiate rusoto_credential::AutoRefreshingProvider: {:?}",
-                            err
+                            "Unable to instantiate rusoto_credential::AutoRefreshingProvider: {err:?}"
                         ),
                         };
                     self.create_s3_client(provider, region)
@@ -335,7 +334,7 @@ mod tests {
             Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
                 // fallthrough. rusoto does not seem to detect the 404.
             }
-            Err(err) => panic!("failed to check S3 bucket: {:?}", err),
+            Err(err) => panic!("failed to check S3 bucket: {err:?}"),
         }
 
         s3_client
@@ -367,7 +366,7 @@ mod tests {
             Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => {
                 // fallthrough
             }
-            Err(err) => panic!("failed to check S3 object: {:?}", err),
+            Err(err) => panic!("failed to check S3 object: {err:?}"),
         }
 
         s3_client
@@ -456,7 +455,7 @@ mod tests {
         assert!(target_path.exists());
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
-        let hash = format!("{:x}", hash);
+        let hash = format!("{hash:x}");
         assert_eq!(hash, "e0195c064783997b26d6e2e625da7417d9f63677");
     }
 

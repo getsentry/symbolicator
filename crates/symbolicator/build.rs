@@ -16,7 +16,7 @@ fn emit_version_var() -> Result<(), io::Error> {
 
     let ver = String::from_utf8_lossy(&cmd.stdout);
 
-    println!("cargo:rustc-env=SYMBOLICATOR_GIT_VERSION={}", ver);
+    println!("cargo:rustc-env=SYMBOLICATOR_GIT_VERSION={ver}");
     println!("cargo:rerun-if-env-changed=SYMBOLICATOR_GIT_VERSION");
 
     Ok(())
@@ -37,7 +37,7 @@ fn emit_release_var() -> Result<(), io::Error> {
 
     let ver = String::from_utf8_lossy(&cmd.stdout);
 
-    println!("cargo:rustc-env=SYMBOLICATOR_RELEASE={}", ver);
+    println!("cargo:rustc-env=SYMBOLICATOR_RELEASE={ver}");
     println!("cargo:rerun-if-env-changed=SYMBOLICATOR_RELEASE");
 
     Ok(())

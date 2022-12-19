@@ -84,6 +84,6 @@ pub fn ensure_log_error(error: &anyhow::Error) {
     {
         tracing::error!("{:?}", error);
     } else {
-        eprintln!("{:?}", error);
+        eprintln!("{error:?}");
     }
 }
