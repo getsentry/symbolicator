@@ -5,17 +5,21 @@ use axum::http::StatusCode;
 use futures::prelude::*;
 use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use tokio_util::io::StreamReader;
 
 use super::ResponseError;
 
 /// Stream a multipart body to a file.
 ///
 /// The file's cursor will be set to the beginning of the file again.
-pub async fn stream_multipart_file(field: Field<'_>, file: &mut File) -> Result<(), ResponseError> {
-    let mut field_reader =
-        StreamReader::new(field.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
-    tokio::io::copy(&mut field_reader, file).await?;
+pub async fn stream_multipart_file(
+    mut field: Field<'_>,
+    file: &mut File,
+) -> Result<(), ResponseError> {
+    // NOTE: we manually deal with chunks here for, as that should give us better errors
+    while let Some(mut chunk) = field.chunk().await? {
+        file.write_all_buf(&mut chunk).await?;
+    }
+
     file.flush().await?;
     file.rewind().await?;
     Ok(())
