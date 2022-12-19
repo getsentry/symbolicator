@@ -183,7 +183,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let _scope = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
             scope.set_extra(
-                &format!("cache.{}.cache_path", name),
+                &format!("cache.{name}.cache_path"),
                 item_path.to_string_lossy().into(),
             );
         });
@@ -193,7 +193,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
         if status == CacheStatus::Positive && !request.should_load(&byteview) {
             tracing::trace!("Discarding {} at path {}", name, item_path.display());
-            metric!(counter(&format!("caches.{}.file.discarded", name)) += 1);
+            metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
             return Ok(None);
         }
 
@@ -224,9 +224,9 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
-        metric!(counter(&format!("caches.{}.file.hit", name)) += 1);
+        metric!(counter(&format!("caches.{name}.file.hit")) += 1);
         metric!(
-            time_raw(&format!("caches.{}.file.size", name)) = byteview.len() as u64,
+            time_raw(&format!("caches.{name}.file.size")) = byteview.len() as u64,
             "hit" => "true"
         );
 
@@ -442,11 +442,11 @@ impl<T: CacheItemRequest> Cacher<T> {
             let mut current_computations = self.current_computations.lock();
             if let Some(channel) = current_computations.get(&key) {
                 // A concurrent cache lookup was deduplicated.
-                metric!(counter(&format!("caches.{}.channel.hit", name)) += 1);
+                metric!(counter(&format!("caches.{name}.channel.hit")) += 1);
                 channel.clone()
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
-                metric!(counter(&format!("caches.{}.channel.miss", name)) += 1);
+                metric!(counter(&format!("caches.{name}.channel.miss")) += 1);
 
                 // We count down towards zero, and if we reach or surpass it, we will short circuit here.
                 // Doing the short-circuiting here means we don't create a channel at all, and don't
@@ -475,7 +475,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
 
         let future = channel.unwrap_or_else(move |_cancelled_error| {
-            let message = format!("{} computation channel dropped", name);
+            let message = format!("{name} computation channel dropped");
             Err(std::io::Error::new(std::io::ErrorKind::Interrupted, message).into())
         });
 
@@ -519,7 +519,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         key.cache_path(cache_dir, T::VERSIONS.current).display()
                     );
                     metric!(
-                        counter(&format!("caches.{}.file.fallback", name)) += 1,
+                        counter(&format!("caches.{name}.file.fallback")) += 1,
                         "version" => &version.to_string(),
                     );
                     let _not_awaiting_future = self.spawn_computation(request, true);
@@ -531,7 +531,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // A file was not found. If this spikes, it's possible that the filesystem cache
         // just got pruned.
-        metric!(counter(&format!("caches.{}.file.miss", name)) += 1);
+        metric!(counter(&format!("caches.{name}.file.miss")) += 1);
 
         self.spawn_computation(request, false).await
     }

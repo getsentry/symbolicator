@@ -343,7 +343,7 @@ pub fn main() -> ! {
         Err(error) => {
             eprintln!("{}: {}", style("error").red().bold(), error);
             for cause in error.chain().skip(1) {
-                eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+                eprintln!("{}", style(format!("  caused by {cause}")).dim());
             }
 
             eprintln!();

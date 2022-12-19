@@ -150,7 +150,7 @@ where
         where
             E: serde::de::Error,
         {
-            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {:?}", e)))
+            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {e:?}")))
         }
 
         fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>

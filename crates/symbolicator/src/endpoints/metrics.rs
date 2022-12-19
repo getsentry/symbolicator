@@ -39,7 +39,7 @@ where
                 .as_ref()
                 .map(|r| r.status())
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            metric!(counter(&format!("responses.status_code.{}", status)) += 1);
+            metric!(counter(&format!("responses.status_code.{status}")) += 1);
         }
         poll
     }

@@ -156,7 +156,7 @@ impl ObjectUseInfo {
             // in case symbolic is doing something wrong. It may make more sense for
             // this to be Malformed.
             (S::CacheSpecificError(message), _) => ObjectUseInfo::Error {
-                details: format!("Object file could not be converted: {}", message),
+                details: format!("Object file could not be converted: {message}"),
             },
         }
     }

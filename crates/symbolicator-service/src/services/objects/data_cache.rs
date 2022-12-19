@@ -100,9 +100,9 @@ impl ConfigureScope for ObjectHandle {
 impl fmt::Display for ObjectHandle {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let Some(ref debug_id) = self.object_id.debug_id {
-            write!(f, "<object handle for {}>", debug_id)
+            write!(f, "<object handle for {debug_id}>")
         } else if let Some(ref code_id) = self.object_id.code_id {
-            write!(f, "<object handle for {}>", code_id)
+            write!(f, "<object handle for {code_id}>")
         } else {
             write!(f, "<object handle for unknown>")
         }

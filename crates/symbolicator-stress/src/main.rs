@@ -193,10 +193,7 @@ async fn main() -> Result<()> {
             // we only count finished tasks
             let ops = finished_tasks.load(Ordering::Relaxed);
             let ops_ps = ops as f32 / duration.as_secs() as f32;
-            println!(
-                "Workload {} (concurrency: {}): {} operations, {} ops/s",
-                i, concurrency, ops, ops_ps
-            );
+            println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps} ops/s");
 
             // by aquiring *all* the semaphores, we essentially wait for all tasks to finish
             let _permits = semaphore.acquire_many(concurrency as u32).await;

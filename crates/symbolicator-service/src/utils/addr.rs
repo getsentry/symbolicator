@@ -25,7 +25,7 @@ impl fmt::Display for AddrMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             AddrMode::Abs => write!(f, "abs"),
-            AddrMode::Rel(idx) => write!(f, "rel:{}", idx),
+            AddrMode::Rel(idx) => write!(f, "rel:{idx}"),
         }
     }
 }

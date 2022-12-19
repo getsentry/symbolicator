@@ -1,5 +1,5 @@
 use std::fmt;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -123,7 +123,7 @@ impl Payload {
             Ok(mut file) => {
                 let mut magic = [0; 4];
                 file.read_exact(&mut magic)?;
-                file.seek(SeekFrom::Start(0))?;
+                file.rewind()?;
 
                 if &magic == b"MDMP" || &magic == b"PMDM" {
                     let mut temp_file = NamedTempFile::new().unwrap();
@@ -138,7 +138,7 @@ impl Payload {
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(e).context(format!("Could not open event file at {:?}", path)),
+            Err(e) => Err(e).context(format!("Could not open event file at {path:?}")),
         }
     }
 
