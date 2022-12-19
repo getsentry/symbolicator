@@ -10,7 +10,7 @@ use tempfile::NamedTempFile;
 /// process from a named pathname, hence we need a [`NamedTempFile`] as source.
 ///
 /// On success, this will return the [`NamedTempFile`] with the decompressed file contents. This
-/// can either be the original temp file if no compression was needed, or a new temp file in the
+/// can either be the original temp file if it was already uncompressed, or a new temp file in the
 /// same directory if decompression was performed.
 pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
     // Ensure that both meta data and file contents are available to the
