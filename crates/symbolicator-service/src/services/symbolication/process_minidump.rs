@@ -69,7 +69,7 @@ impl MinidumpState {
             minidump::system_info::Cpu::Mips => Arch::Mips,
             minidump::system_info::Cpu::Mips64 => Arch::Mips64,
             arch => {
-                let msg = format!("Unknown minidump arch: {}", arch);
+                let msg = format!("Unknown minidump arch: {arch}");
                 sentry::capture_message(&msg, sentry::Level::Error);
                 Arch::Unknown
             }
@@ -90,7 +90,7 @@ impl MinidumpState {
                 .map(|reason| {
                     let mut reason = reason.to_string();
                     if let Some(addr) = process_state.crash_address {
-                        let _ = write!(&mut reason, " / {:#x}", addr);
+                        let _ = write!(&mut reason, " / {addr:#x}");
                     }
                     reason
                 })

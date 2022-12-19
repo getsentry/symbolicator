@@ -37,7 +37,7 @@ fn get_lldb_path(identifier: &ObjectId) -> Option<String> {
     // Format the UUID as "xxxx/xxxx/xxxx/xxxx/xxxx/xxxxxxxxxxxx"
     let mut path = String::with_capacity(37);
     for (i, byte) in slice.iter().enumerate() {
-        write!(path, "{:02X}", byte).ok()?;
+        write!(path, "{byte:02X}").ok()?;
         if i % 2 == 1 && i <= 9 {
             path.push('/');
         }
@@ -70,7 +70,7 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
         format!("{:X}{:x}", debug_id.uuid().as_simple(), appendix)
     };
 
-    Some(format!("{}/{}/{}", debug_file, debug_id, debug_file))
+    Some(format!("{debug_file}/{debug_id}/{debug_file}"))
 }
 
 fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
@@ -94,7 +94,7 @@ fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Stri
         ))
     };
 
-    Some(format!("{}/{}/{}", code_file, code_id, code_file))
+    Some(format!("{code_file}/{code_id}/{code_file}"))
 }
 
 fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
@@ -229,14 +229,11 @@ fn get_symstore_path(
             } else {
                 Cow::Borrowed(code_file)
             };
-            Some(format!(
-                "{}/elf-buildid-{}/{}",
-                code_file, code_id, code_file
-            ))
+            Some(format!("{code_file}/elf-buildid-{code_id}/{code_file}"))
         }
         FileType::ElfDebug => {
             let code_id = identifier.code_id.as_ref()?;
-            Some(format!("_.debug/elf-buildid-sym-{}/_.debug", code_id))
+            Some(format!("_.debug/elf-buildid-sym-{code_id}/_.debug"))
         }
 
         FileType::MachCode => {
@@ -295,7 +292,7 @@ fn get_symstore_index2_path(filetype: FileType, identifier: &ObjectId) -> Option
         if prefix.ends_with('/') || prefix.ends_with('.') {
             return Some(format!("{}/{}", &prefix[..1], rv));
         } else {
-            return Some(format!("{}/{}", prefix, rv));
+            return Some(format!("{prefix}/{rv}"));
         }
     }
     Some(rv)
@@ -308,11 +305,11 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
     match filetype {
         FileType::ElfCode => {
             let code_id = identifier.code_id.as_ref()?.as_str();
-            Some(format!("{}/executable", code_id))
+            Some(format!("{code_id}/executable"))
         }
         FileType::ElfDebug => {
             let code_id = identifier.code_id.as_ref()?.as_str();
-            Some(format!("{}/debuginfo", code_id))
+            Some(format!("{code_id}/debuginfo"))
         }
 
         // Mach is not supported

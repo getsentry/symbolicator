@@ -130,7 +130,7 @@ fn process_file(
         if let Some(bundle_id) = &sort_config.bundle_id {
             let refs_path = new_filename.parent().unwrap().join("refs");
             fs::create_dir_all(&refs_path)?;
-            fs::write(&refs_path.join(bundle_id), b"")?;
+            fs::write(refs_path.join(bundle_id), b"")?;
         }
 
         let meta = DebugIdMeta {
@@ -140,8 +140,8 @@ fn process_file(
         };
 
         fs::write(
-            &new_filename.parent().unwrap().join("meta"),
-            &serde_json::to_vec(&meta)?,
+            new_filename.parent().unwrap().join("meta"),
+            serde_json::to_vec(&meta)?,
         )?;
 
         log!(
@@ -343,7 +343,7 @@ pub fn main() -> ! {
         Err(error) => {
             eprintln!("{}: {}", style("error").red().bold(), error);
             for cause in error.chain().skip(1) {
-                eprintln!("{}", style(format!("  caused by {}", cause)).dim());
+                eprintln!("{}", style(format!("  caused by {cause}")).dim());
             }
 
             eprintln!();
