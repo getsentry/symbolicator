@@ -1,11 +1,10 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use thiserror::Error;
+use tempfile::NamedTempFile;
 
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::Object;
@@ -44,40 +43,10 @@ const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
 
-fn parse_ppdb_cache_owned(
-    byteview: ByteView<'static>,
-) -> Result<OwnedPortablePdbCache, CacheError> {
+fn parse_ppdb_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedPortablePdbCache> {
     SelfCell::try_new(byteview, |p| unsafe {
-        PortablePdbCache::parse(&*p).map_err(|e| {
-            tracing::error!(error = %e);
-            CacheError::InternalError
-        })
+        PortablePdbCache::parse(&*p).map_err(CacheError::from_std_error)
     })
-}
-
-/// Errors happening while generating a symcache.
-#[derive(Debug, Error)]
-pub enum PortablePdbCacheError {
-    #[error("failed to write ppdb cache")]
-    Io(#[from] io::Error),
-
-    #[error("failed to write ppdb cache")]
-    Writing(#[source] symbolic::ppdb::CacheError),
-}
-
-impl From<&PortablePdbCacheError> for CacheError {
-    fn from(error: &PortablePdbCacheError) -> Self {
-        match error {
-            PortablePdbCacheError::Io(e) => {
-                tracing::error!(error = %e, "failed to write ppdb cache");
-                Self::InternalError
-            }
-            PortablePdbCacheError::Writing(e) => {
-                tracing::error!(error = %e, "failed to write ppdb cache");
-                Self::InternalError
-            }
-        }
-    }
 }
 
 /// Information for fetching the symbols for this ppdb cache
@@ -155,19 +124,15 @@ struct FetchPortablePdbCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_ppdb_cache", skip_all)]
 async fn fetch_difs_and_compute_ppdb_cache(
-    path: PathBuf,
+    mut temp_file: NamedTempFile,
     object_meta: Arc<ObjectMetaHandle>,
     objects_actor: ObjectsActor,
-) -> CacheEntry<()> {
+) -> CacheEntry<NamedTempFile> {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    if let Err(err) = write_ppdb_cache(&path, &object_handle) {
-        tracing::warn!("Failed to write ppdb_cache: {}", err);
-        sentry::capture_error(&err);
+    write_ppdb_cache(temp_file.as_file_mut(), &object_handle)?;
 
-        return Err((&err).into());
-    }
-    Ok(())
+    Ok(temp_file)
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
@@ -179,9 +144,9 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
         let future = fetch_difs_and_compute_ppdb_cache(
-            path.to_owned(),
+            temp_file,
             self.object_meta.clone(),
             self.objects_actor.clone(),
         );
@@ -212,10 +177,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 ///
 /// It is assumed that the `object_handle` contains a positive cache.
 #[tracing::instrument(skip_all)]
-fn write_ppdb_cache(
-    path: &Path,
-    object_handle: &ObjectHandle,
-) -> Result<(), PortablePdbCacheError> {
+fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
     object_handle.configure_scope();
 
     let ppdb_obj = match object_handle.object() {
@@ -227,19 +189,18 @@ fn write_ppdb_cache(
     tracing::debug!("Converting ppdb cache for {}", object_handle.cache_key);
 
     let mut converter = PortablePdbCacheConverter::new();
-
     converter
         .process_portable_pdb(ppdb_obj.portable_pdb())
-        .map_err(PortablePdbCacheError::Writing)?;
+        .map_err(|e| {
+            let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
+            tracing::error!(error = dynerr, "Could not process PortablePDB Cache");
 
-    let file = File::create(path)?;
+            CacheError::Malformed(e.to_string())
+        })?;
+
     let mut writer = BufWriter::new(file);
-    converter
-        .serialize(&mut writer)
-        .map_err(PortablePdbCacheError::Io)?;
-
+    converter.serialize(&mut writer)?;
     let file = writer.into_inner().map_err(io::Error::from)?;
-
     file.sync_all()?;
 
     Ok(())

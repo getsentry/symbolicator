@@ -21,6 +21,7 @@ pub mod cacher;
 pub mod cficaches;
 pub mod derived;
 pub mod download;
+mod fetch_file;
 pub mod il2cpp;
 mod minidump;
 pub mod objects;
@@ -38,6 +39,7 @@ use self::ppdb_caches::PortablePdbCacheActor;
 use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
+pub use fetch_file::fetch_file;
 
 pub async fn create_service(
     config: &Config,

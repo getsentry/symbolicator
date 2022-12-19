@@ -1,12 +1,11 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
 use minidump_processor::SymbolFile;
-use thiserror::Error;
+use tempfile::NamedTempFile;
 
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
@@ -55,47 +54,17 @@ const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 #[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> Result<Option<Arc<SymbolFile>>, CacheError> {
-    let cfi_cache = CfiCache::from_bytes(bytes).map_err(|e| {
-        tracing::error!(error = %e);
-        CacheError::InternalError
-    })?;
+fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<Option<Arc<SymbolFile>>> {
+    let cfi_cache = CfiCache::from_bytes(bytes).map_err(CacheError::from_std_error)?;
 
     if cfi_cache.as_slice().is_empty() {
         return Ok(None);
     }
 
-    let symbol_file = SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(|e| {
-        tracing::error!(error = %e);
-        CacheError::InternalError
-    })?;
+    let symbol_file =
+        SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
 
     Ok(Some(Arc::new(symbol_file)))
-}
-
-/// Errors happening while generating a cficache
-#[derive(Debug, Error)]
-pub enum CfiCacheError {
-    #[error("failed to download")]
-    Io(#[from] io::Error),
-
-    #[error("failed to parse cficache")]
-    Parsing(#[from] symbolic::cfi::CfiError),
-}
-
-impl From<&CfiCacheError> for CacheError {
-    fn from(error: &CfiCacheError) -> Self {
-        match error {
-            CfiCacheError::Io(e) => {
-                tracing::error!(error = %e, "failed to write cfi cache");
-                Self::InternalError
-            }
-            CfiCacheError::Parsing(e) => {
-                tracing::error!(error = %e, "failed to parse cfi cache");
-                Self::InternalError
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -132,18 +101,13 @@ struct FetchCfiCacheInternal {
 async fn compute_cficache(
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
-    path: PathBuf,
-) -> CacheEntry<()> {
+    mut temp_file: NamedTempFile,
+) -> CacheEntry<NamedTempFile> {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    if let Err(e) = write_cficache(&path, &object) {
-        tracing::warn!("Could not write cficache: {}", e);
-        sentry::capture_error(&e);
+    write_cficache(temp_file.as_file_mut(), &object)?;
 
-        return Err((&e).into());
-    }
-
-    Ok(())
+    Ok(temp_file)
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -155,11 +119,11 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
         let future = compute_cficache(
             self.objects_actor.clone(),
             self.meta_handle.clone(),
-            path.to_owned(),
+            temp_file,
         );
 
         let num_sources = self.request.sources.len().to_string().into();
@@ -232,17 +196,23 @@ impl CfiCacheActor {
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
-fn write_cficache(path: &Path, object_handle: &ObjectHandle) -> Result<(), CfiCacheError> {
+fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
     object_handle.configure_scope();
-
-    let object = object_handle.object();
-
-    let file = File::create(path)?;
-    let writer = BufWriter::new(file);
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key);
 
-    CfiCache::from_object(object)?.write_to(writer)?;
+    let cficache = CfiCache::from_object(object_handle.object()).map_err(|e| {
+        let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
+        tracing::error!(error = dynerr, "Could not process CFI Cache");
+
+        CacheError::Malformed(e.to_string())
+    })?;
+
+    let mut writer = BufWriter::new(file);
+    cficache.write_to(&mut writer)?;
+
+    let file = writer.into_inner().map_err(io::Error::from)?;
+    file.sync_all()?;
 
     Ok(())
 }

@@ -3,56 +3,43 @@
 //! This service downloads and caches the [`LineMapping`] used to map
 //! generated C++ source files back to the original C# sources.
 
-use std::fs::File;
-use std::io::{self, Cursor, Seek};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Error};
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
-use tempfile::tempfile_in;
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
+use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, RemoteDif};
 use crate::types::Scope;
-use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 
+use super::fetch_file;
 use super::shared_cache::SharedCacheService;
 
 /// Handle to a valid [`LineMapping`].
 ///
 /// While this handle points to the raw data, this data is guaranteed to be valid, you can
 /// only have this handle if a positive cache existed.
+// FIXME(swatinem): this whole type exists because the outer `FetchSymCacheInternal` type containing
+// `SecondarySymCacheSources` needs to be `Clone`, and we need a `mut LineMapping` when applying it
+// to a symcache, so we need to actually parse the `LineMapping` at the very end when applying it.
 #[derive(Debug, Clone)]
 pub struct Il2cppHandle {
-    pub debug_id: DebugId,
     pub data: ByteView<'static>,
 }
 
 impl Il2cppHandle {
     /// Parses the line mapping from the handle.
-    pub fn line_mapping(&self) -> Result<LineMapping, Error> {
-        LineMapping::parse(&self.data).ok_or_else(|| anyhow::anyhow!("Failed to parse LineMapping"))
+    pub fn line_mapping(&self) -> Option<LineMapping> {
+        LineMapping::parse(&self.data)
     }
-}
-
-/// The handle to be returned by [`CacheItemRequest`].
-///
-/// This trait requires us to return a handle regardless of its cache status.
-/// This is this handle but we do not expose it outside of this module, see
-/// [`Il2cppHandle`] for that.
-#[derive(Debug, Clone)]
-struct CacheHandle {
-    debug_id: DebugId,
-    data: ByteView<'static>,
 }
 
 /// The interface to the [`Cacher`] service.
@@ -62,73 +49,30 @@ struct CacheHandle {
 struct FetchFileRequest {
     scope: Scope,
     file_source: RemoteDif,
-    debug_id: DebugId,
     download_svc: Arc<DownloadService>,
-    // FIXME: this is used only to put the tempfile in the right place
-    cache: Arc<Cacher<FetchFileRequest>>,
 }
 
 impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
-        let cache_key = self.get_cache_key();
+    async fn fetch_file(self, temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
+        let temp_file = fetch_file(self.download_svc, self.file_source, temp_file).await?;
 
-        let download_file = match self
-            .download_svc
-            .download(self.file_source, self.cache.tempfile()?)
-            .await
-        {
-            Ok(DownloadStatus::NotFound) => {
-                tracing::debug!("No il2cpp linemapping file found for {}", cache_key);
-                return Err(CacheError::NotFound);
-            }
-            Ok(DownloadStatus::PermissionDenied) => {
-                // FIXME: this is really unreachable as the downloader converts these already
-                return Err(CacheError::PermissionDenied("".into()));
-            }
-            Err(e) => {
-                let stderr: &dyn std::error::Error = &e;
-                tracing::debug!(stderr, "Error while downloading file");
-                return Err(CacheError::from(e));
-            }
-            Ok(DownloadStatus::Completed(download_file)) => download_file,
-        };
-
-        let download_dir = download_file
-            .path()
-            .parent()
-            .ok_or(CacheError::InternalError)?;
-        let mut decompressed =
-            match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
-                Ok(file) => file,
-                Err(err) => {
-                    return Err(CacheError::Malformed(err.to_string()));
-                }
-            };
-
-        // Seek back to the start and parse this DIF.
-        decompressed.rewind()?;
-        let view = ByteView::map_file(decompressed)?;
+        let view = ByteView::map_file_ref(temp_file.as_file())?;
 
         if LineMapping::parse(&view).is_none() {
             metric!(counter("services.il2cpp.loaderrror") += 1);
             tracing::debug!("Failed to parse il2cpp");
             return Err(CacheError::Malformed("Failed to parse il2cpp".to_string()));
         }
-        // The file is valid, lets save it.
-        let mut destination = File::create(path)?;
-        let mut cursor = Cursor::new(&view);
-        io::copy(&mut cursor, &mut destination)?;
 
-        Ok(())
+        Ok(temp_file)
     }
 }
 
 impl CacheItemRequest for FetchFileRequest {
-    type Item = Arc<CacheHandle>;
+    type Item = Il2cppHandle;
 
     fn get_cache_key(&self) -> CacheKey {
         self.file_source.cache_key(self.scope.clone())
@@ -137,11 +81,8 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
-        let fut = self
-            .clone()
-            .fetch_file(path.to_path_buf())
-            .bind_hub(Hub::current());
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+        let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
 
         let source_name = self.file_source.source_type_name().into();
 
@@ -157,10 +98,7 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
-        Ok(Arc::new(CacheHandle {
-            debug_id: self.debug_id,
-            data,
-        }))
+        Ok(Il2cppHandle { data })
     }
 }
 
@@ -182,7 +120,7 @@ impl Il2cppService {
         }
     }
 
-    /// Returns a `LineMapping` if one is found for the `debug_id`.
+    /// Returns an [`Il2cppHandle`] if one is found for the `debug_id`.
     pub async fn fetch_line_mapping(
         &self,
         object_id: &ObjectId,
@@ -200,19 +138,13 @@ impl Il2cppService {
             .bind_hub(Hub::new_from_top(Hub::current()))
         });
         let results = future::join_all(jobs).await;
-        let mut line_mapping_handle = None;
+        let mut mapping = None;
         for result in results {
             if result.is_some() {
-                line_mapping_handle = result;
+                mapping = result;
             }
         }
-
-        let line_mapping_handle = line_mapping_handle?;
-
-        Some(Il2cppHandle {
-            debug_id: line_mapping_handle.debug_id,
-            data: line_mapping_handle.data.clone(),
-        })
+        mapping
     }
 
     /// Wraps `fetch_file_from_source` in sentry error handling.
@@ -222,34 +154,29 @@ impl Il2cppService {
         debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
-    ) -> Option<Arc<CacheHandle>> {
+    ) -> Option<Il2cppHandle> {
         let _guard = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
             scope.set_tag("il2cpp.debugid", debug_id);
             scope.set_extra("il2cpp.source", source.type_name().into());
         });
-        match self
-            .fetch_file_from_source(object_id, debug_id, scope, source)
-            .await
-            .context("il2cpp svc failed for single source")
-        {
-            Ok(res) => res,
+        match self.fetch_file_from_source(object_id, scope, source).await {
+            Ok(mapping) => mapping,
             Err(err) => {
-                tracing::warn!("{}: {:?}", err, err.source());
-                sentry::capture_error(&*err);
+                let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
+                tracing::error!(error = dynerr, "failed fetching il2cpp file");
                 None
             }
         }
     }
 
-    /// Fetches a file and returns the [`CacheHandle`] if found.
+    /// Fetches a file and returns the [`Il2cppHandle`] if found.
     async fn fetch_file_from_source(
         &self,
         object_id: &ObjectId,
-        debug_id: DebugId,
         scope: Scope,
         source: SourceConfig,
-    ) -> CacheEntry<Option<Arc<CacheHandle>>> {
+    ) -> CacheEntry<Option<Il2cppHandle>> {
         let file_sources = self
             .download_svc
             .list_files(source, &[FileType::Il2cpp], object_id)
@@ -264,9 +191,7 @@ impl Il2cppService {
             let request = FetchFileRequest {
                 scope,
                 file_source,
-                debug_id,
                 download_svc: self.download_svc.clone(),
-                cache: self.cache.clone(),
             };
             self.cache
                 .compute_memoized(request)
@@ -280,9 +205,8 @@ impl Il2cppService {
                 Ok(handle) => ret = Some(handle),
                 Err(CacheError::NotFound) => (),
                 Err(err) => {
-                    let mut event = sentry::event_from_error(&err);
-                    event.message = Some("Failure fetching il2cpp file from source".into());
-                    sentry::capture_event(event);
+                    let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
+                    tracing::error!(error = dynerr, "failed fetching il2cpp file");
                 }
             }
         }

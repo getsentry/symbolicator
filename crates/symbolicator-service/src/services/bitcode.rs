@@ -4,28 +4,25 @@
 //! debug symbols for obfuscated Apple bitcode builds.
 
 use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{self, Cursor, Seek};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Error};
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
-use tempfile::tempfile_in;
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use symbolicator_sources::{FileType, SourceConfig};
+use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadService, RemoteDif};
 use crate::types::Scope;
-use crate::utils::compression::decompress_object_file;
 use crate::utils::futures::{m, measure};
 
+use super::fetch_file;
 use super::shared_cache::SharedCacheService;
 
 /// Handle to a valid BCSymbolMap.
@@ -82,54 +79,16 @@ struct FetchFileRequest {
     uuid: DebugId,
     kind: AuxDifKind,
     download_svc: Arc<DownloadService>,
-    // FIXME: this is used only to put the tempfile in the right place
-    cache: Arc<Cacher<FetchFileRequest>>,
 }
 
 impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    // XXX: We use a `PathBuf` here because the resulting future needs to be `'static`
-    async fn fetch_file(self, path: PathBuf) -> CacheEntry<()> {
-        let cache_key = self.get_cache_key();
+    async fn fetch_file(self, temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
+        let temp_file = fetch_file(self.download_svc, self.file_source, temp_file).await?;
 
-        let download_file = match self
-            .download_svc
-            .download(self.file_source, self.cache.tempfile()?)
-            .await
-        {
-            Ok(DownloadStatus::NotFound) => {
-                tracing::debug!("No auxiliary DIF file found for {}", cache_key);
-                return Err(CacheError::NotFound);
-            }
-            Ok(DownloadStatus::PermissionDenied) => {
-                // FIXME: this is really unreachable as the downloader converts these already
-                return Err(CacheError::PermissionDenied("".into()));
-            }
-            Err(e) => {
-                let stderr: &dyn std::error::Error = &e;
-                tracing::debug!(stderr, "Error while downloading file");
-                return Err(CacheError::from(e));
-            }
-            Ok(DownloadStatus::Completed(download_file)) => download_file,
-        };
-
-        let download_dir = download_file
-            .path()
-            .parent()
-            .ok_or(CacheError::InternalError)?;
-        let mut decompressed =
-            match decompress_object_file(&download_file, tempfile_in(download_dir)?) {
-                Ok(file) => file,
-                Err(err) => {
-                    return Err(CacheError::Malformed(err.to_string()));
-                }
-            };
-
-        // Seek back to the start and parse this DIF.
-        decompressed.rewind()?;
-        let view = ByteView::map_file(decompressed)?;
+        let view = ByteView::map_file_ref(temp_file.as_file())?;
 
         match self.kind {
             AuxDifKind::BcSymbolMap => {
@@ -149,13 +108,7 @@ impl FetchFileRequest {
                 }
             }
         }
-
-        // The file is valid, lets save it.
-        let mut destination = File::create(path)?;
-        let mut cursor = Cursor::new(&view);
-        io::copy(&mut cursor, &mut destination)?;
-
-        Ok(())
+        Ok(temp_file)
     }
 }
 
@@ -169,11 +122,8 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute(&self, path: &Path) -> BoxFuture<'static, CacheEntry<()>> {
-        let fut = self
-            .clone()
-            .fetch_file(path.to_path_buf())
-            .bind_hub(Hub::current());
+    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+        let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
 
         let source_name = self.file_source.source_type_name().into();
 
@@ -328,7 +278,6 @@ impl BitcodeService {
                 uuid,
                 kind: dif_kind,
                 download_svc: self.download_svc.clone(),
-                cache: self.cache.clone(),
             };
             self.cache
                 .compute_memoized(request)

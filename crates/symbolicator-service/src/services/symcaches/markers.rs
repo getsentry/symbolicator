@@ -86,8 +86,6 @@ mod tests {
 
     use symbolic::common::ByteView;
 
-    use crate::services::il2cpp::Il2cppHandle;
-
     use super::*;
 
     #[test]
@@ -105,7 +103,6 @@ mod tests {
             data: ByteView::from_vec(vec![]),
         };
         let il2cpp = Il2cppHandle {
-            debug_id: Default::default(),
             data: ByteView::from_vec(vec![]),
         };
         let sources = SecondarySymCacheSources {

@@ -1,26 +1,32 @@
-use std::fs::File;
 use std::io::{self, Read, Seek};
 use std::process::{Command, Stdio};
 
 use flate2::read::{MultiGzDecoder, ZlibDecoder};
 use tempfile::NamedTempFile;
 
-/// Decompresses an object file.
+/// Decompresses a downloaded file.
 ///
 /// Some compression methods are implemented by spawning an external tool and can only
 /// process from a named pathname, hence we need a [`NamedTempFile`] as source.
-pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<File> {
+///
+/// On success, this will return the [`NamedTempFile`] with the decompressed file contents. This
+/// can either be the original temp file if it was already uncompressed, or a new temp file in the
+/// same directory if decompression was performed.
+pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
-    src.as_file().sync_all()?;
+    let mut file = src.as_file();
+    file.sync_all()?;
 
-    let metadata = src.as_file().metadata()?;
+    let metadata = file.metadata()?;
+    // TODO(swatinem): we should rename this to a more descriptive metric, as we use this for *all*
+    // kinds of downloaded files, not only "objects".
     metric!(time_raw("objects.size") = metadata.len());
 
-    src.as_file().rewind()?;
+    file.rewind()?;
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
-    src.as_file().read_exact(&mut magic_bytes)?;
-    src.as_file().rewind()?;
+    file.read_exact(&mut magic_bytes)?;
+    file.rewind()?;
 
     // For a comprehensive list also refer to
     // https://en.wikipedia.org/wiki/List_of_file_signatures
@@ -35,7 +41,8 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
 
-            zstd::stream::copy_decode(src.as_file(), &mut dst)?;
+            let mut dst = tempfile_in_parent(&src)?;
+            zstd::stream::copy_decode(file, &mut dst)?;
             Ok(dst)
         }
         // Magic bytes for gzip
@@ -45,7 +52,8 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
-            let mut reader = MultiGzDecoder::new(src.as_file());
+            let mut dst = tempfile_in_parent(&src)?;
+            let mut reader = MultiGzDecoder::new(file);
             io::copy(&mut reader, &mut dst)?;
             Ok(dst)
         }
@@ -53,7 +61,8 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
 
-            let mut reader = ZlibDecoder::new(src.as_file());
+            let mut dst = tempfile_in_parent(&src)?;
+            let mut reader = ZlibDecoder::new(file);
             io::copy(&mut reader, &mut dst)?;
             Ok(dst)
         }
@@ -61,10 +70,11 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
 
+            let dst = tempfile_in_parent(&src)?;
             let status = Command::new("cabextract")
                 .arg("-sfqp")
                 .arg(src.path())
-                .stdout(Stdio::from(dst.try_clone()?))
+                .stdout(Stdio::from(dst.reopen()?))
                 .stderr(Stdio::null())
                 .status()?;
 
@@ -80,7 +90,16 @@ pub fn decompress_object_file(src: &NamedTempFile, mut dst: File) -> io::Result<
         // Probably not compressed
         _ => {
             metric!(counter("compression") += 1, "type" => "none");
-            Ok(src.reopen()?)
+            Ok(src)
         }
     }
+}
+
+// FIXME(swatinem): this fn needs a better place
+pub fn tempfile_in_parent(file: &NamedTempFile) -> io::Result<NamedTempFile> {
+    let dir = file
+        .path()
+        .parent()
+        .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
+    NamedTempFile::new_in(dir)
 }

@@ -1,10 +1,10 @@
 use symbolicator_sources::ObjectId;
 
-use crate::services::cficaches::{CfiCacheActor, CfiCacheError};
+use crate::services::cficaches::CfiCacheActor;
 use crate::services::objects::ObjectsActor;
-use crate::services::ppdb_caches::{PortablePdbCacheActor, PortablePdbCacheError};
-use crate::services::symcaches::{SymCacheActor, SymCacheError};
-use crate::types::{ObjectFileStatus, RawObjectInfo};
+use crate::services::ppdb_caches::PortablePdbCacheActor;
+use crate::services::symcaches::SymCacheActor;
+use crate::types::RawObjectInfo;
 
 mod apple;
 mod module_lookup;
@@ -40,42 +40,6 @@ impl SymbolicationActor {
             ppdb_caches,
             diagnostics_cache,
         }
-    }
-}
-
-impl From<&CfiCacheError> for ObjectFileStatus {
-    fn from(e: &CfiCacheError) -> ObjectFileStatus {
-        // Just in case we didn't handle an error properly,
-        // capture it here. If an error was captured with
-        // `capture_error` further down in the callstack, it
-        // should be explicitly handled here as a
-        // SymCacheError variant.
-        sentry::capture_error(e);
-        ObjectFileStatus::Other
-    }
-}
-
-impl From<&SymCacheError> for ObjectFileStatus {
-    fn from(e: &SymCacheError) -> ObjectFileStatus {
-        // Just in case we didn't handle an error properly,
-        // capture it here. If an error was captured with
-        // `capture_error` further down in the callstack, it
-        // should be explicitly handled here as a
-        // SymCacheError variant.
-        sentry::capture_error(e);
-        ObjectFileStatus::Other
-    }
-}
-
-impl From<&PortablePdbCacheError> for ObjectFileStatus {
-    fn from(e: &PortablePdbCacheError) -> ObjectFileStatus {
-        // Just in case we didn't handle an error properly,
-        // capture it here. If an error was captured with
-        // `capture_error` further down in the callstack, it
-        // should be explicitly handled here as a
-        // PortablePdbCacheError variant.
-        sentry::capture_error(e);
-        ObjectFileStatus::Other
     }
 }
 
