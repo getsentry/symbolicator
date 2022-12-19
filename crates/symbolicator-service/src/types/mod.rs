@@ -86,6 +86,12 @@ pub struct RawFrame {
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
 
+    /// Whether this stack frame's instruction address needs to be adjusted for symbolication.
+    ///
+    /// TODO: Link to where this is used
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction_addr_needs_adjustment: Option<bool>,
+
     /// The index of the frame's function in the Portable PDB method table.
     ///
     /// This is used for dotnet symbolication.
