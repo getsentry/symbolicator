@@ -13,7 +13,7 @@ use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
 
 pub async fn handle_minidump_request(
-    extract::Extension(service): extract::Extension<RequestService>,
+    extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
@@ -162,5 +162,58 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_body_limit() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let mut buf = vec![b'.'; 96 * 1024 * 1024];
+        buf[0..4].copy_from_slice(b"MDMP");
+
+        let file_part = multipart::Part::bytes(buf).file_name("minidump.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // well, the minidump is obviously invalid :-)
+        let body = response.text().await.unwrap();
+        assert_eq!(
+            &body,
+            "{\"status\":\"failed\",\"message\":\"Minidump version mismatch\"}"
+        );
+
+        let mut buf = vec![b'.'; 112 * 1024 * 1024];
+        buf[0..4].copy_from_slice(b"MDMP");
+
+        let file_part = multipart::Part::bytes(buf).file_name("minidump.dmp");
+
+        let form = multipart::Form::new()
+            .part("upload_file_minidump", file_part)
+            .text("sources", "[]");
+
+        let response = Client::new()
+            .post(server.url("/minidump"))
+            .multipart(form)
+            .send()
+            .await;
+
+        // XXX: the connection is aborted instead of getting a `PAYLOAD_TOO_LARGE` error.
+        // That is because the `Part::bytes` above does not report its content-length ahead of time.
+        // If we would use `Part::stream_with_length` instead, we would get the expected error.
+        assert!(response.is_err());
+        // assert_eq!(response.unwrap().status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

@@ -41,7 +41,7 @@ async fn load_object(service: RequestService, path: String) -> CacheEntry<Arc<Ob
 }
 
 pub async fn proxy_symstore_request(
-    extract::Extension(service): extract::Extension<RequestService>,
+    extract::State(service): extract::State<RequestService>,
     extract::Path(path): extract::Path<String>,
     request: Request<Body>,
 ) -> Result<Response<Body>, ResponseError> {

@@ -19,4 +19,4 @@ symbolic = { version = "10.0.0", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 # NOTE: zip:0.6 by default depends on a version of zstd which conflicts with our other dependencies
 zip = { version = "0.6.2", default-features = false, features = ["deflate", "bzip2"] }
-zstd = "0.11.1"
+zstd = "0.12.1"

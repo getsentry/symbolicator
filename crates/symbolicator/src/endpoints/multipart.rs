@@ -1,12 +1,10 @@
 //! Helper utilities to handle HTTP multipart bodies.
 
-use std::io::SeekFrom;
-
 use axum::extract::multipart::Field;
 use axum::http::StatusCode;
 use futures::prelude::*;
 use tokio::fs::File;
-use tokio::io::AsyncSeekExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio_util::io::StreamReader;
 
 use super::ResponseError;
@@ -18,7 +16,8 @@ pub async fn stream_multipart_file(field: Field<'_>, file: &mut File) -> Result<
     let mut field_reader =
         StreamReader::new(field.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err)));
     tokio::io::copy(&mut field_reader, file).await?;
-    file.seek(SeekFrom::Start(0)).await?;
+    file.flush().await?;
+    file.rewind().await?;
     Ok(())
 }
 

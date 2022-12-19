@@ -48,12 +48,9 @@ pub struct SymbolicationRequestBody {
 }
 
 pub async fn symbolicate_frames(
-    extract::Extension(service): extract::Extension<RequestService>,
+    extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
-    extract::ContentLengthLimit(extract::Json(body)): extract::ContentLengthLimit<
-        extract::Json<SymbolicationRequestBody>,
-        { 5 * 1024 * 1024 }, // ~5MB
-    >,
+    extract::Json(body): extract::Json<SymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
@@ -79,5 +76,48 @@ pub async fn symbolicate_frames(
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
         None => Err("symbolication request did not start".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::{Client, StatusCode};
+
+    use crate::test;
+
+    #[tokio::test]
+    async fn test_body_limit() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let mut buf = vec![b'.'; 4 * 1024 * 1024];
+        buf[0] = b'"';
+        *buf.last_mut().unwrap() = b'"';
+
+        let response = Client::new()
+            .post(server.url("/symbolicate"))
+            .header("Content-Type", "application/json")
+            .body(buf)
+            .send()
+            .await
+            .unwrap();
+
+        // the JSON does not fit our schema :-)
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        let mut buf = vec![b'.'; 8 * 1024 * 1024];
+        buf[0] = b'"';
+        *buf.last_mut().unwrap() = b'"';
+
+        let response = Client::new()
+            .post(server.url("/symbolicate"))
+            .header("Content-Type", "application/json")
+            .body(buf)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }
