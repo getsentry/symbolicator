@@ -397,7 +397,7 @@ fn symbolicate_native_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
-                instruction_addr_needs_adjustment: todo!(),
+                instruction_addr_needs_adjustment: frame.instruction_addr_needs_adjustment,
                 function_id: frame.function_id,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {
