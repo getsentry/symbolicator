@@ -88,7 +88,9 @@ pub struct RawFrame {
 
     /// Whether this stack frame's instruction address needs to be adjusted for symbolication.
     ///
-    /// TODO: Link to where this is used
+    /// Internally this is converted to a value of type
+    /// [`AdjustInstructionAddr`](crate::services::symbolication::AdjustInstructionAddr). See also the
+    /// documentation of [`for_frame`](crate::services::symbolication::AdjustInstructionAddr::for_frame).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instruction_addr_needs_adjustment: Option<bool>,
 
