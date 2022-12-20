@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Features
+
+- Added a field `instruction_addr_needs_adjustment: Option<bool>` to `RawFrame` to signal whether the
+  frame's instruction address needs to be adjusted for symbolication. ([#948](https://github.com/getsentry/symbolicator/pull/948))
+
 ### Internal
 
 - Use a default crash DB if we have a Cache configured. ([#941](https://github.com/getsentry/symbolicator/pull/941))
