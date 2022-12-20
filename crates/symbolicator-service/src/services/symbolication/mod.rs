@@ -42,6 +42,52 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     }
 }
 
+/// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdjustInstructionAddr {
+    /// The frame's address definitely needs to be adjusted.
+    Yes,
+    /// The frame's address definitely does not need to be adjusted.
+    No,
+    /// The frame's address might need to be adjusted.
+    ///
+    /// This defers to the heuristic in [InstructionInfo::caller_address].
+    Auto,
+}
+
+impl AdjustInstructionAddr {
+    /// Returns the adjustment strategy for the given frame.
+    ///
+    /// If the frame has the
+    /// [`instruction_addr_needs_adjustment`](RawFrame::instruction_addr_needs_adjustment)
+    /// field set, this will be [`Yes`](Self::Yes) or [`No`](Self::No) accordingly, otherwise
+    /// the given default is used.
+    fn for_frame(frame: &RawFrame, default: Self) -> Self {
+        match frame.instruction_addr_needs_adjustment {
+            Some(true) => Self::Yes,
+            Some(false) => Self::No,
+            None => default,
+        }
+    }
+
+    /// Returns the default adjustment strategy for the given thread.
+    ///
+    /// This will be [`Yes`](Self::Yes) if any frame in the thread has the
+    /// [`instruction_addr_needs_adjustment`](RawFrame::instruction_addr_needs_adjustment)
+    /// field set, otherwise it will be [`Auto`](Self::Auto).
+    fn default_for_thread(thread: &RawStacktrace) -> Self {
+        if thread
+            .frames
+            .iter()
+            .any(|frame| frame.instruction_addr_needs_adjustment.is_some())
+        {
+            AdjustInstructionAddr::Yes
+        } else {
+            AdjustInstructionAddr::Auto
+        }
+    }
+}
+
 // we should really rename this here to the `SymbolicatorService`, as it does a lot more
 // than just symbolication ;-)
 #[derive(Clone, Debug)]
