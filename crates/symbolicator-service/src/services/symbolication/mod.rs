@@ -59,11 +59,11 @@ impl AdjustInstructionAddr {
     /// Returns the adjustment strategy for the given frame.
     ///
     /// If the frame has the
-    /// [`instruction_addr_needs_adjustment`](RawFrame::instruction_addr_needs_adjustment)
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
     /// field set, this will be [`Yes`](Self::Yes) or [`No`](Self::No) accordingly, otherwise
     /// the given default is used.
     fn for_frame(frame: &RawFrame, default: Self) -> Self {
-        match frame.instruction_addr_needs_adjustment {
+        match frame.adjust_instruction_addr {
             Some(true) => Self::Yes,
             Some(false) => Self::No,
             None => default,
@@ -73,13 +73,13 @@ impl AdjustInstructionAddr {
     /// Returns the default adjustment strategy for the given thread.
     ///
     /// This will be [`Yes`](Self::Yes) if any frame in the thread has the
-    /// [`instruction_addr_needs_adjustment`](RawFrame::instruction_addr_needs_adjustment)
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
     /// field set, otherwise it will be [`Auto`](Self::Auto).
     fn default_for_thread(thread: &RawStacktrace) -> Self {
         if thread
             .frames
             .iter()
-            .any(|frame| frame.instruction_addr_needs_adjustment.is_some())
+            .any(|frame| frame.adjust_instruction_addr.is_some())
         {
             AdjustInstructionAddr::Yes
         } else {
@@ -397,7 +397,7 @@ fn symbolicate_native_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
-                instruction_addr_needs_adjustment: frame.instruction_addr_needs_adjustment,
+                adjust_instruction_addr: frame.adjust_instruction_addr,
                 function_id: frame.function_id,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {

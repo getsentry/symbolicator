@@ -97,7 +97,7 @@ pub struct RawFrame {
     /// Internally this is converted to a value of type `AdjustInstructionAddr`. See also the
     /// documentation of `for_frame`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub instruction_addr_needs_adjustment: Option<bool>,
+    pub adjust_instruction_addr: Option<bool>,
 
     /// The index of the frame's function in the Portable PDB method table.
     ///
