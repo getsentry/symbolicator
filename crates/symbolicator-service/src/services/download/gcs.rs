@@ -10,46 +10,16 @@ use futures::prelude::*;
 use parking_lot::Mutex;
 use reqwest::{header, Client, StatusCode};
 
-use symbolicator_sources::{FileType, GcsSourceConfig, GcsSourceKey, ObjectId};
+use symbolicator_sources::{
+    FileType, GcsRemoteFile, GcsSourceConfig, GcsSourceKey, ObjectId, RemoteFile,
+};
 
 use crate::utils::gcs::{self, request_new_token, GcsError, GcsToken};
 
-use super::locations::SourceLocation;
-use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus};
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
-
-/// The GCS-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct GcsRemoteDif {
-    pub source: Arc<GcsSourceConfig>,
-    pub location: SourceLocation,
-}
-
-impl From<GcsRemoteDif> for RemoteDif {
-    fn from(source: GcsRemoteDif) -> Self {
-        Self::Gcs(source)
-    }
-}
-
-impl GcsRemoteDif {
-    pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
-        Self { source, location }
-    }
-
-    /// Returns the GCS key.
-    ///
-    /// This is equivalent to the pathname within the bucket.
-    pub fn key(&self) -> String {
-        self.location.prefix(&self.source.prefix)
-    }
-
-    /// Returns the `gs://` URI from which to download this object file.
-    pub fn uri(&self) -> RemoteDifUri {
-        RemoteDifUri::from_parts("gs", &self.source.bucket, &self.key())
-    }
-}
 
 /// Downloader implementation that supports the [`GcsSourceConfig`] source.
 #[derive(Debug)]
@@ -104,7 +74,7 @@ impl GcsDownloader {
     /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: GcsRemoteDif,
+        file_source: GcsRemoteFile,
         destination: &Path,
     ) -> Result<DownloadStatus<()>, DownloadError> {
         let key = file_source.key();
@@ -115,7 +85,7 @@ impl GcsDownloader {
 
         let url = gcs::download_url(&bucket, &key)?;
 
-        let source = RemoteDif::from(file_source);
+        let source = RemoteFile::from(file_source);
         let request = self
             .client
             .get(url.clone())
@@ -186,7 +156,7 @@ impl GcsDownloader {
         source: Arc<GcsSourceConfig>,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Vec<RemoteDif> {
+    ) -> Vec<RemoteFile> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -194,17 +164,19 @@ impl GcsDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| GcsRemoteDif::new(source.clone(), loc).into())
+        .map(|loc| GcsRemoteFile::new(source.clone(), loc).into())
         .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::locations::SourceLocation;
     use super::*;
 
-    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, ObjectType, SourceId};
+    use symbolicator_sources::{
+        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        SourceLocation,
+    };
 
     use crate::test;
 
@@ -266,7 +238,7 @@ mod tests {
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
-        let file_source = GcsRemoteDif::new(source, source_location);
+        let file_source = GcsRemoteFile::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, &target_path)
@@ -297,7 +269,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsRemoteDif::new(source, source_location);
+        let file_source = GcsRemoteFile::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, &target_path)
@@ -329,7 +301,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = GcsRemoteDif::new(source, source_location);
+        let file_source = GcsRemoteFile::new(source, source_location);
 
         downloader
             .download_source(file_source, &target_path)
@@ -354,10 +326,10 @@ mod tests {
         });
         let location = SourceLocation::new("a/key/with spaces");
 
-        let dif = GcsRemoteDif::new(source, location);
+        let dif = GcsRemoteFile::new(source, location);
         assert_eq!(
             dif.uri(),
-            RemoteDifUri::new("gs://bucket/prefix/a/key/with%20spaces")
+            RemoteFileUri::new("gs://bucket/prefix/a/key/with%20spaces")
         );
     }
 

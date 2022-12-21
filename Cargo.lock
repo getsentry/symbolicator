@@ -3819,6 +3819,7 @@ dependencies = [
 name = "symbolicator-sources"
 version = "0.6.0"
 dependencies = [
+ "anyhow",
  "glob",
  "insta",
  "lazy_static",

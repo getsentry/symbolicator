@@ -2,10 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use symbolicator_sources::SourceId;
+use symbolicator_sources::{RemoteFileUri, SourceId};
 
 use crate::cache::CacheStatus;
-use crate::services::download::RemoteDifUri;
 
 use super::ObjectFeatures;
 
@@ -33,7 +32,7 @@ pub struct ObjectCandidate {
     ///
     /// This is generally a URI which makes sense for the source type, however no guarantees
     /// are given and it could be any string.
-    pub location: RemoteDifUri,
+    pub location: RemoteFileUri,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.
@@ -195,7 +194,7 @@ impl AllObjectCandidates {
         &mut self,
         candidate_status: CandidateStatus,
         source: &SourceId,
-        uri: &RemoteDifUri,
+        uri: &RemoteFileUri,
         info: ObjectUseInfo,
     ) {
         if candidate_status == CandidateStatus::None {
@@ -278,7 +277,7 @@ mod tests {
         // If a candidate didn't exist yet it should be inserted in order.
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -287,7 +286,7 @@ mod tests {
         };
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
-            location: RemoteDifUri::new("b"),
+            location: RemoteFileUri::new("b"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -296,7 +295,7 @@ mod tests {
         };
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
-            location: RemoteDifUri::new("c"),
+            location: RemoteFileUri::new("c"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -316,7 +315,7 @@ mod tests {
     fn test_all_object_info_merge_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -325,7 +324,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -347,7 +346,7 @@ mod tests {
     fn test_all_object_info_merge_no_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("uri://dummy"),
+            location: RemoteFileUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -356,7 +355,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("uri://dummy"),
+            location: RemoteFileUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
