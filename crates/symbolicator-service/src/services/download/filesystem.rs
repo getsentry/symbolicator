@@ -1,22 +1,17 @@
 //! Support to download from the local filesystem.
 //!
-//! Specifically this supports the [`FilesystemSourceConfig`] source.  It allows
-//! sources to be present on the local filesystem, usually only used for
-//! testing.
+//! It allows sources to be present on the local filesystem, usually only used for testing.
 
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
 
 use tokio::fs;
 
-use symbolicator_sources::{
-    FileType, FilesystemRemoteFile, FilesystemSourceConfig, ObjectId, RemoteFile,
-};
+use symbolicator_sources::FilesystemRemoteFile;
 
 use super::{DownloadError, DownloadStatus};
 
-/// Downloader implementation that supports the [`FilesystemSourceConfig`] source.
+/// Downloader implementation that supports the filesystem source.
 #[derive(Debug)]
 pub struct FilesystemDownloader {}
 
@@ -41,22 +36,5 @@ impl FilesystemDownloader {
                 _ => Err(DownloadError::Io(e)),
             },
         }
-    }
-
-    pub fn list_files(
-        &self,
-        source: Arc<FilesystemSourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| FilesystemRemoteFile::new(source.clone(), loc).into())
-        .collect()
     }
 }

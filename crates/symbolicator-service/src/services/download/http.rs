@@ -1,20 +1,17 @@
 //! Support to download from HTTP sources.
-//!
-//! Specifically this supports the [`HttpSourceConfig`] source.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use futures::prelude::*;
 use reqwest::{header, Client, StatusCode};
 
-use symbolicator_sources::{FileType, HttpRemoteFile, HttpSourceConfig, ObjectId, RemoteFile};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile};
 
 use super::{content_length_timeout, DownloadError, DownloadStatus, USER_AGENT};
 
-/// Downloader implementation that supports the [`HttpSourceConfig`] source.
+/// Downloader implementation that supports the HTTP source.
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
@@ -105,23 +102,6 @@ impl HttpDownloader {
             );
             Err(DownloadError::Rejected(response.status()))
         }
-    }
-
-    pub fn list_files(
-        &self,
-        source: Arc<HttpSourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| HttpRemoteFile::new(source.clone(), loc).into())
-        .collect()
     }
 }
 

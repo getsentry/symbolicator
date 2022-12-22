@@ -1,6 +1,4 @@
 //! Support to download from Google Cloud Storage buckets.
-//!
-//! Specifically this supports the [`GcsSourceConfig`] source.
 
 use std::num::NonZeroUsize;
 use std::path::Path;
@@ -10,9 +8,7 @@ use futures::prelude::*;
 use parking_lot::Mutex;
 use reqwest::{header, Client, StatusCode};
 
-use symbolicator_sources::{
-    FileType, GcsRemoteFile, GcsSourceConfig, GcsSourceKey, ObjectId, RemoteFile,
-};
+use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
 use crate::utils::gcs::{self, request_new_token, GcsError, GcsToken};
 
@@ -21,7 +17,7 @@ use super::{content_length_timeout, DownloadError, DownloadStatus};
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 
-/// Downloader implementation that supports the [`GcsSourceConfig`] source.
+/// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
 pub struct GcsDownloader {
     token_cache: Mutex<GcsTokenCache>,
@@ -150,23 +146,6 @@ impl GcsDownloader {
             Err(DownloadError::Rejected(response.status()))
         }
     }
-
-    pub fn list_files(
-        &self,
-        source: Arc<GcsSourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| GcsRemoteFile::new(source.clone(), loc).into())
-        .collect()
-    }
 }
 
 #[cfg(test)]
@@ -174,7 +153,7 @@ mod tests {
     use super::*;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, RemoteFileUri, SourceId,
         SourceLocation,
     };
 
@@ -190,35 +169,6 @@ mod tests {
             source_key: Arc::new(source_key),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         })
-    }
-
-    #[test]
-    fn test_list_files() {
-        test::setup();
-
-        let source = gcs_source(test::gcs_source_key!());
-        let downloader = GcsDownloader::new(
-            Client::new(),
-            std::time::Duration::from_secs(30),
-            std::time::Duration::from_secs(30),
-            100.try_into().unwrap(),
-        );
-
-        let object_id = ObjectId {
-            code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
-            code_file: Some("/usr/lib/system/libdyld.dylib".to_owned()),
-            debug_id: Some("e514c946-4eed-3be5-943a-2c61d9241fad".parse().unwrap()),
-            debug_file: Some("libdyld.dylib".to_owned()),
-            object_type: ObjectType::Macho,
-        };
-
-        let list = downloader.list_files(source, &[FileType::MachCode], &object_id);
-        assert_eq!(list.len(), 1);
-
-        assert!(list[0]
-            .uri()
-            .to_string()
-            .ends_with("e5/14c9464eed3be5943a2c61d9241fad/executable"));
     }
 
     #[tokio::test]
