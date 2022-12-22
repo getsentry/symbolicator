@@ -9,45 +9,10 @@ use std::time::Duration;
 use anyhow::Result;
 use futures::prelude::*;
 use reqwest::{header, Client, StatusCode};
-use url::Url;
 
-use symbolicator_sources::{FileType, HttpSourceConfig, ObjectId};
+use symbolicator_sources::{FileType, HttpRemoteFile, HttpSourceConfig, ObjectId, RemoteFile};
 
-use super::{
-    content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
-    USER_AGENT,
-};
-
-/// The HTTP-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct HttpRemoteDif {
-    pub source: Arc<HttpSourceConfig>,
-    pub location: SourceLocation,
-}
-
-impl From<HttpRemoteDif> for RemoteDif {
-    fn from(source: HttpRemoteDif) -> Self {
-        Self::Http(source)
-    }
-}
-
-impl HttpRemoteDif {
-    pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
-        Self { source, location }
-    }
-
-    pub fn uri(&self) -> RemoteDifUri {
-        match self.url() {
-            Ok(url) => url.as_ref().into(),
-            Err(_) => "".into(),
-        }
-    }
-
-    /// Returns the URL from which to download this object file.
-    pub fn url(&self) -> Result<Url> {
-        self.location.to_url(&self.source.url)
-    }
-}
+use super::{content_length_timeout, DownloadError, DownloadStatus, USER_AGENT};
 
 /// Downloader implementation that supports the [`HttpSourceConfig`] source.
 #[derive(Debug)]
@@ -74,7 +39,7 @@ impl HttpDownloader {
     /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: HttpRemoteDif,
+        file_source: HttpRemoteFile,
         destination: &Path,
     ) -> Result<DownloadStatus<()>, DownloadError> {
         let download_url = match file_source.url() {
@@ -90,7 +55,7 @@ impl HttpDownloader {
                 builder = builder.header(key, value.as_str());
             }
         }
-        let source = RemoteDif::from(file_source);
+        let source = RemoteFile::from(file_source);
         let request = builder.header(header::USER_AGENT, USER_AGENT).send();
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
@@ -147,7 +112,7 @@ impl HttpDownloader {
         source: Arc<HttpSourceConfig>,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Vec<RemoteDif> {
+    ) -> Vec<RemoteFile> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -155,17 +120,16 @@ impl HttpDownloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| HttpRemoteDif::new(source.clone(), loc).into())
+        .map(|loc| HttpRemoteFile::new(source.clone(), loc).into())
         .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::locations::SourceLocation;
     use super::*;
 
-    use symbolicator_sources::SourceConfig;
+    use symbolicator_sources::{SourceConfig, SourceLocation};
 
     use crate::test;
 
@@ -182,7 +146,7 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("hello.txt");
-        let file_source = HttpRemoteDif::new(http_source, loc);
+        let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(
             Client::new(),
@@ -210,7 +174,7 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("i-do-not-exist");
-        let file_source = HttpRemoteDif::new(http_source, loc);
+        let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(
             Client::new(),

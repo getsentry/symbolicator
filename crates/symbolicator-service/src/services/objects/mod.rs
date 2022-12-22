@@ -4,11 +4,11 @@ use std::sync::Arc;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
-use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
+use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
 use crate::cache::{Cache, CacheEntry, CacheError};
 use crate::services::cacher::Cacher;
-use crate::services::download::{DownloadService, RemoteDif, RemoteDifUri};
+use crate::services::download::DownloadService;
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
 use data_cache::FetchFileDataRequest;
@@ -33,7 +33,7 @@ mod meta_cache;
 #[derive(Clone, Debug)]
 pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.
-    pub file_source: RemoteDif,
+    pub file_source: RemoteFile,
     /// The wrapped [`CacheError`] which occurred while fetching the object file.
     pub error: CacheError,
 }
@@ -57,7 +57,7 @@ pub enum ObjectPurpose {
 
 #[derive(Debug, Clone)]
 pub struct FoundMeta {
-    pub file_source: RemoteDif,
+    pub file_source: RemoteFile,
     pub handle: CacheEntry<Arc<ObjectMetaHandle>>,
 }
 
@@ -149,7 +149,7 @@ impl ObjectsActor {
         sources: &[SourceConfig],
         filetypes: &[FileType],
         identifier: &ObjectId,
-    ) -> Vec<RemoteDif> {
+    ) -> Vec<RemoteFile> {
         let queries = sources.iter().map(|source| {
             async move {
                 let type_name = source.type_name();
@@ -184,7 +184,7 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_sources: Vec<RemoteDif>,
+        file_sources: Vec<RemoteFile>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<FoundMeta> {
@@ -298,7 +298,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: RemoteDifUri::new("No object files listed on this source"),
+            location: RemoteFileUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),

@@ -12,58 +12,16 @@ use futures::TryStreamExt;
 use parking_lot::Mutex;
 use reqwest::{header, StatusCode};
 use sentry::SentryFutureExt;
-use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
 
-use symbolicator_sources::{ObjectId, SentrySourceConfig};
-
-use super::{
-    content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
-    USER_AGENT,
+use symbolicator_sources::{
+    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
+
+use super::{content_length_timeout, DownloadError, DownloadStatus, FileType, USER_AGENT};
 use crate::config::Config;
 use crate::utils::futures::{self as future_utils, CancelOnDrop};
-
-/// The Sentry-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct SentryRemoteDif {
-    pub source: Arc<SentrySourceConfig>,
-    pub file_id: SentryFileId,
-}
-
-impl From<SentryRemoteDif> for RemoteDif {
-    fn from(source: SentryRemoteDif) -> Self {
-        Self::Sentry(source)
-    }
-}
-
-impl SentryRemoteDif {
-    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
-        Self { source, file_id }
-    }
-
-    pub fn uri(&self) -> RemoteDifUri {
-        format!("sentry://project_debug_file/{}", self.file_id).into()
-    }
-
-    /// Returns the URL from which to download this object file.
-    pub fn url(&self) -> Url {
-        let mut url = self.source.url.clone();
-        url.query_pairs_mut().append_pair("id", &self.file_id.0);
-        url
-    }
-}
-
-/// An identifier for a file retrievable from a [`SentrySourceConfig`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct SentryFileId(String);
-
-impl fmt::Display for SentryFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
@@ -197,7 +155,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: &ObjectId,
         file_types: &[FileType],
-    ) -> Result<Vec<RemoteDif>, DownloadError> {
+    ) -> Result<Vec<RemoteFile>, DownloadError> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.
 
@@ -248,7 +206,7 @@ impl SentryDownloader {
         let search = self.cached_sentry_search(query).await?;
         let file_ids = search
             .into_iter()
-            .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
+            .map(|search_result| SentryRemoteFile::new(source.clone(), search_result.id).into())
             .collect();
 
         Ok(file_ids)
@@ -262,7 +220,7 @@ impl SentryDownloader {
     /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: SentryRemoteDif,
+        file_source: SentryRemoteFile,
         destination: &Path,
     ) -> Result<DownloadStatus<()>, DownloadError> {
         let request = self
@@ -273,7 +231,7 @@ impl SentryDownloader {
             .send();
 
         let download_url = file_source.url();
-        let source = RemoteDif::from(file_source);
+        let source = RemoteFile::from(file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
@@ -327,7 +285,7 @@ impl SentryDownloader {
 mod tests {
     use super::*;
 
-    use symbolicator_sources::SourceId;
+    use symbolicator_sources::{RemoteFileUri, SourceId};
 
     #[test]
     fn test_download_url() {
@@ -336,7 +294,7 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -348,8 +306,11 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
         let uri = file_source.uri();
-        assert_eq!(uri, RemoteDifUri::new("sentry://project_debug_file/abc123"));
+        assert_eq!(
+            uri,
+            RemoteFileUri::new("sentry://project_debug_file/abc123")
+        );
     }
 }

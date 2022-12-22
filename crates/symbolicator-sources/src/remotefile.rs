@@ -1,37 +1,27 @@
-//! Types and implementations for dealing with object file locations
+//! Types and implementations for dealing with remote file locations.
 //!
-//! This provides the [`RemoteDif`] type which provides a unified way of dealing with an
-//! object file which may exist on a source.
+//! This provides the [`RemoteFile`] type which provides a unified way of dealing with a file
+//! which may exist on a source.
 
 use std::fmt;
 use std::path::Path;
 
-use anyhow::{Error, Result};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use symbolicator_sources::SourceId;
-
-use crate::services::cacher::CacheKey;
-use crate::types::Scope;
-use crate::utils::sentry::ConfigureScope;
-
-use super::filesystem::FilesystemRemoteDif;
-use super::gcs::GcsRemoteDif;
-use super::http::HttpRemoteDif;
-use super::s3::S3RemoteDif;
-use super::sentry::SentryRemoteDif;
+use crate::{
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SentryRemoteFile, SourceId,
+};
 
 /// A location for a file retrievable from many source configs.
 ///
 /// It is essentially a `/`-separated string. This is currently used by all sources other than
-/// [`SentrySourceConfig`]. This may change in the future.
-///
-/// [`SentrySourceConfig`]: symbolicator_sources::SentrySourceConfig
+/// [`SentrySourceConfig`](crate::SentrySourceConfig). This may change in the future.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct SourceLocation(String);
 
 impl SourceLocation {
+    /// Creates a new [`SourceLocation`].
     pub fn new(loc: impl Into<String>) -> Self {
         SourceLocation(loc.into())
     }
@@ -69,11 +59,11 @@ impl SourceLocation {
     /// automatically appended.
     ///
     /// Returns `Err` if the URL is cannot-be-a-base.
-    pub fn to_url(&self, base: &Url) -> Result<Url> {
+    pub fn to_url(&self, base: &Url) -> anyhow::Result<Url> {
         let mut joined = base.clone();
         joined
             .path_segments_mut()
-            .map_err(|_| Error::msg("URL cannot-be-a-base"))?
+            .map_err(|_| anyhow::Error::msg("URL cannot-be-a-base"))?
             .pop_if_empty()
             .extend(self.segments());
         Ok(joined)
@@ -88,36 +78,39 @@ impl fmt::Display for SourceLocation {
 
 /// Represents a single Debug Information File stored on a source.
 ///
-/// This joins the file location together with a [`SourceConfig`] and thus provides all
-/// information to retrieve the DIF from its source.  The file could be any DIF type: an
-/// auxiliary DIF or an object file.
-///
-/// [`SourceConfig`]: symbolicator_sources::SourceConfig
+/// This joins the file location together with a [`SourceConfig`](crate::SourceConfig) and thus
+/// provides all information to retrieve the DIF from its source.  The file could be any DIF type:
+/// an auxiliary DIF or an object file.
 #[derive(Debug, Clone)]
-pub enum RemoteDif {
-    Sentry(SentryRemoteDif),
-    Http(HttpRemoteDif),
-    S3(S3RemoteDif),
-    Gcs(GcsRemoteDif),
-    Filesystem(FilesystemRemoteDif),
+pub enum RemoteFile {
+    /// A file on a filesystem source.
+    Filesystem(FilesystemRemoteFile),
+    /// A file on a gcs source.
+    Gcs(GcsRemoteFile),
+    /// A file on a http source.
+    Http(HttpRemoteFile),
+    /// A file on a S3 source.
+    S3(S3RemoteFile),
+    /// A file on a Sentry source.
+    Sentry(SentryRemoteFile),
 }
 
-impl fmt::Display for RemoteDif {
+impl fmt::Display for RemoteFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RemoteDif::Sentry(ref s) => {
+            Self::Sentry(ref s) => {
                 write!(f, "Sentry source '{}' file id '{}'", s.source.id, s.file_id)
             }
-            RemoteDif::Http(ref s) => {
+            Self::Http(ref s) => {
                 write!(f, "HTTP source '{}' location '{}'", s.source.id, s.location)
             }
-            RemoteDif::S3(ref s) => {
+            Self::S3(ref s) => {
                 write!(f, "S3 source '{}' location '{}'", s.source.id, s.location)
             }
-            RemoteDif::Gcs(ref s) => {
+            Self::Gcs(ref s) => {
                 write!(f, "GCS source '{}' location '{}'", s.source.id, s.location)
             }
-            RemoteDif::Filesystem(ref s) => {
+            Self::Filesystem(ref s) => {
                 write!(
                     f,
                     "Filesystem source '{}' location '{}'",
@@ -128,37 +121,37 @@ impl fmt::Display for RemoteDif {
     }
 }
 
-impl RemoteDif {
-    /// Whether debug files from this source may be shared.
+impl RemoteFile {
+    /// Whether files from this source may be shared.
     pub fn is_public(&self) -> bool {
         match self {
-            RemoteDif::Sentry(_) => false,
-            RemoteDif::Http(ref x) => x.source.files.is_public,
-            RemoteDif::S3(ref x) => x.source.files.is_public,
-            RemoteDif::Gcs(ref x) => x.source.files.is_public,
-            RemoteDif::Filesystem(ref x) => x.source.files.is_public,
+            Self::Sentry(_) => false,
+            Self::Http(ref x) => x.source.files.is_public,
+            Self::S3(ref x) => x.source.files.is_public,
+            Self::Gcs(ref x) => x.source.files.is_public,
+            Self::Filesystem(ref x) => x.source.files.is_public,
         }
     }
 
-    pub fn cache_key(&self, scope: Scope) -> CacheKey {
-        let cache_key = match self {
-            RemoteDif::Sentry(ref x) => {
+    /// A specific cache key for this [`RemoteFile`].
+    pub fn cache_key(&self) -> String {
+        match self {
+            Self::Sentry(ref x) => {
                 format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
-            RemoteDif::Http(ref x) => {
+            Self::Http(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            RemoteDif::S3(ref x) => {
+            Self::S3(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            RemoteDif::Gcs(ref x) => {
+            Self::Gcs(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            RemoteDif::Filesystem(ref x) => {
+            Self::Filesystem(ref x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-        };
-        CacheKey { cache_key, scope }
+        }
     }
 
     /// Returns the ID of the source.
@@ -167,21 +160,22 @@ impl RemoteDif {
     /// configuration which are available to all requests.
     pub fn source_id(&self) -> &SourceId {
         match self {
-            RemoteDif::Sentry(ref x) => &x.source.id,
-            RemoteDif::Http(ref x) => &x.source.id,
-            RemoteDif::S3(ref x) => &x.source.id,
-            RemoteDif::Gcs(ref x) => &x.source.id,
-            RemoteDif::Filesystem(ref x) => &x.source.id,
+            Self::Sentry(ref x) => &x.source.id,
+            Self::Http(ref x) => &x.source.id,
+            Self::S3(ref x) => &x.source.id,
+            Self::Gcs(ref x) => &x.source.id,
+            Self::Filesystem(ref x) => &x.source.id,
         }
     }
 
+    /// A short name for the source type.
     pub fn source_type_name(&self) -> &'static str {
         match *self {
-            RemoteDif::Sentry(..) => "sentry",
-            RemoteDif::S3(..) => "s3",
-            RemoteDif::Gcs(..) => "gcs",
-            RemoteDif::Http(..) => "http",
-            RemoteDif::Filesystem(..) => "filesystem",
+            Self::Sentry(..) => "sentry",
+            Self::S3(..) => "s3",
+            Self::Gcs(..) => "gcs",
+            Self::Http(..) => "http",
+            Self::Filesystem(..) => "filesystem",
         }
     }
 
@@ -205,73 +199,64 @@ impl RemoteDif {
     /// Returns a URI for the location of the object file.
     ///
     /// There is no guarantee about any format of this URI, for some sources it could be
-    /// very abstract.  In general the source should try and producde a URI which can be
+    /// very abstract.  In general the source should try and produce a URI which can be
     /// used directly into the source-specific tooling.  E.g. for an HTTP source this would
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
-    pub fn uri(&self) -> RemoteDifUri {
+    pub fn uri(&self) -> RemoteFileUri {
         match self {
-            RemoteDif::Sentry(ref file_source) => file_source.uri(),
-            RemoteDif::Http(ref file_source) => file_source.uri(),
-            RemoteDif::S3(ref file_source) => file_source.uri(),
-            RemoteDif::Gcs(ref file_source) => file_source.uri(),
-            RemoteDif::Filesystem(ref file_source) => file_source.uri(),
+            Self::Sentry(file_source) => file_source.uri(),
+            Self::Http(file_source) => file_source.uri(),
+            Self::S3(file_source) => file_source.uri(),
+            Self::Gcs(file_source) => file_source.uri(),
+            Self::Filesystem(file_source) => file_source.uri(),
         }
     }
 }
 
-impl ConfigureScope for RemoteDif {
-    fn to_scope(&self, scope: &mut ::sentry::Scope) {
-        scope.set_tag("source.id", self.source_id());
-        scope.set_tag("source.type", self.source_type_name());
-        scope.set_tag("source.is_public", self.is_public());
-        scope.set_tag("source.uri", self.uri());
-    }
-}
-
-/// A URI representing an [`RemoteDif`].
+/// A URI representing an [`RemoteFile`].
 ///
 /// Note that this does not provide enough information to download the object file, for this
-/// you need the actual [`RemoteDif`].  The purpose of this URI is to be able to display to
+/// you need the actual [`RemoteFile`].  The purpose of this URI is to be able to display to
 /// a user who might be able to use this in other tools.  E.g. for an S3 source this could
 /// be an `s3://` URI etc.
 ///
-/// [`RemoteDif`]: crate::services::download::RemoteDif
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct RemoteDifUri(String);
+pub struct RemoteFileUri(String);
 
-impl RemoteDifUri {
+impl RemoteFileUri {
+    /// Creates a new [`RemoteFileUri`].
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }
 
-    /// Constructs a new [`RemoteDifUri`] from parts.
+    /// Constructs a new [`RemoteFileUri`] from parts.
     ///
     /// This percent-encodes the `path`.
     ///
     /// # Examples
     /// ```
-    /// use symbolicator_service::services::download::RemoteDifUri;
+    /// use symbolicator_sources::RemoteFileUri;
     ///
-    /// let s3_uri = RemoteDifUri::from_parts("s3", "bucket", "path");
-    /// assert_eq!(s3_uri, RemoteDifUri::new("s3://bucket/path"));
+    /// let s3_uri = RemoteFileUri::from_parts("s3", "bucket", "path");
+    /// assert_eq!(s3_uri, RemoteFileUri::new("s3://bucket/path"));
     ///
-    /// let gcs_uri = RemoteDifUri::from_parts("gs", "bucket", "path with/spaces");
-    /// assert_eq!(gcs_uri, RemoteDifUri::new("gs://bucket/path%20with/spaces"));
+    /// let gcs_uri = RemoteFileUri::from_parts("gs", "bucket", "path with/spaces");
+    /// assert_eq!(gcs_uri, RemoteFileUri::new("gs://bucket/path%20with/spaces"));
     /// ```
     pub fn from_parts(scheme: &str, host: &str, path: &str) -> Self {
         Url::parse(&format!("{scheme}://{host}/"))
             .and_then(|base| base.join(path))
-            .map(RemoteDifUri::new)
+            .map(RemoteFileUri::new)
             .unwrap_or_else(|_| {
                 // All these Result-returning operations *should* be infallible and this
                 // branch should never be used.  Nevertheless, for panic-safety we default
                 // to something infallible that's also pretty correct.
-                RemoteDifUri::new(format!("{scheme}://{host}/{path}"))
+                RemoteFileUri::new(format!("{scheme}://{host}/{path}"))
             })
     }
 }
 
-impl<T> From<T> for RemoteDifUri
+impl<T> From<T> for RemoteFileUri
 where
     T: Into<String>,
 {
@@ -280,7 +265,7 @@ where
     }
 }
 
-impl fmt::Display for RemoteDifUri {
+impl fmt::Display for RemoteFileUri {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }

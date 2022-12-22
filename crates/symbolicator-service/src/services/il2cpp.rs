@@ -11,12 +11,12 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
-use symbolicator_sources::{FileType, ObjectId, SourceConfig};
+use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, RemoteDif};
+use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
@@ -48,7 +48,7 @@ impl Il2cppHandle {
 #[derive(Debug, Clone)]
 struct FetchFileRequest {
     scope: Scope,
-    file_source: RemoteDif,
+    file_source: RemoteFile,
     download_svc: Arc<DownloadService>,
 }
 
@@ -75,7 +75,10 @@ impl CacheItemRequest for FetchFileRequest {
     type Item = Il2cppHandle;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.file_source.cache_key(self.scope.clone())
+        CacheKey {
+            cache_key: self.file_source.cache_key(),
+            scope: self.scope.clone(),
+        }
     }
 
     /// Downloads a file, writing it to `path`.

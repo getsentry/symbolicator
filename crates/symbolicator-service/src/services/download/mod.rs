@@ -19,21 +19,29 @@ use tokio::io::AsyncWriteExt;
 
 use symbolicator_sources::get_directory_paths;
 pub use symbolicator_sources::{
-    DirectoryLayout, FileType, ObjectId, ObjectType, SourceConfig, SourceFilters,
+    DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
+    SourceFilters, SourceLocation,
 };
 
 use crate::cache::{CacheError, CacheStatus};
+use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
+use crate::utils::sentry::ConfigureScope;
 
 mod filesystem;
 mod gcs;
 mod http;
-mod locations;
 mod s3;
 mod sentry;
 
-use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
-pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
+impl ConfigureScope for RemoteFile {
+    fn to_scope(&self, scope: &mut ::sentry::Scope) {
+        scope.set_tag("source.id", self.source_id());
+        scope.set_tag("source.type", self.source_type_name());
+        scope.set_tag("source.is_public", self.is_public());
+        scope.set_tag("source.uri", self.uri());
+    }
+}
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
@@ -224,24 +232,26 @@ impl DownloadService {
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(
         &self,
-        source: &RemoteDif,
+        source: &RemoteFile,
         temp_file: NamedTempFile,
     ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
         let destination = temp_file.path();
 
         let result = future_utils::retry(|| async {
             match source {
-                RemoteDif::Sentry(inner) => {
+                RemoteFile::Sentry(inner) => {
                     self.sentry
                         .download_source(inner.clone(), destination)
                         .await
                 }
-                RemoteDif::Http(inner) => {
+                RemoteFile::Http(inner) => {
                     self.http.download_source(inner.clone(), destination).await
                 }
-                RemoteDif::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
-                RemoteDif::Gcs(inner) => self.gcs.download_source(inner.clone(), destination).await,
-                RemoteDif::Filesystem(inner) => {
+                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
+                RemoteFile::Gcs(inner) => {
+                    self.gcs.download_source(inner.clone(), destination).await
+                }
+                RemoteFile::Filesystem(inner) => {
                     self.fs.download_source(inner.clone(), destination).await
                 }
             }
@@ -277,7 +287,7 @@ impl DownloadService {
     /// garbage.
     pub async fn download(
         self: Arc<Self>,
-        source: RemoteDif,
+        source: RemoteFile,
         destination: NamedTempFile,
     ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
         let slf = self.clone();
@@ -308,7 +318,7 @@ impl DownloadService {
         source: SourceConfig,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Result<Vec<RemoteDif>, DownloadError> {
+    ) -> Result<Vec<RemoteFile>, DownloadError> {
         match source {
             SourceConfig::Sentry(cfg) => {
                 let job = self.sentry.list_files(cfg, object_id, filetypes);
@@ -334,7 +344,7 @@ impl DownloadService {
 /// - [`DownloadError::Write`]
 /// - [`DownloadError::Canceled`]
 async fn download_stream(
-    source: &RemoteDif,
+    source: &RemoteFile,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
     destination: &Path,
     timeout: Option<Duration>,
@@ -530,12 +540,12 @@ fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Dura
 
 #[cfg(test)]
 mod tests {
-    use symbolic::common::{CodeId, DebugId, Uuid};
-    use symbolicator_sources::{ObjectType, SourceConfig};
-
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
-    use super::http::HttpRemoteDif;
+
+    use symbolic::common::{CodeId, DebugId, Uuid};
+    use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
+
     use super::*;
 
     use crate::test;
@@ -547,7 +557,7 @@ mod tests {
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
             SourceConfig::Http(source) => {
-                HttpRemoteDif::new(source, SourceLocation::new("hello.txt")).into()
+                HttpRemoteFile::new(source, SourceLocation::new("hello.txt")).into()
             }
             _ => panic!("unexpected source"),
         };

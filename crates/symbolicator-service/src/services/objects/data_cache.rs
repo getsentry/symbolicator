@@ -19,11 +19,11 @@ use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use symbolicator_sources::ObjectId;
+use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::cache::{CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey};
-use crate::services::download::{DownloadService, RemoteDif};
+use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
 use crate::utils::compression::tempfile_in_parent;
@@ -123,7 +123,7 @@ impl fmt::Display for ObjectHandle {
 async fn fetch_object_file(
     cache_key: CacheKey,
     object_id: ObjectId,
-    file_id: RemoteDif,
+    file_id: RemoteFile,
     downloader: Arc<DownloadService>,
     temp_file: NamedTempFile,
 ) -> CacheEntry<NamedTempFile> {

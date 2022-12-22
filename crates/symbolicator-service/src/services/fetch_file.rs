@@ -1,13 +1,14 @@
 use std::io::Seek;
 use std::sync::Arc;
 
+use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
 use crate::cache::{CacheEntry, CacheError};
-use crate::services::download::{DownloadError, DownloadService, DownloadStatus, RemoteDif};
+use crate::services::download::{DownloadError, DownloadService, DownloadStatus};
 use crate::utils::compression::maybe_decompress_file;
 
-/// Downloads the gives [`RemoteDif`] and decompresses it.
+/// Downloads the gives [`RemoteFile`] and decompresses it.
 ///
 /// This takes a [`NamedTempFile`] to store the resulting file into, and will return a
 /// [`NamedTempFile`] back to the caller. This is either the original in case no decompression
@@ -16,7 +17,7 @@ use crate::utils::compression::maybe_decompress_file;
 #[tracing::instrument(skip(downloader, temp_file))]
 pub async fn fetch_file(
     downloader: Arc<DownloadService>,
-    file_id: RemoteDif,
+    file_id: RemoteFile,
     temp_file: NamedTempFile,
 ) -> CacheEntry<NamedTempFile> {
     // FIXME(swatinem): Ideally, the downloader would just give us a `CacheEntry<NamedTempFile>` directly.

@@ -17,49 +17,13 @@ use rusoto_core::RusotoError;
 use rusoto_s3::{GetObjectError, S3};
 
 use symbolicator_sources::{
-    AwsCredentialsProvider, FileType, ObjectId, S3SourceConfig, S3SourceKey,
+    AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3RemoteFile, S3SourceConfig,
+    S3SourceKey,
 };
 
-use super::locations::SourceLocation;
-use super::{content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri};
+use super::{content_length_timeout, DownloadError, DownloadStatus};
 
 type ClientCache = moka::sync::Cache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
-
-/// The S3-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct S3RemoteDif {
-    pub source: Arc<S3SourceConfig>,
-    pub location: SourceLocation,
-}
-
-impl From<S3RemoteDif> for RemoteDif {
-    fn from(source: S3RemoteDif) -> Self {
-        Self::S3(source)
-    }
-}
-
-impl S3RemoteDif {
-    pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
-        Self { source, location }
-    }
-
-    /// Returns the S3 key.
-    ///
-    /// This is equivalent to the pathname within the bucket.
-    pub fn key(&self) -> String {
-        self.location.prefix(&self.source.prefix)
-    }
-
-    /// Returns the S3 bucket name.
-    pub fn bucket(&self) -> String {
-        self.source.bucket.clone()
-    }
-
-    /// Returns the `s3://` URI from which to download this object file.
-    pub fn uri(&self) -> RemoteDifUri {
-        RemoteDifUri::from_parts("s3", &self.source.bucket, &self.key())
-    }
-}
 
 /// Downloader implementation that supports the [`S3SourceConfig`] source.
 pub struct S3Downloader {
@@ -146,7 +110,7 @@ impl S3Downloader {
     /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: S3RemoteDif,
+        file_source: S3RemoteFile,
         destination: &Path,
     ) -> Result<DownloadStatus<()>, DownloadError> {
         let key = file_source.key();
@@ -161,7 +125,7 @@ impl S3Downloader {
             ..Default::default()
         });
 
-        let source = RemoteDif::from(file_source);
+        let source = RemoteFile::from(file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
@@ -250,7 +214,7 @@ impl S3Downloader {
         source: Arc<S3SourceConfig>,
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Vec<RemoteDif> {
+    ) -> Vec<RemoteFile> {
         super::SourceLocationIter {
             filetypes: filetypes.iter(),
             filters: &source.files.filters,
@@ -258,7 +222,7 @@ impl S3Downloader {
             layout: source.files.layout,
             next: Vec::new(),
         }
-        .map(|loc| S3RemoteDif::new(source.clone(), loc).into())
+        .map(|loc| S3RemoteFile::new(source.clone(), loc).into())
         .collect()
     }
 }
@@ -269,7 +233,10 @@ mod tests {
 
     use std::path::Path;
 
-    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, ObjectType, SourceId};
+    use symbolicator_sources::{
+        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        SourceLocation,
+    };
 
     use crate::test;
 
@@ -444,7 +411,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
-        let file_source = S3RemoteDif::new(source, source_location);
+        let file_source = S3RemoteFile::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, &target_path)
@@ -473,7 +440,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = S3RemoteDif::new(source, source_location);
+        let file_source = S3RemoteFile::new(source, source_location);
 
         let download_status = downloader
             .download_source(file_source, &target_path)
@@ -501,7 +468,7 @@ mod tests {
         let target_path = tempdir.path().join("myfile");
 
         let source_location = SourceLocation::new("does/not/exist");
-        let file_source = S3RemoteDif::new(source, source_location);
+        let file_source = S3RemoteFile::new(source, source_location);
 
         assert!(matches!(
             downloader.download_source(file_source, &target_path).await,
@@ -528,10 +495,10 @@ mod tests {
         });
         let location = SourceLocation::new("a/key/with spaces");
 
-        let dif = S3RemoteDif::new(source, location);
+        let dif = S3RemoteFile::new(source, location);
         assert_eq!(
             dif.uri(),
-            RemoteDifUri::new("s3://bucket/prefix/a/key/with%20spaces")
+            RemoteFileUri::new("s3://bucket/prefix/a/key/with%20spaces")
         );
     }
 }
