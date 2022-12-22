@@ -26,7 +26,7 @@ pub struct GcsSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// The GCS-specific [`RemoteDif`].
+/// The GCS-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct GcsRemoteFile {
     /// The underlying [`GcsSourceConfig`].

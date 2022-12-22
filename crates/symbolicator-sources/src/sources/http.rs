@@ -24,7 +24,7 @@ pub struct HttpSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// The HTTP-specific [`RemoteDif`].
+/// The HTTP-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct HttpRemoteFile {
     /// The underlying [`HttpSourceConfig`].

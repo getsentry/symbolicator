@@ -28,7 +28,7 @@ pub struct S3SourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// The S3-specific [`RemoteDif`].
+/// The S3-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct S3RemoteFile {
     /// The underlying [`S3SourceConfig`].

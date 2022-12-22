@@ -16,7 +16,7 @@ use crate::{
 /// A location for a file retrievable from many source configs.
 ///
 /// It is essentially a `/`-separated string. This is currently used by all sources other than
-/// [`SentrySourceConfig`]. This may change in the future.
+/// [`SentrySourceConfig`](crate::SentrySourceConfig). This may change in the future.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct SourceLocation(String);
 
@@ -78,9 +78,9 @@ impl fmt::Display for SourceLocation {
 
 /// Represents a single Debug Information File stored on a source.
 ///
-/// This joins the file location together with a [`SourceConfig`] and thus provides all
-/// information to retrieve the DIF from its source.  The file could be any DIF type: an
-/// auxiliary DIF or an object file.
+/// This joins the file location together with a [`SourceConfig`](crate::SourceConfig) and thus
+/// provides all information to retrieve the DIF from its source.  The file could be any DIF type:
+/// an auxiliary DIF or an object file.
 #[derive(Debug, Clone)]
 pub enum RemoteFile {
     /// A file on a filesystem source.

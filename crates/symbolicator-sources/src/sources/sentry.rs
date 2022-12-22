@@ -19,7 +19,7 @@ pub struct SentrySourceConfig {
     pub token: String,
 }
 
-/// The Sentry-specific [`RemoteDif`].
+/// The Sentry-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].

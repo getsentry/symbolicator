@@ -19,7 +19,7 @@ pub struct FilesystemSourceConfig {
     pub files: CommonSourceConfig,
 }
 
-/// Filesystem-specific [`RemoteDif`].
+/// Filesystem-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct FilesystemRemoteFile {
     pub(crate) source: Arc<FilesystemSourceConfig>,
