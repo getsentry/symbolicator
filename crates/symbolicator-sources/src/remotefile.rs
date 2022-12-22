@@ -11,8 +11,8 @@ use url::Url;
 
 use crate::{
     get_directory_paths, CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile,
-    GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceFilters,
-    SourceId,
+    GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceConfig,
+    SourceFilters, SourceId,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -150,29 +150,39 @@ pub enum RemoteFile {
     S3(S3RemoteFile),
     /// A file on a Sentry source.
     Sentry(SentryRemoteFile),
+    /// No file was listed on the source.
+    NoFileListed(SourceConfig),
+    /// Finding files failed.
+    FindError(SourceConfig, String),
 }
 
 impl fmt::Display for RemoteFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Sentry(ref s) => {
+            Self::Sentry(s) => {
                 write!(f, "Sentry source '{}' file id '{}'", s.source.id, s.file_id)
             }
-            Self::Http(ref s) => {
+            Self::Http(s) => {
                 write!(f, "HTTP source '{}' location '{}'", s.source.id, s.location)
             }
-            Self::S3(ref s) => {
+            Self::S3(s) => {
                 write!(f, "S3 source '{}' location '{}'", s.source.id, s.location)
             }
-            Self::Gcs(ref s) => {
+            Self::Gcs(s) => {
                 write!(f, "GCS source '{}' location '{}'", s.source.id, s.location)
             }
-            Self::Filesystem(ref s) => {
+            Self::Filesystem(s) => {
                 write!(
                     f,
                     "Filesystem source '{}' location '{}'",
                     s.source.id, s.location
                 )
+            }
+            Self::NoFileListed(s) => {
+                write!(f, "No file listed on '{}'", s.id())
+            }
+            Self::FindError(s, e) => {
+                write!(f, "Error listing files on '{}': {}", s.id(), e)
             }
         }
     }
@@ -183,30 +193,34 @@ impl RemoteFile {
     pub fn is_public(&self) -> bool {
         match self {
             Self::Sentry(_) => false,
-            Self::Http(ref x) => x.source.files.is_public,
-            Self::S3(ref x) => x.source.files.is_public,
-            Self::Gcs(ref x) => x.source.files.is_public,
-            Self::Filesystem(ref x) => x.source.files.is_public,
+            Self::Http(x) => x.source.files.is_public,
+            Self::S3(x) => x.source.files.is_public,
+            Self::Gcs(x) => x.source.files.is_public,
+            Self::Filesystem(x) => x.source.files.is_public,
+            Self::NoFileListed(_s) | Self::FindError(_s, _) => panic!("we should never check this"),
         }
     }
 
     /// A specific cache key for this [`RemoteFile`].
     pub fn cache_key(&self) -> String {
         match self {
-            Self::Sentry(ref x) => {
+            Self::Sentry(x) => {
                 format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
-            Self::Http(ref x) => {
+            Self::Http(x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            Self::S3(ref x) => {
+            Self::S3(x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            Self::Gcs(ref x) => {
+            Self::Gcs(x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
-            Self::Filesystem(ref x) => {
+            Self::Filesystem(x) => {
                 format!("{}.{}", x.source.id, x.location)
+            }
+            Self::NoFileListed(_x) | Self::FindError(_x, _) => {
+                panic!("we should never try to persist this")
             }
         }
     }
@@ -217,22 +231,24 @@ impl RemoteFile {
     /// configuration which are available to all requests.
     pub fn source_id(&self) -> &SourceId {
         match self {
-            Self::Sentry(ref x) => &x.source.id,
-            Self::Http(ref x) => &x.source.id,
-            Self::S3(ref x) => &x.source.id,
-            Self::Gcs(ref x) => &x.source.id,
-            Self::Filesystem(ref x) => &x.source.id,
+            Self::Sentry(x) => &x.source.id,
+            Self::Http(x) => &x.source.id,
+            Self::S3(x) => &x.source.id,
+            Self::Gcs(x) => &x.source.id,
+            Self::Filesystem(x) => &x.source.id,
+            Self::NoFileListed(s) | Self::FindError(s, _) => s.id(),
         }
     }
 
     /// A short name for the source type.
     pub fn source_type_name(&self) -> &'static str {
-        match *self {
+        match self {
             Self::Sentry(..) => "sentry",
             Self::S3(..) => "s3",
             Self::Gcs(..) => "gcs",
             Self::Http(..) => "http",
             Self::Filesystem(..) => "filesystem",
+            Self::NoFileListed(s) | Self::FindError(s, _) => s.type_name(),
         }
     }
 
@@ -266,6 +282,8 @@ impl RemoteFile {
             Self::S3(file_source) => file_source.uri(),
             Self::Gcs(file_source) => file_source.uri(),
             Self::Filesystem(file_source) => file_source.uri(),
+            Self::NoFileListed(_) => RemoteFileUri::new("No files listed on this source"),
+            Self::FindError(_, e) => RemoteFileUri::new(e),
         }
     }
 }

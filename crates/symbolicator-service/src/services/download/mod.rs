@@ -74,7 +74,7 @@ pub enum DownloadError {
     /// Typically means the initial HEAD request received a non-200, non-400 response.
     #[error("failed to download: {0}")]
     Rejected(StatusCode),
-    #[error("failed to fetch object: {0}")]
+    #[error("{0}")]
     CachedError(String),
 }
 
@@ -237,6 +237,11 @@ impl DownloadService {
         source: &RemoteFile,
         temp_file: NamedTempFile,
     ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
+        match source {
+            RemoteFile::NoFileListed(_) => return Ok(DownloadStatus::NotFound),
+            RemoteFile::FindError(_, err) => return Err(DownloadError::CachedError(err.clone())),
+            _ => {}
+        };
         let destination = temp_file.path();
 
         let result = future_utils::retry(|| async {
@@ -256,6 +261,7 @@ impl DownloadService {
                 RemoteFile::Filesystem(inner) => {
                     self.fs.download_source(inner.clone(), destination).await
                 }
+                RemoteFile::NoFileListed(_) | RemoteFile::FindError(..) => unreachable!(),
             }
         });
 
@@ -324,11 +330,12 @@ impl DownloadService {
         let mut remote_files = vec![];
 
         macro_rules! check_source {
-            ($source:ident => $file_ty:ty) => {{
+            ($source_ty:ident($source:ident) => $file_ty:ty) => {{
                 let mut iter =
                     SourceLocationIter::new(&$source.files, filetypes, object_id).peekable();
                 if iter.peek().is_none() {
-                    // TODO: create a special "no file on source" `RemoteFile`?
+                    let src = SourceConfig::$source_ty($source.clone());
+                    remote_files.push(RemoteFile::NoFileListed(src));
                 } else {
                     remote_files
                         .extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
@@ -338,6 +345,12 @@ impl DownloadService {
 
         for source in sources {
             match source {
+                SourceConfig::Filesystem(cfg) => {
+                    check_source!(Filesystem(cfg) => FilesystemRemoteFile)
+                }
+                SourceConfig::Gcs(cfg) => check_source!(Gcs(cfg) => GcsRemoteFile),
+                SourceConfig::Http(cfg) => check_source!(Http(cfg) => HttpRemoteFile),
+                SourceConfig::S3(cfg) => check_source!(S3(cfg) => S3RemoteFile),
                 SourceConfig::Sentry(cfg) => {
                     let job = self.sentry.list_files(cfg.clone(), object_id, filetypes);
                     let job = tokio::time::timeout(Duration::from_secs(30), job);
@@ -345,18 +358,23 @@ impl DownloadService {
 
                     let sentry_files = job.await.map_err(|_| DownloadError::Canceled);
                     match sentry_files {
-                        Ok(Ok(files)) => remote_files.extend(files),
+                        Ok(Ok(files)) => {
+                            if files.is_empty() {
+                                let src = SourceConfig::Sentry(cfg.clone());
+                                remote_files.push(RemoteFile::NoFileListed(src));
+                            } else {
+                                remote_files.extend(files);
+                            }
+                        }
                         Ok(Err(error)) | Err(error) => {
+                            let src = SourceConfig::Sentry(cfg.clone());
+                            remote_files.push(RemoteFile::FindError(src, error.to_string()));
+
                             let error: &dyn std::error::Error = &error;
                             tracing::error!(error, "Failed to fetch file list");
-                            // TODO: create a special "finding files failed" `RemoteFile`?
                         }
                     }
                 }
-                SourceConfig::Http(cfg) => check_source!(cfg => HttpRemoteFile),
-                SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
-                SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
-                SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
             }
         }
         remote_files
@@ -533,7 +551,9 @@ mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
 
-    use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
+    use symbolicator_sources::{
+        HttpRemoteFile, ObjectType, SentrySourceConfig, SourceConfig, SourceId,
+    };
 
     use super::*;
 
@@ -576,7 +596,7 @@ mod tests {
         test::setup();
 
         let source = test::local_source();
-        let objid = ObjectId {
+        let object_id = ObjectId {
             code_id: Some("5ab380779000".parse().unwrap()),
             code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
             debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
@@ -587,7 +607,7 @@ mod tests {
         let config = Config::default();
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
-            .list_files(&[source.clone()], FileType::all(), &objid)
+            .list_files(&[source.clone()], FileType::all(), &object_id)
             .await;
 
         assert!(!file_list.is_empty());
@@ -613,5 +633,66 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
+    }
+
+    #[tokio::test]
+    async fn no_listed_files() {
+        test::setup();
+
+        let source = test::local_source();
+
+        let config = Config::default();
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+
+        // TODO: we find no files because we are not looking for any.
+        // we should also check what the results here are if we rather filter files out
+        let mut file_list = svc
+            .list_files(&[source.clone()], &[], &ObjectId::default())
+            .await;
+
+        assert_eq!(file_list.len(), 1);
+        let file = file_list.pop().unwrap();
+        assert!(matches!(file, RemoteFile::NoFileListed(_)));
+
+        let destination = NamedTempFile::new().unwrap();
+        let downloaded_file = svc.download(file, destination).await;
+
+        assert!(matches!(downloaded_file, Ok(DownloadStatus::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn sentry_error() {
+        test::setup();
+
+        let sentry_source = SentrySourceConfig {
+            id: SourceId::new("invalid-source"),
+            url: url::Url::parse("https://not-a-valid-sentry-source/").unwrap(),
+            token: "invalid".into(),
+        };
+        let source = SourceConfig::Sentry(Arc::new(sentry_source));
+
+        let object_id = ObjectId {
+            code_id: Some("5ab380779000".parse().unwrap()),
+            code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
+            debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
+            debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            object_type: ObjectType::Pe,
+        };
+
+        let config = Config::default();
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let mut file_list = svc
+            .list_files(&[source.clone()], FileType::all(), &object_id)
+            .await;
+
+        assert_eq!(file_list.len(), 1);
+        let file = file_list.pop().unwrap();
+        assert!(matches!(file, RemoteFile::FindError(..)));
+
+        let destination = NamedTempFile::new().unwrap();
+        let downloaded_file = svc.download(file, destination).await;
+
+        let error = downloaded_file.unwrap_err();
+        assert_eq!(&error.to_string(), "failed to fetch data from Sentry");
     }
 }
