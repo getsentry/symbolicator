@@ -22,8 +22,9 @@ pub struct SentrySourceConfig {
 /// The Sentry-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct SentryRemoteFile {
+    /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
-    pub file_id: SentryFileId,
+    pub(crate) file_id: SentryFileId,
 }
 
 impl From<SentryRemoteFile> for RemoteFile {
@@ -33,10 +34,12 @@ impl From<SentryRemoteFile> for RemoteFile {
 }
 
 impl SentryRemoteFile {
+    /// Creates a new [`SentryRemoteFile`].
     pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
         Self { source, file_id }
     }
 
+    /// Gives a synthetic [`RemoteFileUri`] for this file.
     pub fn uri(&self) -> RemoteFileUri {
         format!("sentry://project_debug_file/{}", self.file_id).into()
     }

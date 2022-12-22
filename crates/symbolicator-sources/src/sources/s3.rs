@@ -31,8 +31,9 @@ pub struct S3SourceConfig {
 /// The S3-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct S3RemoteFile {
+    /// The underlying [`S3SourceConfig`].
     pub source: Arc<S3SourceConfig>,
-    pub location: SourceLocation,
+    pub(crate) location: SourceLocation,
 }
 
 impl From<S3RemoteFile> for RemoteFile {
@@ -42,6 +43,7 @@ impl From<S3RemoteFile> for RemoteFile {
 }
 
 impl S3RemoteFile {
+    /// Creates a new [`S3RemoteFile`].
     pub fn new(source: Arc<S3SourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }

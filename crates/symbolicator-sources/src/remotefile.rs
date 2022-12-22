@@ -21,6 +21,7 @@ use crate::{
 pub struct SourceLocation(String);
 
 impl SourceLocation {
+    /// Creates a new [`SourceLocation`].
     pub fn new(loc: impl Into<String>) -> Self {
         SourceLocation(loc.into())
     }
@@ -82,10 +83,15 @@ impl fmt::Display for SourceLocation {
 /// auxiliary DIF or an object file.
 #[derive(Debug, Clone)]
 pub enum RemoteFile {
+    /// A file on a filesystem source.
     Filesystem(FilesystemRemoteFile),
+    /// A file on a gcs source.
     Gcs(GcsRemoteFile),
+    /// A file on a http source.
     Http(HttpRemoteFile),
+    /// A file on a S3 source.
     S3(S3RemoteFile),
+    /// A file on a Sentry source.
     Sentry(SentryRemoteFile),
 }
 
@@ -116,7 +122,7 @@ impl fmt::Display for RemoteFile {
 }
 
 impl RemoteFile {
-    /// Whether debug files from this source may be shared.
+    /// Whether files from this source may be shared.
     pub fn is_public(&self) -> bool {
         match self {
             Self::Sentry(_) => false,
@@ -127,6 +133,7 @@ impl RemoteFile {
         }
     }
 
+    /// A specific cache key for this [`RemoteFile`].
     pub fn cache_key(&self) -> String {
         match self {
             Self::Sentry(ref x) => {
@@ -161,6 +168,7 @@ impl RemoteFile {
         }
     }
 
+    /// A short name for the source type.
     pub fn source_type_name(&self) -> &'static str {
         match *self {
             Self::Sentry(..) => "sentry",
@@ -191,7 +199,7 @@ impl RemoteFile {
     /// Returns a URI for the location of the object file.
     ///
     /// There is no guarantee about any format of this URI, for some sources it could be
-    /// very abstract.  In general the source should try and producde a URI which can be
+    /// very abstract.  In general the source should try and produce a URI which can be
     /// used directly into the source-specific tooling.  E.g. for an HTTP source this would
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
     pub fn uri(&self) -> RemoteFileUri {
@@ -205,10 +213,10 @@ impl RemoteFile {
     }
 }
 
-/// A URI representing an [`RemoteDif`].
+/// A URI representing an [`RemoteFile`].
 ///
 /// Note that this does not provide enough information to download the object file, for this
-/// you need the actual [`RemoteDif`].  The purpose of this URI is to be able to display to
+/// you need the actual [`RemoteFile`].  The purpose of this URI is to be able to display to
 /// a user who might be able to use this in other tools.  E.g. for an S3 source this could
 /// be an `s3://` URI etc.
 ///
@@ -216,6 +224,7 @@ impl RemoteFile {
 pub struct RemoteFileUri(String);
 
 impl RemoteFileUri {
+    /// Creates a new [`RemoteFileUri`].
     pub fn new(s: impl Into<String>) -> Self {
         Self(s.into())
     }

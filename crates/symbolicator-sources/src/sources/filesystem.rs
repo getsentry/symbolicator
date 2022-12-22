@@ -22,8 +22,8 @@ pub struct FilesystemSourceConfig {
 /// Filesystem-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct FilesystemRemoteFile {
-    pub source: Arc<FilesystemSourceConfig>,
-    pub location: SourceLocation,
+    pub(crate) source: Arc<FilesystemSourceConfig>,
+    pub(crate) location: SourceLocation,
 }
 
 impl From<FilesystemRemoteFile> for RemoteFile {
@@ -33,6 +33,7 @@ impl From<FilesystemRemoteFile> for RemoteFile {
 }
 
 impl FilesystemRemoteFile {
+    /// Creates a new [`FilesystemRemoteFile`].
     pub fn new(source: Arc<FilesystemSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
@@ -46,8 +47,8 @@ impl FilesystemRemoteFile {
     ///
     /// This is a quick-and-dirty approximation, not fully RFC8089-compliant.  E.g. we do
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
-    /// [`FilesystemRemoteDif::path`] if the actual file location is needed.
-    pub fn uri(&self) -> RemoteFileUri {
+    /// [`FilesystemRemoteFile::path`] if the actual file location is needed.
+    pub(crate) fn uri(&self) -> RemoteFileUri {
         format!("file:///{}", self.path().display()).into()
     }
 }

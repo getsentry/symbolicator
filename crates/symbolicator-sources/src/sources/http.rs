@@ -27,8 +27,9 @@ pub struct HttpSourceConfig {
 /// The HTTP-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct HttpRemoteFile {
+    /// The underlying [`HttpSourceConfig`].
     pub source: Arc<HttpSourceConfig>,
-    pub location: SourceLocation,
+    pub(crate) location: SourceLocation,
 }
 
 impl From<HttpRemoteFile> for RemoteFile {
@@ -38,11 +39,12 @@ impl From<HttpRemoteFile> for RemoteFile {
 }
 
 impl HttpRemoteFile {
+    /// Creates a new [`HttpRemoteFile`].
     pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
 
-    pub fn uri(&self) -> RemoteFileUri {
+    pub(crate) fn uri(&self) -> RemoteFileUri {
         match self.url() {
             Ok(url) => url.as_ref().into(),
             Err(_) => "".into(),

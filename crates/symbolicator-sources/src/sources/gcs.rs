@@ -29,8 +29,9 @@ pub struct GcsSourceConfig {
 /// The GCS-specific [`RemoteDif`].
 #[derive(Debug, Clone)]
 pub struct GcsRemoteFile {
+    /// The underlying [`GcsSourceConfig`].
     pub source: Arc<GcsSourceConfig>,
-    pub location: SourceLocation,
+    pub(crate) location: SourceLocation,
 }
 
 impl From<GcsRemoteFile> for RemoteFile {
@@ -40,6 +41,7 @@ impl From<GcsRemoteFile> for RemoteFile {
 }
 
 impl GcsRemoteFile {
+    /// Creates a new [`GcsRemoteFile`].
     pub fn new(source: Arc<GcsSourceConfig>, location: SourceLocation) -> Self {
         Self { source, location }
     }
