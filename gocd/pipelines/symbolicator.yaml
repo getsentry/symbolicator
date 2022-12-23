@@ -1,0 +1,118 @@
+# More information on gocd-flavor YAML can be found here:
+# - https://github.com/tomzo/gocd-yaml-config-plugin#pipeline
+# - https://www.notion.so/sentry/GoCD-New-Service-Quickstart-6d8db7a6964049b3b0e78b8a4b52e25d
+format_version: 10
+pipelines:
+    deploy-symbolicator:
+        environment_variables:
+            GCP_PROJECT: internal-sentry
+            GKE_CLUSTER: zdpwkxst
+            GKE_REGION: us-central1
+            GKE_CLUSTER_ZONE: b
+            GKE_BASTION_ZONE: b
+        group: symbolicator
+        lock_behavior: unlockWhenFinished
+        materials:
+            symbolicator_repo:
+                git: git@github.com:getsentry/symbolicator.git
+                shallow_clone: true
+                branch: master
+                destination: symbolicator
+        stages:
+            - checks:
+                  approval:
+                      type: manual
+                  fetch_materials: true
+                  jobs:
+                      checks:
+                          timeout: 1800
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    /devinfra/scripts/checks/githubactions/checkruns.py \
+                                    getsentry/symbolicator \
+                                    ${GO_REVISION_SYMBOLICATOR_REPO} \
+                                    'Unit Tests' \
+                                    'Integration Tests'
+                              - script: |
+                                    /devinfra/scripts/checks/googlecloud/checkcloudbuild.py \
+                                    ${GO_REVISION_SYMBOLICATOR_REPO} \
+                                    sentryio \
+                                    "us.gcr.io/sentryio/symbolicator"
+
+            - deploy_canary:
+                  approval:
+                      type: manual
+                  fetch_materials: true
+                  jobs:
+                      deploy:
+                          timeout: 1800 # 30 mins
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    USE_GKE_GCLOUD_AUTH_PLUGIN=True \
+                                        gcloud --project "$GCP_PROJECT" \
+                                        container clusters get-credentials "$GKE_CLUSTER" \
+                                        --zone "${GKE_REGION}-${GKE_CLUSTER_ZONE}"
+                              - script: |
+                                    tmpdir=$(mktemp -d) \
+                                    && ssh-keygen -q -t ed25519 -N '' -f "${tmpdir}/google_compute_engine" \
+                                    && gcloud compute ssh "dicd-gkehop-${GKE_CLUSTER}" \
+                                      --ssh-key-file="${tmpdir}/google_compute_engine" \
+                                      --tunnel-through-iap \
+                                      "--project=${GCP_PROJECT}" \
+                                      "--zone=${GKE_REGION}-${GKE_BASTION_ZONE}" \
+                                      -- -4 -L8888:127.0.0.1:8888 -N -q -f
+                              - script: |
+                                    /devinfra/scripts/k8s/k8sdeploy.py \
+                                    --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
+                                    --type="statefulset" \
+                                    --label-selector="service=symbolicator,deploy_if_canary=true" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --container-name="symbolicator" \
+                                    --container-name="cleanup"
+
+            # Deploys production and lpq symbolicators.
+            # Rolling canary is omitted as the canary stage needs to succeed before.
+            - deploy_production:
+                  approval:
+                      type: manual
+                  fetch_materials: true
+                  jobs:
+                      deploy:
+                          timeout: 1800 # 30 mins
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    USE_GKE_GCLOUD_AUTH_PLUGIN=True \
+                                        gcloud --project "$GCP_PROJECT" \
+                                        container clusters get-credentials "$GKE_CLUSTER" \
+                                        --zone "${GKE_REGION}-${GKE_CLUSTER_ZONE}"
+                              - script: |
+                                    tmpdir=$(mktemp -d) \
+                                    && ssh-keygen -q -t ed25519 -N '' -f "${tmpdir}/google_compute_engine" \
+                                    && gcloud compute ssh "dicd-gkehop-${GKE_CLUSTER}" \
+                                      --ssh-key-file="${tmpdir}/google_compute_engine" \
+                                      --tunnel-through-iap \
+                                      "--project=${GCP_PROJECT}" \
+                                      "--zone=${GKE_REGION}-${GKE_BASTION_ZONE}" \
+                                      -- -4 -L8888:127.0.0.1:8888 -N -q -f
+                              # Ideally the deploy_if_x things are changed to something like
+                              # environment=x. Then we can just call this once with the label selector
+                              # 'service=symbolicator,environment in (lpq, production)'
+                              - script: |
+                                    /devinfra/scripts/k8s/k8sdeploy.py \
+                                    --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
+                                    --type="statefulset" \
+                                    --label-selector="service=symbolicator,deploy_if_lpq=true" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --container-name="symbolicator" \
+                                    --container-name="cleanup"
+                              - script: |
+                                    /devinfra/scripts/k8s/k8sdeploy.py \
+                                    --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
+                                    --type="statefulset" \
+                                    --label-selector="service=symbolicator,deploy_if_production=true" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --container-name="symbolicator" \
+                                    --container-name="cleanup"
