@@ -12,10 +12,10 @@ https = []
 anyhow = "1.0.57"
 apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
-aws-config = "0.51.0"
-aws-types = { version = "0.51.0", features = ["hardcoded-credentials"] }
-aws-sdk-s3 = "0.21.0"
-aws-smithy-http = "0.51.0"
+aws-config = "0.52.0"
+aws-types = { version = "0.52.0", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "0.22.0"
+aws-smithy-http = "0.52.0"
 backtrace = "0.3.65"
 base64 = "0.20.0"
 cadence = "0.29.0"

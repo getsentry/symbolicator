@@ -67,8 +67,8 @@ pub enum DownloadError {
     Sentry(sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
-    #[error("aws-sdk: failed to fetch data from S3")]
-    S3Sdk(#[from] aws_smithy_http::byte_stream::Error),
+    #[error("failed to fetch data from S3")]
+    S3Stream(#[from] aws_smithy_http::byte_stream::error::Error),
     #[error("missing permissions for file")]
     Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.
@@ -123,7 +123,7 @@ impl From<DownloadError> for CacheError {
             DownloadError::S3(e) => {
                 Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
-            DownloadError::S3Sdk(e) => {
+            DownloadError::S3Stream(e) => {
                 Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
             DownloadError::Permissions => Self::PermissionDenied(String::new()),

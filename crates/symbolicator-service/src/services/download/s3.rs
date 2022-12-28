@@ -9,14 +9,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
-use aws_sdk_s3::error::GetObjectErrorKind;
-use aws_sdk_s3::types::SdkError::{ConstructionFailure, DispatchFailure};
-use aws_sdk_s3::types::SdkError::{ResponseError, ServiceError, TimeoutError};
+use aws_sdk_s3::types::SdkError;
 use aws_sdk_s3::Client;
+pub use aws_sdk_s3::Error as S3Error;
 use aws_types::credentials::{Credentials, ProvideCredentials};
 use aws_types::region::Region;
 use futures::TryStreamExt;
 
+use reqwest::StatusCode;
 use symbolicator_sources::{
     AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3RemoteFile, S3SourceConfig,
     S3SourceKey,
@@ -41,8 +41,6 @@ impl fmt::Debug for S3Downloader {
             .finish()
     }
 }
-
-pub type S3Error = aws_sdk_s3::Error;
 
 impl S3Downloader {
     pub fn new(
@@ -126,53 +124,55 @@ impl S3Downloader {
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = match request.await {
-            Ok(Ok(response)) => response,
-            Ok(Err(err)) => {
+        let response = request.await.map_err(|_| DownloadError::Canceled)?; // Timeout
+
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => {
                 tracing::debug!("Skipping response from s3://{}/{}: {}", &bucket, &key, err);
+
+                // we first check for some specific errors variants, and afterwards we cast this to
+                // a very generic `S3Error` that internally converts things around.
+                match &err {
+                    SdkError::TimeoutError(_) => {
+                        // FIXME(swatinem): we can probably remove this log once we capture a few
+                        // of these in production and figure out what we actually get here
+                        tracing::error!(
+                            error = &err as &dyn std::error::Error,
+                            "S3 request timed out: {:?}",
+                            err
+                        );
+                        return Err(DownloadError::Canceled);
+                    }
+                    SdkError::ServiceError(service_err) => {
+                        // The errors and status codes are explained here:
+                        // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
+                        let response = service_err.raw();
+                        let status = response.http().status();
+
+                        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+                            // TODO: we could use the `message` of the error in the future:
+                            // service_err.err().message()
+                            return Ok(DownloadStatus::PermissionDenied);
+                        }
+                    }
+                    _ => {}
+                };
+
+                let err = S3Error::from(err);
                 return match &err {
-                    ConstructionFailure(err1) => {
-                        println!("ERROR: ConstructionFailure: {:?}", err1);
-                        Err(DownloadError::Canceled)
+                    S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
+                        Ok(DownloadStatus::NotFound)
                     }
-                    DispatchFailure(err1) => {
-                        println!("ERROR: DispatchFailure: {:?}", err1);
-                        Err(DownloadError::Canceled)
-                    }
-                    TimeoutError(err1) => {
-                        println!("ERROR: TimeoutError: {:?}", err1);
-                        Err(DownloadError::Canceled)
-                    }
-                    ResponseError { err: err1, raw: _ } => {
-                        println!("ERROR: ResponseError: {:?}", err1);
-                        Err(DownloadError::Canceled)
-                    }
-                    ServiceError { err: err1, raw: _ } => {
-                        println!("ServiceError: {:?}", &err1);
-                        match &err1.kind {
-                            GetObjectErrorKind::NoSuchKey(err2) => {
-                                println!("ERROR: NoSuchKey: {:?}", &err2);
-                            }
-                            GetObjectErrorKind::InvalidObjectState(err2) => {
-                                println!("ERROR: InvalidObjectState: {:?}", &err2);
-                            }
-                            GetObjectErrorKind::Unhandled(err2) => {
-                                println!("ERROR: Unhandled: {:?}", &err2);
-                                println!(
-                                    "bucket={:?}, key={:?}, source_key={:?}",
-                                    &bucket, &key, &source_key
-                                );
-                            }
-                            _ => println!("ERROR: other GetObjectErrorKind: {:?}", &err1.kind),
-                        };
-                        Err(DownloadError::S3(err.into()))
+                    _ => {
+                        tracing::error!(
+                            error = &err as &dyn std::error::Error,
+                            "S3 request failed: {:?}",
+                            err
+                        );
+                        Err(DownloadError::S3(err))
                     }
                 };
-            }
-            Err(_) => {
-                // TODO Verify this is still the correct action to take with aws-sdk-rust
-                // Timed out
-                return Err(DownloadError::Canceled);
             }
         };
 
@@ -185,7 +185,7 @@ impl S3Downloader {
             tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
             return Ok(DownloadStatus::NotFound);
         } else {
-            response.body.map_err(DownloadError::S3Sdk)
+            response.body.map_err(DownloadError::S3Stream)
         };
 
         super::download_stream(&source, stream, destination, timeout).await
@@ -223,8 +223,6 @@ mod tests {
     use crate::test;
 
     use aws_sdk_s3::client::Client;
-    use aws_sdk_s3::error::{HeadBucketError, HeadBucketErrorKind};
-    use aws_sdk_s3::error::{HeadObjectError, HeadObjectErrorKind};
     use aws_smithy_http::byte_stream::ByteStream;
     use sha1::{Digest as _, Sha1};
 
@@ -279,28 +277,16 @@ mod tests {
 
         match head_result {
             Ok(_) => return,
-            Err(ServiceError {
-                err:
-                    HeadBucketError {
-                        kind: HeadBucketErrorKind::NotFound(err),
-                        ..
-                    },
-                ..
-            }) => {
-                println!("{:?}", err.message());
+            Err(err) => {
+                let err = S3Error::from(err);
+                match err {
+                    S3Error::NoSuchBucket(_) | S3Error::NotFound(_) => {}
+                    err => {
+                        panic!("failed to check S3 bucket: {err:?}");
+                    }
+                }
             }
-            Err(ServiceError {
-                err:
-                    HeadBucketError {
-                        kind: HeadBucketErrorKind::Unhandled(err),
-                        ..
-                    },
-                ..
-            }) => {
-                println!("{:?}", err);
-            }
-            Err(err) => panic!("failed to check S3 bucket: {err:?}"),
-        }
+        };
 
         s3_client
             .create_bucket()
@@ -322,28 +308,16 @@ mod tests {
 
         match head_result {
             Ok(_) => return,
-            Err(ServiceError {
-                err:
-                    HeadObjectError {
-                        kind: HeadObjectErrorKind::NotFound(err),
-                        ..
-                    },
-                ..
-            }) => {
-                println!("{:?}", err.message());
+            Err(err) => {
+                let err = S3Error::from(err);
+                match err {
+                    S3Error::NotFound(_) => {}
+                    err => {
+                        panic!("failed to check S3 object: {err:?}");
+                    }
+                }
             }
-            Err(ServiceError {
-                err:
-                    HeadObjectError {
-                        kind: HeadObjectErrorKind::Unhandled(err),
-                        ..
-                    },
-                ..
-            }) => {
-                println!("{:?}", err);
-            }
-            Err(err) => panic!("failed to check S3 object: {err:?}"),
-        }
+        };
 
         s3_client
             .put_object()
@@ -469,8 +443,10 @@ mod tests {
         let broken_key = S3SourceKey {
             region: Region::from_static("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
-            access_key: "".to_owned(),
-            secret_key: "".to_owned(),
+            // leaving these empty would result in a `AuthorizationHeaderMalformed`, See:
+            // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
+            access_key: "INVALID".into(),
+            secret_key: "INVALID".into(),
         };
         let source = s3_source(broken_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
@@ -481,10 +457,13 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        assert!(matches!(
-            downloader.download_source(file_source, &target_path).await,
-            Ok(DownloadStatus::PermissionDenied)
-        ));
+        let result = downloader.download_source(file_source, &target_path).await;
+
+        assert!(
+            matches!(result, Ok(DownloadStatus::PermissionDenied)),
+            "{:?}",
+            result
+        );
 
         assert!(!target_path.exists());
     }
