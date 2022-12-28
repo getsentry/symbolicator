@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
 
-use crate::cache::CacheStatus;
-
 use super::ObjectFeatures;
 
 /// Information about a Debug Information File in the [`CompleteObjectInfo`].
@@ -125,39 +123,6 @@ impl Default for ObjectUseInfo {
 impl ObjectUseInfo {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
-    }
-
-    /// Construct [`ObjectUseInfo`] for an object from a derived cache.
-    ///
-    /// The [`ObjectUseInfo`] provides information about items stored in a cache and which
-    /// are derived from an original object cache: the [`symcaches`] and the [`cficaches`].
-    /// These caches have an edge case where if the underlying cache thought the object was
-    /// there but now it could not be fetched again.  This is converted to an error case.
-    ///
-    /// [`symcaches`]: crate::services::symcaches
-    /// [`cficaches`]: crate::services::cficaches
-    pub fn from_derived_status(derived: &CacheStatus, original: &CacheStatus) -> Self {
-        type S = CacheStatus;
-        match (derived, original) {
-            // No matter what state the original was in, the derived cache was OK
-            (S::Positive, _) => ObjectUseInfo::Ok,
-            // Edge cases where the original stopped being available
-            (S::Negative, S::Positive) => ObjectUseInfo::Error {
-                details: String::from("Object file no longer available"),
-            },
-            (S::Malformed(_), S::Positive) => ObjectUseInfo::Error {
-                details: String::from("Object file no longer usable"),
-            },
-            // If there are any issues with the original those will already be reported.
-            (S::Negative, _) => ObjectUseInfo::None,
-            (S::Malformed(_), _) => ObjectUseInfo::Malformed,
-            // If there's a conversion error then it may be useful to mention
-            // in case symbolic is doing something wrong. It may make more sense for
-            // this to be Malformed.
-            (S::CacheSpecificError(message), _) => ObjectUseInfo::Error {
-                details: format!("Object file could not be converted: {message}"),
-            },
-        }
     }
 }
 

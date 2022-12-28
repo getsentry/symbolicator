@@ -2,7 +2,7 @@
 
 use core::fmt;
 use std::fs::{read_dir, remove_dir, remove_file};
-use std::io::{self, SeekFrom};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -19,107 +19,6 @@ use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{CacheConfig, Config};
-
-/// Starting content of cache items whose writing failed.
-///
-/// Items with this value will be considered expired after the next process restart, or will be
-/// pruned once `symbolicator cleanup` runs. Independently of any `max_age` or `max_last_used`.
-///
-/// The malformed state is useful for failed computations that are unlikely to succeed before the
-/// next deploy. For example, symcache writing may fail due to an object file symbolic can't parse
-/// yet.
-pub const MALFORMED_MARKER: &[u8] = b"malformed";
-
-/// Starting content of cache items where an error has occurred, typically related to a
-/// cache-specific operation. For example, this would be download errors for download caches, and
-/// conversion errors for derived caches.
-///
-/// Items with this value will be expired after an hour.
-///
-/// Additional notes for download caches:
-/// This state is used as a way to distinguish between the absence of a file and the failure to
-/// fetch a file that is known to be present, but unfetchable due to transient errors. Absent files
-/// are covered by the negative cache state.
-pub const CACHE_SPECIFIC_ERROR_MARKER: &[u8] = b"cachespecificerror";
-
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheStatus {
-    /// A cache item that represents the presence of something. E.g. we succeeded in downloading an
-    /// object file and cached that file.
-    Positive,
-    /// A cache item that represents the absence of something. E.g. we encountered a 404 or a client
-    /// error while trying to download a file, and cached that fact. Represented by an empty file.
-    /// For the download cache, 403 errors do not fall under `Negative` but `CacheSpecificError`.
-    Negative,
-    /// We are unable to create or use the cache item. E.g. we failed to create a symcache.
-    /// See docs for [`MALFORMED_MARKER`].
-    Malformed(String),
-    /// We are unable to create the cache item due to an error exclusive to the type of cache the
-    /// entry is being created for. See docs for [`CACHE_SPECIFIC_ERROR_MARKER`].
-    CacheSpecificError(String),
-}
-
-impl AsRef<str> for CacheStatus {
-    fn as_ref(&self) -> &str {
-        match self {
-            CacheStatus::Positive => "positive",
-            CacheStatus::Negative => "negative",
-            CacheStatus::Malformed(_) => "malformed",
-            CacheStatus::CacheSpecificError(_) => "cache-specific error",
-        }
-    }
-}
-
-impl CacheStatus {
-    pub fn from_content(s: &[u8]) -> CacheStatus {
-        if s.starts_with(MALFORMED_MARKER) {
-            let raw_message = s.get(MALFORMED_MARKER.len()..).unwrap_or_default();
-            let err_msg = String::from_utf8_lossy(raw_message);
-            CacheStatus::Malformed(err_msg.into_owned())
-        } else if s.starts_with(CACHE_SPECIFIC_ERROR_MARKER) {
-            let raw_message = s
-                .get(CACHE_SPECIFIC_ERROR_MARKER.len()..)
-                .unwrap_or_default();
-            let err_msg = String::from_utf8_lossy(raw_message);
-            CacheStatus::CacheSpecificError(err_msg.into_owned())
-        } else if s.is_empty() {
-            CacheStatus::Negative
-        } else {
-            CacheStatus::Positive
-        }
-    }
-
-    /// Writes the status marker to the file, leaving the cursor at the end.
-    ///
-    /// For a positive status this only seeks to the end.  For the other cases this seeks
-    /// to the beginning, writes the appropriate marker and truncates the file.
-    pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
-        match self {
-            CacheStatus::Positive => {
-                file.seek(SeekFrom::End(0)).await?;
-            }
-            CacheStatus::Negative => {
-                file.rewind().await?;
-                file.set_len(0).await?;
-            }
-            CacheStatus::Malformed(details) => {
-                file.rewind().await?;
-                file.write_all(MALFORMED_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
-            }
-            CacheStatus::CacheSpecificError(details) => {
-                file.rewind().await?;
-                file.write_all(CACHE_SPECIFIC_ERROR_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
-            }
-        }
-        Ok(())
-    }
-}
 
 /// An error that happens when fetching an object from a remote location.
 ///
@@ -171,10 +70,18 @@ impl From<serde_json::Error> for CacheError {
 }
 
 impl CacheError {
+    const MALFORMED_MARKER: &[u8] = b"malformed";
     const PERMISSION_DENIED_MARKER: &[u8] = b"permissiondenied";
     const TIMEOUT_MARKER: &[u8] = b"timeout";
     const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
-    const MALFORMED_MARKER: &[u8] = b"malformed";
+
+    const SHOULD_WRITE_LEGACY_MARKERS: bool = true;
+
+    // These markers were used in the older `CacheStatus` implementation:
+    const LEGACY_PERMISSION_DENIED_MARKER: &[u8] =
+        b"cachespecificerrormissing permissions for file";
+    const LEGACY_TIMEOUT_MARKER: &[u8] = b"cachespecificerrordownload was cancelled";
+    const LEGACY_DOWNLOAD_ERROR_MARKER: &[u8] = b"cachespecificerror";
 
     /// Writes error markers and details to a file.
     ///
@@ -183,42 +90,53 @@ impl CacheError {
     /// * In all other cases, it writes the corresponding marker, followed by the error
     /// details, and truncates the file.
     pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
+        if let Self::InternalError = self {
+            tracing::error!("A `CacheError::InternalError` should never be written out");
+            return Ok(());
+        }
+        file.rewind().await?;
+
         match self {
-            Self::NotFound => {
-                file.rewind().await?;
-                file.set_len(0).await?;
+            CacheError::NotFound => {
+                // NOOP
             }
-            Self::PermissionDenied(details) => {
-                file.rewind().await?;
-                file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
-            }
-            Self::Timeout(duration) => {
-                file.rewind().await?;
-                file.write_all(Self::TIMEOUT_MARKER).await?;
-                file.write_all(format_duration(*duration).to_string().as_bytes())
-                    .await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
-            }
-            Self::DownloadError(details) => {
-                file.rewind().await?;
-                file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
-            }
-            Self::Malformed(details) => {
-                file.rewind().await?;
+            CacheError::Malformed(details) => {
                 file.write_all(Self::MALFORMED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
-                let new_len = file.stream_position().await?;
-                file.set_len(new_len).await?;
             }
-            Self::InternalError => {}
+            CacheError::PermissionDenied(details) => {
+                if Self::SHOULD_WRITE_LEGACY_MARKERS {
+                    file.write_all(Self::LEGACY_PERMISSION_DENIED_MARKER)
+                        .await?;
+                } else {
+                    file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
+                    file.write_all(details.as_bytes()).await?;
+                }
+            }
+            CacheError::Timeout(duration) => {
+                if Self::SHOULD_WRITE_LEGACY_MARKERS {
+                    file.write_all(Self::LEGACY_TIMEOUT_MARKER).await?;
+                } else {
+                    file.write_all(Self::TIMEOUT_MARKER).await?;
+                    file.write_all(format_duration(*duration).to_string().as_bytes())
+                        .await?;
+                }
+            }
+            CacheError::DownloadError(details) => {
+                if Self::SHOULD_WRITE_LEGACY_MARKERS {
+                    file.write_all(Self::LEGACY_DOWNLOAD_ERROR_MARKER).await?;
+                } else {
+                    file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
+                }
+                file.write_all(details.as_bytes()).await?;
+            }
+            CacheError::InternalError => {
+                unreachable!("this was already handled above");
+            }
         }
+
+        let new_len = file.stream_position().await?;
+        file.set_len(new_len).await?;
 
         Ok(())
     }
@@ -229,9 +147,17 @@ impl CacheError {
     /// * If the slice is empty, [`NotFound`](Self::NotFound) will be returned.
     /// * Otherwise `None` is returned.
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if let Some(raw_message) = bytes.strip_prefix(CacheError::PERMISSION_DENIED_MARKER) {
+        if let Some(raw_message) = bytes.strip_prefix(Self::PERMISSION_DENIED_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
             Some(Self::PermissionDenied(err_msg.into_owned()))
+        } else if let Some(raw_message) = bytes.strip_prefix(Self::LEGACY_PERMISSION_DENIED_MARKER)
+        {
+            // NOTE: `raw_message` is empty
+            let err_msg = String::from_utf8_lossy(raw_message);
+            Some(Self::PermissionDenied(err_msg.into_owned()))
+        } else if let Some(_raw_duration) = bytes.strip_prefix(Self::LEGACY_TIMEOUT_MARKER) {
+            // NOTE: `raw_duration` is empty
+            Some(Self::Timeout(Duration::from_secs(0)))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
             let raw_duration = String::from_utf8_lossy(raw_duration);
             match parse_duration(&raw_duration) {
@@ -241,6 +167,9 @@ impl CacheError {
                     Some(Self::InternalError)
                 }
             }
+        } else if let Some(raw_message) = bytes.strip_prefix(Self::LEGACY_DOWNLOAD_ERROR_MARKER) {
+            let err_msg = String::from_utf8_lossy(raw_message);
+            Some(Self::DownloadError(err_msg.into_owned()))
         } else if let Some(raw_message) = bytes.strip_prefix(Self::DOWNLOAD_ERROR_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
             Some(Self::DownloadError(err_msg.into_owned()))
@@ -251,22 +180,6 @@ impl CacheError {
             Some(Self::NotFound)
         } else {
             None
-        }
-    }
-
-    /// Returns the [`CacheStatus`] corresponding to this `CacheError`.
-    ///
-    /// Note that this method allocates strings for some of the variants.
-    pub fn as_cache_status(&self) -> CacheStatus {
-        match self {
-            Self::NotFound => CacheStatus::Negative,
-            Self::DownloadError(s) => CacheStatus::CacheSpecificError(s.clone()),
-            Self::PermissionDenied(_) => {
-                CacheStatus::CacheSpecificError("missing permissions for file".into())
-            }
-            Self::Timeout(_) => CacheStatus::CacheSpecificError("download was cancelled".into()),
-            Self::Malformed(s) => CacheStatus::Malformed(s.clone()),
-            Self::InternalError => CacheStatus::CacheSpecificError("internal error".into()),
         }
     }
 
@@ -281,40 +194,9 @@ impl CacheError {
 /// object could not be fetched or is otherwise unusable.
 pub type CacheEntry<T> = Result<T, CacheError>;
 
-/// Parses a `CacheEntry` from a [`ByteView`](ByteView).
+/// Parses a [`CacheEntry`] from a [`ByteView`](ByteView).
 pub fn cache_entry_from_bytes(bytes: ByteView<'static>) -> CacheEntry<ByteView<'static>> {
     CacheError::from_bytes(&bytes).map(Err).unwrap_or(Ok(bytes))
-}
-
-/// Transforms a `([CacheStatus], [ByteView])` pair into a [`CacheEntry`].
-pub fn cache_entry_from_cache_status(
-    status: CacheStatus,
-    content: ByteView<'static>,
-) -> CacheEntry<ByteView<'static>> {
-    match status {
-        CacheStatus::Positive => Ok(content),
-        CacheStatus::Negative => Err(CacheError::NotFound),
-        CacheStatus::Malformed(s) => Err(CacheError::Malformed(s)),
-        CacheStatus::CacheSpecificError(message) => {
-            if let Some(details) = message.strip_prefix("missing permissions for file") {
-                Err(CacheError::PermissionDenied(details.to_string()))
-            } else if message == "download was cancelled" {
-                Err(CacheError::Timeout(Duration::from_secs(0)))
-            } else {
-                Err(CacheError::DownloadError(message))
-            }
-        }
-    }
-}
-
-/// Returns the [`CacheStatus`] corresponding to the given `CacheEntry`.
-///
-/// Note that this function allocates strings for some of the variants.
-pub fn cache_entry_as_cache_status<T>(entry: &CacheEntry<T>) -> CacheStatus {
-    match entry {
-        Ok(_) => CacheStatus::Positive,
-        Err(e) => e.as_cache_status(),
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -564,7 +446,7 @@ impl Cache {
     fn check_expiry(
         &self,
         path: &Path,
-    ) -> io::Result<(CacheStatus, ByteView<'static>, ExpirationTime)> {
+    ) -> io::Result<(CacheEntry<ByteView<'static>>, ExpirationTime)> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
@@ -586,8 +468,8 @@ impl Cache {
         let mtime = metadata.modified()?;
         let mtime_elapsed = mtime.elapsed().unwrap_or_default();
 
-        let cache_status = CacheStatus::from_content(&bv);
-        let expiration_strategy = expiration_strategy(&self.cache_config, &cache_status);
+        let cache_entry = cache_entry_from_bytes(bv);
+        let expiration_strategy = expiration_strategy(&self.cache_config, &cache_entry);
 
         let expiration_time = match expiration_strategy {
             ExpirationStrategy::None => {
@@ -634,7 +516,7 @@ impl Cache {
             }
         };
 
-        Ok((cache_status, bv, expiration_time))
+        Ok((cache_entry, expiration_time))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -646,12 +528,12 @@ impl Cache {
     pub fn open_cachefile(
         &self,
         path: &Path,
-    ) -> io::Result<Option<(CacheStatus, ByteView<'static>, ExpirationTime)>> {
+    ) -> io::Result<Option<(CacheEntry<ByteView<'static>>, ExpirationTime)>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let (cache_status, bv, mut expiration) = self.check_expiry(path)?;
+            let (cache_entry, mut expiration) = self.check_expiry(path)?;
 
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
@@ -660,7 +542,7 @@ impl Cache {
                 expiration = ExpirationTime::TouchIn(TOUCH_EVERY);
             }
 
-            Ok((cache_status, bv, expiration))
+            Ok((cache_entry, expiration))
         })
     }
 
@@ -732,10 +614,10 @@ pub enum ExpirationTime {
 }
 
 impl ExpirationTime {
-    /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheStatus`].
-    pub fn for_fresh_status(cache: &Cache, status: &CacheStatus) -> Self {
+    /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheEntry`].
+    pub fn for_fresh_status(cache: &Cache, entry: &CacheEntry<ByteView<'static>>) -> Self {
         let config = &cache.cache_config;
-        let strategy = expiration_strategy(config, status);
+        let strategy = expiration_strategy(config, entry);
         match strategy {
             ExpirationStrategy::None => {
                 // we want to touch good caches once every hour
@@ -762,16 +644,19 @@ impl ExpirationTime {
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-fn expiration_strategy(cache_config: &CacheConfig, status: &CacheStatus) -> ExpirationStrategy {
+fn expiration_strategy(
+    cache_config: &CacheConfig,
+    status: &CacheEntry<ByteView<'static>>,
+) -> ExpirationStrategy {
     match status {
-        CacheStatus::Positive => ExpirationStrategy::None,
-        CacheStatus::Negative => ExpirationStrategy::Negative,
-        CacheStatus::Malformed(_) => ExpirationStrategy::Malformed,
+        Ok(_) => ExpirationStrategy::None,
+        Err(CacheError::NotFound) => ExpirationStrategy::Negative,
+        Err(CacheError::Malformed(_)) => ExpirationStrategy::Malformed,
         // The nature of cache-specific errors depends on the cache type so different
         // strategies are used based on which cache's file is being assessed here.
         // This won't kick in until `CacheStatus::from_content` stops classifying
         // files with CacheSpecificError contents as Malformed.
-        CacheStatus::CacheSpecificError(_) => match cache_config {
+        _ => match cache_config {
             CacheConfig::Downloaded(_) => ExpirationStrategy::Negative,
             CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
             CacheConfig::Diagnostics(_) => ExpirationStrategy::None,
@@ -1242,8 +1127,8 @@ mod tests {
 
     fn expiration_strategy(config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
         let bv = ByteView::open(path)?;
-        let cache_status = CacheStatus::from_content(&bv);
-        Ok(super::expiration_strategy(config, &cache_status))
+        let cache_entry = cache_entry_from_bytes(bv);
+        Ok(super::expiration_strategy(config, &cache_entry))
     }
 
     #[test]
@@ -1462,8 +1347,8 @@ mod tests {
         let old_mtime = fs::metadata(&path)?.modified()?;
 
         // Open it with the cache, check contents and new mtime.
-        let (_status, view, _expiration) = cache.open_cachefile(&path)?.expect("No file found");
-        assert_eq!(view.as_slice(), b"world");
+        let (entry, _expiration) = cache.open_cachefile(&path)?.expect("No file found");
+        assert_eq!(entry.unwrap().as_slice(), b"world");
 
         let new_mtime = fs::metadata(&path)?.modified()?;
         assert!(old_mtime < new_mtime);
@@ -1534,7 +1419,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_positive() -> Result<()> {
+    async fn test_cache_error_write_negative() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1542,36 +1427,8 @@ mod tests {
         // tokio::fs::File::create() directly
         let sync_file = File::create(&path)?;
         let mut async_file = tokio::fs::File::from_std(sync_file);
-
-        async_file.write_all(b"beep").await?;
-        // moving the cursor back to the beginning so the cursor behaviour
-        // is checked
-        async_file.rewind().await?;
-
-        let status = CacheStatus::Positive;
-        status.write(&mut async_file).await?;
-
-        // make sure write leaves the cursor at the end
-        let current_pos = async_file.stream_position().await?;
-        assert_eq!(current_pos, 4);
-
-        let contents = fs::read(&path)?;
-        assert_eq!(contents, b"beep");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_cache_status_write_negative() -> Result<()> {
-        let dir = tempdir()?;
-        let path = dir.path().join("honk");
-
-        // copying what compute does here instead of just using
-        // tokio::fs::File::create() directly
-        let sync_file = File::create(&path)?;
-        let mut async_file = tokio::fs::File::from_std(sync_file);
-        let status = CacheStatus::Negative;
-        status.write(&mut async_file).await?;
+        let error = CacheError::NotFound;
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
@@ -1584,7 +1441,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_negative_with_garbage() -> Result<()> {
+    async fn test_cache_error_write_negative_with_garbage() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1593,8 +1450,8 @@ mod tests {
         let sync_file = File::create(&path)?;
         let mut async_file = tokio::fs::File::from_std(sync_file);
         async_file.write_all(b"beep").await?;
-        let status = CacheStatus::Negative;
-        status.write(&mut async_file).await?;
+        let error = CacheError::NotFound;
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
@@ -1607,7 +1464,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_malformed() -> Result<()> {
+    async fn test_cache_error_write_malformed() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1617,20 +1474,20 @@ mod tests {
         let mut async_file = tokio::fs::File::from_std(sync_file);
 
         let error_message = "unsupported object file format";
-        let status = CacheStatus::Malformed(error_message.to_owned());
-        status.write(&mut async_file).await?;
+        let error = CacheError::Malformed(error_message.to_owned());
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            MALFORMED_MARKER.len() + error_message.len()
+            CacheError::MALFORMED_MARKER.len() + error_message.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(MALFORMED_MARKER);
+        expected.extend(CacheError::MALFORMED_MARKER);
         expected.extend(error_message.as_bytes());
 
         assert_eq!(contents, expected);
@@ -1639,7 +1496,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_malformed_truncates() -> Result<()> {
+    async fn test_cache_error_write_malformed_truncates() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1655,20 +1512,20 @@ mod tests {
             .await?;
 
         let error_message = "unsupported object file format";
-        let status = CacheStatus::Malformed(error_message.to_owned());
-        status.write(&mut async_file).await?;
+        let error = CacheError::Malformed(error_message.to_owned());
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            MALFORMED_MARKER.len() + error_message.len()
+            CacheError::MALFORMED_MARKER.len() + error_message.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(MALFORMED_MARKER);
+        expected.extend(CacheError::MALFORMED_MARKER);
         expected.extend(error_message.as_bytes());
 
         assert_eq!(contents, expected);
@@ -1677,7 +1534,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_cache_error() -> Result<()> {
+    async fn test_cache_error_write_cache_error() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1686,22 +1543,20 @@ mod tests {
         let sync_file = File::create(&path)?;
         let mut async_file = tokio::fs::File::from_std(sync_file);
 
-        let error_message = "missing permissions for file";
-        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
-        status.write(&mut async_file).await?;
+        let error = CacheError::PermissionDenied("".into());
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+            CacheError::LEGACY_PERMISSION_DENIED_MARKER.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
-        expected.extend(error_message.as_bytes());
+        expected.extend(CacheError::LEGACY_PERMISSION_DENIED_MARKER);
 
         assert_eq!(contents, expected);
 
@@ -1709,7 +1564,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cache_status_write_cache_error_truncates() -> Result<()> {
+    async fn test_cache_error_write_cache_error_truncates() -> Result<()> {
         let dir = tempdir()?;
         let path = dir.path().join("honk");
 
@@ -1724,27 +1579,26 @@ mod tests {
             )
             .await?;
 
-        let error_message = "missing permissions for file";
-        let status = CacheStatus::CacheSpecificError(error_message.to_owned());
-        status.write(&mut async_file).await?;
+        let error = CacheError::PermissionDenied("".into());
+        error.write(&mut async_file).await?;
 
         // make sure write leaves the cursor at the end
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            CACHE_SPECIFIC_ERROR_MARKER.len() + error_message.len()
+            CacheError::LEGACY_PERMISSION_DENIED_MARKER.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(CACHE_SPECIFIC_ERROR_MARKER);
-        expected.extend(error_message.as_bytes());
+        expected.extend(CacheError::LEGACY_PERMISSION_DENIED_MARKER);
 
         assert_eq!(contents, expected);
 
         Ok(())
     }
+
     #[test]
     fn test_shared_cache_config_filesystem_common_defaults() {
         let yaml = r#"
