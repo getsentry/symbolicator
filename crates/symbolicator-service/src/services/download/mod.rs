@@ -25,7 +25,7 @@ pub use symbolicator_sources::{
     SourceFilters, SourceLocation,
 };
 
-use crate::cache::{CacheError, CacheStatus};
+use crate::cache::CacheError;
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
@@ -129,39 +129,6 @@ impl From<DownloadError> for CacheError {
             DownloadError::Permissions => Self::PermissionDenied(String::new()),
             DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
             _ => Self::from_std_error(error),
-        }
-    }
-}
-
-impl DownloadError {
-    /// This produces a user-facing string representation of a download error if it is a variant
-    /// that needs to be stored as a [`CacheStatus::CacheSpecificError`] entry in the download cache.
-    pub fn for_cache(&self) -> String {
-        match self {
-            DownloadError::Gcs(inner) => format!("{self}: {inner}"),
-            DownloadError::Sentry(inner) => format!("{self}: {inner}"),
-            DownloadError::S3(inner) => format!("{self}: {inner}"),
-            DownloadError::Permissions => self.to_string(),
-            DownloadError::CachedError(original_message) => original_message.clone(),
-            _ => format!("{self}"),
-        }
-    }
-
-    /// If a given cache entry is [`CacheStatus::CacheSpecificError`], this parses and extracts its
-    /// contents into a [`DownloadError`]. This will return none if a
-    /// non-[`CacheStatus::CacheSpecificError`] is provided.
-    pub fn from_cache(status: &CacheStatus) -> Option<Self> {
-        match status {
-            CacheStatus::Positive => None,
-            CacheStatus::Negative => None,
-            CacheStatus::Malformed(_) => None,
-            CacheStatus::CacheSpecificError(message) => {
-                if message.starts_with(&Self::Permissions.to_string()) {
-                    Some(Self::Permissions)
-                } else {
-                    Some(Self::CachedError(message.clone()))
-                }
-            }
         }
     }
 }
