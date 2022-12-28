@@ -7,6 +7,7 @@
 - Use a default crash DB if we have a Cache configured. ([#941](https://github.com/getsentry/symbolicator/pull/941))
 - Simplified internal error and cache architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929),
   [#936](https://github.com/getsentry/symbolicator/pull/936), [#937](https://github.com/getsentry/symbolicator/pull/937))
+- Migrate from `rusoto` to `aws-sdk-s3`. ([#849](https://github.com/getsentry/symbolicator/pull/849), [#954](https://github.com/getsentry/symbolicator/pull/954))
 
 ## 0.6.0
 
@@ -26,7 +27,6 @@
 - Update symbolic and increase SymCache Version to `4` which now uses a LEB128-prefixed string table. ([#886](https://github.com/getsentry/symbolicator/pull/886))
 - Add Configuration options for in-memory Caches. ([#911](https://github.com/getsentry/symbolicator/pull/911))
 - Add the `symbolicli` utility for local symbolication. ([#919](https://github.com/getsentry/symbolicator/pull/919))
-- Migrate from rusoto to aws-sdk-rust ([#849](https://github.com/getsentry/symbolicator/pull/849))
 
 ### Fixes
 
