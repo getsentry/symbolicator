@@ -10,15 +10,14 @@ use std::time::Duration;
 
 use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
 use aws_sdk_s3::types::SdkError;
-use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
+use aws_sdk_s3::{Client, Endpoint};
 use aws_types::credentials::{Credentials, ProvideCredentials};
-use aws_types::region::Region;
 use futures::TryStreamExt;
 
 use reqwest::StatusCode;
 use symbolicator_sources::{
-    AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3RemoteFile, S3SourceConfig,
+    AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3Region, S3RemoteFile, S3SourceConfig,
     S3SourceKey,
 };
 
@@ -64,7 +63,6 @@ impl S3Downloader {
             .get_with_by_ref(key, async {
                 metric!(counter("source.s3.client.create") += 1);
 
-                let region = key.region.clone();
                 tracing::debug!(
                     "Using AWS credentials provider: {:?}",
                     key.aws_credentials_provider
@@ -74,7 +72,7 @@ impl S3Downloader {
                         let provider = LazyCachingCredentialsProvider::builder()
                             .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
                             .build();
-                        self.create_s3_client(provider, region).await
+                        self.create_s3_client(provider, &key.region).await
                     }
                     AwsCredentialsProvider::Static => {
                         let provider = Credentials::from_keys(
@@ -82,7 +80,7 @@ impl S3Downloader {
                             key.secret_key.clone(),
                             None,
                         );
-                        self.create_s3_client(provider, region).await
+                        self.create_s3_client(provider, &key.region).await
                     }
                 })
             })
@@ -92,14 +90,24 @@ impl S3Downloader {
     async fn create_s3_client(
         &self,
         provider: impl ProvideCredentials + Send + Sync + 'static,
-        region: Region,
+        region: &S3Region,
     ) -> Client {
-        let shared_config = aws_config::from_env()
+        let mut config_loader = aws_config::from_env()
             .credentials_provider(provider)
-            .region(region)
-            .load()
-            .await;
-        Client::new(&shared_config)
+            .region(region.region.clone());
+
+        if let Some(endpoint) = region.endpoint.as_ref() {
+            match Endpoint::immutable(endpoint) {
+                Ok(endpoint) => config_loader = config_loader.endpoint_resolver(endpoint),
+                Err(err) => {
+                    let error: &dyn std::error::Error = &err;
+                    tracing::error!(error, "Failed creating custom `Endpoint`",);
+                }
+            };
+        }
+
+        let config = config_loader.load().await;
+        Client::new(&config)
     }
 
     /// Downloads a source hosted on an S3 bucket.
@@ -237,7 +245,7 @@ mod tests {
             None
         } else {
             Some(S3SourceKey {
-                region: Region::from_static("us-east-1"),
+                region: S3Region::from("us-east-1"),
                 aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
                 secret_key,
@@ -344,7 +352,7 @@ mod tests {
         );
         let shared_config = aws_config::from_env()
             .credentials_provider(provider)
-            .region(source_key.region)
+            .region(source_key.region.region)
             .load()
             .await;
         let s3_client = Client::new(&shared_config);
@@ -441,7 +449,7 @@ mod tests {
         test::setup();
 
         let broken_key = S3SourceKey {
-            region: Region::from_static("us-east-1"),
+            region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             // leaving these empty would result in a `AuthorizationHeaderMalformed`, See:
             // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
@@ -471,7 +479,7 @@ mod tests {
     #[test]
     fn test_s3_remote_dif_uri() {
         let source_key = Arc::new(S3SourceKey {
-            region: Region::from_static("us-east-1"),
+            region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: String::from("abc"),
             secret_key: String::from("123"),

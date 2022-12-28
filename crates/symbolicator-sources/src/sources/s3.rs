@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use aws_types::region::Region;
+use serde::ser::SerializeTuple;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{CommonSourceConfig, RemoteFile, RemoteFileUri, SourceId, SourceLocation};
@@ -66,35 +67,57 @@ impl S3RemoteFile {
     }
 }
 
-fn serialize_region<S>(region: &Region, s: S) -> Result<S::Ok, S::Error>
+fn serialize_region<S>(region: &S3Region, s: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
-    s.serialize_str((&region).as_ref())
+    match region.endpoint.as_ref() {
+        Some(endpoint) => {
+            let mut seq = s.serialize_tuple(2)?;
+
+            seq.serialize_element(region.region.as_ref())?;
+            seq.serialize_element(endpoint.as_str())?;
+
+            seq.end()
+        }
+        None => s.serialize_str(region.region.as_ref()),
+    }
 }
 
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
+fn deserialize_region<'de, D>(deserializer: D) -> Result<S3Region, D::Error>
 where
     D: Deserializer<'de>,
 {
-    // This is a Visitor that forwards string types to rusoto_core::Region's
-    // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
-    // impl.
+    // This is a Visitor that treats string types as a builtin region and
+    // tuples as custom regions.
     struct SdkRegion;
 
     impl<'de> serde::de::Visitor<'de> for SdkRegion {
-        type Value = Region;
+        type Value = S3Region;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("string")
+            formatter.write_str("string or tuple")
         }
 
-        fn visit_str<E>(self, value: &str) -> Result<Region, E>
+        fn visit_str<E>(self, value: &str) -> Result<S3Region, E>
         where
             E: serde::de::Error,
         {
-            Ok(Region::new(String::from(value)))
+            Ok(S3Region::from(value))
+        }
+
+        fn visit_seq<S>(self, seq: S) -> Result<S3Region, S::Error>
+        where
+            S: serde::de::SeqAccess<'de>,
+        {
+            let tup: (String, String) =
+                Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))?;
+
+            Ok(S3Region {
+                region: Region::new(tup.0),
+                endpoint: Some(tup.1),
+            })
         }
     }
 
@@ -128,7 +151,7 @@ pub struct S3SourceKey {
         deserialize_with = "deserialize_region",
         serialize_with = "serialize_region"
     )]
-    pub region: Region,
+    pub region: S3Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
     #[serde(default)]
@@ -141,6 +164,25 @@ pub struct S3SourceKey {
     /// S3 secret key.
     #[serde(default)]
     pub secret_key: String,
+}
+
+/// A wrapper around an S3 region that allows using custom regions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct S3Region {
+    /// The underlying [`Region`].
+    pub region: Region,
+    /// An optional endpoint for custom regions.
+    pub endpoint: Option<String>,
+}
+
+impl From<&str> for S3Region {
+    fn from(value: &str) -> Self {
+        let region = Region::new(String::from(value));
+        Self {
+            region,
+            endpoint: None,
+        }
+    }
 }
 
 impl PartialEq for S3SourceKey {
@@ -185,7 +227,7 @@ mod tests {
             SourceConfig::S3(cfg) => {
                 assert_eq!(cfg.id, SourceId("us-east".to_string()));
                 assert_eq!(cfg.bucket, "my-supermarket-bucket");
-                assert_eq!(cfg.source_key.region, Region::new("us-east-1"));
+                assert_eq!(cfg.source_key.region, S3Region::from("us-east-1"));
                 assert_eq!(cfg.source_key.access_key, "the-access-key");
                 assert_eq!(cfg.source_key.secret_key, "the-secret-key");
             }
@@ -193,7 +235,7 @@ mod tests {
         }
     }
 
-    /*#[test]
+    #[test]
     fn test_s3_config_custom_region() {
         let text = r#"
           - id: minio
@@ -213,15 +255,15 @@ mod tests {
                 assert_eq!(cfg.id, SourceId("minio".to_string()));
                 assert_eq!(
                     cfg.source_key.region,
-                    Region::Custom {
-                        name: "minio".to_string(),
-                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
+                    S3Region {
+                        region: Region::new("minio".to_string()),
+                        endpoint: Some("http://minio.minio.svc.cluster.local:9000".to_string()),
                     }
                 );
             }
             _ => unreachable!(),
         }
-    }*/
+    }
 
     #[test]
     fn test_s3_config_plain_empty_region() {
