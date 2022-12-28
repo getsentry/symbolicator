@@ -157,8 +157,13 @@ impl S3Downloader {
                         // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
                         let response = service_err.raw();
                         let status = response.http().status();
+                        let code = service_err.err().code();
 
-                        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+                        // NOTE: leaving the credentials empty as our unit / integration tests do
+                        // leads to a `AuthorizationHeaderMalformed` error.
+                        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+                            || code == Some("AuthorizationHeaderMalformed")
+                        {
                             // TODO: we could use the `message` of the error in the future:
                             // service_err.err().message()
                             return Ok(DownloadStatus::PermissionDenied);
@@ -451,10 +456,8 @@ mod tests {
         let broken_key = S3SourceKey {
             region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
-            // leaving these empty would result in a `AuthorizationHeaderMalformed`, See:
-            // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
-            access_key: "INVALID".into(),
-            secret_key: "INVALID".into(),
+            access_key: "".into(),
+            secret_key: "".into(),
         };
         let source = s3_source(broken_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
