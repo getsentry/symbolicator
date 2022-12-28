@@ -118,8 +118,8 @@ impl S3Downloader {
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
-        let source_key = &file_source.source.source_key;
-        let client = self.get_s3_client(source_key).await;
+        let source_key = file_source.source.source_key.clone();
+        let client = self.get_s3_client(&source_key).await;
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);

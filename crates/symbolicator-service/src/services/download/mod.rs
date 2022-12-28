@@ -123,8 +123,8 @@ impl From<DownloadError> for CacheError {
             DownloadError::S3(e) => {
                 Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
-            DownloadError::S3WithCode(status, code) => {
-                Self::DownloadError(format!("S3 error code: {code} (http status: {status})"))
+            DownloadError::S3Sdk(e) => {
+                Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
             DownloadError::Permissions => Self::PermissionDenied(String::new()),
             DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
