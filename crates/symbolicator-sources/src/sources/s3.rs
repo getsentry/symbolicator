@@ -2,6 +2,7 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
+use aws_types::region::Region;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{CommonSourceConfig, RemoteFile, RemoteFileUri, SourceId, SourceLocation};
@@ -66,39 +67,39 @@ impl S3RemoteFile {
     }
 }
 
+fn serialize_region<S>(region: &Region, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    s.serialize_str((&region).as_ref())
+}
+
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
+fn deserialize_region<'de, D>(deserializer: D) -> Result<Region, D::Error>
 where
     D: Deserializer<'de>,
 {
     // This is a Visitor that forwards string types to rusoto_core::Region's
     // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
     // impl.
-    struct RusotoRegion;
+    struct SdkRegion;
 
-    impl<'de> serde::de::Visitor<'de> for RusotoRegion {
-        type Value = rusoto_core::Region;
+    impl<'de> serde::de::Visitor<'de> for SdkRegion {
+        type Value = Region;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("string or tuple")
+            formatter.write_str("string")
         }
 
-        fn visit_str<E>(self, value: &str) -> Result<rusoto_core::Region, E>
+        fn visit_str<E>(self, value: &str) -> Result<Region, E>
         where
             E: serde::de::Error,
         {
-            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {e:?}")))
-        }
-
-        fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>
-        where
-            S: serde::de::SeqAccess<'de>,
-        {
-            Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+            Ok(Region::new(String::from(value)))
         }
     }
 
-    deserializer.deserialize_any(RusotoRegion)
+    deserializer.deserialize_any(SdkRegion)
 }
 
 /// The types of Amazon IAM credentials providers we support.
@@ -124,8 +125,11 @@ impl Default for AwsCredentialsProvider {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
-    #[serde(deserialize_with = "deserialize_region")]
-    pub region: rusoto_core::Region,
+    #[serde(
+        deserialize_with = "deserialize_region",
+        serialize_with = "serialize_region"
+    )]
+    pub region: Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
     #[serde(default)]
@@ -182,7 +186,7 @@ mod tests {
             SourceConfig::S3(cfg) => {
                 assert_eq!(cfg.id, SourceId("us-east".to_string()));
                 assert_eq!(cfg.bucket, "my-supermarket-bucket");
-                assert_eq!(cfg.source_key.region, Region::UsEast1);
+                assert_eq!(cfg.source_key.region, Region::new("us-east-1"));
                 assert_eq!(cfg.source_key.access_key, "the-access-key");
                 assert_eq!(cfg.source_key.secret_key, "the-secret-key");
             }

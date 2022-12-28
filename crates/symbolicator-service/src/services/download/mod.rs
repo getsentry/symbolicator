@@ -17,6 +17,8 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
+use aws_smithy_http;
+
 use symbolicator_sources::get_directory_paths;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
@@ -65,8 +67,8 @@ pub enum DownloadError {
     Sentry(sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
-    #[error("S3 error code: {1} (http status: {0})")]
-    S3WithCode(StatusCode, String),
+    #[error("aws-sdk: failed to fetch data from S3")]
+    S3Sdk(#[from] aws_smithy_http::byte_stream::Error),
     #[error("missing permissions for file")]
     Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.
@@ -533,7 +535,7 @@ impl Iterator for SourceLocationIter<'_> {
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }

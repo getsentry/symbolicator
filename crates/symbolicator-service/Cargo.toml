@@ -12,6 +12,10 @@ https = []
 anyhow = "1.0.57"
 apple-crash-report-parser = "0.5.0"
 async-trait = "0.1.53"
+aws-config = "0.51.0"
+aws-types = { version = "0.51.0", features = ["hardcoded-credentials"] }
+aws-sdk-s3 = "0.21.0"
+aws-smithy-http = "0.51.0"
 backtrace = "0.3.65"
 base64 = "0.20.0"
 cadence = "0.29.0"
@@ -31,9 +35,6 @@ moka = { version = "0.9", features = ["future"] }
 parking_lot = "0.12.0"
 regex = "1.5.5"
 reqwest = { version = "0.11.0", features = ["gzip", "json", "stream", "trust-dns"] }
-rusoto_core = "0.48.0"
-rusoto_credential = "0.48.0"
-rusoto_s3 = "0.48.0"
 sentry = { version = "0.29.1", features = ["tracing"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
