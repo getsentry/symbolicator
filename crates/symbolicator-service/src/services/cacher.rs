@@ -550,7 +550,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
-async fn persist_tempfile(
+pub async fn persist_tempfile(
     mut temp_file: NamedTempFile,
     cache_path: PathBuf,
 ) -> io::Result<std::fs::File> {

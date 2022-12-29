@@ -18,6 +18,7 @@ use crate::config::Config;
 
 pub mod bitcode;
 pub mod cacher;
+pub mod cacher2;
 pub mod cficaches;
 pub mod derived;
 pub mod download;
