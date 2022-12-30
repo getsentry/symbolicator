@@ -5,14 +5,12 @@
 
 use std::convert::TryInto;
 use std::error::Error;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
-use tempfile::NamedTempFile;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -134,43 +132,26 @@ impl DownloadService {
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    async fn dispatch_download(
-        &self,
-        source: &RemoteFile,
-        temp_file: NamedTempFile,
-    ) -> CacheEntry<NamedTempFile> {
-        let destination = temp_file.path();
-
+    async fn dispatch_download(&self, source: &RemoteFile, file: &mut File) -> CacheEntry {
         let result = retry(|| async {
             match source {
-                RemoteFile::Sentry(inner) => {
-                    self.sentry
-                        .download_source(inner.clone(), destination)
-                        .await
-                }
-                RemoteFile::Http(inner) => {
-                    self.http.download_source(inner.clone(), destination).await
-                }
-                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
-                RemoteFile::Gcs(inner) => {
-                    self.gcs.download_source(inner.clone(), destination).await
-                }
-                RemoteFile::Filesystem(inner) => {
-                    self.fs.download_source(inner.clone(), destination).await
-                }
+                RemoteFile::Sentry(inner) => self.sentry.download_source(inner.clone(), file).await,
+                RemoteFile::Http(inner) => self.http.download_source(inner.clone(), file).await,
+                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), file).await,
+                RemoteFile::Gcs(inner) => self.gcs.download_source(inner.clone(), file).await,
+                RemoteFile::Filesystem(inner) => self.fs.download_source(inner.clone(), file).await,
             }
         });
 
-        match result.await {
-            Ok(_) => {
-                tracing::debug!("File `{}` fetched successfully", source);
-                Ok(temp_file)
-            }
-            Err(err) => {
-                tracing::debug!("File `{}` fetching failed: {}", source, err);
-                Err(err)
-            }
+        let result = result.await;
+
+        if let Err(err) = &result {
+            tracing::debug!("File `{}` fetching failed: {}", source, err);
+        } else {
+            tracing::debug!("File `{}` fetched successfully", source);
         }
+
+        result
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -180,13 +161,9 @@ impl DownloadService {
     /// The downloaded file is saved into `destination`. The file will be created if it does not
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
-    pub async fn download(
-        self: Arc<Self>,
-        source: RemoteFile,
-        destination: NamedTempFile,
-    ) -> CacheEntry<NamedTempFile> {
+    pub async fn download(self: &Arc<Self>, source: RemoteFile, file: File) -> CacheEntry {
         let slf = self.clone();
-        let job = async move { slf.dispatch_download(&source, destination).await };
+        let job = async move { slf.dispatch_download(&source, &mut file).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
@@ -231,10 +208,11 @@ impl DownloadService {
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
-pub async fn retry<G, F, T>(mut task_gen: G) -> CacheEntry<T>
+// FIXME(swatinem): this look suspiciously like the "borrowing iterator" pattern and may need some GAT magic
+pub async fn retry<'a, G, F, T>(mut task_gen: G) -> CacheEntry<T>
 where
-    G: FnMut() -> F,
-    F: Future<Output = CacheEntry<T>>,
+    G: FnMut() -> F + 'a,
+    F: Future<Output = CacheEntry<T>> + 'a,
 {
     let mut tries = 0;
     loop {
@@ -261,13 +239,12 @@ where
 async fn download_stream(
     source: &RemoteFile,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    destination: &Path,
+    file: &mut File,
     timeout: Option<Duration>,
 ) -> CacheEntry {
     // All file I/O in this function is blocking!
     tracing::trace!("Downloading from {}", source);
     let future = async {
-        let mut file = File::create(destination).await?;
         futures::pin_mut!(stream);
 
         let mut throughput_recorder =
@@ -302,7 +279,7 @@ async fn download_reqwest(
     builder: reqwest::RequestBuilder,
     connect_timeout: Duration,
     streaming_timeout: Duration,
-    destination: &Path,
+    file: &mut File,
 ) -> CacheEntry {
     let request = builder.send();
 
@@ -325,7 +302,7 @@ async fn download_reqwest(
         let timeout = content_length.map(|cl| content_length_timeout(cl, streaming_timeout));
         let stream = response.bytes_stream().map_err(CacheError::from);
 
-        download_stream(source, stream, destination, timeout).await
+        download_stream(source, stream, file, timeout).await
     } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
         tracing::debug!(
             "Insufficient permissions to download `{}`: {}",
@@ -541,16 +518,14 @@ mod tests {
         let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
-        match service
-            .download(file_source, tempfile::NamedTempFile::new().unwrap())
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        service
+            .download(file_source, File::from_std(temp_file.reopen().unwrap()))
             .await
-        {
-            Ok(temp_file) => {
-                let content = std::fs::read_to_string(temp_file.path()).unwrap();
-                assert_eq!(content, "hello world\n")
-            }
-            _ => panic!("download should be completed"),
-        }
+            .unwrap();
+
+        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        assert_eq!(content, "hello world\n")
     }
 
     #[tokio::test]

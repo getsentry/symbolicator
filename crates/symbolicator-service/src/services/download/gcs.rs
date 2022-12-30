@@ -3,12 +3,12 @@
 //! Specifically this supports the [`GcsSourceConfig`] source.
 
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use symbolicator_sources::{
     FileType, GcsRemoteFile, GcsSourceConfig, GcsSourceKey, ObjectId, RemoteFile,
 };
+use tokio::fs::File;
 
 use crate::cache::CacheEntry;
 use crate::utils::gcs::{self, GcsError, GcsToken};
@@ -64,11 +64,7 @@ impl GcsDownloader {
     }
 
     /// Downloads a source hosted on GCS.
-    pub async fn download_source(
-        &self,
-        file_source: GcsRemoteFile,
-        destination: &Path,
-    ) -> CacheEntry {
+    pub async fn download_source(&self, file_source: GcsRemoteFile, file: &mut File) -> CacheEntry {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
@@ -88,7 +84,7 @@ impl GcsDownloader {
             request,
             self.connect_timeout,
             self.streaming_timeout,
-            destination,
+            file,
         )
         .await
     }
@@ -115,16 +111,18 @@ impl GcsDownloader {
 mod tests {
     use super::*;
 
+    use std::io::Read;
+
+    use reqwest::Client;
+    use sha1::{Digest as _, Sha1};
     use symbolicator_sources::{
         CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
         SourceLocation,
     };
+    use tempfile::tempfile;
 
     use crate::cache::CacheError;
     use crate::test;
-
-    use reqwest::Client;
-    use sha1::{Digest as _, Sha1};
 
     fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
         Arc::new(GcsSourceConfig {
@@ -177,19 +175,20 @@ mod tests {
             100.try_into().unwrap(),
         );
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         // Location of /usr/lib/system/libdyld.dylib
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert!(download_status.is_ok());
-        assert!(target_path.exists());
+        assert!(result.is_ok());
 
-        let hash = Sha1::digest(std::fs::read(target_path).unwrap());
+        let mut buf = vec![];
+        let file = file.into_std().await;
+        file.read_to_end(&mut buf).unwrap();
+        let hash = Sha1::digest(buf);
         let hash = format!("{hash:x}");
         assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
     }
@@ -206,16 +205,14 @@ mod tests {
             100.try_into().unwrap(),
         );
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert_eq!(download_status, Err(CacheError::NotFound));
-        assert!(!target_path.exists());
+        assert_eq!(result, Err(CacheError::NotFound));
     }
 
     #[tokio::test]
@@ -235,18 +232,14 @@ mod tests {
             100.try_into().unwrap(),
         );
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        downloader
-            .download_source(file_source, &target_path)
-            .await
-            .expect_err("authentication should fail");
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert!(!target_path.exists());
+        assert_eq!(result, Err(CacheError::PermissionDenied("".into())));
     }
 
     #[test]

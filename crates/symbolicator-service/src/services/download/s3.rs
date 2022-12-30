@@ -4,7 +4,6 @@
 
 use std::any::type_name;
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,6 +19,7 @@ use symbolicator_sources::{
     AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3Region, S3RemoteFile, S3SourceConfig,
     S3SourceKey,
 };
+use tokio::fs::File;
 
 use crate::cache::{CacheEntry, CacheError};
 
@@ -113,11 +113,7 @@ impl S3Downloader {
     }
 
     /// Downloads a source hosted on an S3 bucket.
-    pub async fn download_source(
-        &self,
-        file_source: S3RemoteFile,
-        destination: &Path,
-    ) -> CacheEntry {
+    pub async fn download_source(&self, file_source: S3RemoteFile, file: &mut File) -> CacheEntry {
         let key = file_source.key();
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
@@ -204,7 +200,7 @@ impl S3Downloader {
                 .map_err(|err| CacheError::download_error(&err))
         };
 
-        super::download_stream(&source, stream, destination, timeout).await
+        super::download_stream(&source, stream, file, timeout).await
     }
 
     pub fn list_files(
@@ -229,18 +225,19 @@ impl S3Downloader {
 mod tests {
     use super::*;
 
+    use std::io::Read;
     use std::path::Path;
-
-    use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
-        SourceLocation,
-    };
-
-    use crate::test;
 
     use aws_sdk_s3::client::Client;
     use aws_smithy_http::byte_stream::ByteStream;
     use sha1::{Digest as _, Sha1};
+    use symbolicator_sources::{
+        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        SourceLocation,
+    };
+    use tempfile::tempfile;
+
+    use crate::test;
 
     /// Name of the bucket to create for testing.
     const S3_BUCKET: &str = "symbolicator-test";
@@ -408,18 +405,19 @@ mod tests {
         let source = s3_source(source_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert!(download_status.is_ok());
-        assert!(target_path.exists());
+        assert!(result.is_ok());
 
-        let hash = Sha1::digest(std::fs::read(target_path).unwrap());
+        let mut buf = vec![];
+        let file = file.into_std().await;
+        file.read_to_end(&mut buf).unwrap();
+        let hash = Sha1::digest(buf);
         let hash = format!("{hash:x}");
         assert_eq!(hash, "e0195c064783997b26d6e2e625da7417d9f63677");
     }
@@ -434,16 +432,14 @@ mod tests {
         let source = s3_source(source_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert_eq!(download_status, Err(CacheError::NotFound));
-        assert!(!target_path.exists());
+        assert_eq!(result, Err(CacheError::NotFound));
     }
 
     #[tokio::test]
@@ -459,21 +455,18 @@ mod tests {
         let source = s3_source(broken_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
 
-        let tempdir = test::tempdir();
-        let target_path = tempdir.path().join("myfile");
+        let file = File::from_std(tempfile().unwrap());
 
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let result = downloader.download_source(file_source, &target_path).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
         assert!(
             matches!(result, Err(CacheError::PermissionDenied(_))),
             "{:?}",
             result
         );
-
-        assert!(!target_path.exists());
     }
 
     #[test]

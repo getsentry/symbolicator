@@ -2,13 +2,13 @@
 //!
 //! Specifically this supports the [`HttpSourceConfig`] source.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::{header, Client};
 
 use symbolicator_sources::{FileType, HttpRemoteFile, HttpSourceConfig, ObjectId, RemoteFile};
+use tokio::fs::File;
 
 use crate::cache::{CacheEntry, CacheError};
 
@@ -35,7 +35,7 @@ impl HttpDownloader {
     pub async fn download_source(
         &self,
         file_source: HttpRemoteFile,
-        destination: &Path,
+        file: &mut File,
     ) -> CacheEntry {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
@@ -55,7 +55,7 @@ impl HttpDownloader {
             request,
             self.connect_timeout,
             self.streaming_timeout,
-            destination,
+            file,
         )
         .await
     }
@@ -82,7 +82,10 @@ impl HttpDownloader {
 mod tests {
     use super::*;
 
+    use std::io::Read;
+
     use symbolicator_sources::{SourceConfig, SourceLocation};
+    use tempfile::tempfile;
 
     use crate::test;
 
@@ -90,8 +93,7 @@ mod tests {
     async fn test_download_source() {
         test::setup();
 
-        let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path();
+        let file = File::from_std(tempfile().unwrap());
 
         let (_srv, source) = test::symbol_server();
         let http_source = match source {
@@ -106,11 +108,13 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert!(download_status.is_ok());
+        assert!(result.is_ok());
 
-        let content = std::fs::read_to_string(dest).unwrap();
+        let mut content = String::new();
+        let file = file.into_std().await;
+        file.read_to_string(&mut content).unwrap();
         assert_eq!(content, "hello world\n");
     }
 
@@ -118,8 +122,7 @@ mod tests {
     async fn test_download_source_missing() {
         test::setup();
 
-        let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path();
+        let file = File::from_std(tempfile().unwrap());
 
         let (_srv, source) = test::symbol_server();
         let http_source = match source {
@@ -134,8 +137,8 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await;
+        let result = downloader.download_source(file_source, &mut file).await;
 
-        assert_eq!(download_status, Err(CacheError::NotFound));
+        assert_eq!(result, Err(CacheError::NotFound));
     }
 }

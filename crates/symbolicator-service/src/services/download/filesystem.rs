@@ -5,10 +5,9 @@
 //! testing.
 
 use std::io;
-use std::path::Path;
 use std::sync::Arc;
 
-use tokio::fs;
+use tokio::fs::File;
 
 use symbolicator_sources::{
     FileType, FilesystemRemoteFile, FilesystemSourceConfig, ObjectId, RemoteFile,
@@ -29,13 +28,15 @@ impl FilesystemDownloader {
     pub async fn download_source(
         &self,
         file_source: FilesystemRemoteFile,
-        dest: &Path,
+        file: &mut File,
     ) -> CacheEntry {
         // All file I/O in this function is blocking!
         let abspath = file_source.path();
         tracing::debug!("Fetching debug file from {:?}", abspath);
 
-        fs::copy(abspath, dest)
+        let mut src = File::open(abspath).await?;
+
+        tokio::io::copy(&mut src, file)
             .await
             .map(|_| ())
             .map_err(|e| match e.kind() {

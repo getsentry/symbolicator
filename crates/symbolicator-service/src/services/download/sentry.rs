@@ -4,11 +4,11 @@
 //! to fetch files which were directly uploaded to Sentry itself.
 
 use std::fmt;
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use sentry::SentryFutureExt;
+use tokio::fs::File;
 use url::Url;
 
 use symbolicator_sources::{
@@ -198,7 +198,7 @@ impl SentryDownloader {
     pub async fn download_source(
         &self,
         file_source: SentryRemoteFile,
-        destination: &Path,
+        file: &mut File,
     ) -> CacheEntry {
         let request = self
             .client
@@ -212,7 +212,7 @@ impl SentryDownloader {
             request,
             self.connect_timeout,
             self.streaming_timeout,
-            destination,
+            file,
         )
         .await
     }
