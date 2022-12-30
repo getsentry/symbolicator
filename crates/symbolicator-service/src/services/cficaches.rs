@@ -196,7 +196,7 @@ impl CfiCacheActor {
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
-fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
+fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
     object_handle.configure_scope();
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key);

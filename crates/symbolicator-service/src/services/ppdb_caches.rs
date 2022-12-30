@@ -177,7 +177,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 ///
 /// It is assumed that the `object_handle` contains a positive cache.
 #[tracing::instrument(skip_all)]
-fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
+fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
     object_handle.configure_scope();
 
     let ppdb_obj = match object_handle.object() {

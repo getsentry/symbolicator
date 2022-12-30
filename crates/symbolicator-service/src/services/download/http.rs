@@ -6,13 +6,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
-use futures::prelude::*;
-use reqwest::{header, Client, StatusCode};
+use reqwest::{header, Client};
 
 use symbolicator_sources::{FileType, HttpRemoteFile, HttpSourceConfig, ObjectId, RemoteFile};
 
-use super::{content_length_timeout, DownloadError, DownloadStatus, USER_AGENT};
+use crate::cache::{CacheEntry, CacheError};
+
+use super::USER_AGENT;
 
 /// Downloader implementation that supports the [`HttpSourceConfig`] source.
 #[derive(Debug)]
@@ -32,20 +32,12 @@ impl HttpDownloader {
     }
 
     /// Downloads a source hosted on an HTTP server.
-    ///
-    /// # Directly thrown errors
-    /// - [`DownloadError::Reqwest`]
-    /// - [`DownloadError::Rejected`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: HttpRemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
-        let download_url = match file_source.url() {
-            Ok(x) => x,
-            Err(_) => return Ok(DownloadStatus::NotFound),
-        };
+    ) -> CacheEntry {
+        let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from {}", download_url);
         let mut builder = self.client.get(download_url.clone());
@@ -56,55 +48,16 @@ impl HttpDownloader {
             }
         }
         let source = RemoteFile::from(file_source);
-        let request = builder.header(header::USER_AGENT, USER_AGENT).send();
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+        let request = builder.header(header::USER_AGENT, USER_AGENT);
 
-        let response = request
-            .await
-            .map_err(|_| DownloadError::Canceled)? // Timeout
-            .map_err(|e| {
-                tracing::debug!("Skipping response from {}: {}", download_url, e);
-                DownloadError::Reqwest(e)
-            })?;
-
-        if response.status().is_success() {
-            tracing::trace!("Success hitting {}", download_url);
-
-            let content_length = response
-                .headers()
-                .get(header::CONTENT_LENGTH)
-                .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<i64>().ok());
-
-            let timeout =
-                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-
-            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-            super::download_stream(&source, stream, destination, timeout).await
-        } else if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-        ) {
-            tracing::debug!("Insufficient permissions to download from {}", download_url);
-            Ok(DownloadStatus::PermissionDenied)
-        // If it's a client error, chances are either it's a 404 or it's permission-related.
-        } else if response.status().is_client_error() {
-            tracing::debug!(
-                "Unexpected client error status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Ok(DownloadStatus::NotFound)
-        } else {
-            tracing::debug!(
-                "Unexpected status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Err(DownloadError::Rejected(response.status()))
-        }
+        super::download_reqwest(
+            &source,
+            request,
+            self.connect_timeout,
+            self.streaming_timeout,
+            destination,
+        )
+        .await
     }
 
     pub fn list_files(
@@ -153,9 +106,9 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await.unwrap();
+        let download_status = downloader.download_source(file_source, dest).await;
 
-        assert!(matches!(download_status, DownloadStatus::Completed(_)));
+        assert!(download_status.is_ok());
 
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -181,8 +134,8 @@ mod tests {
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await.unwrap();
+        let download_status = downloader.download_source(file_source, dest).await;
 
-        assert!(matches!(download_status, DownloadStatus::NotFound));
+        assert_eq!(download_status, Err(CacheError::NotFound));
     }
 }

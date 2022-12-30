@@ -21,7 +21,9 @@ use symbolicator_sources::{
     S3SourceKey,
 };
 
-use super::{content_length_timeout, DownloadError, DownloadStatus};
+use crate::cache::{CacheEntry, CacheError};
+
+use super::content_length_timeout;
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
@@ -111,15 +113,11 @@ impl S3Downloader {
     }
 
     /// Downloads a source hosted on an S3 bucket.
-    ///
-    /// # Directly thrown errors
-    /// - [`DownloadError::Io`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: S3RemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
+    ) -> CacheEntry {
         let key = file_source.key();
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
@@ -132,7 +130,9 @@ impl S3Downloader {
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = request.await.map_err(|_| DownloadError::Canceled)?; // Timeout
+        let response = request
+            .await
+            .map_err(|_| CacheError::Timeout(self.connect_timeout))?; // Timeout
 
         let response = match response {
             Ok(response) => response,
@@ -150,7 +150,7 @@ impl S3Downloader {
                             "S3 request timed out: {:?}",
                             err
                         );
-                        return Err(DownloadError::Canceled);
+                        return Err(CacheError::Timeout(Duration::ZERO));
                     }
                     SdkError::ServiceError(service_err) => {
                         // The errors and status codes are explained here:
@@ -164,9 +164,9 @@ impl S3Downloader {
                         if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
                             || code == Some("AuthorizationHeaderMalformed")
                         {
-                            // TODO: we could use the `message` of the error in the future:
-                            // service_err.err().message()
-                            return Ok(DownloadStatus::PermissionDenied);
+                            let details =
+                                service_err.err().message().unwrap_or_default().to_string();
+                            return Err(CacheError::PermissionDenied(details));
                         }
                     }
                     _ => {}
@@ -175,7 +175,7 @@ impl S3Downloader {
                 let err = S3Error::from(err);
                 return match &err {
                     S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
-                        Ok(DownloadStatus::NotFound)
+                        Err(CacheError::NotFound)
                     }
                     _ => {
                         tracing::error!(
@@ -183,7 +183,8 @@ impl S3Downloader {
                             "S3 request failed: {:?}",
                             err
                         );
-                        Err(DownloadError::S3(err))
+                        let details = err.to_string();
+                        Err(CacheError::DownloadError(details))
                     }
                 };
             }
@@ -196,9 +197,11 @@ impl S3Downloader {
 
         let stream = if response.content_length == 0 {
             tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
-            return Ok(DownloadStatus::NotFound);
+            return Err(CacheError::NotFound);
         } else {
-            response.body.map_err(DownloadError::S3Stream)
+            response
+                .body
+                .map_err(|err| CacheError::download_error(&err))
         };
 
         super::download_stream(&source, stream, destination, timeout).await
@@ -411,12 +414,9 @@ mod tests {
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader
-            .download_source(file_source, &target_path)
-            .await
-            .unwrap();
+        let download_status = downloader.download_source(file_source, &target_path).await;
 
-        assert!(matches!(download_status, DownloadStatus::Completed(_)));
+        assert!(download_status.is_ok());
         assert!(target_path.exists());
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
@@ -440,12 +440,9 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader
-            .download_source(file_source, &target_path)
-            .await
-            .unwrap();
+        let download_status = downloader.download_source(file_source, &target_path).await;
 
-        assert!(matches!(download_status, DownloadStatus::NotFound));
+        assert_eq!(download_status, Err(CacheError::NotFound));
         assert!(!target_path.exists());
     }
 
@@ -471,7 +468,7 @@ mod tests {
         let result = downloader.download_source(file_source, &target_path).await;
 
         assert!(
-            matches!(result, Ok(DownloadStatus::PermissionDenied)),
+            matches!(result, Err(CacheError::PermissionDenied(_))),
             "{:?}",
             result
         );
