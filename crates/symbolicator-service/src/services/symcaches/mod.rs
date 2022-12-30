@@ -277,7 +277,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<()> {
+) -> CacheEntry {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();

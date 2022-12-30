@@ -65,8 +65,9 @@ where
                 | CacheError::PermissionDenied(_)
                 | CacheError::Timeout(_)
                 | CacheError::DownloadError(_) => {
-                    // FIXME(swatinem): all the download errors so far lead to `None`
-                    // previously. we should probably decide on a better solution here.
+                    // NOTE: all download related errors are already exposed as the candidates
+                    // `ObjectDownloadInfo`. It is not necessary to duplicate that into the
+                    // `ObjectUseInfo`.
                     ObjectUseInfo::None
                 }
                 _ => ObjectUseInfo::Malformed,
