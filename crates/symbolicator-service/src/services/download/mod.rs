@@ -5,14 +5,13 @@
 
 use std::convert::TryInto;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
-use tempfile::NamedTempFile;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -136,13 +135,7 @@ impl DownloadService {
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    async fn dispatch_download(
-        &self,
-        source: &RemoteFile,
-        temp_file: NamedTempFile,
-    ) -> CacheEntry<NamedTempFile> {
-        let destination = temp_file.path();
-
+    async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheEntry {
         let result = retry(|| async {
             match source {
                 RemoteFile::Sentry(inner) => {
@@ -163,16 +156,15 @@ impl DownloadService {
             }
         });
 
-        match result.await {
-            Ok(_) => {
-                tracing::debug!("File `{}` fetched successfully", source);
-                Ok(temp_file)
-            }
-            Err(err) => {
-                tracing::debug!("File `{}` fetching failed: {}", source, err);
-                Err(err)
-            }
+        let result = result.await;
+
+        if let Err(err) = &result {
+            tracing::debug!("File `{}` fetching failed: {}", source, err);
+        } else {
+            tracing::debug!("File `{}` fetched successfully", source);
         }
+
+        result
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -183,12 +175,12 @@ impl DownloadService {
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
     pub async fn download(
-        self: Arc<Self>,
+        self: &Arc<Self>,
         source: RemoteFile,
-        destination: NamedTempFile,
-    ) -> CacheEntry<NamedTempFile> {
+        destination: PathBuf,
+    ) -> CacheEntry {
         let slf = self.clone();
-        let job = async move { slf.dispatch_download(&source, destination).await };
+        let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
@@ -530,16 +522,14 @@ mod tests {
         let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
-        match service
-            .download(file_source, tempfile::NamedTempFile::new().unwrap())
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        service
+            .download(file_source, temp_file.path().to_owned())
             .await
-        {
-            Ok(temp_file) => {
-                let content = std::fs::read_to_string(temp_file.path()).unwrap();
-                assert_eq!(content, "hello world\n")
-            }
-            _ => panic!("download should be completed"),
-        }
+            .unwrap();
+
+        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        assert_eq!(content, "hello world\n")
     }
 
     #[tokio::test]

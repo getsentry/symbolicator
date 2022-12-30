@@ -99,15 +99,13 @@ struct FetchCfiCacheInternal {
 /// [`CfiCache`] format.
 #[tracing::instrument(skip_all)]
 async fn compute_cficache(
-    objects_actor: ObjectsActor,
+    objects_actor: &ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
-    mut temp_file: NamedTempFile,
-) -> CacheEntry<NamedTempFile> {
+    temp_file: &mut NamedTempFile,
+) -> CacheEntry {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    write_cficache(temp_file.as_file_mut(), &object)?;
-
-    Ok(temp_file)
+    write_cficache(temp_file.as_file_mut(), &object)
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -119,12 +117,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         self.meta_handle.cache_key()
     }
 
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
-        let future = compute_cficache(
-            self.objects_actor.clone(),
-            self.meta_handle.clone(),
-            temp_file,
-        );
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        let future = compute_cficache(&self.objects_actor, self.meta_handle.clone(), temp_file);
 
         let num_sources = self.request.sources.len().to_string().into();
 

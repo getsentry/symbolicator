@@ -142,7 +142,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>>;
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry>;
 
     /// Determines whether this item should be loaded.
     ///
@@ -265,7 +265,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             return Ok(item);
         }
 
-        let temp_file = self.tempfile()?;
+        let mut temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
             name: self.config.name(),
             version: T::VERSIONS.current,
@@ -290,30 +290,22 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
-        let temp_file = match entry {
-            // the cache came from the shared cache which wrote directly to `temp_file`
-            Ok(_) => temp_file,
-            Err(_) => match request.compute(temp_file).await {
-                Ok(temp_file) => {
+        if entry.is_err() {
+            match request.compute(&mut temp_file).await {
+                Ok(()) => {
                     // Now we have written the data to the tempfile we can mmap it, persisting it later
                     // is fine as it does not move filesystem boundaries there.
                     let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
                     entry = Ok(byte_view);
-
-                    temp_file
                 }
                 Err(err) => {
-                    // FIXME(swatinem): We are creating a new tempfile in the hot err/not-found path
-                    let temp_file = self.tempfile()?;
                     let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
                     err.write(&mut temp_fd).await?;
 
                     entry = Err(err);
-
-                    temp_file
                 }
-            },
-        };
+            }
+        }
 
         let file = if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
@@ -639,17 +631,14 @@ mod tests {
             }
         }
 
-        fn compute(
-            &self,
-            temp_file: NamedTempFile,
-        ) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+        fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
             self.computations.fetch_add(1, Ordering::SeqCst);
 
             Box::pin(async move {
                 tokio::time::sleep(Duration::from_millis(100)).await;
 
                 std::fs::write(temp_file.path(), "some new cached contents")?;
-                Ok(temp_file)
+                Ok(())
             })
         }
 

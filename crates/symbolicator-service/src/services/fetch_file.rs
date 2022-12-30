@@ -18,15 +18,16 @@ use crate::utils::compression::maybe_decompress_file;
 pub async fn fetch_file(
     downloader: Arc<DownloadService>,
     file_id: RemoteFile,
-    temp_file: NamedTempFile,
-) -> CacheEntry<NamedTempFile> {
-    let temp_file = downloader.download(file_id, temp_file).await?;
+    temp_file: &mut NamedTempFile,
+) -> CacheEntry {
+    downloader
+        .download(file_id, temp_file.path().to_owned())
+        .await?;
     tracing::trace!("Finished download");
 
     // Treat decompression errors as malformed files. It is more likely that
     // the error comes from a corrupt file than a local file system error.
-    let temp_file =
-        maybe_decompress_file(temp_file).map_err(|e| CacheError::Malformed(e.to_string()))?;
-    temp_file.as_file().rewind()?;
-    Ok(temp_file)
+    maybe_decompress_file(temp_file).map_err(|e| CacheError::Malformed(e.to_string()))?;
+
+    Ok(temp_file.as_file().rewind()?)
 }
