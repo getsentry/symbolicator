@@ -1,6 +1,6 @@
 use axum::extract;
 use axum::response::Json;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::SourceConfig;
 
@@ -33,7 +33,7 @@ impl ConfigureScope for SymbolicationRequestQueryParams {
 }
 
 /// JSON body of the symbolication request.
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SymbolicationRequestBody {
     #[serde(default)]
     pub signal: Option<Signal>,
@@ -81,7 +81,10 @@ pub async fn symbolicate_frames(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use reqwest::{Client, StatusCode};
+    use symbolicator_service::types::CompletedSymbolicationResponse;
 
     use crate::test;
 
@@ -119,5 +122,116 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn test_unknown_field() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let payload = r##"{
+            "stacktraces": [],
+            "modules": [],
+            "sources": [],
+            "unknown": "value"
+        }"##;
+
+        let response = Client::new()
+            .post(server.url("/symbolicate"))
+            .header("Content-Type", "application/json")
+            .body(payload)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// Asserts that disabling requesting for DIF candidates info works.
+    #[tokio::test]
+    async fn test_no_dif_candidates() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let payload = r##"{
+            "stacktraces": [{
+              "registers": {"eip": "0x0000000001509530"},
+              "frames": [{"instruction_addr": "0x749e8630"}]
+            }],
+            "modules": [{
+              "type": "pe",
+              "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+              "code_file": "C:\\Windows\\System32\\kernel32.dll",
+              "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+              "image_addr": "0x749d0000",
+              "image_size": 851968
+            }],
+            "sources": []
+        }"##;
+        let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
+        payload.sources = Some(vec![test::microsoft_symsrv()]);
+
+        let response = Client::new()
+            .post(server.url("/symbolicate"))
+            .json(&payload)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // TODO: assert symbol server hits as side-effect?
+
+        let response: CompletedSymbolicationResponse = response.json().await.unwrap();
+        insta::assert_yaml_snapshot!(response);
+    }
+
+    /// Requests could contain invalid data which should not stop symbolication,
+    /// name is sent by Sentry and is unknown.
+    #[tokio::test]
+    async fn test_unknown_source_config() {
+        test::setup();
+
+        let server = test::server_with_default_service().await;
+
+        let payload = r##"{
+            "stacktraces": [{
+              "registers": {"eip": "0x0000000001509530"},
+              "frames": [{"instruction_addr": "0x749e8630"}]
+            }],
+            "modules": [{
+              "type": "pe",
+              "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+              "code_file": "C:\\Windows\\System32\\kernel32.dll",
+              "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+              "image_addr": "0x749d0000",
+              "image_size": 851968
+            }],
+            "sources": [{
+              "type": "http",
+              "id": "unknown",
+              "layout": {"type": "symstore"},
+              "filters": {"filetypes": ["mach_code"]},
+              "url": "http://notfound",
+              "name": "not a known field",
+              "not-a-field": "more unknown fields"
+            }],
+            "options": {"dif_candidates": true}
+        }"##;
+
+        let response = Client::new()
+            .post(server.url("/symbolicate"))
+            .header("Content-Type", "application/json")
+            .body(payload)
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response: CompletedSymbolicationResponse = response.json().await.unwrap();
+        insta::assert_yaml_snapshot!(response);
     }
 }

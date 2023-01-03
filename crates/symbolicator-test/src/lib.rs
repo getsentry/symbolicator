@@ -213,8 +213,7 @@ struct GoAway;
 impl Reject for GoAway {}
 
 pub struct FailingSymbolServer {
-    #[allow(unused)]
-    server: Server,
+    pub server: Server,
     times_accessed: Arc<AtomicUsize>,
     pub reject_source: SourceConfig,
     pub pending_source: SourceConfig,

@@ -504,38 +504,39 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
         with = "chrono::serde::ts_seconds_option"
     )]
     pub timestamp: Option<DateTime<Utc>>,
 
     /// The signal that caused this crash.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signal: Option<Signal>,
 
     /// Information about the operating system.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_info: Option<SystemInfo>,
 
     /// True if the process crashed, false if the dump was produced outside of an exception
     /// handler. Only set for minidumps.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crashed: Option<bool>,
 
     /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
     /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
     /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crash_reason: Option<String>,
 
     /// A detailed explanation of the crash, potentially in human readable form. This may
     /// include a string representation of the crash reason or application-specific info.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crash_details: Option<String>,
 
     /// If there was an assertion that was hit, a textual representation of that assertion,
     /// possibly including the file and line at which it occurred.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assertion: Option<String>,
 
     /// The threads containing symbolicated stack frames.
