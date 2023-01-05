@@ -12,10 +12,10 @@ server] support. It's a flexible frontend for parts of the [symbolic] library.
 
 This repository contains several binary crates that can be run with `cargo run -p <PACKAGE>`:
 
-* `symbolicator`: Runs a symbolicator server. Calling `cargo run` without a package will run this binary.
-* `symsorter`: Sorts debug files into a structure usable by `symbolicator`.
-* `wasm-split`: Adds build IDs to wasm files.
-* `symbolicli`: Performs symbolication on the CLI. See [the readme](./crates/symbolicli/README.md).
+- `symbolicator`: Runs a symbolicator server. Calling `cargo run` without a package will run this binary.
+- `symsorter`: Sorts debug files into a structure usable by `symbolicator`.
+- `wasm-split`: Adds build IDs to wasm files.
+- `symbolicli`: Performs symbolication on the CLI. See [the readme](./crates/symbolicli/README.md).
 
 ## Compiling
 
@@ -105,25 +105,12 @@ cargo run -- run --config local.yml
 
 ### Tests
 
-The test suite comprises unit tests, and an integration test suite. Unit tests
+The test suite comprises unit tests, and integration tests, both of which
 are implemented as part of the Rust crates and can be run via:
 
 ```bash
 # Tests for default features
-make test-rust
-```
-
-The integration test suite requires `python`. By default, the integration test
-suite will create a virtualenv, build the Symbolicator binary, and run a set of
-integration tests:
-
-```bash
-# Create a new virtualenv, build Symbolicator and run integration tests
-make test-integration
-
-# Build and run a single test manually
-make build
-.venv/bin/pytest tests/integration -k <test_name>
+make test
 ```
 
 **Note**: On macOS, the default file descriptor limit of `256` is too low and

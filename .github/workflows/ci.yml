@@ -24,20 +24,6 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v3
 
-      - name: Install python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-
-      - name: Install python dependencies
-        run: pip install --upgrade black flake8
-
-      - name: Run Black
-        run: black --check --diff tests
-
-      - name: Run Flake8
-        run: flake8 tests
-
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
 
@@ -50,8 +36,8 @@ jobs:
       - name: Run clippy
         run: cargo clippy --all-features --workspace --tests --examples
 
-  unit-test:
-    name: Unit Tests
+  test:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - name: Install libcurl-dev
@@ -77,40 +63,8 @@ jobs:
           SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY: ${{ secrets.SENTRY_SYMBOLICATOR_TEST_AWS_SECRET_ACCESS_KEY }}
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
 
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install libcurl-dev
-        run: |
-          sudo apt update
-          sudo apt-get install -y libcurl4-openssl-dev
-
-      - name: Checkout sources
-        uses: actions/checkout@v3
-
-      - name: Install rust stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update
-
-      - name: Cache rust cargo artifacts
-        uses: swatinem/rust-cache@v2
-
-      - name: Build rust
-        run: cargo build --locked
-
-      - name: Install python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-
-      - name: Setup python environment
-        run: pip install --upgrade pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
-
-      - name: Integration tests
-        run: pytest -n12 -vv tests/integration
-
   test_against_latest_sentry:
-    name: Sentry-Symbolicator Integration Tests
+    name: Sentry-Symbolicator Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -201,10 +155,6 @@ jobs:
       - name: Build Docs
         run: mkdocs build
 
-  # Code coverage instrumentation is current broken in recent Rust nightlies,
-  # as they fail processing with the following error:
-  # `Failed to load coverage: Truncated coverage data`
-  # https://github.com/taiki-e/cargo-llvm-cov/issues/128
   codecov:
     name: Code Coverage
     runs-on: ubuntu-latest
