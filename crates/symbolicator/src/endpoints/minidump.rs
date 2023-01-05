@@ -102,8 +102,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = response.text().await.unwrap();
-        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        let response: SymbolicationResponse = response.json().await.unwrap();
         insta::assert_yaml_snapshot!(response);
     }
 
@@ -131,8 +130,7 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let body = response.text().await.unwrap();
-        let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
+        let response: SymbolicationResponse = response.json().await.unwrap();
         insta::assert_yaml_snapshot!(response);
     }
 
