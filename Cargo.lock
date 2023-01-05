@@ -3857,8 +3857,8 @@ dependencies = [
  "symbolicator-sources",
  "tempfile",
  "tokio",
+ "tower-http",
  "tracing-subscriber",
- "warp",
 ]
 
 [[package]]
@@ -4227,7 +4227,13 @@ dependencies = [
  "http",
  "http-body",
  "http-range-header",
+ "httpdate",
+ "mime",
+ "mime_guess",
+ "percent-encoding",
  "pin-project-lite",
+ "tokio",
+ "tokio-util",
  "tower",
  "tower-layer",
  "tower-service",

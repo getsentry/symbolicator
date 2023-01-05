@@ -37,6 +37,29 @@ mod test {
 
     use crate::endpoints;
 
+    pub struct Server {
+        handle: tokio::task::JoinHandle<()>,
+        socket: SocketAddr,
+    }
+
+    impl Server {
+        /// Returns a full URL pointing to the given path.
+        ///
+        /// This URL uses `localhost` as hostname.
+        pub fn url(&self, path: &str) -> reqwest::Url {
+            let path = path.trim_start_matches('/');
+            format!("http://localhost:{}/{}", self.socket.port(), path)
+                .parse()
+                .unwrap()
+        }
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.handle.abort();
+        }
+    }
+
     pub async fn server_with_default_service() -> Server {
         let handle = tokio::runtime::Handle::current();
         let config = Config {

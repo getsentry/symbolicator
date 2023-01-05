@@ -22,13 +22,13 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use axum::extract;
-use axum::routing::get;
+use axum::routing::{get, get_service};
 use axum::{middleware, Router};
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
+use tower_http::services::ServeDir;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
-use warp::Filter;
 
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
@@ -139,84 +139,30 @@ pub fn source_config(ty: DirectoryLayoutType, filetypes: Vec<FileType>) -> Commo
     }
 }
 
-/// Custom version of warp's sealed `IsReject` trait.
-///
-/// This is required to allow the test [`Server`] to spawn a warp server.
-pub trait IsReject {}
-
-impl IsReject for warp::reject::Rejection {}
-impl IsReject for std::convert::Infallible {}
-
 /// A test server that binds to a random port and serves a web app.
+///
+/// The server counts all the requests that happen, to be accessed via `accesses` or `all_hits`.
+///
+/// It has a couple of routes with different behavior:
+///
+/// - `/redirect/$path` will redirect to the `$path` url.
+/// - `/delay/$time/$path` will sleep for `$time` and then redirect to `$path`.
+/// - `/msdl/` will redirect to the public microsoft symbol server.
+/// - `/respond_statuscode/$num` responds with the status code given in `$num`.
+/// - `/garbage_data/$data` reponnds back with `$data`.
+/// - `/symbols/` serves the fixtures symbols.
 ///
 /// This server requires a `tokio` runtime and is supposed to be run in a `tokio::test`. It
 /// automatically stops serving when dropped.
 #[derive(Debug)]
-pub struct Server {
-    pub handle: tokio::task::JoinHandle<()>,
-    pub socket: SocketAddr,
-}
-
-impl Server {
-    fn with_router(router: Router) -> Self {
-        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server = axum::Server::bind(&addr).serve(router.into_make_service());
-        let socket = server.local_addr();
-
-        let handle = tokio::spawn(async move {
-            server.await.unwrap();
-        });
-
-        Self { handle, socket }
-    }
-
-    /// Creates a new test server from the given `warp` filter.
-    pub fn new<F>(filter: F) -> Self
-    where
-        F: warp::Filter + Clone + Send + Sync + 'static,
-        F::Extract: warp::reply::Reply,
-        F::Error: IsReject,
-    {
-        let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
-        let handle = tokio::spawn(future);
-
-        Self { handle, socket }
-    }
-
-    /// Returns the socket address that this server listens on.
-    pub fn addr(&self) -> SocketAddr {
-        self.socket
-    }
-
-    /// Returns the port that this server listens on.
-    pub fn port(&self) -> u16 {
-        self.addr().port()
-    }
-
-    /// Returns a full URL pointing to the given path.
-    ///
-    /// This URL uses `localhost` as hostname.
-    pub fn url(&self, path: &str) -> Url {
-        let path = path.trim_start_matches('/');
-        format!("http://localhost:{}/{}", self.port(), path)
-            .parse()
-            .unwrap()
-    }
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        self.handle.abort();
-    }
-}
-
 pub struct HitCounter {
-    server: Server,
+    handle: tokio::task::JoinHandle<()>,
+    socket: SocketAddr,
     hits: Arc<Mutex<BTreeMap<String, usize>>>,
 }
 
 impl HitCounter {
+    /// Creates a new server.
     pub fn new() -> Self {
         let hits = Arc::new(Mutex::new(BTreeMap::new()));
 
@@ -235,6 +181,9 @@ impl HitCounter {
                 }
             }
         };
+
+        let serve_dir = get_service(ServeDir::new(fixture("symbols")))
+            .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR });
 
         let router = Router::new()
             .route(
@@ -273,27 +222,48 @@ impl HitCounter {
                 "/garbage_data/*tail",
                 get(|extract::Path(tail): extract::Path<String>| async move { tail }),
             )
+            .nest_service("/symbols", serve_dir)
             .layer(middleware::from_fn(hitcounter));
 
-        let server = Server::with_router(router);
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
 
-        Self { server, hits }
+        let server = axum::Server::bind(&addr).serve(router.into_make_service());
+        let socket = server.local_addr();
+
+        let handle = tokio::spawn(async move {
+            server.await.unwrap();
+        });
+
+        Self {
+            handle,
+            socket,
+            hits,
+        }
     }
 
+    /// Returns the sum total of hits and clears the hit counts.
     pub fn accesses(&self) -> usize {
         let map = std::mem::take(&mut *self.hits.lock().unwrap());
         map.into_values().sum()
     }
 
+    /// Returns a sorted list of `(path, hits)`-tuples, and clears the hit counts.
     pub fn all_hits(&self) -> Vec<(String, usize)> {
         let map = std::mem::take(&mut *self.hits.lock().unwrap());
         map.into_iter().collect()
     }
 
+    /// Returns a full URL pointing to the given path.
+    ///
+    /// This URL uses `localhost` as hostname.
     pub fn url(&self, path: &str) -> Url {
-        self.server.url(path)
+        let path = path.trim_start_matches('/');
+        format!("http://localhost:{}/{}", self.socket.port(), path)
+            .parse()
+            .unwrap()
     }
 
+    /// Returns a [`SourceConfig`] hitting this server on the given `path`.
     pub fn source(&self, id: &str, path: &str) -> SourceConfig {
         let files = CommonSourceConfig {
             filters: SourceFilters {
@@ -306,6 +276,8 @@ impl HitCounter {
         self.source_with_config(id, path, files)
     }
 
+    /// Returns a [`SourceConfig`] hitting this server on the given `path`,
+    /// using the provided [`CommonSourceConfig`].
     pub fn source_with_config(
         &self,
         id: &str,
@@ -314,10 +286,16 @@ impl HitCounter {
     ) -> SourceConfig {
         SourceConfig::Http(Arc::new(HttpSourceConfig {
             id: SourceId::new(id),
-            url: self.server.url(path),
+            url: self.url(path),
             headers: Default::default(),
             files,
         }))
+    }
+}
+
+impl Drop for HitCounter {
+    fn drop(&mut self) {
+        self.handle.abort();
     }
 }
 
@@ -336,16 +314,14 @@ impl Default for HitCounter {
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via `Config::connect_to_reserved_ips`.
-pub fn symbol_server() -> (Server, SourceConfig) {
-    let app = warp::path("download").and(warp::fs::dir(fixture("symbols")));
-    let server = Server::new(app);
+pub fn symbol_server() -> (HitCounter, SourceConfig) {
+    let server = HitCounter::new();
 
     // The source uses the same identifier ("local") as the local file system source to avoid
     // differences when changing the bucket in tests.
-
     let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("local"),
-        url: server.url("download/"),
+        url: server.url("symbols/"),
         headers: Default::default(),
         files: Default::default(),
     }));
