@@ -9,9 +9,8 @@ use symbolicator_sources::{
     DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig, RemoteFileUri,
     SentrySourceConfig, SourceConfig, SourceId,
 };
-use symbolicator_test::{fixture, source_config, HitCounter};
+use symbolicator_test::{assert_snapshot, fixture, source_config, HitCounter};
 
-use crate::assert_snapshot;
 use crate::symbolication::{get_symbolication_request, setup_service};
 
 // FIXME: Using this fixture in combination with the public microsoft symbol server means that

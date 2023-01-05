@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator/src/endpoints/requests.rs
+assertion_line: 106
 expression: response
 ---
 status: completed
@@ -35,11 +36,11 @@ modules:
         download:
           status: notfound
       - source: timeout
-        location: "http://localhost:61806/delay/2500ms/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_"
+        location: "http://localhost:<port>/delay/2500ms/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_"
         download:
           status: notfound
       - source: timeout
-        location: "http://localhost:61806/delay/2500ms/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb"
+        location: "http://localhost:<port>/delay/2500ms/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb"
         download:
           status: ok
           features:

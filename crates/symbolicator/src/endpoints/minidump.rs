@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let response: SymbolicationResponse = response.json().await.unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 
     #[tokio::test]
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let response: SymbolicationResponse = response.json().await.unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 
     #[tokio::test]

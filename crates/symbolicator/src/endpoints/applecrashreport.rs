@@ -83,7 +83,7 @@ mod tests {
 
         let body = response.text().await.unwrap();
         let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 
     #[tokio::test]

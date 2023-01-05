@@ -3852,6 +3852,8 @@ version = "0.6.0"
 dependencies = [
  "axum",
  "humantime",
+ "insta",
+ "regex",
  "reqwest",
  "serde",
  "symbolicator-sources",

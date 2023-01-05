@@ -103,6 +103,6 @@ mod tests {
             .unwrap();
 
         let response: SymbolicationResponse = response.json().await.unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 }
