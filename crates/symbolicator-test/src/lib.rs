@@ -19,7 +19,6 @@
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::extract;
@@ -29,7 +28,6 @@ use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
-use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use symbolicator_sources::{
@@ -246,6 +244,17 @@ impl HitCounter {
                 }),
             )
             .route(
+                "/delay/:time/*path",
+                get(
+                    |extract::Path((time, path)): extract::Path<(String, String)>| async move {
+                        let duration = humantime::parse_duration(&time).unwrap();
+                        tokio::time::sleep(duration).await;
+
+                        (StatusCode::FOUND, [("Location", format!("/{}", path))])
+                    },
+                ),
+            )
+            .route(
                 "/msdl/*path",
                 get(|extract::Path(path): extract::Path<String>| async move {
                     let url = format!("https://msdl.microsoft.com/download/symbols/{}", path);
@@ -342,138 +351,6 @@ pub fn symbol_server() -> (Server, SourceConfig) {
     }));
 
     (server, source)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct GoAway;
-
-impl Reject for GoAway {}
-
-pub struct FailingSymbolServer {
-    pub server: Server,
-    times_accessed: Arc<AtomicUsize>,
-    pub reject_source: SourceConfig,
-    pub pending_source: SourceConfig,
-    pub not_found_source: SourceConfig,
-    pub forbidden_source: SourceConfig,
-    pub invalid_file_source: SourceConfig,
-}
-
-impl FailingSymbolServer {
-    pub fn new() -> Self {
-        let times_accessed = Arc::new(AtomicUsize::new(0));
-
-        let times = times_accessed.clone();
-        let reject = warp::path("reject").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            std::future::ready(Err::<&str, _>(warp::reject::custom(GoAway)))
-        });
-
-        let times = times_accessed.clone();
-        let not_found = warp::path("not-found").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-            std::future::ready(Err::<&str, _>(warp::reject::not_found()))
-        });
-
-        let times = times_accessed.clone();
-        let pending = warp::path("pending").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            std::future::pending::<Result<&str, Rejection>>()
-        });
-
-        let times = times_accessed.clone();
-        let forbidden = warp::path("forbidden").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            let result: Result<_, Rejection> = Ok(warp::reply::with_status(
-                warp::reply(),
-                warp::http::StatusCode::FORBIDDEN,
-            ));
-            std::future::ready(result)
-        });
-
-        let times = times_accessed.clone();
-        let invalid_file = warp::path("invalid-file").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            let result = Ok::<_, Rejection>("not a valid object");
-            std::future::ready(result)
-        });
-
-        let server = Server::new(
-            reject
-                .or(not_found)
-                .or(pending)
-                .or(forbidden)
-                .or(invalid_file),
-        );
-
-        let files_config = CommonSourceConfig {
-            filters: SourceFilters {
-                filetypes: vec![FileType::MachCode],
-                path_patterns: vec![],
-            },
-            layout: Default::default(),
-            is_public: false,
-        };
-
-        let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("reject"),
-            url: server.url("reject/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("pending"),
-            url: server.url("pending/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("not-found"),
-            url: server.url("not-found/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let forbidden_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("forbidden"),
-            url: server.url("forbidden/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let invalid_file_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("invalid-file"),
-            url: server.url("invalid-file/"),
-            headers: Default::default(),
-            files: files_config,
-        }));
-
-        FailingSymbolServer {
-            server,
-            times_accessed,
-            reject_source,
-            pending_source,
-            not_found_source,
-            forbidden_source,
-            invalid_file_source,
-        }
-    }
-
-    pub fn accesses(&self) -> usize {
-        self.times_accessed.swap(0, Ordering::SeqCst)
-    }
-}
-
-impl Default for FailingSymbolServer {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Returns the legacy read-only GCS credentials for testing GCS support.

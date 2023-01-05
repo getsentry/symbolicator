@@ -3851,6 +3851,7 @@ name = "symbolicator-test"
 version = "0.6.0"
 dependencies = [
  "axum",
+ "humantime",
  "reqwest",
  "serde",
  "symbolicator-sources",

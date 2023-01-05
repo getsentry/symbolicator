@@ -9,7 +9,7 @@ use symbolicator_sources::{
     DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig, RemoteFileUri,
     SentrySourceConfig, SourceConfig, SourceId,
 };
-use symbolicator_test::{fixture, source_config, FailingSymbolServer, HitCounter};
+use symbolicator_test::{fixture, source_config, HitCounter};
 
 use crate::assert_snapshot;
 use crate::symbolication::{get_symbolication_request, setup_service};
@@ -71,20 +71,20 @@ async fn test_sources_filetypes() {
     let (modules, stacktraces) = request_fixture();
 
     // This symbol source is filtering for only `mach_code` files.
-    let source = FailingSymbolServer::new();
+    let hitcounter = HitCounter::new();
 
     let request = SymbolicateStacktraces {
         modules: modules.into_iter().map(From::from).collect(),
         stacktraces,
         signal: None,
         origin: StacktraceOrigin::Symbolicate,
-        sources: Arc::new([source.not_found_source.clone()]),
+        sources: Arc::new([hitcounter.source("not-found", "/respond_statuscode/404/")]),
         scope: Default::default(),
     };
 
     let response = symbolication.symbolicate(request).await;
 
-    assert_eq!(source.accesses(), 0);
+    assert_eq!(hitcounter.accesses(), 0);
 
     assert_snapshot!(response.unwrap());
 }
@@ -152,10 +152,10 @@ async fn test_path_patterns() {
 async fn test_no_permission() {
     let (symbolication, _cache_dir) = setup_service(|_| ()).await;
 
-    let server = FailingSymbolServer::new();
+    let hitcounter = HitCounter::new();
 
     let sources = vec![
-        server.forbidden_source.clone(),
+        hitcounter.source("forbidden", "/respond_statuscode/403/"),
         // NOTE: The bucket `symbolicator-test` needs to actually exist for this test to fail with
         // a permissions error.
         serde_json::from_str(
@@ -223,12 +223,12 @@ async fn test_no_permission() {
 /// to `127.0.0.1`.
 #[tokio::test]
 async fn test_reserved_ip_addresses() {
-    let server = FailingSymbolServer::new();
+    let hitcounter = HitCounter::new();
 
     let files = source_config(DirectoryLayoutType::Native, vec![FileType::MachCode]);
 
     let mut sources = Vec::with_capacity(3);
-    let mut url = server.server.url("not-found/");
+    let mut url = hitcounter.url("not-found/");
 
     url.set_host(Some("dev.getsentry.net")).unwrap();
     sources.push(SourceConfig::Http(Arc::new(HttpSourceConfig {
@@ -260,7 +260,7 @@ async fn test_reserved_ip_addresses() {
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
     let candidates = response.modules.pop().unwrap().candidates.0;
 
-    assert_eq!(server.accesses(), 3);
+    assert_eq!(hitcounter.accesses(), 3);
 
     // NOTE: every second candidate is a "No object files listed on this source" one for the
     // source bundle lookup
@@ -295,7 +295,7 @@ async fn test_reserved_ip_addresses() {
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
     let candidates = response.modules.pop().unwrap().candidates.0;
 
-    assert_eq!(server.accesses(), 0);
+    assert_eq!(hitcounter.accesses(), 0);
 
     // NOTE: every second candidate is a "No object files listed on this source" one for the
     // source bundle lookup
