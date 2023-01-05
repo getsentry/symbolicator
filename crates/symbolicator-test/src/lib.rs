@@ -16,12 +16,16 @@
 //!    source) = symbol_server();`. Alternatively, use [`local_source`] to test without
 //!    HTTP connections.
 
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use reqwest::Url;
+use axum::extract;
+use axum::routing::get;
+use axum::{middleware, Router};
+use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
@@ -29,8 +33,8 @@ use warp::reject::{Reject, Rejection};
 use warp::Filter;
 
 use symbolicator_sources::{
-    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
-    SourceConfig, SourceFilters, SourceId,
+    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
+    GcsSourceKey, HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -122,6 +126,21 @@ pub fn microsoft_symsrv() -> SourceConfig {
     }))
 }
 
+/// Gives a [`CommonSourceConfig`] with the given layout type and file types filter.
+pub fn source_config(ty: DirectoryLayoutType, filetypes: Vec<FileType>) -> CommonSourceConfig {
+    CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes,
+            ..Default::default()
+        },
+        layout: DirectoryLayout {
+            ty,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// Custom version of warp's sealed `IsReject` trait.
 ///
 /// This is required to allow the test [`Server`] to spawn a warp server.
@@ -141,6 +160,19 @@ pub struct Server {
 }
 
 impl Server {
+    fn with_router(router: Router) -> Self {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server = axum::Server::bind(&addr).serve(router.into_make_service());
+        let socket = server.local_addr();
+
+        let handle = tokio::spawn(async move {
+            server.await.unwrap();
+        });
+
+        Self { handle, socket }
+    }
+
     /// Creates a new test server from the given `warp` filter.
     pub fn new<F>(filter: F) -> Self
     where
@@ -178,6 +210,111 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.handle.abort();
+    }
+}
+
+pub struct HitCounter {
+    server: Server,
+    hits: Arc<Mutex<BTreeMap<String, usize>>>,
+}
+
+impl HitCounter {
+    pub fn new() -> Self {
+        let hits = Arc::new(Mutex::new(BTreeMap::new()));
+
+        let hitcounter = {
+            let hits = hits.clone();
+            move |extract::OriginalUri(uri), req, next: middleware::Next<_>| {
+                let hits = hits.clone();
+                async move {
+                    {
+                        let mut hits = hits.lock().unwrap();
+                        let hits = hits.entry(uri.to_string()).or_default();
+                        *hits += 1;
+                    }
+
+                    next.run(req).await
+                }
+            }
+        };
+
+        let router = Router::new()
+            .route(
+                "/redirect/*path",
+                get(|extract::Path(path): extract::Path<String>| async move {
+                    (StatusCode::FOUND, [("Location", format!("/{}", path))])
+                }),
+            )
+            .route(
+                "/msdl/*path",
+                get(|extract::Path(path): extract::Path<String>| async move {
+                    let url = format!("https://msdl.microsoft.com/download/symbols/{}", path);
+                    (StatusCode::FOUND, [("Location", url)])
+                }),
+            )
+            .route(
+                "/respond_statuscode/:num/*tail",
+                get(
+                    |extract::Path((num, _)): extract::Path<(u16, String)>| async move {
+                        StatusCode::from_u16(num).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+                    },
+                ),
+            )
+            .route(
+                "/garbage_data/*tail",
+                get(|extract::Path(tail): extract::Path<String>| async move { tail }),
+            )
+            .layer(middleware::from_fn(hitcounter));
+
+        let server = Server::with_router(router);
+
+        Self { server, hits }
+    }
+
+    pub fn accesses(&self) -> usize {
+        let map = std::mem::take(&mut *self.hits.lock().unwrap());
+        map.into_values().sum()
+    }
+
+    pub fn all_hits(&self) -> Vec<(String, usize)> {
+        let map = std::mem::take(&mut *self.hits.lock().unwrap());
+        map.into_iter().collect()
+    }
+
+    pub fn url(&self, path: &str) -> Url {
+        self.server.url(path)
+    }
+
+    pub fn source(&self, id: &str, path: &str) -> SourceConfig {
+        let files = CommonSourceConfig {
+            filters: SourceFilters {
+                filetypes: vec![FileType::MachCode],
+                path_patterns: vec![],
+            },
+            layout: Default::default(),
+            is_public: false,
+        };
+        self.source_with_config(id, path, files)
+    }
+
+    pub fn source_with_config(
+        &self,
+        id: &str,
+        path: &str,
+        files: CommonSourceConfig,
+    ) -> SourceConfig {
+        SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new(id),
+            url: self.server.url(path),
+            headers: Default::default(),
+            files,
+        }))
+    }
+}
+
+impl Default for HitCounter {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
