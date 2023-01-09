@@ -11,9 +11,7 @@ use symbolicator_service::types::{
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 use symbolicator_test as test;
-use symbolicator_test::fixture;
-
-use crate::assert_snapshot;
+use symbolicator_test::{assert_snapshot, fixture};
 
 /// Setup tests and create a test service.
 ///

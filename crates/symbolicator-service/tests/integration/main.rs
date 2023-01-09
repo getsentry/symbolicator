@@ -4,6 +4,3 @@ pub mod e2e;
 pub mod process_minidump;
 pub mod source_errors;
 pub mod symbolication;
-
-#[macro_use]
-pub mod utils;

@@ -185,7 +185,7 @@ mod tests {
         // TODO: assert symbol server hits as side-effect?
 
         let response: CompletedSymbolicationResponse = response.json().await.unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 
     /// Requests could contain invalid data which should not stop symbolication,
@@ -232,6 +232,6 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let response: CompletedSymbolicationResponse = response.json().await.unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 }

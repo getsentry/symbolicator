@@ -29,8 +29,6 @@ mod service;
 
 #[cfg(test)]
 mod test {
-    use std::net::SocketAddr;
-
     use crate::config::Config;
     use crate::service::RequestService;
     pub use symbolicator_test::*;
@@ -47,17 +45,7 @@ mod test {
             .await
             .unwrap();
 
-        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server =
-            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
-
-        let socket = server.local_addr();
-        let handle = tokio::spawn(async {
-            let _ = server.await;
-        });
-
-        Server { handle, socket }
+        Server::with_router(endpoints::create_app(service))
     }
 }
 
