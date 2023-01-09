@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
+use aws_smithy_http;
 use futures::prelude::*;
 use reqwest::StatusCode;
 use tempfile::NamedTempFile;
@@ -67,8 +68,8 @@ pub enum DownloadError {
     Sentry(sentry::SentryError),
     #[error("failed to fetch data from S3")]
     S3(#[from] s3::S3Error),
-    #[error("S3 error code: {1} (http status: {0})")]
-    S3WithCode(StatusCode, String),
+    #[error("failed to fetch data from S3")]
+    S3Stream(#[from] aws_smithy_http::byte_stream::error::Error),
     #[error("missing permissions for file")]
     Permissions,
     /// Typically means the initial HEAD request received a non-200, non-400 response.
@@ -123,8 +124,8 @@ impl From<DownloadError> for CacheError {
             DownloadError::S3(e) => {
                 Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
-            DownloadError::S3WithCode(status, code) => {
-                Self::DownloadError(format!("S3 error code: {code} (http status: {status})"))
+            DownloadError::S3Stream(e) => {
+                Self::DownloadError(format!("failed to fetch data from S3: {e}"))
             }
             DownloadError::Permissions => Self::PermissionDenied(String::new()),
             DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
@@ -490,7 +491,7 @@ where
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }

@@ -110,7 +110,7 @@ impl GcsDownloader {
                 .headers()
                 .get(header::CONTENT_LENGTH)
                 .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<u32>().ok());
+                .and_then(|s| s.parse::<i64>().ok());
 
             let timeout =
                 content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));

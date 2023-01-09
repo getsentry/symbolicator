@@ -1,28 +1,29 @@
 //! Support to download from S3 buckets.
 
 use std::any::type_name;
-use std::convert::TryFrom;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
+use aws_sdk_s3::types::SdkError;
+pub use aws_sdk_s3::Error as S3Error;
+use aws_sdk_s3::{Client, Endpoint};
+use aws_types::credentials::{Credentials, ProvideCredentials};
 use futures::TryStreamExt;
 use reqwest::StatusCode;
-use rusoto_core::credential::ProvideAwsCredentials;
-use rusoto_core::region::Region;
-use rusoto_core::RusotoError;
-use rusoto_s3::{GetObjectError, S3};
 
-use symbolicator_sources::{AwsCredentialsProvider, RemoteFile, S3RemoteFile, S3SourceKey};
+use symbolicator_sources::{
+    AwsCredentialsProvider, RemoteFile, S3Region, S3RemoteFile, S3SourceKey,
+};
 
 use super::{content_length_timeout, DownloadError, DownloadStatus};
 
-type ClientCache = moka::sync::Cache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
+type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
-    http_client: Arc<rusoto_core::HttpClient>,
     client_cache: ClientCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
@@ -31,14 +32,11 @@ pub struct S3Downloader {
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
-            .field("http_client", &format_args!("rusoto_core::HttpClient"))
             .field("connect_timeout", &self.connect_timeout)
             .field("streaming_timeout", &self.streaming_timeout)
             .finish()
     }
 }
-
-pub type S3Error = RusotoError<GetObjectError>;
 
 impl S3Downloader {
     pub fn new(
@@ -47,55 +45,66 @@ impl S3Downloader {
         s3_client_capacity: u64,
     ) -> Self {
         Self {
-            http_client: Arc::new(rusoto_core::HttpClient::new().unwrap()),
             client_cache: ClientCache::new(s3_client_capacity),
             connect_timeout,
             streaming_timeout,
         }
     }
 
-    fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<rusoto_s3::S3Client> {
+    async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<Client> {
         if self.client_cache.contains_key(key) {
             metric!(counter("source.s3.client.cached") += 1);
         }
 
-        self.client_cache.get_with_by_ref(key, || {
-            metric!(counter("source.s3.client.create") += 1);
+        self.client_cache
+            .get_with_by_ref(key, async {
+                metric!(counter("source.s3.client.create") += 1);
 
-            let region = key.region.clone();
-            tracing::debug!(
-                "Using AWS credentials provider: {:?}",
-                key.aws_credentials_provider
-            );
-            Arc::new(match key.aws_credentials_provider {
-                AwsCredentialsProvider::Container => {
-                    let container_provider = rusoto_credential::ContainerProvider::new();
-                    let provider =
-                        match rusoto_credential::AutoRefreshingProvider::new(container_provider) {
-                            Ok(provider) => provider,
-                            Err(err) => panic!(
-                            "Unable to instantiate rusoto_credential::AutoRefreshingProvider: {err:?}"
-                        ),
-                        };
-                    self.create_s3_client(provider, region)
-                }
-                AwsCredentialsProvider::Static => {
-                    let provider = rusoto_credential::StaticProvider::new_minimal(
-                        key.access_key.clone(),
-                        key.secret_key.clone(),
-                    );
-                    self.create_s3_client(provider, region)
-                }
+                tracing::debug!(
+                    "Using AWS credentials provider: {:?}",
+                    key.aws_credentials_provider
+                );
+                Arc::new(match key.aws_credentials_provider {
+                    AwsCredentialsProvider::Container => {
+                        let provider = LazyCachingCredentialsProvider::builder()
+                            .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
+                            .build();
+                        self.create_s3_client(provider, &key.region).await
+                    }
+                    AwsCredentialsProvider::Static => {
+                        let provider = Credentials::from_keys(
+                            key.access_key.clone(),
+                            key.secret_key.clone(),
+                            None,
+                        );
+                        self.create_s3_client(provider, &key.region).await
+                    }
+                })
             })
-        })
+            .await
     }
 
-    fn create_s3_client<P: ProvideAwsCredentials + Send + Sync + 'static>(
+    async fn create_s3_client(
         &self,
-        provider: P,
-        region: Region,
-    ) -> rusoto_s3::S3Client {
-        rusoto_s3::S3Client::new_with(self.http_client.clone(), provider, region)
+        provider: impl ProvideCredentials + Send + Sync + 'static,
+        region: &S3Region,
+    ) -> Client {
+        let mut config_loader = aws_config::from_env()
+            .credentials_provider(provider)
+            .region(region.region.clone());
+
+        if let Some(endpoint) = region.endpoint.as_ref() {
+            match Endpoint::immutable(endpoint) {
+                Ok(endpoint) => config_loader = config_loader.endpoint_resolver(endpoint),
+                Err(err) => {
+                    let error: &dyn std::error::Error = &err;
+                    tracing::error!(error, "Failed creating custom `Endpoint`",);
+                }
+            };
+        }
+
+        let config = config_loader.load().await;
+        Client::new(&config)
     }
 
     /// Downloads a source hosted on an S3 bucket.
@@ -112,94 +121,82 @@ impl S3Downloader {
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
 
-        let source_key = &file_source.source.source_key;
-        let client = self.get_s3_client(source_key);
-        let request = client.get_object(rusoto_s3::GetObjectRequest {
-            key: key.clone(),
-            bucket: bucket.clone(),
-            ..Default::default()
-        });
+        let source_key = file_source.source.source_key.clone();
+        let client = self.get_s3_client(&source_key).await;
+        let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);
         let request = tokio::time::timeout(self.connect_timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = match request.await {
-            Ok(Ok(response)) => response,
-            Ok(Err(err)) => {
-                tracing::debug!("Skipping response from s3://{}/{}: {}", bucket, &key, err);
+        let response = request.await.map_err(|_| DownloadError::Canceled)?; // Timeout
 
-                // Do note that it's possible for Amazon to return different status codes when a
-                // file is missing. 403 is returned if the `ListBucket` permission isn't available,
-                // which means that a 403 returned below may actually be for a missing file.
-                // https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html
+        let response = match response {
+            Ok(response) => response,
+            Err(err) => {
+                tracing::debug!("Skipping response from s3://{}/{}: {}", &bucket, &key, err);
+
+                // we first check for some specific errors variants, and afterwards we cast this to
+                // a very generic `S3Error` that internally converts things around.
                 match &err {
-                    RusotoError::Service(_) => return Ok(DownloadStatus::NotFound),
-                    RusotoError::Unknown(response) if response.status == StatusCode::FORBIDDEN => {
-                        return Ok(DownloadStatus::PermissionDenied)
+                    SdkError::TimeoutError(_) => {
+                        // FIXME(swatinem): we can probably remove this log once we capture a few
+                        // of these in production and figure out what we actually get here
+                        tracing::error!(
+                            error = &err as &dyn std::error::Error,
+                            "S3 request timed out: {:?}",
+                            err
+                        );
+                        return Err(DownloadError::Canceled);
                     }
-                    RusotoError::Unknown(response) if response.status.is_client_error() => {
-                        return Ok(DownloadStatus::NotFound)
-                    }
-                    RusotoError::Unknown(response) => {
-                        // Parse some stuff out of this giant error collection.
-                        let start = response.body_as_str().find("<Code>");
-                        let end = response.body_as_str().find("</Code>");
-                        let code = match (start, end) {
-                            (Some(start), Some(end)) => {
-                                let start = start + "<Code>".len();
-                                response.body_as_str().get(start..end)
-                            }
-                            _ => None,
-                        };
-                        let start = response.body_as_str().find("<Message>");
-                        let end = response.body_as_str().find("</Message>");
-                        let message = match (start, end) {
-                            (Some(start), Some(end)) => {
-                                let start = start + "<Message>".len();
-                                response.body_as_str().get(start..end)
-                            }
-                            _ => None,
-                        };
-                        sentry::configure_scope(|scope| {
-                            scope.set_extra("AWS body:", response.body_as_str().into());
-                            if let Some(message) = message {
-                                scope.set_extra("AWS message", message.into());
-                            }
-                            if let Some(code) = code {
-                                scope.set_extra("AWS code", code.into());
-                            }
-                        });
-                        if let Some(code) = code {
-                            return Err(DownloadError::S3WithCode(
-                                response.status,
-                                code.to_string(),
-                            ));
-                        } else {
-                            return Err(DownloadError::S3(err));
+                    SdkError::ServiceError(service_err) => {
+                        // The errors and status codes are explained here:
+                        // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
+                        let response = service_err.raw();
+                        let status = response.http().status();
+                        let code = service_err.err().code();
+
+                        // NOTE: leaving the credentials empty as our unit / integration tests do
+                        // leads to a `AuthorizationHeaderMalformed` error.
+                        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+                            || code == Some("AuthorizationHeaderMalformed")
+                        {
+                            // TODO: we could use the `message` of the error in the future:
+                            // service_err.err().message()
+                            return Ok(DownloadStatus::PermissionDenied);
                         }
                     }
-                    _ => return Err(err.into()),
-                }
-            }
-            Err(_) => {
-                // Timed out
-                return Err(DownloadError::Canceled);
+                    _ => {}
+                };
+
+                let err = S3Error::from(err);
+                return match &err {
+                    S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
+                        Ok(DownloadStatus::NotFound)
+                    }
+                    _ => {
+                        tracing::error!(
+                            error = &err as &dyn std::error::Error,
+                            "S3 request failed: {:?}",
+                            err
+                        );
+                        Err(DownloadError::S3(err))
+                    }
+                };
             }
         };
 
-        let stream = match response.body {
-            Some(body) => body.map_err(DownloadError::Io),
-            None => {
-                tracing::debug!("Empty response from s3:{}{}", bucket, &key);
-                return Ok(DownloadStatus::NotFound);
-            }
-        };
+        let timeout = Some(content_length_timeout(
+            response.content_length(),
+            self.streaming_timeout,
+        ));
 
-        let content_length = response
-            .content_length
-            .and_then(|cl| u32::try_from(cl).ok());
-        let timeout = content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
+        let stream = if response.content_length == 0 {
+            tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
+            return Ok(DownloadStatus::NotFound);
+        } else {
+            response.body.map_err(DownloadError::S3Stream)
+        };
 
         super::download_stream(&source, stream, destination, timeout).await
     }
@@ -218,7 +215,8 @@ mod tests {
 
     use crate::test;
 
-    use rusoto_s3::S3Client;
+    use aws_sdk_s3::client::Client;
+    use aws_smithy_http::byte_stream::ByteStream;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
@@ -232,7 +230,7 @@ mod tests {
             None
         } else {
             Some(S3SourceKey {
-                region: rusoto_core::Region::UsEast1,
+                region: S3Region::from("us-east-1"),
                 aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
                 secret_key,
@@ -263,64 +261,63 @@ mod tests {
     }
 
     /// Creates an S3 bucket if it does not exist.
-    async fn ensure_bucket(s3_client: &S3Client) {
+    async fn ensure_bucket(s3_client: &Client) {
         let head_result = s3_client
-            .head_bucket(rusoto_s3::HeadBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-                ..Default::default()
-            })
+            .head_bucket()
+            .bucket(S3_BUCKET.to_owned())
+            .send()
             .await;
 
         match head_result {
             Ok(_) => return,
-            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadBucketError::NoSuchBucket(_))) => {
-                // fallthrough
+            Err(err) => {
+                let err = S3Error::from(err);
+                match err {
+                    S3Error::NoSuchBucket(_) | S3Error::NotFound(_) => {}
+                    err => {
+                        panic!("failed to check S3 bucket: {err:?}");
+                    }
+                }
             }
-            Err(rusoto_core::RusotoError::Unknown(err)) if err.status == 404 => {
-                // fallthrough. rusoto does not seem to detect the 404.
-            }
-            Err(err) => panic!("failed to check S3 bucket: {err:?}"),
-        }
+        };
 
         s3_client
-            .create_bucket(rusoto_s3::CreateBucketRequest {
-                bucket: S3_BUCKET.to_owned(),
-                ..Default::default()
-            })
+            .create_bucket()
+            .bucket(S3_BUCKET.to_owned())
+            .send()
             .await
             .unwrap();
     }
 
     /// Loads a mock fixture into the S3 bucket if it does not exist.
-    async fn ensure_fixture(
-        s3_client: &S3Client,
-        fixture: impl AsRef<Path>,
-        key: impl Into<String>,
-    ) {
+    async fn ensure_fixture(s3_client: &Client, fixture: impl AsRef<Path>, key: impl Into<String>) {
         let key = key.into();
         let head_result = s3_client
-            .head_object(rusoto_s3::HeadObjectRequest {
-                bucket: S3_BUCKET.to_owned(),
-                key: key.clone(),
-                ..Default::default()
-            })
+            .head_object()
+            .bucket(S3_BUCKET.to_owned())
+            .key(key.clone())
+            .send()
             .await;
 
         match head_result {
             Ok(_) => return,
-            Err(rusoto_core::RusotoError::Service(rusoto_s3::HeadObjectError::NoSuchKey(_))) => {
-                // fallthrough
+            Err(err) => {
+                let err = S3Error::from(err);
+                match err {
+                    S3Error::NotFound(_) => {}
+                    err => {
+                        panic!("failed to check S3 object: {err:?}");
+                    }
+                }
             }
-            Err(err) => panic!("failed to check S3 object: {err:?}"),
-        }
+        };
 
         s3_client
-            .put_object(rusoto_s3::PutObjectRequest {
-                bucket: S3_BUCKET.to_owned(),
-                body: Some(test::read_fixture(fixture).into()),
-                key,
-                ..Default::default()
-            })
+            .put_object()
+            .bucket(S3_BUCKET.to_owned())
+            .body(ByteStream::from(test::read_fixture(fixture)))
+            .key(key)
+            .send()
             .await
             .unwrap();
     }
@@ -333,14 +330,17 @@ mod tests {
     ///
     /// On error, the function panics with the error message.
     async fn setup_bucket(source_key: S3SourceKey) {
-        let s3_client = S3Client::new_with(
-            rusoto_core::HttpClient::new().expect("create S3 HTTP client"),
-            rusoto_credential::StaticProvider::new_minimal(
-                source_key.access_key,
-                source_key.secret_key,
-            ),
-            source_key.region,
+        let provider = Credentials::from_keys(
+            source_key.access_key.clone(),
+            source_key.secret_key.clone(),
+            None,
         );
+        let shared_config = aws_config::from_env()
+            .credentials_provider(provider)
+            .region(source_key.region.region)
+            .load()
+            .await;
+        let s3_client = Client::new(&shared_config);
 
         ensure_bucket(&s3_client).await;
         ensure_fixture(
@@ -410,10 +410,10 @@ mod tests {
         test::setup();
 
         let broken_key = S3SourceKey {
-            region: rusoto_core::Region::UsEast1,
+            region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
-            access_key: "".to_owned(),
-            secret_key: "".to_owned(),
+            access_key: "".into(),
+            secret_key: "".into(),
         };
         let source = s3_source(broken_key);
         let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
@@ -424,10 +424,13 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        assert!(matches!(
-            downloader.download_source(file_source, &target_path).await,
-            Ok(DownloadStatus::PermissionDenied)
-        ));
+        let result = downloader.download_source(file_source, &target_path).await;
+
+        assert!(
+            matches!(result, Ok(DownloadStatus::PermissionDenied)),
+            "{:?}",
+            result
+        );
 
         assert!(!target_path.exists());
     }
@@ -435,7 +438,7 @@ mod tests {
     #[test]
     fn test_s3_remote_dif_uri() {
         let source_key = Arc::new(S3SourceKey {
-            region: rusoto_core::Region::UsEast1,
+            region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: String::from("abc"),
             secret_key: String::from("123"),

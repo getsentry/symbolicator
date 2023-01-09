@@ -1,8 +1,9 @@
 use std::fmt;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use aws_types::region::Region;
+use serde::ser::SerializeTuple;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{CommonSourceConfig, RemoteFile, RemoteFileUri, SourceId, SourceLocation};
 
@@ -66,39 +67,61 @@ impl S3RemoteFile {
     }
 }
 
+fn serialize_region<S>(region: &S3Region, s: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match region.endpoint.as_ref() {
+        Some(endpoint) => {
+            let mut seq = s.serialize_tuple(2)?;
+
+            seq.serialize_element(region.region.as_ref())?;
+            seq.serialize_element(endpoint.as_str())?;
+
+            seq.end()
+        }
+        None => s.serialize_str(region.region.as_ref()),
+    }
+}
+
 /// Local helper to deserialize an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
+fn deserialize_region<'de, D>(deserializer: D) -> Result<S3Region, D::Error>
 where
     D: Deserializer<'de>,
 {
-    // This is a Visitor that forwards string types to rusoto_core::Region's
-    // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
-    // impl.
-    struct RusotoRegion;
+    // This is a Visitor that treats string types as a builtin region and
+    // tuples as custom regions.
+    struct SdkRegion;
 
-    impl<'de> serde::de::Visitor<'de> for RusotoRegion {
-        type Value = rusoto_core::Region;
+    impl<'de> serde::de::Visitor<'de> for SdkRegion {
+        type Value = S3Region;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("string or tuple")
         }
 
-        fn visit_str<E>(self, value: &str) -> Result<rusoto_core::Region, E>
+        fn visit_str<E>(self, value: &str) -> Result<S3Region, E>
         where
             E: serde::de::Error,
         {
-            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {e:?}")))
+            Ok(S3Region::from(value))
         }
 
-        fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>
+        fn visit_seq<S>(self, seq: S) -> Result<S3Region, S::Error>
         where
             S: serde::de::SeqAccess<'de>,
         {
-            Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
+            let tup: (String, String) =
+                Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))?;
+
+            Ok(S3Region {
+                region: Region::new(tup.0),
+                endpoint: Some(tup.1),
+            })
         }
     }
 
-    deserializer.deserialize_any(RusotoRegion)
+    deserializer.deserialize_any(SdkRegion)
 }
 
 /// The types of Amazon IAM credentials providers we support.
@@ -124,8 +147,11 @@ impl Default for AwsCredentialsProvider {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
-    #[serde(deserialize_with = "deserialize_region")]
-    pub region: rusoto_core::Region,
+    #[serde(
+        deserialize_with = "deserialize_region",
+        serialize_with = "serialize_region"
+    )]
+    pub region: S3Region,
 
     /// AWS IAM credentials provider for obtaining S3 access.
     #[serde(default)]
@@ -138,6 +164,25 @@ pub struct S3SourceKey {
     /// S3 secret key.
     #[serde(default)]
     pub secret_key: String,
+}
+
+/// A wrapper around an S3 region that allows using custom regions.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct S3Region {
+    /// The underlying [`Region`].
+    pub region: Region,
+    /// An optional endpoint for custom regions.
+    pub endpoint: Option<String>,
+}
+
+impl From<&str> for S3Region {
+    fn from(value: &str) -> Self {
+        let region = Region::new(String::from(value));
+        Self {
+            region,
+            endpoint: None,
+        }
+    }
 }
 
 impl PartialEq for S3SourceKey {
@@ -154,13 +199,13 @@ impl std::hash::Hash for S3SourceKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.access_key.hash(state);
         self.secret_key.hash(state);
-        self.region.name().hash(state);
+        self.region.hash(state);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rusoto_core::Region;
+    use super::*;
 
     use crate::{SourceConfig, SourceId};
 
@@ -182,7 +227,7 @@ mod tests {
             SourceConfig::S3(cfg) => {
                 assert_eq!(cfg.id, SourceId("us-east".to_string()));
                 assert_eq!(cfg.bucket, "my-supermarket-bucket");
-                assert_eq!(cfg.source_key.region, Region::UsEast1);
+                assert_eq!(cfg.source_key.region, S3Region::from("us-east-1"));
                 assert_eq!(cfg.source_key.access_key, "the-access-key");
                 assert_eq!(cfg.source_key.secret_key, "the-secret-key");
             }
@@ -210,30 +255,14 @@ mod tests {
                 assert_eq!(cfg.id, SourceId("minio".to_string()));
                 assert_eq!(
                     cfg.source_key.region,
-                    Region::Custom {
-                        name: "minio".to_string(),
-                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
+                    S3Region {
+                        region: Region::new("minio".to_string()),
+                        endpoint: Some("http://minio.minio.svc.cluster.local:9000".to_string()),
                     }
                 );
             }
             _ => unreachable!(),
         }
-    }
-
-    #[test]
-    fn test_s3_config_bad_plain_region() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region: my-cool-region
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
     }
 
     #[test]
