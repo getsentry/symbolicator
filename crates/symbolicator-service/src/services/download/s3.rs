@@ -1,6 +1,4 @@
 //! Support to download from S3 buckets.
-//!
-//! Specifically this supports the [`S3SourceConfig`] source.
 
 use std::any::type_name;
 use std::convert::TryFrom;
@@ -16,16 +14,13 @@ use rusoto_core::region::Region;
 use rusoto_core::RusotoError;
 use rusoto_s3::{GetObjectError, S3};
 
-use symbolicator_sources::{
-    AwsCredentialsProvider, FileType, ObjectId, RemoteFile, S3RemoteFile, S3SourceConfig,
-    S3SourceKey,
-};
+use symbolicator_sources::{AwsCredentialsProvider, RemoteFile, S3RemoteFile, S3SourceKey};
 
 use super::{content_length_timeout, DownloadError, DownloadStatus};
 
 type ClientCache = moka::sync::Cache<Arc<S3SourceKey>, Arc<rusoto_s3::S3Client>>;
 
-/// Downloader implementation that supports the [`S3SourceConfig`] source.
+/// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
     http_client: Arc<rusoto_core::HttpClient>,
     client_cache: ClientCache,
@@ -208,23 +203,6 @@ impl S3Downloader {
 
         super::download_stream(&source, stream, destination, timeout).await
     }
-
-    pub fn list_files(
-        &self,
-        source: Arc<S3SourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| S3RemoteFile::new(source.clone(), loc).into())
-        .collect()
-    }
 }
 
 #[cfg(test)]
@@ -234,7 +212,7 @@ mod tests {
     use std::path::Path;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        CommonSourceConfig, DirectoryLayoutType, RemoteFileUri, S3SourceConfig, SourceId,
         SourceLocation,
     };
 
@@ -371,30 +349,6 @@ mod tests {
             "50/2fc0a51ec13e479998684fa139dca7/debuginfo",
         )
         .await;
-    }
-
-    #[test]
-    fn test_list_files() {
-        test::setup();
-
-        let source = s3_source(s3_source_key!());
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
-
-        let object_id = ObjectId {
-            code_id: Some("502fc0a51ec13e479998684fa139dca7".parse().unwrap()),
-            code_file: Some("Foo.app/Contents/Foo".to_owned()),
-            debug_id: Some("502fc0a5-1ec1-3e47-9998-684fa139dca7".parse().unwrap()),
-            debug_file: Some("Foo".to_owned()),
-            object_type: ObjectType::Macho,
-        };
-
-        let list = downloader.list_files(source, &[FileType::MachDebug], &object_id);
-        assert_eq!(list.len(), 1);
-
-        assert!(list[0]
-            .uri()
-            .to_string()
-            .ends_with("50/2fc0a51ec13e479998684fa139dca7/debuginfo"));
     }
 
     #[tokio::test]
