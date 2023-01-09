@@ -37,7 +37,7 @@ async fn test_download_errors() {
     };
 
     // NOTE: we run requests twice to make sure that round-trips through the cache give us the same results.
-    for _ in 0..2 {
+    for i in 0..2 {
         // NOTE: we try this 3 times on error
         let source = hitcounter.source("rejected", "/respond_statuscode/500/");
         let request = get_symbolication_request(vec![source]);
@@ -48,7 +48,7 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::FetchingFailed,
-                ObjectUseInfo::None, // FIXME: should this be an error?
+                ObjectUseInfo::None,
                 ObjectDownloadInfo::Error {
                     details: "download failed: 500 Internal Server Error".into()
                 }
@@ -65,7 +65,7 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::Timeout,
-                ObjectUseInfo::None, // FIXME: should this be an error?
+                ObjectUseInfo::None,
                 ObjectDownloadInfo::Error {
                     details: "download timed out".into()
                 }
@@ -81,7 +81,7 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::Missing,
-                ObjectUseInfo::None, // FIXME: should this be an error?
+                ObjectUseInfo::None,
                 ObjectDownloadInfo::NotFound
             )
         );
@@ -95,8 +95,16 @@ async fn test_download_errors() {
             (
                 FrameStatus::Missing,
                 ObjectFileStatus::FetchingFailed,
-                ObjectUseInfo::None, // FIXME: should this be an error?
-                ObjectDownloadInfo::NoPerm { details: "".into() }
+                ObjectUseInfo::None,
+                ObjectDownloadInfo::NoPerm {
+                    // FIXME: We are currently serializing `CacheError` in "legacy" mode that does
+                    // not support details
+                    details: if i == 0 {
+                        "403 Forbidden".into()
+                    } else {
+                        "".into()
+                    }
+                }
             )
         );
 

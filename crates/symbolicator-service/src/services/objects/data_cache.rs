@@ -426,8 +426,7 @@ mod tests {
             sources: Arc::new([hitcounter.source("pending", "/delay/1h/")]),
             ..find_object
         };
-        // FIXME(swatinem): we are not yet threading `Duration` values through our Caching layer
-        let timeout = Duration::ZERO;
+        let err = CacheError::Timeout(Duration::from_millis(100));
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -435,7 +434,7 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::Timeout(timeout));
+        assert_eq!(result, err);
         // XXX: why are we not trying this 3 times?
         assert_eq!(hitcounter.accesses(), 1);
         let result = objects_actor
@@ -445,7 +444,8 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::Timeout(timeout));
+        // FIXME(swatinem): We are still serializing old cache statuses right now
+        assert_eq!(result, CacheError::Timeout(Duration::ZERO));
         assert_eq!(hitcounter.accesses(), 0);
     }
 
@@ -475,6 +475,7 @@ mod tests {
             sources: Arc::new([hitcounter.source("permissiondenied", "/respond_statuscode/403/")]),
             ..find_object
         };
+        let err = CacheError::PermissionDenied("403 Forbidden".into());
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -482,7 +483,7 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::PermissionDenied("".into()));
+        assert_eq!(result, err);
         assert_eq!(hitcounter.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
@@ -491,6 +492,7 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
+        // FIXME(swatinem): We are still serializing old cache statuses right now
         assert_eq!(result, CacheError::PermissionDenied("".into()));
         assert_eq!(hitcounter.accesses(), 0);
     }

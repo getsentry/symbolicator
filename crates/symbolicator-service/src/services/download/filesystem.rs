@@ -9,7 +9,7 @@ use tokio::fs;
 
 use symbolicator_sources::FilesystemRemoteFile;
 
-use super::{DownloadError, DownloadStatus};
+use crate::cache::{CacheEntry, CacheError};
 
 /// Downloader implementation that supports the filesystem source.
 #[derive(Debug)]
@@ -25,16 +25,17 @@ impl FilesystemDownloader {
         &self,
         file_source: FilesystemRemoteFile,
         dest: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
+    ) -> CacheEntry {
         // All file I/O in this function is blocking!
         let abspath = file_source.path();
         tracing::debug!("Fetching debug file from {:?}", abspath);
-        match fs::copy(abspath, dest).await {
-            Ok(_) => Ok(DownloadStatus::Completed(())),
-            Err(e) => match e.kind() {
-                io::ErrorKind::NotFound => Ok(DownloadStatus::NotFound),
-                _ => Err(DownloadError::Io(e)),
-            },
-        }
+
+        fs::copy(abspath, dest)
+            .await
+            .map(|_| ())
+            .map_err(|e| match e.kind() {
+                io::ErrorKind::NotFound => CacheError::NotFound,
+                _ => e.into(),
+            })
     }
 }

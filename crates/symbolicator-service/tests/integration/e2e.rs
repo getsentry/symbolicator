@@ -190,7 +190,9 @@ async fn test_no_permission() {
     assert_eq!(candidates[1].source, SourceId::new("forbidden"));
     assert_eq!(
         candidates[1].download,
-        ObjectDownloadInfo::NoPerm { details: "".into() }
+        ObjectDownloadInfo::NoPerm {
+            details: "403 Forbidden".into()
+        }
     );
 
     assert_eq!(candidates[3].source, SourceId::new("invalid-gcs"));
@@ -202,7 +204,7 @@ async fn test_no_permission() {
     assert_eq!(
         candidates[3].download,
         ObjectDownloadInfo::Error {
-            details: "download failed: failed to fetch data from GCS: failed encoding JWT".into()
+            details: "download failed: failed encoding JWT".into()
         }
     );
 
@@ -213,7 +215,7 @@ async fn test_no_permission() {
     );
     assert_eq!(
         candidates[5].download,
-        ObjectDownloadInfo::NoPerm { details: "".into() }
+        ObjectDownloadInfo::NoPerm { details: "The authorization header is malformed; a non-empty Access Key (AKID) must be provided in the credential.".into() }
     );
 }
 

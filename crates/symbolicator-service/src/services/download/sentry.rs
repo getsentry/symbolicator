@@ -4,23 +4,20 @@
 
 use std::fmt;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use futures::TryStreamExt;
-use parking_lot::Mutex;
-use reqwest::{header, StatusCode};
 use sentry::SentryFutureExt;
-use thiserror::Error;
 use url::Url;
 
 use symbolicator_sources::{
     ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
 
-use super::{content_length_timeout, DownloadError, DownloadStatus, FileType, USER_AGENT};
+use super::{FileType, USER_AGENT};
+use crate::cache::{CacheEntry, CacheError};
 use crate::config::Config;
-use crate::utils::futures::{self as future_utils, CancelOnDrop};
+use crate::utils::futures::CancelOnDrop;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
@@ -36,19 +33,6 @@ struct SearchQuery {
 
 /// An LRU cache sentry DIF index responses.
 type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>;
-
-/// Errors happening while fetching data from Sentry.
-#[derive(Debug, Error)]
-pub enum SentryError {
-    #[error("failed sending request to Sentry")]
-    Reqwest(#[from] reqwest::Error),
-
-    #[error("bad status code from Sentry: {0}")]
-    BadStatusCode(StatusCode),
-
-    #[error("failed joining task")]
-    JoinTask(#[from] tokio::task::JoinError),
-}
 
 pub struct SentryDownloader {
     client: reqwest::Client,
@@ -86,7 +70,7 @@ impl SentryDownloader {
     async fn fetch_sentry_json(
         client: &reqwest::Client,
         query: &SearchQuery,
-    ) -> Result<Vec<SearchResult>, SentryError> {
+    ) -> CacheEntry<Vec<SearchResult>> {
         let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token)
@@ -105,18 +89,16 @@ impl SentryDownloader {
             Ok(response.json().await?)
         } else {
             tracing::warn!("Sentry returned status code {}", response.status());
-            Err(SentryError::BadStatusCode(response.status()))
+            let details = response.status().to_string();
+            Err(CacheError::DownloadError(details))
         }
     }
 
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search(
-        &self,
-        query: SearchQuery,
-    ) -> Result<Vec<SearchResult>, DownloadError> {
-        if let Some((created, entries)) = self.index_cache.lock().get(&query) {
+    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+        if let Some((created, entries)) = self.index_cache.lock().unwrap().get(&query) {
             if created.elapsed() < self.cache_duration {
                 return Ok(entries.clone());
             }
@@ -130,19 +112,19 @@ impl SentryDownloader {
         let entries = {
             let client = self.client.clone();
             let query = query.clone();
-            let future = async move {
-                future_utils::retry(|| Self::fetch_sentry_json(&client, &query)).await
-            };
+            let future =
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
 
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(SentryError::JoinTask)??
+            future.await.map_err(|_| CacheError::InternalError)??
         };
 
         if self.cache_duration > Duration::from_secs(0) {
             self.index_cache
                 .lock()
+                .unwrap()
                 .put(query, (Instant::now(), entries.clone()));
         }
 
@@ -154,7 +136,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: &ObjectId,
         file_types: &[FileType],
-    ) -> Result<Vec<RemoteFile>, DownloadError> {
+    ) -> CacheEntry<Vec<RemoteFile>> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.
 
@@ -212,71 +194,26 @@ impl SentryDownloader {
     }
 
     /// Downloads a source hosted on Sentry.
-    ///
-    /// # Directly thrown errors
-    /// - [`DownloadError::Reqwest`]
-    /// - [`DownloadError::Rejected`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: SentryRemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
+    ) -> CacheEntry {
         let request = self
             .client
             .get(file_source.url())
             .header("User-Agent", USER_AGENT)
-            .bearer_auth(&file_source.source.token)
-            .send();
-
-        let download_url = file_source.url();
+            .bearer_auth(&file_source.source.token);
         let source = RemoteFile::from(file_source);
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = request
-            .await
-            .map_err(|_| DownloadError::Canceled)? // Timeout
-            .map_err(|e| {
-                tracing::debug!("Skipping response from {}: {}", download_url, e);
-                DownloadError::Reqwest(e)
-            })?;
-
-        if response.status().is_success() {
-            tracing::trace!("Success hitting {}", download_url);
-
-            let content_length = response
-                .headers()
-                .get(header::CONTENT_LENGTH)
-                .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<i64>().ok());
-
-            let timeout =
-                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-            super::download_stream(&source, stream, destination, timeout).await
-        } else if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-        ) {
-            tracing::debug!("Insufficient permissions to download from {}", download_url);
-            Ok(DownloadStatus::PermissionDenied)
-        } else if response.status().is_client_error() {
-            tracing::debug!(
-                "Unexpected client error status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Ok(DownloadStatus::NotFound)
-        } else {
-            tracing::debug!(
-                "Unexpected status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Err(DownloadError::Rejected(response.status()))
-        }
+        super::download_reqwest(
+            &source,
+            request,
+            self.connect_timeout,
+            self.streaming_timeout,
+            destination,
+        )
+        .await
     }
 }
 

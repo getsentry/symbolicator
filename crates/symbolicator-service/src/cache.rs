@@ -192,7 +192,7 @@ impl CacheError {
 
 /// An entry in a cache, containing either `Ok(T)` or an error denoting the reason why an
 /// object could not be fetched or is otherwise unusable.
-pub type CacheEntry<T> = Result<T, CacheError>;
+pub type CacheEntry<T = ()> = Result<T, CacheError>;
 
 /// Parses a [`CacheEntry`] from a [`ByteView`](ByteView).
 pub fn cache_entry_from_bytes(bytes: ByteView<'static>) -> CacheEntry<ByteView<'static>> {
