@@ -124,15 +124,13 @@ struct FetchPortablePdbCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_ppdb_cache", skip_all)]
 async fn fetch_difs_and_compute_ppdb_cache(
-    mut temp_file: NamedTempFile,
+    temp_file: &mut NamedTempFile,
+    objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-    objects_actor: ObjectsActor,
-) -> CacheEntry<NamedTempFile> {
+) -> CacheEntry {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    write_ppdb_cache(temp_file.as_file_mut(), &object_handle)?;
-
-    Ok(temp_file)
+    write_ppdb_cache(temp_file.as_file_mut(), &object_handle)
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
@@ -144,11 +142,11 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_ppdb_cache(
             temp_file,
+            &self.objects_actor,
             self.object_meta.clone(),
-            self.objects_actor.clone(),
         );
 
         let num_sources = self.request.sources.len().to_string().into();

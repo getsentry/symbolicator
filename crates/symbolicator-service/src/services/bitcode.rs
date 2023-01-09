@@ -85,8 +85,13 @@ impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    async fn fetch_file(self, temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
-        let temp_file = fetch_file(self.download_svc, self.file_source, temp_file).await?;
+    async fn fetch_file(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+        fetch_file(
+            self.download_svc.clone(),
+            self.file_source.clone(),
+            temp_file,
+        )
+        .await?;
 
         let view = ByteView::map_file_ref(temp_file.as_file())?;
 
@@ -108,7 +113,7 @@ impl FetchFileRequest {
                 }
             }
         }
-        Ok(temp_file)
+        Ok(())
     }
 }
 
@@ -125,8 +130,8 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
-        let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        let fut = self.fetch_file(temp_file).bind_hub(Hub::current());
 
         let source_name = self.file_source.source_type_name().into();
 
