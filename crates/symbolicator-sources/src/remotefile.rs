@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SentryRemoteFile, SourceId,
+    get_directory_paths, CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile,
+    GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceFilters,
+    SourceId,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -73,6 +75,61 @@ impl SourceLocation {
 impl fmt::Display for SourceLocation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// Iterator to generate a list of [`SourceLocation`]s to attempt downloading.
+#[derive(Debug)]
+pub struct SourceLocationIter<'a> {
+    /// Limits search to a set of filetypes.
+    filetypes: std::slice::Iter<'a, FileType>,
+
+    /// Filters from a `SourceConfig` to limit the amount of generated paths.
+    filters: &'a SourceFilters,
+
+    /// Information about the object file to be downloaded.
+    object_id: &'a ObjectId,
+
+    /// Directory from `SourceConfig` to define what kind of paths we generate.
+    layout: DirectoryLayout,
+
+    /// Remaining locations to iterate.
+    next: Vec<String>,
+}
+
+impl<'a> SourceLocationIter<'a> {
+    /// Creates a new Iterator through all the [`SourceLocation`]s available on the source.
+    pub fn new(
+        config: &'a CommonSourceConfig,
+        filetypes: &'a [FileType],
+        object_id: &'a ObjectId,
+    ) -> Self {
+        Self {
+            filetypes: filetypes.iter(),
+            filters: &config.filters,
+            object_id,
+            layout: config.layout,
+            next: vec![],
+        }
+    }
+}
+
+impl Iterator for SourceLocationIter<'_> {
+    type Item = SourceLocation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.next.is_empty() {
+            if let Some(&filetype) = self.filetypes.next() {
+                if !self.filters.is_allowed(self.object_id, filetype) {
+                    continue;
+                }
+                self.next = get_directory_paths(self.layout, filetype, self.object_id);
+            } else {
+                return None;
+            }
+        }
+
+        self.next.pop().map(SourceLocation::new)
     }
 }
 
@@ -273,6 +330,8 @@ impl fmt::Display for RemoteFileUri {
 
 #[cfg(test)]
 mod tests {
+    use symbolic::common::{CodeId, DebugId, Uuid};
+
     use super::*;
 
     #[test]
@@ -340,5 +399,34 @@ mod tests {
         let base = Url::parse("https://example.org/").unwrap();
         let joined = SourceLocation::new("foo").to_url(&base).unwrap();
         assert_eq!(joined, "https://example.org/foo".parse().unwrap());
+    }
+
+    #[test]
+    fn test_iter_elf() {
+        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
+        // created.
+        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
+        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
+        let debug_id = DebugId::from_uuid(uuid);
+
+        let mut all: Vec<_> = SourceLocationIter::new(
+            &Default::default(),
+            &[FileType::ElfCode, FileType::ElfDebug],
+            &ObjectId {
+                debug_id: Some(debug_id),
+                code_id: Some(code_id),
+                ..Default::default()
+            },
+        )
+        .collect();
+        all.sort();
+
+        assert_eq!(
+            all,
+            [
+                SourceLocation::new("ab/cdef1234567890abcd"),
+                SourceLocation::new("ab/cdef1234567890abcd.debug")
+            ]
+        );
     }
 }

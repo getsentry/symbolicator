@@ -1,0 +1,32 @@
+---
+source: crates/symbolicator-service/tests/integration/e2e.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - registers:
+      eip: "0x1509530"
+    frames:
+      - status: missing
+        original_index: 0
+        instruction_addr: "0x749e8630"
+        package: "C:\\Windows\\System32\\kernel32.dll"
+modules:
+  - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe
+    code_file: "C:\\Windows\\System32\\kernel32.dll"
+    debug_id: ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1
+    debug_file: "C:\\Windows\\System32\\wkernel32.pdb"
+    image_addr: "0x749d0000"
+    image_size: 851968
+    candidates:
+      - source: not-found
+        location: No object files listed on this source
+        download:
+          status: notfound
+

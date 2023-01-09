@@ -211,70 +211,27 @@ impl BitcodeService {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Option<Arc<CacheHandle>> {
-        let jobs = sources.iter().map(|source| {
-            self.fetch_file_from_source_with_error(uuid, dif_kind, scope.clone(), source.clone())
-                .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-        let results = future::join_all(jobs).await;
-        let mut ret = None;
-        for result in results {
-            if result.is_some() {
-                ret = result;
-            }
-        }
-        ret
-    }
-
-    /// Wraps `fetch_file_from_source` in sentry error handling.
-    async fn fetch_file_from_source_with_error(
-        &self,
-        uuid: DebugId,
-        dif_kind: AuxDifKind,
-        scope: Scope,
-        source: SourceConfig,
-    ) -> Option<Arc<CacheHandle>> {
-        sentry::configure_scope(|scope| {
-            scope.set_tag("auxdif.debugid", uuid);
-            scope.set_extra("auxdif.kind", dif_kind.to_string().into());
-            scope.set_extra("auxdif.source", source.type_name().into());
-        });
-        match self
-            .fetch_file_from_source(uuid, dif_kind, scope, source)
-            .await
-            .context("Bitcode svc failed for single source")
-        {
-            Ok(res) => res,
-            Err(err) => {
-                tracing::warn!("{}: {:?}", err, err.source());
-                sentry::capture_error(&*err);
-                None
-            }
-        }
-    }
-
-    /// Fetches a file and returns the [`CacheHandle`] if found.
-    async fn fetch_file_from_source(
-        &self,
-        uuid: DebugId,
-        dif_kind: AuxDifKind,
-        scope: Scope,
-        source: SourceConfig,
-    ) -> CacheEntry<Option<Arc<CacheHandle>>> {
         let file_type = match dif_kind {
             AuxDifKind::BcSymbolMap => &[FileType::BcSymbolMap],
             AuxDifKind::UuidMap => &[FileType::UuidMap],
         };
-        let file_sources = self
+        let files = self
             .download_svc
-            .list_files(source, file_type, &uuid.into())
-            .await?;
+            .list_files(&sources, file_type, &uuid.into())
+            .await;
 
-        let fetch_jobs = file_sources.into_iter().map(|file_source| {
+        let fetch_jobs = files.into_iter().map(|file_source| {
             let scope = if file_source.is_public() {
                 Scope::Global
             } else {
                 scope.clone()
             };
+            let hub = Hub::new_from_top(Hub::current());
+            hub.configure_scope(|scope| {
+                scope.set_tag("auxdif.debugid", uuid);
+                scope.set_extra("auxdif.kind", dif_kind.to_string().into());
+                scope.set_extra("auxdif.source", file_source.source_metric_key().into());
+            });
             let request = FetchFileRequest {
                 scope,
                 file_source,
@@ -282,24 +239,21 @@ impl BitcodeService {
                 kind: dif_kind,
                 download_svc: self.download_svc.clone(),
             };
-            self.cache
-                .compute_memoized(request)
-                .bind_hub(Hub::new_from_top(Hub::current()))
+            self.cache.compute_memoized(request).bind_hub(hub)
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        let mut ret = None;
+        let mut file_handle = None;
         for result in all_results {
             match result {
-                Ok(handle) => ret = Some(handle),
+                Ok(handle) => file_handle = Some(handle),
                 Err(CacheError::NotFound) => (),
-                Err(err) => {
-                    let mut event = sentry::event_from_error(&err);
-                    event.message = Some("Failure fetching auxiliary DIF file from source".into());
-                    sentry::capture_event(event);
+                Err(error) => {
+                    let error: &dyn std::error::Error = &error;
+                    tracing::error!(error, "failed fetching auxiliary DIF");
                 }
             }
         }
-        Ok(ret)
+        file_handle
     }
 }

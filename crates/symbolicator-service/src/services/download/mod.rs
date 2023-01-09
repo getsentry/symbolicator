@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
+use aws_smithy_http;
 use futures::prelude::*;
 use reqwest::StatusCode;
 use tempfile::NamedTempFile;
@@ -17,15 +18,15 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
-use aws_smithy_http;
-
-use symbolicator_sources::get_directory_paths;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
 };
+use symbolicator_sources::{
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
+};
 
-use crate::cache::{CacheError, CacheStatus};
+use crate::cache::CacheError;
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
 use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
 use crate::utils::sentry::ConfigureScope;
@@ -129,39 +130,6 @@ impl From<DownloadError> for CacheError {
             DownloadError::Permissions => Self::PermissionDenied(String::new()),
             DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
             _ => Self::from_std_error(error),
-        }
-    }
-}
-
-impl DownloadError {
-    /// This produces a user-facing string representation of a download error if it is a variant
-    /// that needs to be stored as a [`CacheStatus::CacheSpecificError`] entry in the download cache.
-    pub fn for_cache(&self) -> String {
-        match self {
-            DownloadError::Gcs(inner) => format!("{self}: {inner}"),
-            DownloadError::Sentry(inner) => format!("{self}: {inner}"),
-            DownloadError::S3(inner) => format!("{self}: {inner}"),
-            DownloadError::Permissions => self.to_string(),
-            DownloadError::CachedError(original_message) => original_message.clone(),
-            _ => format!("{self}"),
-        }
-    }
-
-    /// If a given cache entry is [`CacheStatus::CacheSpecificError`], this parses and extracts its
-    /// contents into a [`DownloadError`]. This will return none if a
-    /// non-[`CacheStatus::CacheSpecificError`] is provided.
-    pub fn from_cache(status: &CacheStatus) -> Option<Self> {
-        match status {
-            CacheStatus::Positive => None,
-            CacheStatus::Negative => None,
-            CacheStatus::Malformed(_) => None,
-            CacheStatus::CacheSpecificError(message) => {
-                if message.starts_with(&Self::Permissions.to_string()) {
-                    Some(Self::Permissions)
-                } else {
-                    Some(Self::CachedError(message.clone()))
-                }
-            }
         }
     }
 }
@@ -317,23 +285,49 @@ impl DownloadService {
     /// downloading you may still need to filter the files.
     pub async fn list_files(
         &self,
-        source: SourceConfig,
+        sources: &[SourceConfig],
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Result<Vec<RemoteFile>, DownloadError> {
-        match source {
-            SourceConfig::Sentry(cfg) => {
-                let job = self.sentry.list_files(cfg, object_id, filetypes);
-                let job = tokio::time::timeout(Duration::from_secs(30), job);
-                let job = measure("service.download.list_files", m::timed_result, None, job);
+    ) -> Vec<RemoteFile> {
+        let mut remote_files = vec![];
 
-                job.await.map_err(|_| DownloadError::Canceled)?
-            }
-            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
-            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
+        macro_rules! check_source {
+            ($source:ident => $file_ty:ty) => {{
+                let mut iter =
+                    SourceLocationIter::new(&$source.files, filetypes, object_id).peekable();
+                if iter.peek().is_none() {
+                    // TODO: create a special "no file on source" `RemoteFile`?
+                } else {
+                    remote_files
+                        .extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
+                }
+            }};
         }
+
+        for source in sources {
+            match source {
+                SourceConfig::Sentry(cfg) => {
+                    let job = self.sentry.list_files(cfg.clone(), object_id, filetypes);
+                    let job = tokio::time::timeout(Duration::from_secs(30), job);
+                    let job = measure("service.download.list_files", m::timed_result, None, job);
+
+                    let sentry_files = job.await.map_err(|_| DownloadError::Canceled);
+                    match sentry_files {
+                        Ok(Ok(files)) => remote_files.extend(files),
+                        Ok(Err(error)) | Err(error) => {
+                            let error: &dyn std::error::Error = &error;
+                            tracing::error!(error, "Failed to fetch file list");
+                            // TODO: create a special "finding files failed" `RemoteFile`?
+                        }
+                    }
+                }
+                SourceConfig::Http(cfg) => check_source!(cfg => HttpRemoteFile),
+                SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
+                SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
+                SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
+            }
+        }
+        remote_files
     }
 }
 
@@ -494,44 +488,6 @@ where
     }
 }
 
-/// Iterator to generate a list of [`SourceLocation`]s to attempt downloading.
-#[derive(Debug)]
-struct SourceLocationIter<'a> {
-    /// Limits search to a set of filetypes.
-    filetypes: std::slice::Iter<'a, FileType>,
-
-    /// Filters from a `SourceConfig` to limit the amount of generated paths.
-    filters: &'a SourceFilters,
-
-    /// Information about the object file to be downloaded.
-    object_id: &'a ObjectId,
-
-    /// Directory from `SourceConfig` to define what kind of paths we generate.
-    layout: DirectoryLayout,
-
-    /// Remaining locations to iterate.
-    next: Vec<String>,
-}
-
-impl Iterator for SourceLocationIter<'_> {
-    type Item = SourceLocation;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.next.is_empty() {
-            if let Some(&filetype) = self.filetypes.next() {
-                if !self.filters.is_allowed(self.object_id, filetype) {
-                    continue;
-                }
-                self.next = get_directory_paths(self.layout, filetype, self.object_id);
-            } else {
-                return None;
-            }
-        }
-
-        self.next.pop().map(SourceLocation::new)
-    }
-}
-
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
@@ -545,7 +501,6 @@ mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
 
-    use symbolic::common::{CodeId, DebugId, Uuid};
     use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
 
     use super::*;
@@ -600,9 +555,8 @@ mod tests {
         let config = Config::default();
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
-            .list_files(source.clone(), FileType::all(), &objid)
-            .await
-            .unwrap();
+            .list_files(&[source.clone()], FileType::all(), &objid)
+            .await;
 
         assert!(!file_list.is_empty());
         let item = &file_list[0];
@@ -627,36 +581,5 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
-    }
-
-    #[test]
-    fn test_iter_elf() {
-        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
-        // created.
-        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
-        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
-        let debug_id = DebugId::from_uuid(uuid);
-
-        let mut all: Vec<_> = SourceLocationIter {
-            filetypes: [FileType::ElfCode, FileType::ElfDebug].iter(),
-            filters: &Default::default(),
-            object_id: &ObjectId {
-                debug_id: Some(debug_id),
-                code_id: Some(code_id),
-                ..Default::default()
-            },
-            layout: Default::default(),
-            next: Default::default(),
-        }
-        .collect();
-        all.sort();
-
-        assert_eq!(
-            all,
-            [
-                SourceLocation::new("ab/cdef1234567890abcd"),
-                SourceLocation::new("ab/cdef1234567890abcd.debug")
-            ]
-        );
     }
 }

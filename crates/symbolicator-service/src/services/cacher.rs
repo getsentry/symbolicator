@@ -14,7 +14,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
-use crate::cache::{cache_entry_from_cache_status, Cache, CacheEntry, CacheStatus, ExpirationTime};
+use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheService};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
@@ -187,14 +187,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                 item_path.to_string_lossy().into(),
             );
         });
-        let (status, byteview, expiration) = match self.config.open_cachefile(&item_path)? {
-            Some(bv) => bv,
+        let (entry, expiration) = match self.config.open_cachefile(&item_path)? {
+            Some(entry) => entry,
             None => return Ok(None),
         };
-        if status == CacheStatus::Positive && !request.should_load(&byteview) {
-            tracing::trace!("Discarding {} at path {}", name, item_path.display());
-            metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
-            return Ok(None);
+        if let Ok(byteview) = &entry {
+            if !request.should_load(byteview) {
+                tracing::trace!("Discarding {} at path {}", name, item_path.display());
+                metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
+                return Ok(None);
+            }
         }
 
         // store things into the shared cache when:
@@ -202,7 +204,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // - that has the latest version (we don’t want to upload old versions)
         // - we refreshed the local cache time, so we also refresh the shared cache time.
         let needs_reupload = expiration.was_touched();
-        if status == CacheStatus::Positive && version == T::VERSIONS.current && needs_reupload {
+        if entry.is_ok() && version == T::VERSIONS.current && needs_reupload {
             let shared_cache_key = SharedCacheKey {
                 name: self.config.name(),
                 version: T::VERSIONS.current,
@@ -225,15 +227,16 @@ impl<T: CacheItemRequest> Cacher<T> {
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
         metric!(counter(&format!("caches.{name}.file.hit")) += 1);
-        metric!(
-            time_raw(&format!("caches.{name}.file.size")) = byteview.len() as u64,
-            "hit" => "true"
-        );
+        if let Ok(byteview) = &entry {
+            metric!(
+                time_raw(&format!("caches.{name}.file.size")) = byteview.len() as u64,
+                "hit" => "true"
+            );
+        }
 
         tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-        let cache_entry = cache_entry_from_cache_status(status, byteview);
-        cache_entry
+        entry
             .and_then(|byteview| request.load(byteview, expiration))
             .map(Some)
         // TODO: log error:
@@ -275,39 +278,42 @@ impl<T: CacheItemRequest> Cacher<T> {
             .fetch(&shared_cache_key, temp_fd)
             .await;
 
-        let status = match shared_cache_hit {
-            true => {
-                // Waste an mmap call on a cold path, oh well.
-                let bv = ByteView::map_file_ref(temp_file.as_file())?;
-                request
-                    .should_load(&bv)
-                    .then(|| CacheStatus::from_content(&bv))
+        let mut entry = Err(CacheError::NotFound);
+        if shared_cache_hit {
+            // Waste an mmap call on a cold path, oh well.
+            let bv = ByteView::map_file_ref(temp_file.as_file())?;
+            if request.should_load(&bv) {
+                entry = Ok(bv);
+            } else {
+                tracing::trace!("Discarding item from shared cache {}", key);
+                metric!(counter("shared_cache.file.discarded") += 1);
             }
-            false => None,
-        };
-        if shared_cache_hit && status.is_none() {
-            tracing::trace!("Discarding item from shared cache {}", key);
-            metric!(counter("shared_cache.file.discarded") += 1);
         }
 
-        let (status, temp_file) = match status {
-            Some(status) => (status, temp_file),
-            None => match request.compute(temp_file).await {
-                Ok(temp_file) => (CacheStatus::Positive, temp_file),
+        let temp_file = match entry {
+            // the cache came from the shared cache which wrote directly to `temp_file`
+            Ok(_) => temp_file,
+            Err(_) => match request.compute(temp_file).await {
+                Ok(temp_file) => {
+                    // Now we have written the data to the tempfile we can mmap it, persisting it later
+                    // is fine as it does not move filesystem boundaries there.
+                    let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
+                    entry = Ok(byte_view);
+
+                    temp_file
+                }
                 Err(err) => {
-                    let status = err.as_cache_status();
                     // FIXME(swatinem): We are creating a new tempfile in the hot err/not-found path
                     let temp_file = self.tempfile()?;
                     let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
-                    status.write(&mut temp_fd).await?;
-                    (status, temp_file)
+                    err.write(&mut temp_fd).await?;
+
+                    entry = Err(err);
+
+                    temp_file
                 }
             },
         };
-
-        // Now we have written the data to the tempfile we can mmap it, persisting it later
-        // is fine as it does not move filesystem boundaries there.
-        let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
 
         let file = if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
@@ -321,14 +327,22 @@ impl<T: CacheItemRequest> Cacher<T> {
             });
             metric!(
                 counter(&format!("caches.{}.file.write", self.config.name())) += 1,
-                "status" => status.as_ref(),
+                "status" => match &entry {
+                    Ok(_) => "positive",
+                    // TODO: should we create a `metrics_tag` method?
+                    Err(CacheError::NotFound) => "negative",
+                    Err(CacheError::Malformed(_)) => "malformed",
+                    Err(_) => "cache-specific error",
+                },
                 "is_refresh" => &is_refresh.to_string(),
             );
-            metric!(
-                time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
-                "hit" => "false",
-                "is_refresh" => &is_refresh.to_string(),
-            );
+            if let Ok(byte_view) = &entry {
+                metric!(
+                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    "hit" => "false",
+                    "is_refresh" => &is_refresh.to_string(),
+                );
+            }
 
             tracing::trace!(
                 "Creating {} at path {:?}",
@@ -343,7 +357,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
-        if !shared_cache_hit && status == CacheStatus::Positive {
+        if !shared_cache_hit && entry.is_ok() {
             self.shared_cache_service
                 .store(
                     shared_cache_key,
@@ -354,10 +368,9 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         // we just created a fresh cache, so use the initial expiration times
-        let expiration = ExpirationTime::for_fresh_status(&self.config, &status);
+        let expiration = ExpirationTime::for_fresh_status(&self.config, &entry);
 
-        let cache_entry = cache_entry_from_cache_status(status, byte_view);
-        cache_entry.and_then(|byteview| request.load(byteview, expiration))
+        entry.and_then(|byteview| request.load(byteview, expiration))
 
         // TODO: log error:
         // sentry::configure_scope(|scope| {

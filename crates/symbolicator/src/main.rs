@@ -39,7 +39,11 @@ mod test {
 
     pub async fn server_with_default_service() -> Server {
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(Config::default(), handle.clone(), handle.clone())
+        let config = Config {
+            connect_to_reserved_ips: true,
+            ..Config::default()
+        };
+        let service = RequestService::create(config, handle.clone(), handle.clone())
             .await
             .unwrap();
 

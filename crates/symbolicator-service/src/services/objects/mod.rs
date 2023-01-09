@@ -129,7 +129,10 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-        let file_ids = self.list_files(&sources, filetypes, &identifier).await;
+        let file_ids = self
+            .download_svc
+            .list_files(&sources, filetypes, &identifier)
+            .await;
 
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
@@ -137,43 +140,6 @@ impl ObjectsActor {
         let meta = select_meta(file_metas, purpose);
 
         FindResult { meta, candidates }
-    }
-
-    /// Collect the list of files to download from all the sources.
-    ///
-    /// This concurrently contacts all the sources and asks them for the files we should try
-    /// to download from them matching the required filetypes and object IDs.  Not all
-    /// sources guarantee that the returned files actually exist.
-    async fn list_files(
-        &self,
-        sources: &[SourceConfig],
-        filetypes: &[FileType],
-        identifier: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        let queries = sources.iter().map(|source| {
-            async move {
-                let type_name = source.type_name();
-                self.download_svc
-                    .list_files(source.clone(), filetypes, identifier)
-                    .await
-                    .unwrap_or_else(|err| {
-                        // This basically only happens for the Sentry source type, when doing
-                        // the search by debug/code id. We do not surface those errors to the
-                        // user (instead we default to an empty search result) and only report
-                        // them internally.
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Failed to fetch file list from {}", type_name);
-                        Vec::new()
-                    })
-            }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        future::join_all(queries)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
     }
 
     /// Fetch all [`ObjectMetaHandle`]s for the files.

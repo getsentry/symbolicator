@@ -124,7 +124,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 ///
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
