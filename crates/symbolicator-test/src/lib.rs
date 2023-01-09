@@ -149,21 +149,27 @@ pub fn source_config(ty: DirectoryLayoutType, filetypes: Vec<FileType>) -> Commo
 /// - `/delay/$time/$path` will sleep for `$time` and then redirect to `$path`.
 /// - `/msdl/` will redirect to the public microsoft symbol server.
 /// - `/respond_statuscode/$num` responds with the status code given in `$num`.
-/// - `/garbage_data/$data` reponnds back with `$data`.
+/// - `/garbage_data/$data` responds back with `$data`.
 /// - `/symbols/` serves the fixtures symbols.
 ///
 /// This server requires a `tokio` runtime and is supposed to be run in a `tokio::test`. It
 /// automatically stops serving when dropped.
 #[derive(Debug)]
-pub struct HitCounter {
+pub struct Server {
     handle: tokio::task::JoinHandle<()>,
     socket: SocketAddr,
     hits: Arc<Mutex<BTreeMap<String, usize>>>,
 }
 
-impl HitCounter {
-    /// Creates a new server.
+impl Server {
+    /// Creates a new Server with a special testing-focused router,
+    /// as described in the main [`Server`] docs.
     pub fn new() -> Self {
+        Self::with_router(Self::test_router())
+    }
+
+    /// Creates a new Server with the given [`Router`].
+    pub fn with_router(router: Router) -> Self {
         let hits = Arc::new(Mutex::new(BTreeMap::new()));
 
         let hitcounter = {
@@ -182,10 +188,30 @@ impl HitCounter {
             }
         };
 
+        let router = router.layer(middleware::from_fn(hitcounter));
+
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server = axum::Server::bind(&addr).serve(router.into_make_service());
+        let socket = server.local_addr();
+
+        let handle = tokio::spawn(async move {
+            server.await.unwrap();
+        });
+
+        Self {
+            handle,
+            socket,
+            hits,
+        }
+    }
+
+    /// Creates a new [`Router`] with the configuration as described in the main [`Server`] docs.
+    pub fn test_router() -> Router {
         let serve_dir = get_service(ServeDir::new(fixture("symbols")))
             .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR });
 
-        let router = Router::new()
+        Router::new()
             .route(
                 "/redirect/*path",
                 get(|extract::Path(path): extract::Path<String>| async move {
@@ -223,22 +249,6 @@ impl HitCounter {
                 get(|extract::Path(tail): extract::Path<String>| async move { tail }),
             )
             .nest_service("/symbols", serve_dir)
-            .layer(middleware::from_fn(hitcounter));
-
-        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server = axum::Server::bind(&addr).serve(router.into_make_service());
-        let socket = server.local_addr();
-
-        let handle = tokio::spawn(async move {
-            server.await.unwrap();
-        });
-
-        Self {
-            handle,
-            socket,
-            hits,
-        }
     }
 
     /// Returns the sum total of hits and clears the hit counts.
@@ -293,13 +303,13 @@ impl HitCounter {
     }
 }
 
-impl Drop for HitCounter {
+impl Drop for Server {
     fn drop(&mut self) {
         self.handle.abort();
     }
 }
 
-impl Default for HitCounter {
+impl Default for Server {
     fn default() -> Self {
         Self::new()
     }
@@ -314,8 +324,8 @@ impl Default for HitCounter {
 ///
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via `Config::connect_to_reserved_ips`.
-pub fn symbol_server() -> (HitCounter, SourceConfig) {
-    let server = HitCounter::new();
+pub fn symbol_server() -> (Server, SourceConfig) {
+    let server = Server::new();
 
     // The source uses the same identifier ("local") as the local file system source to avoid
     // differences when changing the bucket in tests.

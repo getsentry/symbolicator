@@ -306,7 +306,7 @@ mod tests {
     async fn test_download_error_cache_server_error() {
         test::setup();
 
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -358,7 +358,7 @@ mod tests {
     async fn test_negative_cache_not_found() {
         test::setup();
 
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -404,7 +404,7 @@ mod tests {
     async fn test_download_error_cache_timeout() {
         test::setup();
 
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -453,7 +453,7 @@ mod tests {
     async fn test_download_error_cache_forbidden() {
         test::setup();
 
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 

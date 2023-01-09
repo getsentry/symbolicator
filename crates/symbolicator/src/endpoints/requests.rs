@@ -55,7 +55,7 @@ mod tests {
 
         let client = Client::new();
         let server = test::server_with_default_service().await;
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
 
         let payload = r##"{
             "stacktraces": [{

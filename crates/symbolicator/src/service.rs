@@ -623,7 +623,7 @@ mod tests {
             .await
             .unwrap();
 
-        let hitcounter = test::HitCounter::new();
+        let hitcounter = test::Server::new();
         let source = hitcounter.source("pending", "/delay/1h/");
 
         // Make three requests that never get resolved. Since the server is configured to only accept a maximum of

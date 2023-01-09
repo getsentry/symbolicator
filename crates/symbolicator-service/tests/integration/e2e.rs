@@ -9,7 +9,7 @@ use symbolicator_sources::{
     DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig, RemoteFileUri,
     SentrySourceConfig, SourceConfig, SourceId,
 };
-use symbolicator_test::{assert_snapshot, fixture, source_config, HitCounter};
+use symbolicator_test::{assert_snapshot, fixture, source_config, Server};
 
 use crate::symbolication::{get_symbolication_request, setup_service};
 
@@ -70,7 +70,7 @@ async fn test_sources_filetypes() {
     let (modules, stacktraces) = request_fixture();
 
     // This symbol source is filtering for only `mach_code` files.
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let request = SymbolicateStacktraces {
         modules: modules.into_iter().map(From::from).collect(),
@@ -151,7 +151,7 @@ async fn test_path_patterns() {
 async fn test_no_permission() {
     let (symbolication, _cache_dir) = setup_service(|_| ()).await;
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let sources = vec![
         hitcounter.source("forbidden", "/respond_statuscode/403/"),
@@ -222,7 +222,7 @@ async fn test_no_permission() {
 /// to `127.0.0.1`.
 #[tokio::test]
 async fn test_reserved_ip_addresses() {
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let files = source_config(DirectoryLayoutType::Native, vec![FileType::MachCode]);
 
@@ -331,7 +331,7 @@ async fn test_redirects() {
 
     let (modules, stacktraces) = request_fixture();
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
     let config = source_config(DirectoryLayoutType::Symstore, vec![FileType::Pdb]);
     let source = hitcounter.source_with_config("hitcounter", "redirect/msdl", config);
 
@@ -361,7 +361,7 @@ async fn test_unreachable_bucket() {
 
     let (modules, stacktraces) = request_fixture();
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let tys = ["http", "sentry"];
     let codes = ["400", "500", "404"];
@@ -425,7 +425,7 @@ async fn test_lookup_deduplication() {
 
     let (modules, stacktraces) = request_fixture();
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let mut config = source_config(DirectoryLayoutType::Symstore, vec![FileType::Pdb]);
 
@@ -497,7 +497,7 @@ fn get_files(path: impl AsRef<Path>) -> Vec<(String, u64)> {
 async fn test_basic_windows() {
     let (modules, stacktraces) = request_fixture();
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     let mut config = source_config(DirectoryLayoutType::Symstore, vec![FileType::Pdb]);
 

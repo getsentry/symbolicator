@@ -4,7 +4,7 @@ use symbolicator_service::types::{
     CompletedSymbolicationResponse, FrameStatus, ObjectDownloadInfo, ObjectFileStatus,
     ObjectUseInfo,
 };
-use symbolicator_test::HitCounter;
+use symbolicator_test::Server;
 
 use crate::symbolication::{get_symbolication_request, setup_service};
 
@@ -15,7 +15,7 @@ async fn test_download_errors() {
     })
     .await;
 
-    let hitcounter = HitCounter::new();
+    let hitcounter = Server::new();
 
     // This returns frame and module statuses:
     // (

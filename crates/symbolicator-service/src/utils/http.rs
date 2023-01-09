@@ -55,7 +55,7 @@ mod tests {
     async fn test_untrusted_client() {
         symbolicator_test::setup();
 
-        let server = symbolicator_test::HitCounter::new();
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -74,7 +74,7 @@ mod tests {
     async fn test_untrusted_client_loopback() {
         symbolicator_test::setup();
 
-        let server = symbolicator_test::HitCounter::new();
+        let server = symbolicator_test::Server::new();
         let config = Config {
             connect_to_reserved_ips: false,
             ..Config::default()
@@ -94,7 +94,7 @@ mod tests {
     async fn test_untrusted_client_allowed() {
         symbolicator_test::setup();
 
-        let server = symbolicator_test::HitCounter::new();
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: true,
@@ -115,7 +115,7 @@ mod tests {
     async fn test_trusted() {
         symbolicator_test::setup();
 
-        let server = symbolicator_test::HitCounter::new();
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: false,
