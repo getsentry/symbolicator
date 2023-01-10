@@ -62,7 +62,7 @@ RUN groupadd --system symbolicator --gid $SYMBOLICATOR_GID \
     && useradd --system --gid symbolicator --uid $SYMBOLICATOR_UID symbolicator
 
 VOLUME ["/data"]
-RUN mkdir /etc/symbolicator /data && \
+RUN mkdir -p /etc/symbolicator /data && \
     chown symbolicator:symbolicator /etc/symbolicator /data
 
 EXPOSE 3021
