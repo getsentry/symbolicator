@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- Added offline mode to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967))
+
 ### Internal
 
 - Use a default crash DB if we have a Cache configured. ([#941](https://github.com/getsentry/symbolicator/pull/941))
