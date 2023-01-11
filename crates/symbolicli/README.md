@@ -28,6 +28,7 @@ global settings.
 
 The available options are:
 
+* `cache_dir`: A directory where downloaded debug files will be cached.
 * `url`: The base URL of the sentry instance. Defaults to `https://sentry.io/`.
 * `auth_token`: A Sentry authentication token. This can be overridden with the `SENTRY_AUTH_TOKEN`
   environment variable or the `--auth-token` command line option.
