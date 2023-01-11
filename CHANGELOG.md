@@ -4,7 +4,7 @@
 
 ### Features
 
-- Added offline mode to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967))
+- Added offline mode and caching to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967),[#968](https://github.com/getsentry/symbolicator/pull/968))
 
 ### Internal
 

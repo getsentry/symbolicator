@@ -92,8 +92,7 @@ struct ConfigFile {
     pub project: Option<String>,
     pub url: Option<String>,
     pub auth_token: Option<String>,
-    //pub cache_dir: Option<PathBuf>,
-    //pub caches: CacheConfigs,
+    pub cache_dir: Option<PathBuf>,
     pub sources: Vec<SourceConfig>,
 }
 
@@ -181,8 +180,17 @@ impl Settings {
             let mut sources = project_config_file.sources;
             sources.append(&mut global_config_file.sources);
 
+            let cache_dir = project_config_file
+                .cache_dir
+                .or(global_config_file.cache_dir);
+
+            if let Some(path) = cache_dir.as_ref() {
+                std::fs::create_dir_all(path)?;
+            }
+
             Config {
                 sources: Arc::from(sources),
+                cache_dir,
                 ..Default::default()
             }
         };
