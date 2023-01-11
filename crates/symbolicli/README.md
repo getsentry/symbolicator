@@ -12,6 +12,14 @@ symbolicli -o <ORG> -p <PROJECT> --auth-token <TOKEN> <EVENT>
 * `<TOKEN>` is a Sentry authentication token that has access to the project;
 * `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event from the Sentry instance.
 
+Alternatively, you can run `symbolicli` in offline mode:
+```
+symbolicli --offline <EVENT>
+```
+
+In offline mode `symbolicli` will not attempt to access a Sentry server, which means you can only
+process local events.
+
 # Configuration
 
 `symbolicli` can be configured via the `~/.symboliclirc` config file, written in the TOML format.
