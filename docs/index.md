@@ -46,17 +46,15 @@ metrics:
   strictly recommended to configure caches in production!**
 - `bind`: Host and port for HTTP interface.
 - `bind_https`: Host and port for optional HTTPS interface.
-
-  Notes:
-  - HTTPS support is a Cargo feature, and needs to be enabled during building:
-    ```shell
-    cargo build --features https <other build options>
-    ```
-  - Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:
-    - `server_config`: web server configuration needed for serving over HTTPS.
-      - `https`: HTTPS configuration.
-        - `certificate_path`: Path to a TLS certificate file in PEM format.
-        - `key_path`: Path to a TLS key file in PEM format.
+    - HTTPS support is a Cargo feature, and needs to be enabled during building:
+      ```shell
+      cargo build --features https <other build options>
+      ```
+    - Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:
+        - `server_config`: web server configuration needed for serving over HTTPS.
+            - `https`: HTTPS configuration.
+                - `certificate_path`: Path to a TLS certificate file in PEM format.
+                - `key_path`: Path to a TLS key file in PEM format.
 - `logging`: Command line logging behavior.
     - `level`: Log level, defaults to `info`. Can be one of `off`, `error`,
       `warn`, `info`, `debug`, or `trace`.
@@ -100,18 +98,18 @@ expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
 
 > Time units for caches may also be `null` to disable cache expiration.
 
-  - `downloaded`: Fine-tune caches for downloaded files.
-     - `max_unused_for`: Maximum duration to keep a file since last
-       use of it.
-     - `retry_misses_after`: Duration to wait before re-trying to
-       download a file which was not found.
-     - `retry_malformed_after`: Duration to wait before re-trying to
-       download a file which was malformed.
-     - `max_lazy_redownloads`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
-       and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.
-  - `derived`: Fine-tune caches for files which are derived from
-    downloaded files.  These files are usually versions of the
-    downloaded files optimised for fast lookups.
+- `downloaded`: Fine-tune caches for downloaded files.
+    - `max_unused_for`: Maximum duration to keep a file since last
+      use of it.
+    - `retry_misses_after`: Duration to wait before re-trying to
+      download a file which was not found.
+    - `retry_malformed_after`: Duration to wait before re-trying to
+      download a file which was malformed.
+    - `max_lazy_redownloads`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
+      and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.
+- `derived`: Fine-tune caches for files which are derived from
+  downloaded files.  These files are usually versions of the
+  downloaded files optimised for fast lookups.
     - `max_unused_for`: Maximum duration to keep a file since last
       use of it.
     - `retry_misses_after`: Duration to wait before re-trying to
@@ -120,9 +118,9 @@ expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,
       download a file which was malformed.
     - `max_lazy_recomputations`: Symbolicator will fall back to a compatible but out-of-date cache version if available,
       and start computing the up-to-date version in the background. This option sets the maximum number of such lazy computations that symbolicator will do concurrently. Defaults to 20.
-  - `diagnostics`: This configures the duration diagnostics data
-    will be stored in cache.  E.g. minidumps which failed to be
-    processed correctly will be stored in this cache.
+- `diagnostics`: This configures the duration diagnostics data
+  will be stored in cache.  E.g. minidumps which failed to be
+  processed correctly will be stored in this cache.
     - `retention`: Duration a file will be kept in this cache.
 
 ## Security
