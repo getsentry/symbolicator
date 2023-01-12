@@ -47,8 +47,18 @@ pipelines:
                       type: manual
                   fetch_materials: true
                   jobs:
-                      deploy:
+                      create_sentry_release:
+                          environment_variables:
+                              SENTRY_URL: "https://sentry.my.sentry.io/"
+                              # Temporary; self-service encrypted secrets aren't implemented yet.
+                              SENTRY_AUTH_TOKEN: "{{SECRET:[devinfra-temp][symbolicator-sentry-auth-token]}}"
                           timeout: 1800 # 30 mins
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    ./symbolicator/scripts/create-sentry-release "${GO_REVISION_SYMBOLICATOR_REPO}"
+                      deploy:
+                          timeout: 1800
                           elastic_profile_id: symbolicator
                           tasks:
                               - script: |
@@ -70,7 +80,7 @@ pipelines:
                                     --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_canary=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                                     --container-name="symbolicator" \
                                     --container-name="cleanup"
 
@@ -107,7 +117,7 @@ pipelines:
                                     --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_lpq=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                                     --container-name="symbolicator" \
                                     --container-name="cleanup"
                               - script: |
@@ -115,6 +125,6 @@ pipelines:
                                     --context="gke_${GCP_PROJECT}_${GKE_REGION}-${GKE_CLUSTER_ZONE}_${GKE_CLUSTER}" \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_production=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SEER_REPO}" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                                     --container-name="symbolicator" \
                                     --container-name="cleanup"
