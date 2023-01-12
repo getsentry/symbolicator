@@ -17,7 +17,6 @@ aws-types = { version = "0.52.0", features = ["hardcoded-credentials"] }
 aws-sdk-s3 = "0.22.0"
 aws-smithy-http = "0.52.0"
 backtrace = "0.3.65"
-base64 = "0.20.0"
 cadence = "0.29.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 filetime = "0.2.16"
