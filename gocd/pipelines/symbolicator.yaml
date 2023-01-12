@@ -10,6 +10,8 @@ pipelines:
             GKE_REGION: us-central1
             GKE_CLUSTER_ZONE: b
             GKE_BASTION_ZONE: b
+            # Required for checkruns.
+            GITHUB_TOKEN: "{{SECRET:[devinfra-github][token]}}"
         group: symbolicator
         lock_behavior: unlockWhenFinished
         materials:
