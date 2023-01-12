@@ -9,16 +9,19 @@ use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState, SymbolFile,
     SymbolProvider,
 };
 use serde::{Deserialize, Serialize};
+use symbolic::cfi::CfiCache;
 use tempfile::TempPath;
 
 use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
-use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchedCfiCache};
+use crate::cache::{CacheEntry, CacheError};
+use crate::services::cficaches::{CfiCacheActor, FetchCfiCache};
+use crate::services::derived::DerivedCache;
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::symbolication::module_lookup::object_file_status_from_cache_entry;
 use crate::types::{
@@ -114,6 +117,21 @@ impl MinidumpState {
     }
 }
 
+/// Loads a [`SymbolFile`] from the given `Path`.
+#[tracing::instrument(skip_all)]
+fn load_symbol_file(bytes: ByteView) -> CacheEntry<SymbolFile> {
+    let cfi_cache = CfiCache::from_bytes(bytes).map_err(CacheError::from_std_error)?;
+
+    if cfi_cache.as_slice().is_empty() {
+        return Err(CacheError::NotFound);
+    }
+
+    let symbol_file =
+        SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
+
+    Ok(symbol_file)
+}
+
 /// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct LookupKey {
@@ -132,6 +150,8 @@ impl LookupKey {
         }
     }
 }
+
+pub type FetchedCfiCache = DerivedCache<Arc<SymbolFile>>;
 
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
@@ -187,14 +207,23 @@ impl SymbolicatorSymbolProvider {
                     object_type: self.object_type,
                 };
 
-                self.cficache_actor
+                let result = self
+                    .cficache_actor
                     .fetch(FetchCfiCache {
                         object_type: self.object_type,
                         identifier,
                         sources,
                         scope,
                     })
-                    .await
+                    .await;
+
+                let cache = result.cache.and_then(load_symbol_file).map(Arc::new);
+
+                DerivedCache {
+                    cache,
+                    candidates: result.candidates,
+                    features: result.features,
+                }
             })
             .await
     }
@@ -222,7 +251,12 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         let cfi_module = self.load_cfi_module(module).await;
-        cfi_module.cache.ok()??.walk_frame(module, walker)
+        cfi_module
+            .cache
+            .as_ref()
+            .ok()?
+            .as_ref()
+            .walk_frame(module, walker)
     }
 
     async fn get_file_path(
@@ -342,7 +376,7 @@ async fn stackwalk(
                 None => ObjectFileStatus::Unused,
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
-                    obj_info.candidates.merge(&cfi_module.candidates);
+                    obj_info.candidates = cfi_module.candidates;
                     object_file_status_from_cache_entry(&cfi_module.cache)
                 }
             });

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use minidump_processor::SymbolFile;
 use tempfile::NamedTempFile;
 
 use symbolic::cfi::CfiCache;
@@ -53,20 +52,6 @@ const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
-#[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<Option<Arc<SymbolFile>>> {
-    let cfi_cache = CfiCache::from_bytes(bytes).map_err(CacheError::from_std_error)?;
-
-    if cfi_cache.as_slice().is_empty() {
-        return Ok(None);
-    }
-
-    let symbol_file =
-        SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
-
-    Ok(Some(Arc::new(symbol_file)))
-}
-
 #[derive(Clone, Debug)]
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
@@ -109,7 +94,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = Option<Arc<SymbolFile>>;
+    type Item = ByteView<'static>;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -140,7 +125,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     }
 
     fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
-        parse_cfi_cache(data)
+        Ok(data)
     }
 }
 
@@ -153,8 +138,6 @@ pub struct FetchCfiCache {
     pub scope: Scope,
 }
 
-pub type FetchedCfiCache = DerivedCache<Option<Arc<SymbolFile>>>;
-
 impl CfiCacheActor {
     /// Fetches the CFI cache file for a given code module.
     ///
@@ -162,7 +145,7 @@ impl CfiCacheActor {
     /// debug filename (the basename).  To do this it looks in the existing cache with the
     /// given scope and if it does not yet exist in cached form will fetch the required DIFs
     /// and compute the required CFI cache file.
-    pub async fn fetch(&self, request: FetchCfiCache) -> FetchedCfiCache {
+    pub async fn fetch(&self, request: FetchCfiCache) -> DerivedCache<ByteView<'static>> {
         let found_object = self
             .objects
             .find(FindObject {
