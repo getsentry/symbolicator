@@ -51,7 +51,8 @@ pipelines:
                           environment_variables:
                               SENTRY_URL: "https://sentry.my.sentry.io/"
                               # Temporary; self-service encrypted secrets aren't implemented yet.
-                              SENTRY_AUTH_TOKEN: "{{SECRET:[devinfra-temp][symbolicator-sentry-auth-token]}}"
+                              # This should really be rotated to an internal integration token.
+                              SENTRY_AUTH_TOKEN: "{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}"
                           timeout: 1800 # 30 mins
                           elastic_profile_id: symbolicator
                           tasks:
