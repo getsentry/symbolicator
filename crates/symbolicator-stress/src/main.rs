@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
     let config_path = cli.config;
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
-    // TODO: initialize logging maybe?
+    tracing_subscriber::fmt::init();
 
     // start symbolicator service
     let runtime = tokio::runtime::Handle::current();

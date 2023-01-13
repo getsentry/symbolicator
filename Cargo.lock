@@ -4094,6 +4094,7 @@ dependencies = [
  "symbolicator-service",
  "tempfile",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
