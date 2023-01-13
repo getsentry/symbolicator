@@ -58,12 +58,14 @@ pub enum CacheError {
 }
 
 impl From<std::io::Error> for CacheError {
+    #[track_caller]
     fn from(err: std::io::Error) -> Self {
         Self::from_std_error(err)
     }
 }
 
 impl From<serde_json::Error> for CacheError {
+    #[track_caller]
     fn from(err: serde_json::Error) -> Self {
         Self::from_std_error(err)
     }
@@ -183,6 +185,7 @@ impl CacheError {
         }
     }
 
+    #[track_caller]
     pub(crate) fn from_std_error<E: std::error::Error + 'static>(e: E) -> Self {
         let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
         tracing::error!(error = dynerr);
