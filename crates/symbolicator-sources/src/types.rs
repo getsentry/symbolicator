@@ -41,6 +41,7 @@ impl Deref for Glob {
 /// The type of an executable object file.
 #[derive(Serialize, Clone, Copy, Debug, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ObjectType {
     /// ELF Object.
     Elf,
@@ -53,6 +54,7 @@ pub enum ObjectType {
     /// Portable Executable containing .NET code, which has a Portable PDB companion.
     PeDotnet,
     /// Unknown Object.
+    #[default]
     Unknown,
 }
 
@@ -91,12 +93,6 @@ impl fmt::Display for ObjectType {
             ObjectType::Wasm => write!(f, "wasm"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
-    }
-}
-
-impl Default for ObjectType {
-    fn default() -> ObjectType {
-        ObjectType::Unknown
     }
 }
 

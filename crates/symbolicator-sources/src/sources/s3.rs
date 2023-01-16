@@ -130,17 +130,13 @@ where
 /// <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html>.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AwsCredentialsProvider {
     /// Static Credentials
+    #[default]
     Static,
     /// Credentials derived from the container.
     Container,
-}
-
-impl Default for AwsCredentialsProvider {
-    fn default() -> Self {
-        AwsCredentialsProvider::Static
-    }
 }
 
 /// Amazon S3 authorization information.

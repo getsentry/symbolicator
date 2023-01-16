@@ -215,7 +215,7 @@ impl Server {
             .route(
                 "/redirect/*path",
                 get(|extract::Path(path): extract::Path<String>| async move {
-                    (StatusCode::FOUND, [("Location", format!("/{}", path))])
+                    (StatusCode::FOUND, [("Location", format!("/{path}"))])
                 }),
             )
             .route(
@@ -225,14 +225,14 @@ impl Server {
                         let duration = humantime::parse_duration(&time).unwrap();
                         tokio::time::sleep(duration).await;
 
-                        (StatusCode::FOUND, [("Location", format!("/{}", path))])
+                        (StatusCode::FOUND, [("Location", format!("/{path}"))])
                     },
                 ),
             )
             .route(
                 "/msdl/*path",
                 get(|extract::Path(path): extract::Path<String>| async move {
-                    let url = format!("https://msdl.microsoft.com/download/symbols/{}", path);
+                    let url = format!("https://msdl.microsoft.com/download/symbols/{path}");
                     (StatusCode::FOUND, [("Location", url)])
                 }),
             )
