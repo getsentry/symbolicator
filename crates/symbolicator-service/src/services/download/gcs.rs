@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
-use crate::cache::CacheEntry;
+use crate::cache::{CacheEntry, CacheError};
 use crate::utils::gcs::{self, GcsError, GcsToken};
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, Result<Arc<GcsToken>, Arc<GcsError>>>;
 
 /// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
@@ -41,20 +41,30 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, GcsError> {
-        if let Some(token) = self.token_cache.get(source_key) {
-            if !token.is_expired() {
-                metric!(counter("source.gcs.token.cached") += 1);
-                return Ok(token.clone());
-            }
-        }
-
-        let source_key = source_key.clone();
-        let token = gcs::request_new_token(&self.client, &source_key).await?;
-        metric!(counter("source.gcs.token.requests") += 1);
-        let token = Arc::new(token);
-        self.token_cache.insert(source_key, token.clone()).await;
-        Ok(token)
+    async fn get_token(
+        &self,
+        source_key: &Arc<GcsSourceKey>,
+    ) -> Result<Arc<GcsToken>, Arc<GcsError>> {
+        self.token_cache
+            .get_with_if(
+                source_key.clone(),
+                async {
+                    let token = gcs::request_new_token(&self.client, source_key).await;
+                    metric!(counter("source.gcs.token.requests") += 1);
+                    token.map(Arc::new).map_err(Arc::new)
+                },
+                |entry| match entry {
+                    Ok(token) => {
+                        let is_expired = token.is_expired();
+                        if !is_expired {
+                            metric!(counter("source.gcs.token.cached") += 1);
+                        }
+                        is_expired
+                    }
+                    Err(_) => true,
+                },
+            )
+            .await
     }
 
     /// Downloads a source hosted on GCS.
@@ -66,7 +76,10 @@ impl GcsDownloader {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
-        let token = self.get_token(&file_source.source.source_key).await?;
+        let token = self
+            .get_token(&file_source.source.source_key)
+            .await
+            .map_err(|e| CacheError::from(&*e))?;
         tracing::debug!("Got valid GCS token");
 
         let url = gcs::download_url(&bucket, &key)?;
