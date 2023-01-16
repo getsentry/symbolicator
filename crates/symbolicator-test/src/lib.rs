@@ -43,7 +43,7 @@ pub use tempfile::TempDir;
 ///    other logs (such as actix or symbolic).
 pub fn setup() {
     fmt()
-        .with_env_filter(EnvFilter::new("symbolicator-service=trace"))
+        .with_env_filter(EnvFilter::new("symbolicator_service=trace"))
         .with_target(false)
         .pretty()
         .with_test_writer()
