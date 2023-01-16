@@ -31,7 +31,7 @@ pub struct Signal(pub u32);
 /// Based on scopes, access to debug files that have been cached is determined. If a file comes from
 /// a public source, it can be used for any symbolication request. Otherwise, the symbolication
 /// request must match the scope of a file.
-#[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd, Hash)]
 #[serde(untagged)]
 #[derive(Default)]
 pub enum Scope {

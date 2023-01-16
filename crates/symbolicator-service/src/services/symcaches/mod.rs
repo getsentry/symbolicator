@@ -443,20 +443,19 @@ mod tests {
 
         // Create the symcache for the first time. Since the bcsymbolmap is not available, names in the
         // symcache will be obfuscated.
-        let owned_symcache = symcache_actor
+        let symcache = symcache_actor
             .fetch(fetch_symcache.clone())
             .await
             .cache
-            .ok()
             .unwrap();
 
-        let symcache = owned_symcache.get();
-        let sl = symcache.lookup(0x5a75).next().unwrap();
+        let sl = symcache.get().lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
             "__hidden#41_/__hidden#41_/__hidden#42_"
         );
         assert_eq!(sl.function().name(), "__hidden#0_");
+        drop(symcache);
 
         // Copy the plist and bcsymbolmap to the temporary symbol directory so that the SymCacheActor can find them.
         fs::copy(
@@ -472,37 +471,30 @@ mod tests {
         .unwrap();
 
         // Create the symcache for the second time. Even though the bcsymbolmap is now available, its absence should
-        // still be cached and the SymcacheActor should make no attempt to download it. Therefore, the names should
+        // still be cached and the SymCacheActor should make no attempt to download it. Therefore, the names should
         // be obfuscated like before.
-        let owned_symcache = symcache_actor
+        let symcache = symcache_actor
             .fetch(fetch_symcache.clone())
             .await
             .cache
-            .ok()
             .unwrap();
 
-        let symcache = owned_symcache.get();
-        let sl = symcache.lookup(0x5a75).next().unwrap();
+        let sl = symcache.get().lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
             "__hidden#41_/__hidden#41_/__hidden#42_"
         );
         assert_eq!(sl.function().name(), "__hidden#0_");
+        drop(symcache);
 
         // Sleep long enough for the negative cache entry to become invalid.
         std::thread::sleep(TIMEOUT);
 
         // Create the symcache for the third time. This time, the bcsymbolmap is downloaded and the names in the
         // symcache are unobfuscated.
-        let owned_symcache = symcache_actor
-            .fetch(fetch_symcache.clone())
-            .await
-            .cache
-            .ok()
-            .unwrap();
+        let symcache = symcache_actor.fetch(fetch_symcache).await.cache.unwrap();
 
-        let symcache = owned_symcache.get();
-        let sl = symcache.lookup(0x5a75).next().unwrap();
+        let sl = symcache.get().lookup(0x5a75).next().unwrap();
         assert_eq!(
             sl.file().unwrap().full_path(),
             "/Users/philipphofmann/git-repos/sentry-cocoa/Sources/Sentry/SentryMessage.m"
