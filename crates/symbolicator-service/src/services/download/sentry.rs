@@ -32,7 +32,7 @@ struct SearchQuery {
 }
 
 /// An LRU cache sentry DIF index responses.
-type SentryIndexCache = moka::future::Cache<SearchQuery, Vec<SearchResult>>;
+type SentryIndexCache = moka::future::Cache<SearchQuery, Result<Vec<SearchResult>, CacheError>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
@@ -97,30 +97,29 @@ impl SentryDownloader {
     ///
     /// If there are cached search results this skips the actual search.
     async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
-        if let Some(entries) = self.index_cache.get(&query) {
-            return Ok(entries);
-        }
+        self.index_cache
+            .get_with_if(
+                query.clone(),
+                async {
+                    tracing::debug!(
+                        "Fetching list of Sentry debug files from {}",
+                        &query.index_url
+                    );
 
-        tracing::debug!(
-            "Fetching list of Sentry debug files from {}",
-            &query.index_url
-        );
+                    let client = self.client.clone();
+                    let future = async move {
+                        super::retry(|| Self::fetch_sentry_json(&client, &query)).await
+                    };
 
-        let entries = {
-            let client = self.client.clone();
-            let query = query.clone();
-            let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
+                    let future = CancelOnDrop::new(
+                        self.runtime.spawn(future.bind_hub(sentry::Hub::current())),
+                    );
 
-            let future =
-                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
-
-            future.await.map_err(|_| CacheError::InternalError)??
-        };
-
-        self.index_cache.insert(query, entries.clone()).await;
-
-        Ok(entries)
+                    future.await.map_err(|_| CacheError::InternalError)?
+                },
+                |entry| entry.is_err(),
+            )
+            .await
     }
 
     pub async fn list_files(
