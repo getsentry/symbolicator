@@ -47,7 +47,6 @@ tokio-util = { version = "0.7.1", features = ["io"] }
 tracing = "0.1.34"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
-warp = { version = "0.3.0", optional = true }
 zstd = "0.12.1"
 
 [dev-dependencies]
@@ -56,4 +55,3 @@ reqwest = { version = "0.11.0", features = ["multipart"] }
 sha-1 = "0.10.0"
 symbolicator-test = { path = "../symbolicator-test" }
 test-assembler = "0.1.5"
-warp = "0.3.0"
