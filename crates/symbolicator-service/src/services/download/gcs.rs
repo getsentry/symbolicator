@@ -1,8 +1,7 @@
 //! Support to download from Google Cloud Storage buckets.
 
-use std::num::NonZeroUsize;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
@@ -10,12 +9,12 @@ use crate::cache::CacheEntry;
 use crate::utils::gcs::{self, GcsError, GcsToken};
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, Arc<GcsToken>>;
 
 /// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
 pub struct GcsDownloader {
-    token_cache: Mutex<GcsTokenCache>,
+    token_cache: GcsTokenCache,
     client: reqwest::Client,
     connect_timeout: std::time::Duration,
     streaming_timeout: std::time::Duration,
@@ -26,10 +25,12 @@ impl GcsDownloader {
         client: reqwest::Client,
         connect_timeout: std::time::Duration,
         streaming_timeout: std::time::Duration,
-        token_capacity: NonZeroUsize,
+        token_capacity: u64,
     ) -> Self {
         Self {
-            token_cache: Mutex::new(GcsTokenCache::new(token_capacity)),
+            token_cache: GcsTokenCache::builder()
+                .max_capacity(token_capacity)
+                .build(),
             client,
             connect_timeout,
             streaming_timeout,
@@ -41,7 +42,7 @@ impl GcsDownloader {
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
     async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, GcsError> {
-        if let Some(token) = self.token_cache.lock().unwrap().get(source_key) {
+        if let Some(token) = self.token_cache.get(source_key) {
             if !token.is_expired() {
                 metric!(counter("source.gcs.token.cached") += 1);
                 return Ok(token.clone());
@@ -52,10 +53,7 @@ impl GcsDownloader {
         let token = gcs::request_new_token(&self.client, &source_key).await?;
         metric!(counter("source.gcs.token.requests") += 1);
         let token = Arc::new(token);
-        self.token_cache
-            .lock()
-            .unwrap()
-            .put(source_key, token.clone());
+        self.token_cache.insert(source_key, token.clone()).await;
         Ok(token)
     }
 

@@ -4,8 +4,8 @@
 
 use std::fmt;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use sentry::SentryFutureExt;
 use url::Url;
@@ -32,13 +32,12 @@ struct SearchQuery {
 }
 
 /// An LRU cache sentry DIF index responses.
-type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>;
+type SentryIndexCache = moka::future::Cache<SearchQuery, Vec<SearchResult>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
-    index_cache: Mutex<SentryIndexCache>,
-    cache_duration: Duration,
+    index_cache: SentryIndexCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -57,10 +56,10 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: Mutex::new(SentryIndexCache::new(
-                config.caches.in_memory.sentry_index_capacity,
-            )),
-            cache_duration: config.caches.in_memory.sentry_index_ttl,
+            index_cache: SentryIndexCache::builder()
+                .max_capacity(config.caches.in_memory.sentry_index_capacity)
+                .time_to_live(config.caches.in_memory.sentry_index_ttl)
+                .build(),
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
         }
@@ -98,10 +97,8 @@ impl SentryDownloader {
     ///
     /// If there are cached search results this skips the actual search.
     async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
-        if let Some((created, entries)) = self.index_cache.lock().unwrap().get(&query) {
-            if created.elapsed() < self.cache_duration {
-                return Ok(entries.clone());
-            }
+        if let Some(entries) = self.index_cache.get(&query) {
+            return Ok(entries);
         }
 
         tracing::debug!(
@@ -121,12 +118,7 @@ impl SentryDownloader {
             future.await.map_err(|_| CacheError::InternalError)??
         };
 
-        if self.cache_duration > Duration::from_secs(0) {
-            self.index_cache
-                .lock()
-                .unwrap()
-                .put(query, (Instant::now(), entries.clone()));
-        }
+        self.index_cache.insert(query, entries.clone()).await;
 
         Ok(entries)
     }
