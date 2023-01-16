@@ -33,8 +33,10 @@ pub struct Signal(pub u32);
 /// request must match the scope of a file.
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(untagged)]
+#[derive(Default)]
 pub enum Scope {
     #[serde(rename = "global")]
+    #[default]
     Global,
     Scoped(String),
 }
@@ -45,12 +47,6 @@ impl AsRef<str> for Scope {
             Scope::Global => "global",
             Scope::Scoped(ref s) => s,
         }
-    }
-}
-
-impl Default for Scope {
-    fn default() -> Self {
-        Scope::Global
     }
 }
 
@@ -156,8 +152,10 @@ pub struct RawFrame {
 /// information.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum FrameTrust {
     /// Unknown.
+    #[default]
     None,
     /// Found by scanning the stack.
     Scan,
@@ -174,12 +172,6 @@ pub enum FrameTrust {
     /// This is only possible for the topmost, i.e. the crashing, frame as for the other
     /// frames the registers need to be reconstructed when unwinding the stack.
     Context,
-}
-
-impl Default for FrameTrust {
-    fn default() -> Self {
-        FrameTrust::None
-    }
 }
 
 impl From<minidump_processor::FrameTrust> for FrameTrust {
@@ -266,8 +258,10 @@ pub struct RawObjectInfo {
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FrameStatus {
     /// The frame was symbolicated successfully.
+    #[default]
     Symbolicated,
     /// The symbol (i.e. function) was not found within the debug file.
     MissingSymbol,
@@ -277,12 +271,6 @@ pub enum FrameStatus {
     Missing,
     /// The retrieved debug file could not be processed.
     Malformed,
-}
-
-impl Default for FrameStatus {
-    fn default() -> Self {
-        FrameStatus::Symbolicated
-    }
 }
 
 /// A potentially symbolicated frame in the symbolication response.
@@ -336,10 +324,12 @@ pub struct CompleteStacktrace {
 /// Information on a debug information file.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ObjectFileStatus {
     /// The file was found and successfully processed.
     Found,
     /// The image was not referenced in the stack trace and not further handled.
+    #[default]
     Unused,
     /// The file could not be found in any of the specified sources.
     Missing,
@@ -365,12 +355,6 @@ impl ObjectFileStatus {
             ObjectFileStatus::Timeout => "timeout",
             ObjectFileStatus::Other => "other",
         }
-    }
-}
-
-impl Default for ObjectFileStatus {
-    fn default() -> Self {
-        ObjectFileStatus::Unused
     }
 }
 

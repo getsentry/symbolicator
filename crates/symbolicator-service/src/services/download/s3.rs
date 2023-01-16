@@ -425,8 +425,7 @@ mod tests {
 
         assert!(
             matches!(result, Err(CacheError::PermissionDenied(_))),
-            "{:?}",
-            result
+            "{result:?}"
         );
 
         assert!(!target_path.exists());

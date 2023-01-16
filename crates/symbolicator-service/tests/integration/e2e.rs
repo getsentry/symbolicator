@@ -373,13 +373,13 @@ async fn test_unreachable_bucket() {
             let source = if ty == "http" {
                 let config = source_config(DirectoryLayoutType::Symstore, vec![FileType::Pdb]);
                 hitcounter.source_with_config(
-                    &format!("broken-{}-{}", ty, code),
+                    &format!("broken-{ty}-{code}"),
                     &format!("respond_statuscode/{code}"),
                     config,
                 )
             } else {
                 SourceConfig::Sentry(Arc::new(SentrySourceConfig {
-                    id: SourceId::new(format!("broken-{}-{}", ty, code)),
+                    id: SourceId::new(format!("broken-{ty}-{code}")),
                     url: hitcounter.url(&format!("respond_statuscode/{code}")),
                     token: "123abc".into(),
                 }))
@@ -434,7 +434,7 @@ async fn test_lookup_deduplication() {
     for is_public in [true, false] {
         config.is_public = is_public;
         let source =
-            hitcounter.source_with_config(&format!("test-{}", is_public), "msdl/", config.clone());
+            hitcounter.source_with_config(&format!("test-{is_public}"), "msdl/", config.clone());
 
         let requests = (0..20).map(|_| {
             let modules = modules.iter().cloned().map(From::from).collect();

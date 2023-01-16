@@ -43,7 +43,7 @@ mod tests {
     fn ensure_request_id(response: SymbolicationResponse) -> RequestId {
         match response {
             SymbolicationResponse::Pending { request_id, .. } => request_id,
-            res => panic!("expected a pending response, got: {:#?}", res),
+            res => panic!("expected a pending response, got: {res:#?}"),
         }
     }
 
@@ -89,7 +89,7 @@ mod tests {
         let request_id = ensure_request_id(response.json().await.unwrap());
 
         let response = client
-            .get(server.url(&format!("/requests/{}?timeout=1", request_id)))
+            .get(server.url(&format!("/requests/{request_id}?timeout=1")))
             .send()
             .await
             .unwrap();
@@ -97,7 +97,7 @@ mod tests {
         let request_id = ensure_request_id(response.json().await.unwrap());
 
         let response = client
-            .get(server.url(&format!("/requests/{}", request_id)))
+            .get(server.url(&format!("/requests/{request_id}")))
             .send()
             .await
             .unwrap();

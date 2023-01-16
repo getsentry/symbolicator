@@ -196,17 +196,13 @@ pub enum DirectoryLayoutType {
 /// Casing of filenames on the symbol server
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FilenameCasing {
     /// Default casing depending on layout type.
+    #[default]
     Default,
     /// Uppercase filenames.
     Uppercase,
     /// Lowercase filenames.
     Lowercase,
-}
-
-impl Default for FilenameCasing {
-    fn default() -> Self {
-        FilenameCasing::Default
-    }
 }
