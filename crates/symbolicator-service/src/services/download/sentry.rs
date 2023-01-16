@@ -32,7 +32,7 @@ struct SearchQuery {
 }
 
 /// An LRU cache sentry DIF index responses.
-type SentryIndexCache = moka::future::Cache<SearchQuery, Result<Vec<SearchResult>, CacheError>>;
+type SentryIndexCache = moka::future::Cache<SearchQuery, CacheEntry<Vec<SearchResult>>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
@@ -97,28 +97,24 @@ impl SentryDownloader {
     ///
     /// If there are cached search results this skips the actual search.
     async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+        let query_ = query.clone();
+        let init_future = async {
+            tracing::debug!(
+                "Fetching list of Sentry debug files from {}",
+                &query_.index_url
+            );
+
+            let client = self.client.clone();
+            let future =
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            future.await.map_err(|_| CacheError::InternalError)?
+        };
         self.index_cache
-            .get_with_if(
-                query.clone(),
-                async {
-                    tracing::debug!(
-                        "Fetching list of Sentry debug files from {}",
-                        &query.index_url
-                    );
-
-                    let client = self.client.clone();
-                    let future = async move {
-                        super::retry(|| Self::fetch_sentry_json(&client, &query)).await
-                    };
-
-                    let future = CancelOnDrop::new(
-                        self.runtime.spawn(future.bind_hub(sentry::Hub::current())),
-                    );
-
-                    future.await.map_err(|_| CacheError::InternalError)?
-                },
-                |entry| entry.is_err(),
-            )
+            .get_with_if(query, init_future, |entry| entry.is_err())
             .await
     }
 

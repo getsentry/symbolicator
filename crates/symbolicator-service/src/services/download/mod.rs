@@ -80,12 +80,6 @@ impl From<GcsError> for CacheError {
     }
 }
 
-impl From<&GcsError> for CacheError {
-    fn from(error: &GcsError) -> Self {
-        Self::DownloadError(error.to_string())
-    }
-}
-
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control

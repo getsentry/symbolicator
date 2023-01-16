@@ -6,10 +6,10 @@ use std::sync::Arc;
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
 use crate::cache::{CacheEntry, CacheError};
-use crate::utils::gcs::{self, GcsError, GcsToken};
+use crate::utils::gcs::{self, GcsToken};
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, Result<Arc<GcsToken>, Arc<GcsError>>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheEntry<Arc<GcsToken>>>;
 
 /// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
@@ -41,17 +41,14 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(
-        &self,
-        source_key: &Arc<GcsSourceKey>,
-    ) -> Result<Arc<GcsToken>, Arc<GcsError>> {
+    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheEntry<Arc<GcsToken>> {
         self.token_cache
             .get_with_if(
                 source_key.clone(),
                 async {
                     let token = gcs::request_new_token(&self.client, source_key).await;
                     metric!(counter("source.gcs.token.requests") += 1);
-                    token.map(Arc::new).map_err(Arc::new)
+                    token.map(Arc::new).map_err(CacheError::from)
                 },
                 |entry| match entry {
                     Ok(token) => {
@@ -76,10 +73,7 @@ impl GcsDownloader {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
-        let token = self
-            .get_token(&file_source.source.source_key)
-            .await
-            .map_err(|e| CacheError::from(&*e))?;
+        let token = self.get_token(&file_source.source.source_key).await?;
         tracing::debug!("Got valid GCS token");
 
         let url = gcs::download_url(&bucket, &key)?;
