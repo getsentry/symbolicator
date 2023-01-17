@@ -12,6 +12,7 @@
 - Simplified internal error and cache architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929),
   [#936](https://github.com/getsentry/symbolicator/pull/936), [#937](https://github.com/getsentry/symbolicator/pull/937))
 - Migrate from `rusoto` to `aws-sdk-s3`. ([#849](https://github.com/getsentry/symbolicator/pull/849), [#954](https://github.com/getsentry/symbolicator/pull/954))
+- Replace the last remaining LRU caches with `moka` versions and remove `lru` dependency. ([#978](https://github.com/getsentry/symbolicator/pull/978))
 
 ## 0.6.0
 

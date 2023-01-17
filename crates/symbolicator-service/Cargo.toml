@@ -27,7 +27,6 @@ humantime-serde = "1.1.1"
 ipnetwork = "0.20.0"
 jsonwebtoken = "8.1.0"
 lazy_static = "1.4.0"
-lru = "0.8.0"
 minidump = "0.15.2"
 minidump-processor = "0.15.2"
 moka = { version = "0.9", features = ["future"] }

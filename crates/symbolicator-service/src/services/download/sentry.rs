@@ -4,8 +4,8 @@
 
 use std::fmt;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Duration;
 
 use sentry::SentryFutureExt;
 use url::Url;
@@ -32,13 +32,12 @@ struct SearchQuery {
 }
 
 /// An LRU cache sentry DIF index responses.
-type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>;
+type SentryIndexCache = moka::future::Cache<SearchQuery, CacheEntry<Vec<SearchResult>>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
-    index_cache: Mutex<SentryIndexCache>,
-    cache_duration: Duration,
+    index_cache: SentryIndexCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -57,10 +56,10 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: Mutex::new(SentryIndexCache::new(
-                config.caches.in_memory.sentry_index_capacity,
-            )),
-            cache_duration: config.caches.in_memory.sentry_index_ttl,
+            index_cache: SentryIndexCache::builder()
+                .max_capacity(config.caches.in_memory.sentry_index_capacity)
+                .time_to_live(config.caches.in_memory.sentry_index_ttl)
+                .build(),
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
         }
@@ -98,37 +97,25 @@ impl SentryDownloader {
     ///
     /// If there are cached search results this skips the actual search.
     async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
-        if let Some((created, entries)) = self.index_cache.lock().unwrap().get(&query) {
-            if created.elapsed() < self.cache_duration {
-                return Ok(entries.clone());
-            }
-        }
+        let query_ = query.clone();
+        let init_future = async {
+            tracing::debug!(
+                "Fetching list of Sentry debug files from {}",
+                &query_.index_url
+            );
 
-        tracing::debug!(
-            "Fetching list of Sentry debug files from {}",
-            &query.index_url
-        );
-
-        let entries = {
             let client = self.client.clone();
-            let query = query.clone();
             let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
 
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(|_| CacheError::InternalError)??
+            future.await.map_err(|_| CacheError::InternalError)?
         };
-
-        if self.cache_duration > Duration::from_secs(0) {
-            self.index_cache
-                .lock()
-                .unwrap()
-                .put(query, (Instant::now(), entries.clone()));
-        }
-
-        Ok(entries)
+        self.index_cache
+            .get_with_if(query, init_future, |entry| entry.is_err())
+            .await
     }
 
     pub async fn list_files(
