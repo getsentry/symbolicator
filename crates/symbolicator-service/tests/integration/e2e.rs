@@ -494,6 +494,7 @@ fn get_files(path: impl AsRef<Path>) -> Vec<(String, u64)> {
 }
 
 /// Tests caching side-effects, like cache files written and hits to the symbol source.
+#[allow(clippy::if_same_then_else)]
 #[tokio::test]
 async fn test_basic_windows() {
     let (modules, stacktraces) = request_fixture();
@@ -559,7 +560,8 @@ async fn test_basic_windows() {
                     } else {
                         // we are downloading twice: once for the objects_meta request, and once
                         // again for the objects/symcache request
-                        (2, 1)
+                        // FIXME: well with in-memory caching, we are only requesting once
+                        (1, 1)
                     };
 
                     assert_eq!(&hits, &[

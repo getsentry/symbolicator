@@ -7,6 +7,7 @@
 - Added a field `adjust_instruction_addr: Option<bool>` to `RawFrame` to signal whether the
   frame's instruction address needs to be adjusted for symbolication. ([#948](https://github.com/getsentry/symbolicator/pull/948))
 - Added offline mode and caching to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967),[#968](https://github.com/getsentry/symbolicator/pull/968))
+- Use `moka` as an in-memory `Cacher` implementation. ([#979](https://github.com/getsentry/symbolicator/pull/979))
 
 ### Internal
 
