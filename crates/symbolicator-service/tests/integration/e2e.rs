@@ -561,8 +561,8 @@ async fn test_basic_windows() {
                     } else {
                         // we are downloading twice: once for the objects_meta request, and once
                         // again for the objects/symcache request
-                        // well with in-memory caching, we are only requesting once
-                        (2, 1)
+                        // FIXME: well with in-memory caching, we are only requesting once
+                        (1, 1)
                     };
 
                     assert_eq!(&hits, &[

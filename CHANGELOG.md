@@ -5,6 +5,7 @@
 ### Features
 
 - Added offline mode and caching to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967),[#968](https://github.com/getsentry/symbolicator/pull/968))
+- Use `moka` as an in-memory `Cacher` implementation. ([#979](https://github.com/getsentry/symbolicator/pull/979))
 
 ### Internal
 
