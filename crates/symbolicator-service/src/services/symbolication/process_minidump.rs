@@ -545,7 +545,7 @@ mod tests {
 
         let module = ("foo", DebugId::nil());
         let fut = provider.load_cfi_module(&module);
-        assert_eq!(std::mem::size_of_val(&fut), 880);
+        assert_eq!(std::mem::size_of_val(&fut), 872);
 
         let req = FindObject {
             filetypes: &[],
@@ -555,7 +555,7 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = obj.find(req);
-        assert_eq!(std::mem::size_of_val(&fut), 4864);
+        assert_eq!(std::mem::size_of_val(&fut), 4608);
 
         let req = FetchCfiCache {
             object_type: Default::default(),
@@ -564,7 +564,7 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.cficaches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 5248);
+        assert_eq!(std::mem::size_of_val(&fut), 4992);
 
         let req = FetchPortablePdbCache {
             identifier: Default::default(),
@@ -572,7 +572,7 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.ppdb_caches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 5248);
+        assert_eq!(std::mem::size_of_val(&fut), 4992);
 
         let req = FetchSymCache {
             object_type: Default::default(),
@@ -581,6 +581,6 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.symcaches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 11264);
+        assert_eq!(std::mem::size_of_val(&fut), 10752);
     }
 }

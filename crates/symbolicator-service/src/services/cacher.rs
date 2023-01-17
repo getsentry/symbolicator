@@ -32,10 +32,10 @@ type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
 /// Internally deduplicates concurrent cache lookups (in-memory).
 #[derive(Debug)]
 pub struct Cacher<T: CacheItemRequest> {
-    config: Cache,
+    on_disk: Cache,
 
     /// An in-memory Cache for some items which also does request-coalescing when requesting items.
-    cache: InMemoryCache<T::Item>,
+    in_memory: InMemoryCache<T::Item>,
 
     /// A [`HashSet`] of currently running cache refreshes.
     refreshes: Arc<Mutex<HashSet<CacheKey>>>,
@@ -50,8 +50,8 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
     fn clone(&self) -> Self {
         // https://github.com/rust-lang/rust/issues/26925
         Cacher {
-            config: self.config.clone(),
-            cache: self.cache.clone(),
+            on_disk: self.on_disk.clone(),
+            in_memory: self.in_memory.clone(),
             refreshes: Arc::clone(&self.refreshes),
             shared_cache_service: Arc::clone(&self.shared_cache_service),
         }
@@ -60,17 +60,23 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 
 impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache_service: Arc<SharedCacheService>) -> Self {
+        let in_memory = {
+            let mut builder = InMemoryCache::builder().max_capacity(config.in_memory_capacity());
+            if let Some(ttl) = config.in_memory_ttl() {
+                builder = builder.time_to_live(ttl);
+            }
+            builder.build()
+        };
         Cacher {
-            config,
-            // TODO: eventually hook up configuration to this
-            cache: InMemoryCache::new(0),
+            on_disk: config,
+            in_memory,
             refreshes: Default::default(),
             shared_cache_service,
         }
     }
 
     pub fn tempfile(&self) -> std::io::Result<NamedTempFile> {
-        self.config.tempfile()
+        self.on_disk.tempfile()
     }
 }
 
@@ -180,7 +186,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         key: &CacheKey,
         version: u32,
     ) -> CacheEntry<Option<T::Item>> {
-        let name = self.config.name();
+        let name = self.on_disk.name();
         let item_path = key.cache_path(cache_dir, version);
         tracing::trace!("Trying {} cache at path {}", name, item_path.display());
         let _scope = Hub::current().push_scope();
@@ -190,7 +196,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 item_path.to_string_lossy().into(),
             );
         });
-        let (entry, expiration) = match self.config.open_cachefile(&item_path)? {
+        let (entry, expiration) = match self.on_disk.open_cachefile(&item_path)? {
             Some(entry) => entry,
             None => return Ok(None),
         };
@@ -209,7 +215,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let needs_reupload = expiration.was_touched();
         if entry.is_ok() && version == T::VERSIONS.current && needs_reupload {
             let shared_cache_key = SharedCacheKey {
-                name: self.config.name(),
+                name: self.on_disk.name(),
                 version: T::VERSIONS.current,
                 local_key: key.clone(),
             };
@@ -259,7 +265,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let mut temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
-            name: self.config.name(),
+            name: self.on_disk.name(),
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
@@ -299,18 +305,18 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
-        let file = if let Some(cache_dir) = self.config.cache_dir() {
+        let file = if let Some(cache_dir) = self.on_disk.cache_dir() {
             // Cache is enabled, write it!
             let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
-                    &format!("cache.{}.cache_path", self.config.name()),
+                    &format!("cache.{}.cache_path", self.on_disk.name()),
                     cache_path.to_string_lossy().into(),
                 );
             });
             metric!(
-                counter(&format!("caches.{}.file.write", self.config.name())) += 1,
+                counter(&format!("caches.{}.file.write", self.on_disk.name())) += 1,
                 "status" => match &entry {
                     Ok(_) => "positive",
                     // TODO: should we create a `metrics_tag` method?
@@ -322,7 +328,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             );
             if let Ok(byte_view) = &entry {
                 metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    time_raw(&format!("caches.{}.file.size", self.on_disk.name())) = byte_view.len() as u64,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
                 );
@@ -330,7 +336,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             tracing::trace!(
                 "Creating {} at path {:?}",
-                self.config.name(),
+                self.on_disk.name(),
                 cache_path.display()
             );
 
@@ -352,7 +358,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         // we just created a fresh cache, so use the initial expiration times
-        let expiration = ExpirationTime::for_fresh_status(&self.config, &entry);
+        let expiration = ExpirationTime::for_fresh_status(&self.on_disk, &entry);
 
         entry.and_then(|byteview| request.load(byteview, expiration))
 
@@ -376,12 +382,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
     pub async fn compute_memoized(&self, request: T) -> CacheEntry<T::Item> {
-        let name = self.config.name();
+        let name = self.on_disk.name();
         let key = request.get_cache_key();
 
         let compute = Box::pin(async {
             // cache_path is None when caching is disabled.
-            if let Some(cache_dir) = self.config.cache_dir() {
+            if let Some(cache_dir) = self.on_disk.cache_dir() {
                 if let Some(item) = self
                     .lookup_local_cache(&request, cache_dir, &key, T::VERSIONS.current)
                     .await?
@@ -416,12 +422,12 @@ impl<T: CacheItemRequest> Cacher<T> {
             self.compute(request, &key, false).await
         });
 
-        self.cache.get_with_by_ref(&key, compute).await
+        self.in_memory.get_with_by_ref(&key, compute).await
     }
 
     fn spawn_refresh(&self, request: T) {
-        let Some(cache_dir) = self.config.cache_dir() else { return };
-        let name = self.config.name();
+        let Some(cache_dir) = self.on_disk.cache_dir() else { return };
+        let name = self.on_disk.name();
         let key = request.get_cache_key();
 
         let mut refreshes = self.refreshes.lock();
@@ -430,7 +436,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         // We count down towards zero, and if we reach or surpass it, we will stop here.
-        let max_lazy_refreshes = self.config.max_lazy_refreshes();
+        let max_lazy_refreshes = self.on_disk.max_lazy_refreshes();
         if max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
             max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
 
@@ -471,7 +477,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             let result = this.compute(request, &key, true).await;
 
             // refresh the memory cache with the newly refreshed result
-            this.cache.insert(key, result).await;
+            this.in_memory.insert(key, result).await;
 
             transaction.finish();
         };
@@ -608,7 +614,7 @@ mod tests {
         let cacher = Cacher::new(cache, shared_cache);
 
         let fut = cacher.compute_memoized(TestCacheItem::new("foo"));
-        assert_eq!(std::mem::size_of_val(&fut), 824);
+        assert_eq!(std::mem::size_of_val(&fut), 816);
     }
 
     /// This test asserts that the cache is served from outdated cache files, and that a computation

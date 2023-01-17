@@ -132,6 +132,16 @@ pub struct DownloadedCacheConfig {
 
     /// Maximum number of lazy re-downloads
     pub max_lazy_redownloads: isize,
+
+    /// The number of elements that may be held in the in-memory cache.
+    ///
+    /// Defautls to 100.
+    pub in_memory_capacity: u64,
+
+    /// The length of time elements will stay in the in-memory cache.
+    ///
+    /// Defaults to 1h.
+    pub in_memory_ttl: Option<Duration>,
 }
 
 impl Default for DownloadedCacheConfig {
@@ -141,6 +151,8 @@ impl Default for DownloadedCacheConfig {
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
             max_lazy_redownloads: 50,
+            in_memory_capacity: 100,
+            in_memory_ttl: Some(Duration::from_secs(3600)),
         }
     }
 }
@@ -165,6 +177,16 @@ pub struct DerivedCacheConfig {
 
     /// Maximum number of lazy re-computations
     pub max_lazy_recomputations: isize,
+
+    /// The number of elements that may be held in the in-memory cache.
+    ///
+    /// Defautls to 100.
+    pub in_memory_capacity: u64,
+
+    /// The length of time elements will stay in the in-memory cache.
+    ///
+    /// Defaults to 1h.
+    pub in_memory_ttl: Option<Duration>,
 }
 
 impl Default for DerivedCacheConfig {
@@ -174,6 +196,8 @@ impl Default for DerivedCacheConfig {
             retry_misses_after: Some(Duration::from_secs(3600)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
             max_lazy_recomputations: 20,
+            in_memory_capacity: 100,
+            in_memory_ttl: Some(Duration::from_secs(3600)),
         }
     }
 }
@@ -225,6 +249,22 @@ impl CacheConfig {
             Self::Downloaded(cfg) => cfg.retry_malformed_after,
             Self::Derived(cfg) => cfg.retry_malformed_after,
             Self::Diagnostics(_cfg) => None,
+        }
+    }
+
+    pub fn in_memory_capacity(&self) -> u64 {
+        match self {
+            CacheConfig::Downloaded(cfg) => cfg.in_memory_capacity,
+            CacheConfig::Derived(cfg) => cfg.in_memory_capacity,
+            CacheConfig::Diagnostics(_) => 0,
+        }
+    }
+
+    pub fn in_memory_ttl(&self) -> Option<Duration> {
+        match self {
+            CacheConfig::Downloaded(cfg) => cfg.in_memory_ttl,
+            CacheConfig::Derived(cfg) => cfg.in_memory_ttl,
+            CacheConfig::Diagnostics(_) => None,
         }
     }
 }

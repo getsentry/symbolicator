@@ -362,6 +362,8 @@ mod tests {
     /// and timeout for download cache misses.
     async fn symcache_actor(cache_dir: PathBuf, timeout: Duration) -> SymCacheActor {
         let mut cache_config = CacheConfigs::default();
+        cache_config.downloaded.in_memory_ttl = Some(Duration::from_millis(500));
+        cache_config.derived.in_memory_ttl = Some(Duration::from_millis(500));
         cache_config.downloaded.retry_misses_after = Some(timeout);
 
         let config = Config {

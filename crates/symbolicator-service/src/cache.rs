@@ -589,6 +589,13 @@ impl Cache {
             None => Ok(NamedTempFile::new()?),
         }
     }
+    pub fn in_memory_capacity(&self) -> u64 {
+        self.cache_config.in_memory_capacity()
+    }
+
+    pub fn in_memory_ttl(&self) -> Option<Duration> {
+        self.cache_config.in_memory_ttl()
+    }
 }
 
 /// Expiration strategies for cache items. These aren't named after the strategies themselves right
