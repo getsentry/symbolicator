@@ -495,6 +495,7 @@ fn get_files(path: impl AsRef<Path>) -> Vec<(String, u64)> {
 }
 
 /// Tests caching side-effects, like cache files written and hits to the symbol source.
+#[allow(clippy::if_same_then_else)]
 #[tokio::test]
 async fn test_basic_windows() {
     let (modules, stacktraces) = request_fixture();

@@ -37,7 +37,7 @@ async fn test_download_errors() {
     };
 
     // NOTE: we run requests twice to make sure that round-trips through the cache give us the same results.
-    for i in 0..2 {
+    for _i in 0..2 {
         // NOTE: we try this 3 times on error
         let source = hitcounter.source("rejected", "/respond_statuscode/500/");
         let request = get_symbolication_request(vec![source]);
@@ -100,11 +100,7 @@ async fn test_download_errors() {
                     // FIXME: We are currently serializing `CacheError` in "legacy" mode that does
                     // not support details
                     // FIXME: However, adding an in-memory cache means we still get the proper values
-                    details: if i == 0 {
-                        "403 Forbidden".into()
-                    } else {
-                        "403 Forbidden".into()
-                    }
+                    details: "403 Forbidden".into()
                 }
             )
         );
