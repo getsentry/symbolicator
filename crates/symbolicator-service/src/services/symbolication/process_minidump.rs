@@ -521,6 +521,7 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
 #[cfg(test)]
 mod tests {
     use crate::services::create_service;
+    use crate::services::objects::{FindObject, ObjectPurpose};
     use crate::services::ppdb_caches::FetchPortablePdbCache;
     use crate::services::symcaches::FetchSymCache;
 
@@ -531,7 +532,7 @@ mod tests {
     /// The size assertion will naturally change with compiler, dependency and code changes.
     #[tokio::test]
     async fn future_size() {
-        let (sym, _) = create_service(&Default::default(), tokio::runtime::Handle::current())
+        let (sym, obj) = create_service(&Default::default(), tokio::runtime::Handle::current())
             .await
             .unwrap();
 
@@ -546,6 +547,16 @@ mod tests {
         let fut = provider.load_cfi_module(&module);
         assert_eq!(std::mem::size_of_val(&fut), 880);
 
+        let req = FindObject {
+            filetypes: &[],
+            purpose: ObjectPurpose::Debug,
+            identifier: Default::default(),
+            sources: Arc::from_iter([]),
+            scope: Scope::Global,
+        };
+        let fut = obj.find(req);
+        assert_eq!(std::mem::size_of_val(&fut), 4864);
+
         let req = FetchCfiCache {
             object_type: Default::default(),
             identifier: Default::default(),
@@ -553,7 +564,7 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.cficaches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 3456);
+        assert_eq!(std::mem::size_of_val(&fut), 5248);
 
         let req = FetchPortablePdbCache {
             identifier: Default::default(),
@@ -561,7 +572,7 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.ppdb_caches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 3456);
+        assert_eq!(std::mem::size_of_val(&fut), 5248);
 
         let req = FetchSymCache {
             object_type: Default::default(),
@@ -570,6 +581,6 @@ mod tests {
             scope: Scope::Global,
         };
         let fut = sym.symcaches.fetch(req);
-        assert_eq!(std::mem::size_of_val(&fut), 7680);
+        assert_eq!(std::mem::size_of_val(&fut), 11264);
     }
 }
