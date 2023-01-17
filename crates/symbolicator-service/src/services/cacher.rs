@@ -379,7 +379,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         let key = request.get_cache_key();
 
-        let compute = async {
+        let compute = Box::pin(async {
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
                 if let Some(item) = self
@@ -414,7 +414,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             metric!(counter(&format!("caches.{name}.file.miss")) += 1);
 
             self.compute(request, &key, false).await
-        };
+        });
 
         self.cache.get_with_by_ref(&key, compute).await
     }
@@ -586,6 +586,29 @@ mod tests {
         ) -> CacheEntry<Self::Item> {
             Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
         }
+    }
+
+    /// Tests that the size of the `compute_memoized` future does not grow out of bounds.
+    /// See <https://github.com/moka-rs/moka/issues/212> for one of the main issues here.
+    /// The size assertion will naturally change with compiler, dependency and code changes.
+    #[tokio::test]
+    async fn future_size() {
+        test::setup();
+
+        let cache = Cache::from_config(
+            CacheName::Objects,
+            None,
+            None,
+            CacheConfig::from(CacheConfigs::default().derived),
+            Arc::new(AtomicIsize::new(1)),
+        )
+        .unwrap();
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let cacher = Cacher::new(cache, shared_cache);
+
+        let fut = cacher.compute_memoized(TestCacheItem::new("foo"));
+        assert_eq!(std::mem::size_of_val(&fut), 824);
     }
 
     /// This test asserts that the cache is served from outdated cache files, and that a computation

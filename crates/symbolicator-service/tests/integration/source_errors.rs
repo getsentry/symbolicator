@@ -10,11 +10,6 @@ use crate::symbolication::{get_symbolication_request, setup_service};
 
 #[tokio::test]
 async fn test_download_errors() {
-    let (symbolication, _cache_dir) = setup_service(|config| {
-        config.max_download_timeout = Duration::from_millis(200);
-    })
-    .await;
-
     let hitcounter = Server::new();
 
     // This returns frame and module statuses:
@@ -38,6 +33,11 @@ async fn test_download_errors() {
 
     // NOTE: we run requests twice to make sure that round-trips through the cache give us the same results.
     for i in 0..2 {
+        let (symbolication, _cache_dir) = setup_service(|config| {
+            config.max_download_timeout = Duration::from_millis(200);
+        })
+        .await;
+
         // NOTE: we try this 3 times on error
         let source = hitcounter.source("rejected", "/respond_statuscode/500/");
         let request = get_symbolication_request(vec![source]);
