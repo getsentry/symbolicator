@@ -131,16 +131,14 @@ struct FetchSymCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_symcache", skip_all)]
 async fn fetch_difs_and_compute_symcache(
-    mut temp_file: NamedTempFile,
+    temp_file: &mut NamedTempFile,
+    objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-    objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<NamedTempFile> {
+) -> CacheEntry {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)?;
-
-    Ok(temp_file)
+    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -152,11 +150,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
         self.object_meta.cache_key()
     }
 
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_symcache(
             temp_file,
+            &self.objects_actor,
             self.object_meta.clone(),
-            self.objects_actor.clone(),
             self.secondary_sources.clone(),
         );
 
@@ -277,7 +275,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<()> {
+) -> CacheEntry {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();

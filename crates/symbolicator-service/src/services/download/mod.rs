@@ -5,166 +5,79 @@
 
 use std::convert::TryInto;
 use std::error::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
-use tempfile::NamedTempFile;
-use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
-use symbolicator_sources::get_directory_paths;
 pub use symbolicator_sources::{
-    DirectoryLayout, FileType, ObjectId, ObjectType, SourceConfig, SourceFilters,
+    DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
+    SourceFilters, SourceLocation,
+};
+use symbolicator_sources::{
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::cache::{CacheError, CacheStatus};
-use crate::utils::futures::{self as future_utils, m, measure, CancelOnDrop};
+use crate::cache::{CacheEntry, CacheError};
+use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
+use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::gcs::GcsError;
+use crate::utils::sentry::ConfigureScope;
 
 mod filesystem;
 mod gcs;
 mod http;
-mod locations;
 mod s3;
 mod sentry;
 
-use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
-pub use locations::{RemoteDif, RemoteDifUri, SourceLocation};
+impl ConfigureScope for RemoteFile {
+    fn to_scope(&self, scope: &mut ::sentry::Scope) {
+        scope.set_tag("source.id", self.source_id());
+        scope.set_tag("source.type", self.source_type_name());
+        scope.set_tag("source.is_public", self.is_public());
+        scope.set_tag("source.uri", self.uri());
+    }
+}
 
 /// HTTP User-Agent string to use.
 const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
-/// Errors happening while downloading from sources.
-#[derive(Debug, Error)]
-pub enum DownloadError {
-    #[error("failed to perform an IO operation")]
-    Io(#[source] std::io::Error),
-    #[error("failed to stream file")]
-    Reqwest(#[source] reqwest::Error),
-    #[error("bad file destination")]
-    BadDestination(#[source] std::io::Error),
-    #[error("failed writing the downloaded file")]
-    Write(#[source] std::io::Error),
-    #[error("download was cancelled")]
-    Canceled,
-    #[error("failed to fetch data from GCS")]
-    Gcs(#[from] crate::utils::gcs::GcsError),
-    #[error("failed to fetch data from Sentry")]
-    Sentry(sentry::SentryError),
-    #[error("failed to fetch data from S3")]
-    S3(#[from] s3::S3Error),
-    #[error("S3 error code: {1} (http status: {0})")]
-    S3WithCode(StatusCode, String),
-    #[error("missing permissions for file")]
-    Permissions,
-    /// Typically means the initial HEAD request received a non-200, non-400 response.
-    #[error("failed to download: {0}")]
-    Rejected(StatusCode),
-    #[error("failed to fetch object: {0}")]
-    CachedError(String),
-}
-
-impl From<sentry::SentryError> for DownloadError {
-    fn from(err: sentry::SentryError) -> Self {
-        if matches!(
-            err,
-            sentry::SentryError::BadStatusCode(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
-        ) {
-            DownloadError::Permissions
-        } else {
-            DownloadError::Sentry(err)
+impl CacheError {
+    fn download_error(mut error: &dyn Error) -> Self {
+        while let Some(src) = error.source() {
+            error = src;
         }
+
+        let mut error_string = error.to_string();
+
+        // Special-case a few error strings
+        if error_string.contains("certificate verify failed") {
+            error_string = "certificate verify failed".to_string();
+        }
+
+        if error_string.contains("SSL routines") {
+            error_string = "SSL error".to_string();
+        }
+
+        Self::DownloadError(error_string)
     }
 }
 
-impl From<DownloadError> for CacheError {
-    fn from(error: DownloadError) -> Self {
-        match error {
-            DownloadError::Reqwest(e) => {
-                let mut innermost: &dyn Error = &e;
-                while let Some(src) = innermost.source() {
-                    innermost = src;
-                }
-
-                let mut error_string = innermost.to_string();
-
-                // Special-case a few error strings
-                if error_string.contains("certificate verify failed") {
-                    error_string = "certificate verify failed".to_string();
-                }
-
-                if error_string.contains("SSL routines") {
-                    error_string = "SSL error".to_string();
-                }
-
-                Self::DownloadError(error_string)
-            }
-            DownloadError::Canceled => Self::Timeout(Duration::default()),
-            DownloadError::Gcs(e) => {
-                Self::DownloadError(format!("failed to fetch data from GCS: {e}"))
-            }
-            DownloadError::Sentry(e) => {
-                Self::DownloadError(format!("failed to fetch data from Sentry: {e}"))
-            }
-            DownloadError::S3(e) => {
-                Self::DownloadError(format!("failed to fetch data from S3: {e}"))
-            }
-            DownloadError::S3WithCode(status, code) => {
-                Self::DownloadError(format!("S3 error code: {code} (http status: {status})"))
-            }
-            DownloadError::Permissions => Self::PermissionDenied(String::new()),
-            DownloadError::Rejected(status_code) => Self::DownloadError(status_code.to_string()),
-            _ => Self::from_std_error(error),
-        }
+impl From<reqwest::Error> for CacheError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::download_error(&error)
     }
 }
 
-impl DownloadError {
-    /// This produces a user-facing string representation of a download error if it is a variant
-    /// that needs to be stored as a [`CacheStatus::CacheSpecificError`] entry in the download cache.
-    pub fn for_cache(&self) -> String {
-        match self {
-            DownloadError::Gcs(inner) => format!("{self}: {inner}"),
-            DownloadError::Sentry(inner) => format!("{self}: {inner}"),
-            DownloadError::S3(inner) => format!("{self}: {inner}"),
-            DownloadError::Permissions => self.to_string(),
-            DownloadError::CachedError(original_message) => original_message.clone(),
-            _ => format!("{self}"),
-        }
+impl From<GcsError> for CacheError {
+    fn from(error: GcsError) -> Self {
+        Self::DownloadError(error.to_string())
     }
-
-    /// If a given cache entry is [`CacheStatus::CacheSpecificError`], this parses and extracts its
-    /// contents into a [`DownloadError`]. This will return none if a
-    /// non-[`CacheStatus::CacheSpecificError`] is provided.
-    pub fn from_cache(status: &CacheStatus) -> Option<Self> {
-        match status {
-            CacheStatus::Positive => None,
-            CacheStatus::Negative => None,
-            CacheStatus::Malformed(_) => None,
-            CacheStatus::CacheSpecificError(message) => {
-                if message.starts_with(&Self::Permissions.to_string()) {
-                    Some(Self::Permissions)
-                } else {
-                    Some(Self::CachedError(message.clone()))
-                }
-            }
-        }
-    }
-}
-
-/// Completion status of a successful download request.
-#[derive(Debug)]
-pub enum DownloadStatus<T> {
-    /// The download completed successfully and the file at the path can be used.
-    Completed(T),
-    /// The requested file was not found.
-    NotFound,
-    /// Not enough permissions to download the file.
-    PermissionDenied,
 }
 
 /// A service which can download files from a [`SourceConfig`].
@@ -222,50 +135,36 @@ impl DownloadService {
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    async fn dispatch_download(
-        &self,
-        source: &RemoteDif,
-        temp_file: NamedTempFile,
-    ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
-        let destination = temp_file.path();
-
-        let result = future_utils::retry(|| async {
+    async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheEntry {
+        let result = retry(|| async {
             match source {
-                RemoteDif::Sentry(inner) => {
+                RemoteFile::Sentry(inner) => {
                     self.sentry
                         .download_source(inner.clone(), destination)
                         .await
                 }
-                RemoteDif::Http(inner) => {
+                RemoteFile::Http(inner) => {
                     self.http.download_source(inner.clone(), destination).await
                 }
-                RemoteDif::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
-                RemoteDif::Gcs(inner) => self.gcs.download_source(inner.clone(), destination).await,
-                RemoteDif::Filesystem(inner) => {
+                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
+                RemoteFile::Gcs(inner) => {
+                    self.gcs.download_source(inner.clone(), destination).await
+                }
+                RemoteFile::Filesystem(inner) => {
                     self.fs.download_source(inner.clone(), destination).await
                 }
             }
         });
 
-        match result.await {
-            Ok(DownloadStatus::Completed(_)) => {
-                tracing::debug!("Fetched debug file from {}", source);
-                Ok(DownloadStatus::Completed(temp_file))
-            }
-            Ok(DownloadStatus::NotFound) => {
-                tracing::debug!("Debug file not found at {}", source);
-                Ok(DownloadStatus::NotFound)
-            }
-            Ok(DownloadStatus::PermissionDenied) => {
-                tracing::debug!("No permissions to fetch file from {}", source);
-                // FIXME: downstream users still expect these to be errors
-                Err(DownloadError::Permissions)
-            }
-            Err(err) => {
-                tracing::debug!("Failed to fetch debug file from {}: {}", source, err);
-                Err(err)
-            }
+        let result = result.await;
+
+        if let Err(err) = &result {
+            tracing::debug!("File `{}` fetching failed: {}", source, err);
+        } else {
+            tracing::debug!("File `{}` fetched successfully", source);
         }
+
+        result
     }
 
     /// Download a file from a source and store it on the local filesystem.
@@ -276,20 +175,19 @@ impl DownloadService {
     /// exist and truncated if it does. In case of any error, the file's contents is considered
     /// garbage.
     pub async fn download(
-        self: Arc<Self>,
-        source: RemoteDif,
-        destination: NamedTempFile,
-    ) -> Result<DownloadStatus<NamedTempFile>, DownloadError> {
+        self: &Arc<Self>,
+        source: RemoteFile,
+        destination: PathBuf,
+    ) -> CacheEntry {
         let slf = self.clone();
-        let job = async move { slf.dispatch_download(&source, destination).await };
+        let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, None, job);
 
-        match job.await {
-            Ok(Ok(result)) => result,
-            _ => Err(DownloadError::Canceled),
-        }
+        job.await
+            .map_err(|_| CacheError::Timeout(self.max_download_timeout))? // Timeout
+            .map_err(|_| CacheError::InternalError)? // Spawn error
     }
 
     /// Returns all objects matching the [`ObjectId`] at the source.
@@ -298,63 +196,108 @@ impl DownloadService {
     /// download attempt should be made without any guarantee the object is actually there.
     ///
     /// If the source needs to be contacted to get matching objects this may fail and
-    /// returns a [`DownloadError`].
+    /// returns a [`CacheError`].
     ///
     /// Note that the `filetypes` argument is not more then a hint, not all source types
     /// will respect this and they may return all DIFs matching the `object_id`.  After
     /// downloading you may still need to filter the files.
     pub async fn list_files(
         &self,
-        source: SourceConfig,
+        sources: &[SourceConfig],
         filetypes: &[FileType],
         object_id: &ObjectId,
-    ) -> Result<Vec<RemoteDif>, DownloadError> {
-        match source {
-            SourceConfig::Sentry(cfg) => {
-                let job = self.sentry.list_files(cfg, object_id, filetypes);
-                let job = tokio::time::timeout(Duration::from_secs(30), job);
-                let job = measure("service.download.list_files", m::timed_result, None, job);
+    ) -> Vec<RemoteFile> {
+        let mut remote_files = vec![];
 
-                job.await.map_err(|_| DownloadError::Canceled)?
-            }
-            SourceConfig::Http(cfg) => Ok(self.http.list_files(cfg, filetypes, object_id)),
-            SourceConfig::S3(cfg) => Ok(self.s3.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Gcs(cfg) => Ok(self.gcs.list_files(cfg, filetypes, object_id)),
-            SourceConfig::Filesystem(cfg) => Ok(self.fs.list_files(cfg, filetypes, object_id)),
+        macro_rules! check_source {
+            ($source:ident => $file_ty:ty) => {{
+                let mut iter =
+                    SourceLocationIter::new(&$source.files, filetypes, object_id).peekable();
+                if iter.peek().is_none() {
+                    // TODO: create a special "no file on source" `RemoteFile`?
+                } else {
+                    remote_files
+                        .extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
+                }
+            }};
         }
+
+        for source in sources {
+            match source {
+                SourceConfig::Sentry(cfg) => {
+                    let job = self.sentry.list_files(cfg.clone(), object_id, filetypes);
+                    let timeout = Duration::from_secs(30);
+                    let job = tokio::time::timeout(timeout, job);
+                    let job = measure("service.download.list_files", m::timed_result, None, job);
+
+                    let sentry_files = job.await.map_err(|_| CacheError::Timeout(timeout));
+                    match sentry_files {
+                        Ok(Ok(files)) => remote_files.extend(files),
+                        Ok(Err(error)) | Err(error) => {
+                            let error: &dyn std::error::Error = &error;
+                            tracing::error!(error, "Failed to fetch file list");
+                            // TODO: create a special "finding files failed" `RemoteFile`?
+                        }
+                    }
+                }
+                SourceConfig::Http(cfg) => check_source!(cfg => HttpRemoteFile),
+                SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
+                SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
+                SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
+            }
+        }
+        remote_files
+    }
+}
+
+/// Try to run a future up to 3 times with 20 millisecond delays on failure.
+pub async fn retry<G, F, T>(mut task_gen: G) -> CacheEntry<T>
+where
+    G: FnMut() -> F,
+    F: Future<Output = CacheEntry<T>>,
+{
+    let mut tries = 0;
+    loop {
+        tries += 1;
+        let result = task_gen().await;
+
+        // its highly unlikely we get a different result when retrying these
+        let should_not_retry = matches!(
+            result,
+            Ok(_) | Err(CacheError::NotFound | CacheError::PermissionDenied(_))
+        );
+
+        if should_not_retry || tries >= 3 {
+            break result;
+        }
+
+        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }
 
 /// Download the source from a stream.
 ///
 /// This is common functionality used by many downloaders.
-///
-/// # Errors
-/// - [`DownloadError::BadDestination`]
-/// - [`DownloadError::Write`]
-/// - [`DownloadError::Canceled`]
 async fn download_stream(
-    source: &RemoteDif,
-    stream: impl Stream<Item = Result<impl AsRef<[u8]>, DownloadError>>,
+    source: &RemoteFile,
+    stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
     destination: &Path,
     timeout: Option<Duration>,
-) -> Result<DownloadStatus<()>, DownloadError> {
+) -> CacheEntry {
     // All file I/O in this function is blocking!
     tracing::trace!("Downloading from {}", source);
     let future = async {
-        let mut file = File::create(destination)
-            .await
-            .map_err(DownloadError::BadDestination)?;
+        let mut file = File::create(destination).await?;
         futures::pin_mut!(stream);
 
         let mut throughput_recorder =
             MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
-        let result: Result<_, DownloadError> = async {
+        let result: CacheEntry = async {
             while let Some(chunk) = stream.next().await {
                 let chunk = chunk?;
                 let chunk = chunk.as_ref();
                 throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-                file.write_all(chunk).await.map_err(DownloadError::Write)?;
+                file.write_all(chunk).await?;
             }
             Ok(())
         }
@@ -362,15 +305,73 @@ async fn download_stream(
         throughput_recorder.done(&result);
         result?;
 
-        file.flush().await.map_err(DownloadError::Write)?;
-        Ok(DownloadStatus::Completed(()))
+        file.flush().await?;
+        Ok(())
     };
 
     match timeout {
         Some(timeout) => tokio::time::timeout(timeout, future)
             .await
-            .map_err(|_| DownloadError::Canceled)?,
+            .map_err(|_| CacheError::Timeout(timeout))?,
         None => future.await,
+    }
+}
+
+async fn download_reqwest(
+    source: &RemoteFile,
+    builder: reqwest::RequestBuilder,
+    connect_timeout: Duration,
+    streaming_timeout: Duration,
+    destination: &Path,
+) -> CacheEntry {
+    let request = builder.send();
+
+    let request = tokio::time::timeout(connect_timeout, request);
+    let request = measure_download_time(source.source_metric_key(), request);
+
+    let timeout_err = CacheError::Timeout(connect_timeout);
+    let response = request.await.map_err(|_| timeout_err)??;
+
+    let status = response.status();
+    if status.is_success() {
+        tracing::trace!("Success hitting `{}`", source);
+
+        let content_length = response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|hv| hv.to_str().ok())
+            .and_then(|s| s.parse::<i64>().ok());
+
+        let timeout = content_length.map(|cl| content_length_timeout(cl, streaming_timeout));
+        let stream = response.bytes_stream().map_err(CacheError::from);
+
+        download_stream(source, stream, destination, timeout).await
+    } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+        tracing::debug!(
+            "Insufficient permissions to download `{}`: {}",
+            source,
+            status
+        );
+
+        // TODO: figure out if we can log/return the whole response text
+        // let details = response.text().await?;
+        let details = status.to_string();
+
+        Err(CacheError::PermissionDenied(details))
+        // If it's a client error, chances are it's a 404.
+    } else if status.is_client_error() {
+        tracing::debug!(
+            "Unexpected client error status code from `{}`: {}",
+            source,
+            status
+        );
+
+        Err(CacheError::NotFound)
+    } else {
+        tracing::debug!("Unexpected status code from `{}`: {}", source, status);
+
+        let details = status.to_string();
+        Err(CacheError::DownloadError(details))
     }
 }
 
@@ -482,60 +483,21 @@ where
     }
 }
 
-/// Iterator to generate a list of [`SourceLocation`]s to attempt downloading.
-#[derive(Debug)]
-struct SourceLocationIter<'a> {
-    /// Limits search to a set of filetypes.
-    filetypes: std::slice::Iter<'a, FileType>,
-
-    /// Filters from a `SourceConfig` to limit the amount of generated paths.
-    filters: &'a SourceFilters,
-
-    /// Information about the object file to be downloaded.
-    object_id: &'a ObjectId,
-
-    /// Directory from `SourceConfig` to define what kind of paths we generate.
-    layout: DirectoryLayout,
-
-    /// Remaining locations to iterate.
-    next: Vec<String>,
-}
-
-impl Iterator for SourceLocationIter<'_> {
-    type Item = SourceLocation;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        while self.next.is_empty() {
-            if let Some(&filetype) = self.filetypes.next() {
-                if !self.filters.is_allowed(self.object_id, filetype) {
-                    continue;
-                }
-                self.next = get_directory_paths(self.layout, filetype, self.object_id);
-            } else {
-                return None;
-            }
-        }
-
-        self.next.pop().map(SourceLocation::new)
-    }
-}
-
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: u32, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }
 
 #[cfg(test)]
 mod tests {
-    use symbolic::common::{CodeId, DebugId, Uuid};
-    use symbolicator_sources::{ObjectType, SourceConfig};
-
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
-    use super::http::HttpRemoteDif;
+
+    use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
+
     use super::*;
 
     use crate::test;
@@ -547,7 +509,7 @@ mod tests {
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
             SourceConfig::Http(source) => {
-                HttpRemoteDif::new(source, SourceLocation::new("hello.txt")).into()
+                HttpRemoteFile::new(source, SourceLocation::new("hello.txt")).into()
             }
             _ => panic!("unexpected source"),
         };
@@ -560,16 +522,14 @@ mod tests {
         let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
-        match service
-            .download(file_source, tempfile::NamedTempFile::new().unwrap())
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        service
+            .download(file_source, temp_file.path().to_owned())
             .await
-        {
-            Ok(DownloadStatus::Completed(temp_file)) => {
-                let content = std::fs::read_to_string(temp_file.path()).unwrap();
-                assert_eq!(content, "hello world\n")
-            }
-            _ => panic!("download should be completed"),
-        }
+            .unwrap();
+
+        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        assert_eq!(content, "hello world\n")
     }
 
     #[tokio::test]
@@ -588,9 +548,8 @@ mod tests {
         let config = Config::default();
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let file_list = svc
-            .list_files(source.clone(), FileType::all(), &objid)
-            .await
-            .unwrap();
+            .list_files(&[source.clone()], FileType::all(), &objid)
+            .await;
 
         assert!(!file_list.is_empty());
         let item = &file_list[0];
@@ -615,36 +574,5 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
-    }
-
-    #[test]
-    fn test_iter_elf() {
-        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
-        // created.
-        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
-        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
-        let debug_id = DebugId::from_uuid(uuid);
-
-        let mut all: Vec<_> = SourceLocationIter {
-            filetypes: [FileType::ElfCode, FileType::ElfDebug].iter(),
-            filters: &Default::default(),
-            object_id: &ObjectId {
-                debug_id: Some(debug_id),
-                code_id: Some(code_id),
-                ..Default::default()
-            },
-            layout: Default::default(),
-            next: Default::default(),
-        }
-        .collect();
-        all.sort();
-
-        assert_eq!(
-            all,
-            [
-                SourceLocation::new("ab/cdef1234567890abcd"),
-                SourceLocation::new("ab/cdef1234567890abcd.debug")
-            ]
-        );
     }
 }

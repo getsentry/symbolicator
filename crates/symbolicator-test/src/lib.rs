@@ -16,21 +16,23 @@
 //!    source) = symbol_server();`. Alternatively, use [`local_source`] to test without
 //!    HTTP connections.
 
+use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use reqwest::Url;
+use axum::extract;
+use axum::routing::{get, get_service};
+use axum::{middleware, Router};
+use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
+use tower_http::services::ServeDir;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
-use warp::reject::{Reject, Rejection};
-use warp::Filter;
 
 use symbolicator_sources::{
-    CommonSourceConfig, FileType, FilesystemSourceConfig, GcsSourceKey, HttpSourceConfig,
-    SourceConfig, SourceFilters, SourceId,
+    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
+    GcsSourceKey, HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -122,46 +124,143 @@ pub fn microsoft_symsrv() -> SourceConfig {
     }))
 }
 
-/// Custom version of warp's sealed `IsReject` trait.
-///
-/// This is required to allow the test [`Server`] to spawn a warp server.
-pub trait IsReject {}
-
-impl IsReject for warp::reject::Rejection {}
-impl IsReject for std::convert::Infallible {}
+/// Gives a [`CommonSourceConfig`] with the given layout type and file types filter.
+pub fn source_config(ty: DirectoryLayoutType, filetypes: Vec<FileType>) -> CommonSourceConfig {
+    CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes,
+            ..Default::default()
+        },
+        layout: DirectoryLayout {
+            ty,
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
 
 /// A test server that binds to a random port and serves a web app.
+///
+/// The server counts all the requests that happen, to be accessed via `accesses` or `all_hits`.
+///
+/// It has a couple of routes with different behavior:
+///
+/// - `/redirect/$path` will redirect to the `$path` url.
+/// - `/delay/$time/$path` will sleep for `$time` and then redirect to `$path`.
+/// - `/msdl/` will redirect to the public microsoft symbol server.
+/// - `/respond_statuscode/$num` responds with the status code given in `$num`.
+/// - `/garbage_data/$data` responds back with `$data`.
+/// - `/symbols/` serves the fixtures symbols.
 ///
 /// This server requires a `tokio` runtime and is supposed to be run in a `tokio::test`. It
 /// automatically stops serving when dropped.
 #[derive(Debug)]
 pub struct Server {
-    pub handle: tokio::task::JoinHandle<()>,
-    pub socket: SocketAddr,
+    handle: tokio::task::JoinHandle<()>,
+    socket: SocketAddr,
+    hits: Arc<Mutex<BTreeMap<String, usize>>>,
 }
 
 impl Server {
-    /// Creates a new test server from the given `warp` filter.
-    pub fn new<F>(filter: F) -> Self
-    where
-        F: warp::Filter + Clone + Send + Sync + 'static,
-        F::Extract: warp::reply::Reply,
-        F::Error: IsReject,
-    {
-        let (socket, future) = warp::serve(filter).bind_ephemeral(([127, 0, 0, 1], 0));
-        let handle = tokio::spawn(future);
-
-        Self { handle, socket }
+    /// Creates a new Server with a special testing-focused router,
+    /// as described in the main [`Server`] docs.
+    pub fn new() -> Self {
+        Self::with_router(Self::test_router())
     }
 
-    /// Returns the socket address that this server listens on.
-    pub fn addr(&self) -> SocketAddr {
-        self.socket
+    /// Creates a new Server with the given [`Router`].
+    pub fn with_router(router: Router) -> Self {
+        let hits = Arc::new(Mutex::new(BTreeMap::new()));
+
+        let hitcounter = {
+            let hits = hits.clone();
+            move |extract::OriginalUri(uri), req, next: middleware::Next<_>| {
+                let hits = hits.clone();
+                async move {
+                    {
+                        let mut hits = hits.lock().unwrap();
+                        let hits = hits.entry(uri.to_string()).or_default();
+                        *hits += 1;
+                    }
+
+                    next.run(req).await
+                }
+            }
+        };
+
+        let router = router.layer(middleware::from_fn(hitcounter));
+
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+
+        let server = axum::Server::bind(&addr).serve(router.into_make_service());
+        let socket = server.local_addr();
+
+        let handle = tokio::spawn(async move {
+            server.await.unwrap();
+        });
+
+        Self {
+            handle,
+            socket,
+            hits,
+        }
     }
 
-    /// Returns the port that this server listens on.
-    pub fn port(&self) -> u16 {
-        self.addr().port()
+    /// Creates a new [`Router`] with the configuration as described in the main [`Server`] docs.
+    pub fn test_router() -> Router {
+        let serve_dir = get_service(ServeDir::new(fixture("symbols")))
+            .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR });
+
+        Router::new()
+            .route(
+                "/redirect/*path",
+                get(|extract::Path(path): extract::Path<String>| async move {
+                    (StatusCode::FOUND, [("Location", format!("/{path}"))])
+                }),
+            )
+            .route(
+                "/delay/:time/*path",
+                get(
+                    |extract::Path((time, path)): extract::Path<(String, String)>| async move {
+                        let duration = humantime::parse_duration(&time).unwrap();
+                        tokio::time::sleep(duration).await;
+
+                        (StatusCode::FOUND, [("Location", format!("/{path}"))])
+                    },
+                ),
+            )
+            .route(
+                "/msdl/*path",
+                get(|extract::Path(path): extract::Path<String>| async move {
+                    let url = format!("https://msdl.microsoft.com/download/symbols/{path}");
+                    (StatusCode::FOUND, [("Location", url)])
+                }),
+            )
+            .route(
+                "/respond_statuscode/:num/*tail",
+                get(
+                    |extract::Path((num, _)): extract::Path<(u16, String)>| async move {
+                        StatusCode::from_u16(num).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+                    },
+                ),
+            )
+            .route(
+                "/garbage_data/*tail",
+                get(|extract::Path(tail): extract::Path<String>| async move { tail }),
+            )
+            .nest_service("/symbols", serve_dir)
+    }
+
+    /// Returns the sum total of hits and clears the hit counts.
+    pub fn accesses(&self) -> usize {
+        let map = std::mem::take(&mut *self.hits.lock().unwrap());
+        map.into_values().sum()
+    }
+
+    /// Returns a sorted list of `(path, hits)`-tuples, and clears the hit counts.
+    pub fn all_hits(&self) -> Vec<(String, usize)> {
+        let map = std::mem::take(&mut *self.hits.lock().unwrap());
+        map.into_iter().collect()
     }
 
     /// Returns a full URL pointing to the given path.
@@ -169,15 +268,50 @@ impl Server {
     /// This URL uses `localhost` as hostname.
     pub fn url(&self, path: &str) -> Url {
         let path = path.trim_start_matches('/');
-        format!("http://localhost:{}/{}", self.port(), path)
+        format!("http://localhost:{}/{}", self.socket.port(), path)
             .parse()
             .unwrap()
+    }
+
+    /// Returns a [`SourceConfig`] hitting this server on the given `path`.
+    pub fn source(&self, id: &str, path: &str) -> SourceConfig {
+        let files = CommonSourceConfig {
+            filters: SourceFilters {
+                filetypes: vec![FileType::MachCode],
+                path_patterns: vec![],
+            },
+            layout: Default::default(),
+            is_public: false,
+        };
+        self.source_with_config(id, path, files)
+    }
+
+    /// Returns a [`SourceConfig`] hitting this server on the given `path`,
+    /// using the provided [`CommonSourceConfig`].
+    pub fn source_with_config(
+        &self,
+        id: &str,
+        path: &str,
+        files: CommonSourceConfig,
+    ) -> SourceConfig {
+        SourceConfig::Http(Arc::new(HttpSourceConfig {
+            id: SourceId::new(id),
+            url: self.url(path),
+            headers: Default::default(),
+            files,
+        }))
     }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
         self.handle.abort();
+    }
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -191,153 +325,18 @@ impl Drop for Server {
 /// **Note**: The symbol server runs on localhost. By default, connections to local host are not
 /// permitted, and need to be activated via `Config::connect_to_reserved_ips`.
 pub fn symbol_server() -> (Server, SourceConfig) {
-    let app = warp::path("download").and(warp::fs::dir(fixture("symbols")));
-    let server = Server::new(app);
+    let server = Server::new();
 
     // The source uses the same identifier ("local") as the local file system source to avoid
     // differences when changing the bucket in tests.
-
     let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("local"),
-        url: server.url("download/"),
+        url: server.url("symbols/"),
         headers: Default::default(),
         files: Default::default(),
     }));
 
     (server, source)
-}
-
-#[derive(Debug, Clone, Copy)]
-struct GoAway;
-
-impl Reject for GoAway {}
-
-pub struct FailingSymbolServer {
-    #[allow(unused)]
-    server: Server,
-    times_accessed: Arc<AtomicUsize>,
-    pub reject_source: SourceConfig,
-    pub pending_source: SourceConfig,
-    pub not_found_source: SourceConfig,
-    pub forbidden_source: SourceConfig,
-    pub invalid_file_source: SourceConfig,
-}
-
-impl FailingSymbolServer {
-    pub fn new() -> Self {
-        let times_accessed = Arc::new(AtomicUsize::new(0));
-
-        let times = times_accessed.clone();
-        let reject = warp::path("reject").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            std::future::ready(Err::<&str, _>(warp::reject::custom(GoAway)))
-        });
-
-        let times = times_accessed.clone();
-        let not_found = warp::path("not-found").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-            std::future::ready(Err::<&str, _>(warp::reject::not_found()))
-        });
-
-        let times = times_accessed.clone();
-        let pending = warp::path("pending").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            std::future::pending::<Result<&str, Rejection>>()
-        });
-
-        let times = times_accessed.clone();
-        let forbidden = warp::path("forbidden").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            let result: Result<_, Rejection> = Ok(warp::reply::with_status(
-                warp::reply(),
-                warp::http::StatusCode::FORBIDDEN,
-            ));
-            std::future::ready(result)
-        });
-
-        let times = times_accessed.clone();
-        let invalid_file = warp::path("invalid-file").and_then(move || {
-            (*times).fetch_add(1, Ordering::SeqCst);
-
-            let result = Ok::<_, Rejection>("not a valid object");
-            std::future::ready(result)
-        });
-
-        let server = Server::new(
-            reject
-                .or(not_found)
-                .or(pending)
-                .or(forbidden)
-                .or(invalid_file),
-        );
-
-        let files_config = CommonSourceConfig {
-            filters: SourceFilters {
-                filetypes: vec![FileType::MachCode],
-                path_patterns: vec![],
-            },
-            layout: Default::default(),
-            is_public: false,
-        };
-
-        let reject_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("reject"),
-            url: server.url("reject/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let pending_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("pending"),
-            url: server.url("pending/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let not_found_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("not-found"),
-            url: server.url("not-found/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let forbidden_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("forbidden"),
-            url: server.url("forbidden/"),
-            headers: Default::default(),
-            files: files_config.clone(),
-        }));
-
-        let invalid_file_source = SourceConfig::Http(Arc::new(HttpSourceConfig {
-            id: SourceId::new("invalid-file"),
-            url: server.url("invalid-file/"),
-            headers: Default::default(),
-            files: files_config,
-        }));
-
-        FailingSymbolServer {
-            server,
-            times_accessed,
-            reject_source,
-            pending_source,
-            not_found_source,
-            forbidden_source,
-            invalid_file_source,
-        }
-    }
-
-    pub fn accesses(&self) -> usize {
-        self.times_accessed.swap(0, Ordering::SeqCst)
-    }
-}
-
-impl Default for FailingSymbolServer {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// Returns the legacy read-only GCS credentials for testing GCS support.
@@ -453,5 +452,29 @@ macro_rules! gcs_credentials {
             }
             Err(err) => panic!("{}", err),
         }
+    }
+}
+
+/// Helper to redact the port number from localhost URIs in insta snapshots.
+///
+/// Since we use a localhost source on a random port during tests we get random port
+/// numbers in URI of the dif object file candidates.  This redaction masks this out.
+pub fn redact_localhost_port(
+    value: insta::internals::Content,
+    _path: insta::internals::ContentPath<'_>,
+) -> impl Into<insta::internals::Content> {
+    let re = ::regex::Regex::new(r"^http://localhost:[0-9]+").unwrap();
+    re.replace(value.as_str().unwrap(), "http://localhost:<port>")
+        .into_owned()
+}
+
+#[macro_export]
+macro_rules! assert_snapshot {
+    ($e:expr) => {
+        ::insta::assert_yaml_snapshot!($e, {
+            ".**.location" => ::insta::dynamic_redaction(
+                $crate::redact_localhost_port
+            )
+        });
     }
 }

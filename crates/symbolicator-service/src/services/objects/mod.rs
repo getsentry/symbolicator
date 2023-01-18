@@ -4,11 +4,11 @@ use std::sync::Arc;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
-use symbolicator_sources::{FileType, ObjectId, SourceConfig, SourceId};
+use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
 use crate::cache::{Cache, CacheEntry, CacheError};
 use crate::services::cacher::Cacher;
-use crate::services::download::{DownloadService, RemoteDif, RemoteDifUri};
+use crate::services::download::DownloadService;
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
 use data_cache::FetchFileDataRequest;
@@ -33,7 +33,7 @@ mod meta_cache;
 #[derive(Clone, Debug)]
 pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.
-    pub file_source: RemoteDif,
+    pub file_source: RemoteFile,
     /// The wrapped [`CacheError`] which occurred while fetching the object file.
     pub error: CacheError,
 }
@@ -57,7 +57,7 @@ pub enum ObjectPurpose {
 
 #[derive(Debug, Clone)]
 pub struct FoundMeta {
-    pub file_source: RemoteDif,
+    pub file_source: RemoteFile,
     pub handle: CacheEntry<Arc<ObjectMetaHandle>>,
 }
 
@@ -129,7 +129,10 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-        let file_ids = self.list_files(&sources, filetypes, &identifier).await;
+        let file_ids = self
+            .download_svc
+            .list_files(&sources, filetypes, &identifier)
+            .await;
 
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
@@ -137,43 +140,6 @@ impl ObjectsActor {
         let meta = select_meta(file_metas, purpose);
 
         FindResult { meta, candidates }
-    }
-
-    /// Collect the list of files to download from all the sources.
-    ///
-    /// This concurrently contacts all the sources and asks them for the files we should try
-    /// to download from them matching the required filetypes and object IDs.  Not all
-    /// sources guarantee that the returned files actually exist.
-    async fn list_files(
-        &self,
-        sources: &[SourceConfig],
-        filetypes: &[FileType],
-        identifier: &ObjectId,
-    ) -> Vec<RemoteDif> {
-        let queries = sources.iter().map(|source| {
-            async move {
-                let type_name = source.type_name();
-                self.download_svc
-                    .list_files(source.clone(), filetypes, identifier)
-                    .await
-                    .unwrap_or_else(|err| {
-                        // This basically only happens for the Sentry source type, when doing
-                        // the search by debug/code id. We do not surface those errors to the
-                        // user (instead we default to an empty search result) and only report
-                        // them internally.
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Failed to fetch file list from {}", type_name);
-                        Vec::new()
-                    })
-            }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        future::join_all(queries)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
     }
 
     /// Fetch all [`ObjectMetaHandle`]s for the files.
@@ -184,7 +150,7 @@ impl ObjectsActor {
     /// [`ObjectCandidate`] list.
     async fn fetch_file_metas(
         &self,
-        file_sources: Vec<RemoteDif>,
+        file_sources: Vec<RemoteFile>,
         identifier: &ObjectId,
         scope: Scope,
     ) -> Vec<FoundMeta> {
@@ -298,7 +264,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: RemoteDifUri::new("No object files listed on this source"),
+            location: RemoteFileUri::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),

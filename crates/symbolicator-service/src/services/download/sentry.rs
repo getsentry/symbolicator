@@ -1,69 +1,23 @@
 //! Support to download from sentry sources.
 //!
-//! Specifically this supports the [`SentrySourceConfig`] source, which allows
-//! to fetch files which were directly uploaded to Sentry itself.
+//! This allows to fetch files which were directly uploaded to Sentry itself.
 
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use futures::TryStreamExt;
-use parking_lot::Mutex;
-use reqwest::{header, StatusCode};
 use sentry::SentryFutureExt;
-use serde::Deserialize;
-use thiserror::Error;
 use url::Url;
 
-use symbolicator_sources::{ObjectId, SentrySourceConfig};
-
-use super::{
-    content_length_timeout, DownloadError, DownloadStatus, FileType, RemoteDif, RemoteDifUri,
-    USER_AGENT,
+use symbolicator_sources::{
+    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
+
+use super::{FileType, USER_AGENT};
+use crate::cache::{CacheEntry, CacheError};
 use crate::config::Config;
-use crate::utils::futures::{self as future_utils, CancelOnDrop};
-
-/// The Sentry-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct SentryRemoteDif {
-    pub source: Arc<SentrySourceConfig>,
-    pub file_id: SentryFileId,
-}
-
-impl From<SentryRemoteDif> for RemoteDif {
-    fn from(source: SentryRemoteDif) -> Self {
-        Self::Sentry(source)
-    }
-}
-
-impl SentryRemoteDif {
-    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId) -> Self {
-        Self { source, file_id }
-    }
-
-    pub fn uri(&self) -> RemoteDifUri {
-        format!("sentry://project_debug_file/{}", self.file_id).into()
-    }
-
-    /// Returns the URL from which to download this object file.
-    pub fn url(&self) -> Url {
-        let mut url = self.source.url.clone();
-        url.query_pairs_mut().append_pair("id", &self.file_id.0);
-        url
-    }
-}
-
-/// An identifier for a file retrievable from a [`SentrySourceConfig`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct SentryFileId(String);
-
-impl fmt::Display for SentryFileId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use crate::utils::futures::CancelOnDrop;
 
 #[derive(Clone, Debug, serde::Deserialize)]
 struct SearchResult {
@@ -78,26 +32,12 @@ struct SearchQuery {
 }
 
 /// An LRU cache sentry DIF index responses.
-type SentryIndexCache = lru::LruCache<SearchQuery, (Instant, Vec<SearchResult>)>;
-
-/// Errors happening while fetching data from Sentry.
-#[derive(Debug, Error)]
-pub enum SentryError {
-    #[error("failed sending request to Sentry")]
-    Reqwest(#[from] reqwest::Error),
-
-    #[error("bad status code from Sentry: {0}")]
-    BadStatusCode(StatusCode),
-
-    #[error("failed joining task")]
-    JoinTask(#[from] tokio::task::JoinError),
-}
+type SentryIndexCache = moka::future::Cache<SearchQuery, CacheEntry<Vec<SearchResult>>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
-    index_cache: Mutex<SentryIndexCache>,
-    cache_duration: Duration,
+    index_cache: SentryIndexCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -116,10 +56,10 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: Mutex::new(SentryIndexCache::new(
-                config.caches.in_memory.sentry_index_capacity,
-            )),
-            cache_duration: config.caches.in_memory.sentry_index_ttl,
+            index_cache: SentryIndexCache::builder()
+                .max_capacity(config.caches.in_memory.sentry_index_capacity)
+                .time_to_live(config.caches.in_memory.sentry_index_ttl)
+                .build(),
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
         }
@@ -129,7 +69,7 @@ impl SentryDownloader {
     async fn fetch_sentry_json(
         client: &reqwest::Client,
         query: &SearchQuery,
-    ) -> Result<Vec<SearchResult>, SentryError> {
+    ) -> CacheEntry<Vec<SearchResult>> {
         let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token)
@@ -148,48 +88,34 @@ impl SentryDownloader {
             Ok(response.json().await?)
         } else {
             tracing::warn!("Sentry returned status code {}", response.status());
-            Err(SentryError::BadStatusCode(response.status()))
+            let details = response.status().to_string();
+            Err(CacheError::DownloadError(details))
         }
     }
 
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search(
-        &self,
-        query: SearchQuery,
-    ) -> Result<Vec<SearchResult>, DownloadError> {
-        if let Some((created, entries)) = self.index_cache.lock().get(&query) {
-            if created.elapsed() < self.cache_duration {
-                return Ok(entries.clone());
-            }
-        }
+    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+        let query_ = query.clone();
+        let init_future = async {
+            tracing::debug!(
+                "Fetching list of Sentry debug files from {}",
+                &query_.index_url
+            );
 
-        tracing::debug!(
-            "Fetching list of Sentry debug files from {}",
-            &query.index_url
-        );
-
-        let entries = {
             let client = self.client.clone();
-            let query = query.clone();
-            let future = async move {
-                future_utils::retry(|| Self::fetch_sentry_json(&client, &query)).await
-            };
+            let future =
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
 
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(SentryError::JoinTask)??
+            future.await.map_err(|_| CacheError::InternalError)?
         };
-
-        if self.cache_duration > Duration::from_secs(0) {
-            self.index_cache
-                .lock()
-                .put(query, (Instant::now(), entries.clone()));
-        }
-
-        Ok(entries)
+        self.index_cache
+            .get_with_if(query, init_future, |entry| entry.is_err())
+            .await
     }
 
     pub async fn list_files(
@@ -197,7 +123,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: &ObjectId,
         file_types: &[FileType],
-    ) -> Result<Vec<RemoteDif>, DownloadError> {
+    ) -> CacheEntry<Vec<RemoteFile>> {
         // TODO(flub): These queries do not handle pagination.  But sentry only starts to
         // paginate at 20 results so we get away with this for now.
 
@@ -248,78 +174,33 @@ impl SentryDownloader {
         let search = self.cached_sentry_search(query).await?;
         let file_ids = search
             .into_iter()
-            .map(|search_result| SentryRemoteDif::new(source.clone(), search_result.id).into())
+            .map(|search_result| SentryRemoteFile::new(source.clone(), search_result.id).into())
             .collect();
 
         Ok(file_ids)
     }
 
     /// Downloads a source hosted on Sentry.
-    ///
-    /// # Directly thrown errors
-    /// - [`DownloadError::Reqwest`]
-    /// - [`DownloadError::Rejected`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: SentryRemoteDif,
+        file_source: SentryRemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
+    ) -> CacheEntry {
         let request = self
             .client
             .get(file_source.url())
             .header("User-Agent", USER_AGENT)
-            .bearer_auth(&file_source.source.token)
-            .send();
+            .bearer_auth(&file_source.source.token);
+        let source = RemoteFile::from(file_source);
 
-        let download_url = file_source.url();
-        let source = RemoteDif::from(file_source);
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
-
-        let response = request
-            .await
-            .map_err(|_| DownloadError::Canceled)? // Timeout
-            .map_err(|e| {
-                tracing::debug!("Skipping response from {}: {}", download_url, e);
-                DownloadError::Reqwest(e)
-            })?;
-
-        if response.status().is_success() {
-            tracing::trace!("Success hitting {}", download_url);
-
-            let content_length = response
-                .headers()
-                .get(header::CONTENT_LENGTH)
-                .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<u32>().ok());
-
-            let timeout =
-                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-            super::download_stream(&source, stream, destination, timeout).await
-        } else if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-        ) {
-            tracing::debug!("Insufficient permissions to download from {}", download_url);
-            Ok(DownloadStatus::PermissionDenied)
-        } else if response.status().is_client_error() {
-            tracing::debug!(
-                "Unexpected client error status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Ok(DownloadStatus::NotFound)
-        } else {
-            tracing::debug!(
-                "Unexpected status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Err(DownloadError::Rejected(response.status()))
-        }
+        super::download_reqwest(
+            &source,
+            request,
+            self.connect_timeout,
+            self.streaming_timeout,
+            destination,
+        )
+        .await
     }
 }
 
@@ -327,7 +208,7 @@ impl SentryDownloader {
 mod tests {
     use super::*;
 
-    use symbolicator_sources::SourceId;
+    use symbolicator_sources::{RemoteFileUri, SourceId};
 
     #[test]
     fn test_download_url() {
@@ -336,7 +217,7 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -348,8 +229,11 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteDif::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
         let uri = file_source.uri();
-        assert_eq!(uri, RemoteDifUri::new("sentry://project_debug_file/abc123"));
+        assert_eq!(
+            uri,
+            RemoteFileUri::new("sentry://project_debug_file/abc123")
+        );
     }
 }

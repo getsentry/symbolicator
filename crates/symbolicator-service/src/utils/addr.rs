@@ -7,18 +7,13 @@ use serde::ser::{Serialize, Serializer};
 use thiserror::Error;
 
 /// Defines the addressing mode.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
 pub enum AddrMode {
     /// Declares addresses to be absolute with a shared memory space.
+    #[default]
     Abs,
     /// Declares an address to be relative to an indexed module.
     Rel(usize),
-}
-
-impl Default for AddrMode {
-    fn default() -> AddrMode {
-        AddrMode::Abs
-    }
 }
 
 impl fmt::Display for AddrMode {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::cache::{cache_entry_as_cache_status, CacheEntry, CacheError, CacheStatus};
+use crate::cache::{CacheEntry, CacheError};
 use crate::services::objects::{FindResult, ObjectMetaHandle};
 use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
 
@@ -46,10 +46,17 @@ where
             // Fetch cache file from handle
             let derived_cache = derive(Arc::clone(&handle)).await;
 
-            let object_info = ObjectUseInfo::from_derived_status(
-                &cache_entry_as_cache_status(&derived_cache),
-                &CacheStatus::Positive,
-            );
+            let object_info = match &derived_cache {
+                Ok(_) => ObjectUseInfo::Ok,
+                // Edge cases where the original stopped being available
+                Err(CacheError::NotFound) => ObjectUseInfo::Error {
+                    details: String::from("Object file no longer available"),
+                },
+                Err(CacheError::Malformed(_)) => ObjectUseInfo::Malformed,
+                Err(e) => ObjectUseInfo::Error {
+                    details: e.to_string(),
+                },
+            };
             (derived_cache, object_info, handle.features())
         }
         Err(error) => {
@@ -58,14 +65,12 @@ where
                 | CacheError::PermissionDenied(_)
                 | CacheError::Timeout(_)
                 | CacheError::DownloadError(_) => {
-                    // FIXME(swatinem): all the download errors so far lead to `None`
-                    // previously. we should probably decide on a better solution here.
+                    // NOTE: all download related errors are already exposed as the candidates
+                    // `ObjectDownloadInfo`. It is not necessary to duplicate that into the
+                    // `ObjectUseInfo`.
                     ObjectUseInfo::None
                 }
-                error => {
-                    let status = error.as_cache_status();
-                    ObjectUseInfo::from_derived_status(&status, &status)
-                }
+                _ => ObjectUseInfo::Malformed,
             };
 
             (Err(error), object_info, Default::default())

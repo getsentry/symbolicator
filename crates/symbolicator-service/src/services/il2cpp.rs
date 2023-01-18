@@ -11,12 +11,12 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
-use symbolicator_sources::{FileType, ObjectId, SourceConfig};
+use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{DownloadService, RemoteDif};
+use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
@@ -48,7 +48,7 @@ impl Il2cppHandle {
 #[derive(Debug, Clone)]
 struct FetchFileRequest {
     scope: Scope,
-    file_source: RemoteDif,
+    file_source: RemoteFile,
     download_svc: Arc<DownloadService>,
 }
 
@@ -56,8 +56,8 @@ impl FetchFileRequest {
     /// Downloads the file and saves it to `path`.
     ///
     /// Actual implementation of [`FetchFileRequest::compute`].
-    async fn fetch_file(self, temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
-        let temp_file = fetch_file(self.download_svc, self.file_source, temp_file).await?;
+    async fn fetch_file(self, temp_file: &mut NamedTempFile) -> CacheEntry {
+        fetch_file(self.download_svc, self.file_source, temp_file).await?;
 
         let view = ByteView::map_file_ref(temp_file.as_file())?;
 
@@ -67,7 +67,7 @@ impl FetchFileRequest {
             return Err(CacheError::Malformed("Failed to parse il2cpp".to_string()));
         }
 
-        Ok(temp_file)
+        Ok(())
     }
 }
 
@@ -75,13 +75,16 @@ impl CacheItemRequest for FetchFileRequest {
     type Item = Il2cppHandle;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.file_source.cache_key(self.scope.clone())
+        CacheKey {
+            cache_key: self.file_source.cache_key(),
+            scope: self.scope.clone(),
+        }
     }
 
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
 
         let source_name = self.file_source.source_type_name().into();
@@ -128,88 +131,42 @@ impl Il2cppService {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Option<Il2cppHandle> {
-        let jobs = sources.iter().map(|source| {
-            self.fetch_file_from_source_with_error(
-                object_id,
-                debug_id,
-                scope.clone(),
-                source.clone(),
-            )
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-        let results = future::join_all(jobs).await;
-        let mut mapping = None;
-        for result in results {
-            if result.is_some() {
-                mapping = result;
-            }
-        }
-        mapping
-    }
-
-    /// Wraps `fetch_file_from_source` in sentry error handling.
-    async fn fetch_file_from_source_with_error(
-        &self,
-        object_id: &ObjectId,
-        debug_id: DebugId,
-        scope: Scope,
-        source: SourceConfig,
-    ) -> Option<Il2cppHandle> {
-        let _guard = Hub::current().push_scope();
-        sentry::configure_scope(|scope| {
-            scope.set_tag("il2cpp.debugid", debug_id);
-            scope.set_extra("il2cpp.source", source.type_name().into());
-        });
-        match self.fetch_file_from_source(object_id, scope, source).await {
-            Ok(mapping) => mapping,
-            Err(err) => {
-                let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
-                tracing::error!(error = dynerr, "failed fetching il2cpp file");
-                None
-            }
-        }
-    }
-
-    /// Fetches a file and returns the [`Il2cppHandle`] if found.
-    async fn fetch_file_from_source(
-        &self,
-        object_id: &ObjectId,
-        scope: Scope,
-        source: SourceConfig,
-    ) -> CacheEntry<Option<Il2cppHandle>> {
-        let file_sources = self
+        let files = self
             .download_svc
-            .list_files(source, &[FileType::Il2cpp], object_id)
-            .await?;
+            .list_files(&sources, &[FileType::Il2cpp], object_id)
+            .await;
 
-        let fetch_jobs = file_sources.into_iter().map(|file_source| {
+        let fetch_jobs = files.into_iter().map(|file_source| {
             let scope = if file_source.is_public() {
                 Scope::Global
             } else {
                 scope.clone()
             };
+            let hub = Hub::new_from_top(Hub::current());
+            hub.configure_scope(|scope| {
+                scope.set_tag("il2cpp.debugid", debug_id);
+                scope.set_extra("il2cpp.source", file_source.source_metric_key().into());
+            });
             let request = FetchFileRequest {
                 scope,
                 file_source,
                 download_svc: self.download_svc.clone(),
             };
-            self.cache
-                .compute_memoized(request)
-                .bind_hub(Hub::new_from_top(Hub::current()))
+            self.cache.compute_memoized(request)
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        let mut ret = None;
+        let mut mapping = None;
         for result in all_results {
             match result {
-                Ok(handle) => ret = Some(handle),
+                Ok(handle) => mapping = Some(handle),
                 Err(CacheError::NotFound) => (),
-                Err(err) => {
-                    let dynerr: &dyn std::error::Error = &err; // tracing expects a `&dyn Error`
-                    tracing::error!(error = dynerr, "failed fetching il2cpp file");
+                Err(error) => {
+                    let error: &dyn std::error::Error = &error;
+                    tracing::error!(error, "failed fetching il2cpp file");
                 }
             }
         }
-        Ok(ret)
+        mapping
     }
 }

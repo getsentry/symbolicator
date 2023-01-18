@@ -12,12 +12,11 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
-use symbolicator_sources::{ObjectId, SourceId};
+use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
 use tempfile::NamedTempFile;
 
 use crate::cache::{CacheEntry, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
-use crate::services::download::{RemoteDif, RemoteDifUri};
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -28,7 +27,7 @@ pub(super) struct FetchFileMetaRequest {
     /// The scope that the file should be stored under.
     pub(super) scope: Scope,
     /// Source-type specific attributes.
-    pub(super) file_source: RemoteDif,
+    pub(super) file_source: RemoteFile,
     pub(super) object_id: ObjectId,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
@@ -47,13 +46,16 @@ pub(super) struct FetchFileMetaRequest {
 pub struct ObjectMetaHandle {
     pub(super) scope: Scope,
     pub(super) object_id: ObjectId,
-    pub(super) file_source: RemoteDif,
+    pub(super) file_source: RemoteFile,
     pub(super) features: ObjectFeatures,
 }
 
 impl ObjectMetaHandle {
     pub fn cache_key(&self) -> CacheKey {
-        self.file_source.cache_key(self.scope.clone())
+        CacheKey {
+            cache_key: self.file_source.cache_key(),
+            scope: self.scope.clone(),
+        }
     }
 
     pub fn features(&self) -> ObjectFeatures {
@@ -64,7 +66,7 @@ impl ObjectMetaHandle {
         self.file_source.source_id()
     }
 
-    pub fn uri(&self) -> RemoteDifUri {
+    pub fn uri(&self) -> RemoteFileUri {
         self.file_source.uri()
     }
 
@@ -89,13 +91,13 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, mut temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
+    async fn compute_file_meta(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
         let cache_key = self.get_cache_key();
         tracing::trace!("Fetching file meta for {}", cache_key);
 
-        let data_cache = self.data_cache.clone();
-        let object_handle = data_cache
-            .compute_memoized(FetchFileDataRequest(self))
+        let object_handle = self
+            .data_cache
+            .compute_memoized(FetchFileDataRequest(self.clone()))
             .await?;
 
         let object = object_handle.object();
@@ -110,7 +112,7 @@ impl FetchFileMetaRequest {
         tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
         serde_json::to_writer(temp_file.as_file_mut(), &meta)?;
 
-        Ok(temp_file)
+        Ok(())
     }
 }
 
@@ -118,12 +120,14 @@ impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.file_source.cache_key(self.scope.clone())
+        CacheKey {
+            cache_key: self.file_source.cache_key(),
+            scope: self.scope.clone(),
+        }
     }
 
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
-        let future = self.clone().compute_file_meta(temp_file);
-        Box::pin(future)
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        Box::pin(self.compute_file_meta(temp_file))
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

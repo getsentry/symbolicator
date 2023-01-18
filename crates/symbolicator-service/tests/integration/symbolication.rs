@@ -11,9 +11,7 @@ use symbolicator_service::types::{
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 use symbolicator_test as test;
-use symbolicator_test::fixture;
-
-use crate::assert_snapshot;
+use symbolicator_test::{assert_snapshot, fixture};
 
 /// Setup tests and create a test service.
 ///
@@ -127,28 +125,22 @@ async fn test_wasm_payload() {
     let (_symsrv, source) = test::symbol_server();
 
     let modules: Vec<RawObjectInfo> = serde_json::from_str(
-        r#"[
-              {
-                "type":"wasm",
-                "debug_id":"bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
-                "code_id":"bda18fd85d4a4eb893022d6bfad846b1",
-                "debug_file":"file://foo.invalid/demo.wasm"
-              }
-            ]"#,
+        r#"[{
+          "type":"wasm",
+          "debug_id":"bda18fd8-5d4a-4eb8-9302-2d6bfad846b1",
+          "code_id":"bda18fd85d4a4eb893022d6bfad846b1",
+          "debug_file":"file://foo.invalid/demo.wasm"
+        }]"#,
     )
     .unwrap();
 
     let stacktraces = serde_json::from_str(
-        r#"[
-              {
-                "frames":[
-                  {
-                    "instruction_addr":"0x8c",
-                    "addr_mode":"rel:0"
-                  }
-                ]
-              }
-            ]"#,
+        r#"[{
+          "frames":[{
+            "instruction_addr":"0x8c",
+            "addr_mode":"rel:0"
+          }]
+        }]"#,
     )
     .unwrap();
 
@@ -174,27 +166,21 @@ async fn test_source_candidates() {
     // its not wasm, but that is the easiest to write tests because of relative
     // addressing ;-)
     let modules: Vec<RawObjectInfo> = serde_json::from_str(
-        r#"[
-              {
-                "type":"wasm",
-                "debug_id":"7f883fcd-c553-36d0-a809-b0150f09500b",
-                "code_id":"7f883fcdc55336d0a809b0150f09500b"
-              }
-            ]"#,
+        r#"[{
+          "type":"wasm",
+          "debug_id":"7f883fcd-c553-36d0-a809-b0150f09500b",
+          "code_id":"7f883fcdc55336d0a809b0150f09500b"
+        }]"#,
     )
     .unwrap();
 
     let stacktraces = serde_json::from_str(
-        r#"[
-              {
-                "frames":[
-                  {
-                    "instruction_addr":"0x3880",
-                    "addr_mode":"rel:0"
-                  }
-                ]
-              }
-            ]"#,
+        r#"[{
+          "frames":[{
+            "instruction_addr":"0x3880",
+            "addr_mode":"rel:0"
+          }]
+        }]"#,
     )
     .unwrap();
 
@@ -218,48 +204,42 @@ async fn test_dotnet_integration() {
     let (_srv, source) = test::symbol_server();
 
     let modules: Vec<RawObjectInfo> = serde_json::from_str(
-        r#"[
-              {
-                "type":"pe_dotnet",
-                "debug_file":"integration.pdb",
-                "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
-              }
-            ]"#,
+        r#"[{
+          "type":"pe_dotnet",
+          "debug_file":"integration.pdb",
+          "debug_id":"0c1033f78632492e91c6c314b72e1920e60b819d"
+        }]"#,
     )
     .unwrap();
 
     let stacktraces = serde_json::from_str(
-        r#"[
-              {
-                "frames":[
-                  {
-                    "instruction_addr": 10,
-                    "function_id": 6,
-                    "addr_mode":"rel:0"
-                  },
-                  {
-                    "instruction_addr": 6,
-                    "function_id": 5,
-                    "addr_mode": "rel:0"
-                  },
-                  {
-                    "instruction_addr": 0,
-                    "function_id": 3,
-                    "addr_mode": "rel:0"
-                  },
-                  {
-                    "instruction_addr": 0,
-                    "function_id": 2,
-                    "addr_mode": "rel:0"
-                  },
-                  {
-                    "instruction_addr": 45,
-                    "function_id": 1,
-                    "addr_mode": "rel:0"
-                  }
-                ]
-              }
-            ]"#,
+        r#"[{
+          "frames":[{
+            "instruction_addr": 10,
+            "function_id": 6,
+            "addr_mode":"rel:0"
+          },
+          {
+            "instruction_addr": 6,
+            "function_id": 5,
+            "addr_mode": "rel:0"
+          },
+          {
+            "instruction_addr": 0,
+            "function_id": 3,
+            "addr_mode": "rel:0"
+          },
+          {
+            "instruction_addr": 0,
+            "function_id": 2,
+            "addr_mode": "rel:0"
+          },
+          {
+            "instruction_addr": 45,
+            "function_id": 1,
+            "addr_mode": "rel:0"
+          }]
+        }]"#,
     )
     .unwrap();
 

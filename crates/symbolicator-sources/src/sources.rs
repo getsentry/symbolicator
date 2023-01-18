@@ -1,23 +1,30 @@
 //! Download sources types and related implementations.
 
-use std::collections::BTreeMap;
 use std::fmt;
-use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 
-use serde::{Deserialize, Deserializer, Serialize};
-use url::Url;
+use serde::{Deserialize, Serialize};
 
 use crate::filetype::FileType;
 use crate::paths;
 use crate::types::{Glob, ObjectId};
 
+mod filesystem;
+mod gcs;
+mod http;
+mod s3;
+mod sentry;
+pub use filesystem::*;
+pub use gcs::*;
+pub use http::*;
+pub use s3::*;
+pub use sentry::*;
+
 /// An identifier for DIF sources.
 ///
 /// This is essentially a newtype for a string.
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct SourceId(String);
+pub struct SourceId(pub(crate) String);
 
 // For now we allow this to be unused, some tests use these already.
 impl SourceId {
@@ -48,231 +55,40 @@ impl fmt::Display for SourceId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
-    /// Sentry debug files endpoint.
-    Sentry(Arc<SentrySourceConfig>),
+    /// Local file system.
+    Filesystem(Arc<FilesystemSourceConfig>),
+    /// A google cloud storage bucket.
+    Gcs(Arc<GcsSourceConfig>),
     /// Http server implementing the Microsoft Symbol Server protocol.
     Http(Arc<HttpSourceConfig>),
     /// Amazon S3 bucket containing symbols in a directory hierarchy.
     S3(Arc<S3SourceConfig>),
-    /// A google cloud storage bucket.
-    Gcs(Arc<GcsSourceConfig>),
-    /// Local file system.
-    Filesystem(Arc<FilesystemSourceConfig>),
+    /// Sentry debug files endpoint.
+    Sentry(Arc<SentrySourceConfig>),
 }
 
 impl SourceConfig {
     /// The unique identifier of this source.
     pub fn id(&self) -> &SourceId {
-        match *self {
-            SourceConfig::Http(ref x) => &x.id,
-            SourceConfig::S3(ref x) => &x.id,
-            SourceConfig::Gcs(ref x) => &x.id,
-            SourceConfig::Sentry(ref x) => &x.id,
-            SourceConfig::Filesystem(ref x) => &x.id,
+        match self {
+            Self::Filesystem(x) => &x.id,
+            Self::Gcs(x) => &x.id,
+            Self::Http(x) => &x.id,
+            Self::S3(x) => &x.id,
+            Self::Sentry(x) => &x.id,
         }
     }
 
     /// Name of this source.
     pub fn type_name(&self) -> &'static str {
-        match *self {
-            SourceConfig::Sentry(..) => "sentry",
-            SourceConfig::S3(..) => "s3",
-            SourceConfig::Gcs(..) => "gcs",
-            SourceConfig::Http(..) => "http",
-            SourceConfig::Filesystem(..) => "filesystem",
+        match self {
+            Self::Filesystem(..) => "filesystem",
+            Self::Gcs(..) => "gcs",
+            Self::Http(..) => "http",
+            Self::S3(..) => "s3",
+            Self::Sentry(..) => "sentry",
         }
     }
-}
-
-/// Configuration for the Sentry-internal debug files endpoint.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct SentrySourceConfig {
-    /// Unique source identifier.
-    pub id: SourceId,
-
-    /// Absolute URL of the endpoint.
-    pub url: Url,
-
-    /// Bearer authorization token.
-    pub token: String,
-}
-
-/// Configuration for symbol server HTTP endpoints.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct HttpSourceConfig {
-    /// Unique source identifier.
-    pub id: SourceId,
-
-    /// Absolute URL of the symbol server.
-    pub url: Url,
-
-    /// Additional headers to be sent to the symbol server with every request.
-    #[serde(default)]
-    pub headers: BTreeMap<String, String>,
-
-    /// Configuration common to all sources.
-    #[serde(flatten)]
-    pub files: CommonSourceConfig,
-}
-
-/// Configuration for reading from the local file system.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FilesystemSourceConfig {
-    /// Unique source identifier.
-    pub id: SourceId,
-
-    /// Path to symbol directory.
-    pub path: PathBuf,
-
-    /// Configuration common to all sources.
-    #[serde(flatten)]
-    pub files: CommonSourceConfig,
-}
-
-/// Local helper to deserialize an S3 region string in `S3SourceKey`.
-fn deserialize_region<'de, D>(deserializer: D) -> Result<rusoto_core::Region, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    // This is a Visitor that forwards string types to rusoto_core::Region's
-    // `FromStr` impl and forwards tuples to rusoto_core::Region's `Deserialize`
-    // impl.
-    struct RusotoRegion;
-
-    impl<'de> serde::de::Visitor<'de> for RusotoRegion {
-        type Value = rusoto_core::Region;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("string or tuple")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<rusoto_core::Region, E>
-        where
-            E: serde::de::Error,
-        {
-            FromStr::from_str(value).map_err(|e| E::custom(format!("region: {e:?}")))
-        }
-
-        fn visit_seq<S>(self, seq: S) -> Result<rusoto_core::Region, S::Error>
-        where
-            S: serde::de::SeqAccess<'de>,
-        {
-            Deserialize::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))
-        }
-    }
-
-    deserializer.deserialize_any(RusotoRegion)
-}
-
-/// The types of Amazon IAM credentials providers we support.
-///
-/// For details on the AWS side, see:
-/// <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html>.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AwsCredentialsProvider {
-    /// Static Credentials
-    Static,
-    /// Credentials derived from the container.
-    Container,
-}
-
-impl Default for AwsCredentialsProvider {
-    fn default() -> Self {
-        AwsCredentialsProvider::Static
-    }
-}
-
-/// Amazon S3 authorization information.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct S3SourceKey {
-    /// The region of the S3 bucket.
-    #[serde(deserialize_with = "deserialize_region")]
-    pub region: rusoto_core::Region,
-
-    /// AWS IAM credentials provider for obtaining S3 access.
-    #[serde(default)]
-    pub aws_credentials_provider: AwsCredentialsProvider,
-
-    /// S3 authorization key.
-    #[serde(default)]
-    pub access_key: String,
-
-    /// S3 secret key.
-    #[serde(default)]
-    pub secret_key: String,
-}
-
-impl PartialEq for S3SourceKey {
-    fn eq(&self, other: &S3SourceKey) -> bool {
-        self.access_key == other.access_key
-            && self.secret_key == other.secret_key
-            && self.region == other.region
-    }
-}
-
-impl Eq for S3SourceKey {}
-
-impl std::hash::Hash for S3SourceKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.access_key.hash(state);
-        self.secret_key.hash(state);
-        self.region.name().hash(state);
-    }
-}
-
-/// GCS authorization information.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
-pub struct GcsSourceKey {
-    /// Gcs authorization key.
-    pub private_key: String,
-
-    /// The client email.
-    pub client_email: String,
-}
-
-/// Configuration for a GCS symbol buckets.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct GcsSourceConfig {
-    /// Unique source identifier.
-    pub id: SourceId,
-
-    /// Name of the GCS bucket.
-    pub bucket: String,
-
-    /// A path from the root of the bucket where files are located.
-    #[serde(default)]
-    pub prefix: String,
-
-    /// Authorization information for this bucket. Needs read access.
-    #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
-
-    /// Configuration common to all sources.
-    #[serde(flatten)]
-    pub files: CommonSourceConfig,
-}
-
-/// Configuration for S3 symbol buckets.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct S3SourceConfig {
-    /// Unique source identifier.
-    pub id: SourceId,
-
-    /// Name of the bucket in the S3 account.
-    pub bucket: String,
-
-    /// A path from the root of the bucket where files are located.
-    #[serde(default)]
-    pub prefix: String,
-
-    /// Authorization information for this bucket. Needs read access.
-    #[serde(flatten)]
-    pub source_key: Arc<S3SourceKey>,
-
-    /// Configuration common to all sources.
-    #[serde(flatten)]
-    pub files: CommonSourceConfig,
 }
 
 /// Common parameters for external filesystem-like buckets configured by users.
@@ -380,165 +196,13 @@ pub enum DirectoryLayoutType {
 /// Casing of filenames on the symbol server
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FilenameCasing {
     /// Default casing depending on layout type.
+    #[default]
     Default,
     /// Uppercase filenames.
     Uppercase,
     /// Lowercase filenames.
     Lowercase,
-}
-
-impl Default for FilenameCasing {
-    fn default() -> Self {
-        FilenameCasing::Default
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use rusoto_core::Region;
-
-    use super::*;
-
-    #[test]
-    fn test_s3_config_builtin_region() {
-        let text = r#"
-          - id: us-east
-            type: s3
-            bucket: my-supermarket-bucket
-            region: us-east-1
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let sources: Vec<SourceConfig> = serde_yaml::from_str(text).unwrap();
-        assert_eq!(*sources[0].id(), SourceId("us-east".to_string()));
-        match &sources[0] {
-            SourceConfig::S3(cfg) => {
-                assert_eq!(cfg.id, SourceId("us-east".to_string()));
-                assert_eq!(cfg.bucket, "my-supermarket-bucket");
-                assert_eq!(cfg.source_key.region, Region::UsEast1);
-                assert_eq!(cfg.source_key.access_key, "the-access-key");
-                assert_eq!(cfg.source_key.secret_key, "the-secret-key");
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_s3_config_custom_region() {
-        let text = r#"
-          - id: minio
-            type: s3
-            bucket: my-homemade-bucket
-            region:
-              - minio
-              - http://minio.minio.svc.cluster.local:9000
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let sources: Vec<SourceConfig> = serde_yaml::from_str(text).unwrap();
-        match &sources[0] {
-            SourceConfig::S3(cfg) => {
-                assert_eq!(cfg.id, SourceId("minio".to_string()));
-                assert_eq!(
-                    cfg.source_key.region,
-                    Region::Custom {
-                        name: "minio".to_string(),
-                        endpoint: "http://minio.minio.svc.cluster.local:9000".to_string(),
-                    }
-                );
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_s3_config_bad_plain_region() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region: my-cool-region
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn test_s3_config_plain_empty_region() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region:
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn test_s3_config_custom_empty_region() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region:
-                -
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn test_s3_config_custom_region_not_enough_fields() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region:
-              - honk
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
-
-    #[test]
-    fn test_s3_config_custom_region_too_many_fields() {
-        let text = r#"
-          - id: honk
-            type: s3
-            bucket: me-bucket
-            region:
-              - honk
-              - http://honk.honk.beep.local:9000
-              - beep
-            access_key: the-access-key
-            secret_key: the-secret-key
-            layout:
-              type: unified
-                  "#;
-        let result: Result<Vec<SourceConfig>, serde_yaml::Error> = serde_yaml::from_str(text);
-        assert!(result.is_err())
-    }
 }

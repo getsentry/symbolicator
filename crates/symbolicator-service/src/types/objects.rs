@@ -2,10 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use symbolicator_sources::SourceId;
-
-use crate::cache::CacheStatus;
-use crate::services::download::RemoteDifUri;
+use symbolicator_sources::{RemoteFileUri, SourceId};
 
 use super::ObjectFeatures;
 
@@ -33,7 +30,7 @@ pub struct ObjectCandidate {
     ///
     /// This is generally a URI which makes sense for the source type, however no guarantees
     /// are given and it could be any string.
-    pub location: RemoteDifUri,
+    pub location: RemoteFileUri,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.
@@ -127,39 +124,6 @@ impl ObjectUseInfo {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
-
-    /// Construct [`ObjectUseInfo`] for an object from a derived cache.
-    ///
-    /// The [`ObjectUseInfo`] provides information about items stored in a cache and which
-    /// are derived from an original object cache: the [`symcaches`] and the [`cficaches`].
-    /// These caches have an edge case where if the underlying cache thought the object was
-    /// there but now it could not be fetched again.  This is converted to an error case.
-    ///
-    /// [`symcaches`]: crate::services::symcaches
-    /// [`cficaches`]: crate::services::cficaches
-    pub fn from_derived_status(derived: &CacheStatus, original: &CacheStatus) -> Self {
-        type S = CacheStatus;
-        match (derived, original) {
-            // No matter what state the original was in, the derived cache was OK
-            (S::Positive, _) => ObjectUseInfo::Ok,
-            // Edge cases where the original stopped being available
-            (S::Negative, S::Positive) => ObjectUseInfo::Error {
-                details: String::from("Object file no longer available"),
-            },
-            (S::Malformed(_), S::Positive) => ObjectUseInfo::Error {
-                details: String::from("Object file no longer usable"),
-            },
-            // If there are any issues with the original those will already be reported.
-            (S::Negative, _) => ObjectUseInfo::None,
-            (S::Malformed(_), _) => ObjectUseInfo::Malformed,
-            // If there's a conversion error then it may be useful to mention
-            // in case symbolic is doing something wrong. It may make more sense for
-            // this to be Malformed.
-            (S::CacheSpecificError(message), _) => ObjectUseInfo::Error {
-                details: format!("Object file could not be converted: {message}"),
-            },
-        }
-    }
 }
 
 impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
@@ -195,7 +159,7 @@ impl AllObjectCandidates {
         &mut self,
         candidate_status: CandidateStatus,
         source: &SourceId,
-        uri: &RemoteDifUri,
+        uri: &RemoteFileUri,
         info: ObjectUseInfo,
     ) {
         if candidate_status == CandidateStatus::None {
@@ -278,7 +242,7 @@ mod tests {
         // If a candidate didn't exist yet it should be inserted in order.
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -287,7 +251,7 @@ mod tests {
         };
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
-            location: RemoteDifUri::new("b"),
+            location: RemoteFileUri::new("b"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -296,7 +260,7 @@ mod tests {
         };
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
-            location: RemoteDifUri::new("c"),
+            location: RemoteFileUri::new("c"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -316,7 +280,7 @@ mod tests {
     fn test_all_object_info_merge_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -325,7 +289,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("a"),
+            location: RemoteFileUri::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -347,7 +311,7 @@ mod tests {
     fn test_all_object_info_merge_no_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("uri://dummy"),
+            location: RemoteFileUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -356,7 +320,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteDifUri::new("uri://dummy"),
+            location: RemoteFileUri::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },

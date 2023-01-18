@@ -54,8 +54,6 @@ struct GcsTokenResponse {
 
 #[derive(Debug, Error)]
 pub enum GcsError {
-    #[error("failed decoding key")]
-    Base64(#[from] base64::DecodeError),
     #[error("failed to construct URL")]
     InvalidUrl,
     #[error("failed encoding JWT")]

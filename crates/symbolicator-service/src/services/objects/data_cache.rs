@@ -19,11 +19,11 @@ use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
-use symbolicator_sources::ObjectId;
+use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::cache::{CacheEntry, CacheError, ExpirationTime};
 use crate::services::cacher::{CacheItemRequest, CacheKey};
-use crate::services::download::{DownloadService, RemoteDif};
+use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
 use crate::utils::compression::tempfile_in_parent;
@@ -121,19 +121,17 @@ impl fmt::Display for ObjectHandle {
 /// code.
 #[tracing::instrument(skip_all)]
 async fn fetch_object_file(
-    cache_key: CacheKey,
-    object_id: ObjectId,
-    file_id: RemoteDif,
+    object_id: &ObjectId,
+    file_id: RemoteFile,
     downloader: Arc<DownloadService>,
-    temp_file: NamedTempFile,
-) -> CacheEntry<NamedTempFile> {
-    tracing::trace!("Fetching file data for {}", cache_key);
+    temp_file: &mut NamedTempFile,
+) -> CacheEntry {
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
         object_id.to_scope(scope);
     });
 
-    let temp_file = fetch_file(downloader, file_id, temp_file).await?;
+    fetch_file(downloader, file_id, temp_file).await?;
 
     // Since objects in Sentry (and potentially also other sources) might be
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
@@ -144,11 +142,11 @@ async fn fetch_object_file(
         Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
 
-    let temp_file = if archive.is_multi() {
+    if archive.is_multi() {
         let object_opt = archive
             .objects()
             .filter_map(Result::ok)
-            .find(|object| object_matches_id(object, &object_id));
+            .find(|object| object_matches_id(object, object_id));
 
         let object = match object_opt {
             Some(object) => object,
@@ -161,21 +159,20 @@ async fn fetch_object_file(
             }
         };
 
-        let mut temp_file = tempfile_in_parent(&temp_file)?;
+        let mut dst = tempfile_in_parent(temp_file)?;
 
-        io::copy(&mut object.data(), temp_file.as_file_mut())?;
-        temp_file
+        io::copy(&mut object.data(), dst.as_file_mut())?;
+
+        std::mem::swap(temp_file, &mut dst);
     } else {
         // Attempt to parse the object to capture errors. The result can be
         // discarded as the object's data is the entire ByteView.
         if let Err(err) = archive.object_by_index(0) {
             return Err(CacheError::Malformed(err.to_string()));
         }
-
-        temp_file
     };
 
-    Ok(temp_file)
+    Ok(())
 }
 
 /// Validates that the object matches expected identifiers.
@@ -211,10 +208,10 @@ impl CacheItemRequest for FetchFileDataRequest {
         self.0.get_cache_key()
     }
 
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        tracing::trace!("Fetching file data for {}", self.get_cache_key());
         let future = fetch_object_file(
-            self.get_cache_key(),
-            self.0.object_id.clone(),
+            &self.0.object_id,
             self.0.file_source.clone(),
             self.0.download_svc.clone(),
             temp_file,
@@ -306,7 +303,7 @@ mod tests {
     async fn test_download_error_cache_server_error() {
         test::setup();
 
-        let server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -325,7 +322,7 @@ mod tests {
 
         // server rejects the request (500)
         let find_object = FindObject {
-            sources: Arc::new([server.reject_source.clone()]),
+            sources: Arc::new([hitcounter.source("rejected", "/respond_statuscode/500/")]),
             ..find_object
         };
         let result = objects_actor
@@ -339,7 +336,7 @@ mod tests {
             result,
             CacheError::DownloadError("500 Internal Server Error".into())
         );
-        assert_eq!(server.accesses(), 3); // up to 3 tries on failure
+        assert_eq!(hitcounter.accesses(), 3); // up to 3 tries on failure
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -351,14 +348,14 @@ mod tests {
             result,
             CacheError::DownloadError("500 Internal Server Error".into())
         );
-        assert_eq!(server.accesses(), 0);
+        assert_eq!(hitcounter.accesses(), 0);
     }
 
     #[tokio::test]
     async fn test_negative_cache_not_found() {
         test::setup();
 
-        let server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -377,7 +374,7 @@ mod tests {
 
         // server responds with not found (404)
         let find_object = FindObject {
-            sources: Arc::new([server.not_found_source.clone()]),
+            sources: Arc::new([hitcounter.source("notfound", "/respond_statuscode/404/")]),
             ..find_object
         };
         let result = objects_actor
@@ -388,7 +385,7 @@ mod tests {
             .handle
             .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
-        assert_eq!(server.accesses(), 1);
+        assert_eq!(hitcounter.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -397,14 +394,14 @@ mod tests {
             .handle
             .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
-        assert_eq!(server.accesses(), 0);
+        assert_eq!(hitcounter.accesses(), 0);
     }
 
     #[tokio::test]
     async fn test_download_error_cache_timeout() {
         test::setup();
 
-        let server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -423,11 +420,10 @@ mod tests {
 
         // server accepts the request, but never sends any reply (timeout)
         let find_object = FindObject {
-            sources: Arc::new([server.pending_source.clone()]),
+            sources: Arc::new([hitcounter.source("pending", "/delay/1h/")]),
             ..find_object
         };
-        // FIXME(swatinem): we are not yet threading `Duration` values through our Caching layer
-        let timeout = Duration::ZERO;
+        let err = CacheError::Timeout(Duration::from_millis(100));
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -435,9 +431,9 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::Timeout(timeout));
+        assert_eq!(result, err);
         // XXX: why are we not trying this 3 times?
-        assert_eq!(server.accesses(), 1);
+        assert_eq!(hitcounter.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -445,15 +441,16 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::Timeout(timeout));
-        assert_eq!(server.accesses(), 0);
+        // FIXME(swatinem): We are still serializing old cache statuses right now
+        assert_eq!(result, CacheError::Timeout(Duration::ZERO));
+        assert_eq!(hitcounter.accesses(), 0);
     }
 
     #[tokio::test]
     async fn test_download_error_cache_forbidden() {
         test::setup();
 
-        let server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
         let cachedir = tempdir();
         let objects_actor = objects_actor(&cachedir).await;
 
@@ -472,9 +469,10 @@ mod tests {
 
         // server rejects the request (403)
         let find_object = FindObject {
-            sources: Arc::new([server.forbidden_source.clone()]),
+            sources: Arc::new([hitcounter.source("permissiondenied", "/respond_statuscode/403/")]),
             ..find_object
         };
+        let err = CacheError::PermissionDenied("403 Forbidden".into());
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -482,8 +480,8 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        assert_eq!(result, CacheError::PermissionDenied("".into()));
-        assert_eq!(server.accesses(), 1);
+        assert_eq!(result, err);
+        assert_eq!(hitcounter.accesses(), 1);
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -491,7 +489,8 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
+        // FIXME(swatinem): We are still serializing old cache statuses right now
         assert_eq!(result, CacheError::PermissionDenied("".into()));
-        assert_eq!(server.accesses(), 0);
+        assert_eq!(hitcounter.accesses(), 0);
     }
 }

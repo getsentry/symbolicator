@@ -1,55 +1,17 @@
 //! Support to download from HTTP sources.
-//!
-//! Specifically this supports the [`HttpSourceConfig`] source.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
-use futures::prelude::*;
-use reqwest::{header, Client, StatusCode};
-use url::Url;
+use reqwest::{header, Client};
 
-use symbolicator_sources::{FileType, HttpSourceConfig, ObjectId};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile};
 
-use super::{
-    content_length_timeout, DownloadError, DownloadStatus, RemoteDif, RemoteDifUri, SourceLocation,
-    USER_AGENT,
-};
+use crate::cache::{CacheEntry, CacheError};
 
-/// The HTTP-specific [`RemoteDif`].
-#[derive(Debug, Clone)]
-pub struct HttpRemoteDif {
-    pub source: Arc<HttpSourceConfig>,
-    pub location: SourceLocation,
-}
+use super::USER_AGENT;
 
-impl From<HttpRemoteDif> for RemoteDif {
-    fn from(source: HttpRemoteDif) -> Self {
-        Self::Http(source)
-    }
-}
-
-impl HttpRemoteDif {
-    pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
-        Self { source, location }
-    }
-
-    pub fn uri(&self) -> RemoteDifUri {
-        match self.url() {
-            Ok(url) => url.as_ref().into(),
-            Err(_) => "".into(),
-        }
-    }
-
-    /// Returns the URL from which to download this object file.
-    pub fn url(&self) -> Result<Url> {
-        self.location.to_url(&self.source.url)
-    }
-}
-
-/// Downloader implementation that supports the [`HttpSourceConfig`] source.
+/// Downloader implementation that supports the HTTP source.
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
@@ -67,20 +29,12 @@ impl HttpDownloader {
     }
 
     /// Downloads a source hosted on an HTTP server.
-    ///
-    /// # Directly thrown errors
-    /// - [`DownloadError::Reqwest`]
-    /// - [`DownloadError::Rejected`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
-        file_source: HttpRemoteDif,
+        file_source: HttpRemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
-        let download_url = match file_source.url() {
-            Ok(x) => x,
-            Err(_) => return Ok(DownloadStatus::NotFound),
-        };
+    ) -> CacheEntry {
+        let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from {}", download_url);
         let mut builder = self.client.get(download_url.clone());
@@ -90,82 +44,25 @@ impl HttpDownloader {
                 builder = builder.header(key, value.as_str());
             }
         }
-        let source = RemoteDif::from(file_source);
-        let request = builder.header(header::USER_AGENT, USER_AGENT).send();
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+        let source = RemoteFile::from(file_source);
+        let request = builder.header(header::USER_AGENT, USER_AGENT);
 
-        let response = request
-            .await
-            .map_err(|_| DownloadError::Canceled)? // Timeout
-            .map_err(|e| {
-                tracing::debug!("Skipping response from {}: {}", download_url, e);
-                DownloadError::Reqwest(e)
-            })?;
-
-        if response.status().is_success() {
-            tracing::trace!("Success hitting {}", download_url);
-
-            let content_length = response
-                .headers()
-                .get(header::CONTENT_LENGTH)
-                .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<u32>().ok());
-
-            let timeout =
-                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-
-            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-            super::download_stream(&source, stream, destination, timeout).await
-        } else if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-        ) {
-            tracing::debug!("Insufficient permissions to download from {}", download_url);
-            Ok(DownloadStatus::PermissionDenied)
-        // If it's a client error, chances are either it's a 404 or it's permission-related.
-        } else if response.status().is_client_error() {
-            tracing::debug!(
-                "Unexpected client error status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Ok(DownloadStatus::NotFound)
-        } else {
-            tracing::debug!(
-                "Unexpected status code from {}: {}",
-                download_url,
-                response.status()
-            );
-            Err(DownloadError::Rejected(response.status()))
-        }
-    }
-
-    pub fn list_files(
-        &self,
-        source: Arc<HttpSourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteDif> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| HttpRemoteDif::new(source.clone(), loc).into())
-        .collect()
+        super::download_reqwest(
+            &source,
+            request,
+            self.connect_timeout,
+            self.streaming_timeout,
+            destination,
+        )
+        .await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::locations::SourceLocation;
     use super::*;
 
-    use symbolicator_sources::SourceConfig;
+    use symbolicator_sources::{SourceConfig, SourceLocation};
 
     use crate::test;
 
@@ -182,16 +79,16 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("hello.txt");
-        let file_source = HttpRemoteDif::new(http_source, loc);
+        let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(
             Client::new(),
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await.unwrap();
+        let download_status = downloader.download_source(file_source, dest).await;
 
-        assert!(matches!(download_status, DownloadStatus::Completed(_)));
+        assert!(download_status.is_ok());
 
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
@@ -210,15 +107,15 @@ mod tests {
             _ => panic!("unexpected source"),
         };
         let loc = SourceLocation::new("i-do-not-exist");
-        let file_source = HttpRemoteDif::new(http_source, loc);
+        let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(
             Client::new(),
             Duration::from_secs(30),
             Duration::from_secs(30),
         );
-        let download_status = downloader.download_source(file_source, dest).await.unwrap();
+        let download_status = downloader.download_source(file_source, dest).await;
 
-        assert!(matches!(download_status, DownloadStatus::NotFound));
+        assert_eq!(download_status, Err(CacheError::NotFound));
     }
 }

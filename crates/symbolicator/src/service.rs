@@ -124,7 +124,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 ///
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
@@ -623,21 +623,22 @@ mod tests {
             .await
             .unwrap();
 
-        let symbol_server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
+        let source = hitcounter.source("pending", "/delay/1h/");
 
         // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
         // two concurrent requests, the first two should succeed and the third one should fail.
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        let request = get_symbolication_request(vec![source.clone()]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        let request = get_symbolication_request(vec![source.clone()]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        let request = get_symbolication_request(vec![source]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_err());

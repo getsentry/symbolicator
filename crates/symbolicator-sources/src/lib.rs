@@ -7,10 +7,12 @@
 
 mod filetype;
 mod paths;
+mod remotefile;
 mod sources;
 mod types;
 
 pub use filetype::*;
 pub use paths::*;
+pub use remotefile::*;
 pub use sources::*;
 pub use types::*;
