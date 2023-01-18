@@ -34,8 +34,8 @@ pipelines:
                                     /devinfra/scripts/checks/githubactions/checkruns.py \
                                     getsentry/symbolicator \
                                     ${GO_REVISION_SYMBOLICATOR_REPO} \
-                                    'Unit Tests' \
-                                    'Integration Tests'
+                                    'Tests' \
+                                    'Sentry-Symbolicator Tests'
                               - script: |
                                     /devinfra/scripts/checks/googlecloud/checkcloudbuild.py \
                                     ${GO_REVISION_SYMBOLICATOR_REPO} \
