@@ -159,23 +159,16 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 impl<T: CacheItemRequest> Cacher<T> {
     /// Look up an item in the file system cache and load it if available.
     ///
-    /// Returns `Ok(None)` if the cache item needs to be re-computed, otherwise reads the
-    /// cached data from disk and returns the cached item as returned by
-    /// [`CacheItemRequest::load`].
-    ///
-    /// Calling this function when the cache is not enabled will simply return `Ok(None)`.
-    ///
-    /// # Errors
-    ///
-    /// If there is an I/O error reading the cache, an `Err` is returned.
+    /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
+    /// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
     async fn lookup_local_cache(
         &self,
         request: &T,
         key: &CacheKey,
         version: u32,
-    ) -> CacheEntry<Option<T::Item>> {
+    ) -> CacheEntry<CacheEntry<T::Item>> {
         let Some(cache_dir) = self.config.cache_dir() else {
-            return Ok(None);
+            return Err(CacheError::NotFound);
         };
         let name = self.config.name();
         let item_path = key.cache_path(cache_dir, version);
@@ -187,15 +180,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                 item_path.to_string_lossy().into(),
             );
         });
-        let (entry, expiration) = match self.config.open_cachefile(&item_path)? {
-            Some(entry) => entry,
-            None => return Ok(None),
-        };
+        let (entry, expiration) = self
+            .config
+            .open_cachefile(&item_path)?
+            .ok_or(CacheError::NotFound)?;
+
         if let Ok(byteview) = &entry {
             if !request.should_load(byteview) {
                 tracing::trace!("Discarding {} at path {}", name, item_path.display());
                 metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
-                return Ok(None);
+                return Err(CacheError::NotFound);
             }
         }
 
@@ -236,14 +230,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-        entry
-            .and_then(|byteview| request.load(byteview, expiration))
-            .map(Some)
-        // TODO: log error:
-        // sentry::configure_scope(|scope| {
-        //     scope.set_extra("cache_key", self.get_cache_key().to_string().into());
-        // });
-        // sentry::capture_error(&*err);
+        Ok(entry.and_then(|byteview| request.load(byteview, expiration)))
     }
 
     /// Compute an item.
@@ -258,11 +245,11 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        if let Some(item) = self
+        if let Ok(item) = self
             .lookup_local_cache(&request, &key, T::VERSIONS.current)
-            .await?
+            .await
         {
-            return Ok(item);
+            return item;
         }
 
         let mut temp_file = self.tempfile()?;
@@ -505,16 +492,17 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // cache_path is None when caching is disabled.
         if let Some(cache_dir) = self.config.cache_dir() {
-            if let Some(item) = self
-                .lookup_local_cache(&request, &key, T::VERSIONS.current)
-                .await?
-            {
-                return Ok(item);
-            }
+            let versions =
+                std::iter::once(T::VERSIONS.current).chain(T::VERSIONS.fallbacks.iter().copied());
 
-            // try fallback cache paths next
-            for version in T::VERSIONS.fallbacks.iter() {
-                if let Ok(Some(item)) = self.lookup_local_cache(&request, &key, *version).await {
+            for version in versions {
+                let item = match self.lookup_local_cache(&request, &key, version).await {
+                    Err(CacheError::NotFound) => continue,
+                    Err(err) => return Err(err),
+                    Ok(item) => item,
+                };
+
+                if version != T::VERSIONS.current {
                     // we have found an outdated cache that we will use right away,
                     // and we will kick off a recomputation for the `current` cache version
                     // in a deduplicated background task, which we will not await
@@ -528,9 +516,9 @@ impl<T: CacheItemRequest> Cacher<T> {
                         "version" => &version.to_string(),
                     );
                     let _not_awaiting_future = self.spawn_computation(request, true);
-
-                    return Ok(item);
                 }
+
+                return item;
             }
         }
 
@@ -692,6 +680,42 @@ mod tests {
 
         // we only want to have the actual computation be done a single time
         assert_eq!(request.computations.load(Ordering::SeqCst), 1);
+    }
+
+    /// Makes sure that a `NotFound` result does not fall back to older cache versions.
+    #[tokio::test]
+    async fn test_cache_fallback_notfound() {
+        test::setup();
+
+        let cache_dir = test::tempdir().path().join("test");
+        std::fs::create_dir_all(cache_dir.join("global")).unwrap();
+        std::fs::write(
+            cache_dir.join("global/some_cache_key"),
+            "some old cached contents",
+        )
+        .unwrap();
+        std::fs::create_dir_all(cache_dir.join("1/global")).unwrap();
+        std::fs::write(cache_dir.join("1/global/some_cache_key"), "").unwrap();
+
+        let cache = Cache::from_config(
+            CacheName::Objects,
+            Some(cache_dir),
+            None,
+            CacheConfig::from(CacheConfigs::default().derived),
+            Arc::new(AtomicIsize::new(1)),
+        )
+        .unwrap();
+        let runtime = tokio::runtime::Handle::current();
+        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let cacher = Cacher::new(cache, shared_cache);
+
+        let request = TestCacheItem::new("some_cache_key");
+
+        let first_result = cacher.compute_memoized(request.clone()).await;
+        assert_eq!(first_result, Err(CacheError::NotFound));
+
+        // no computation should be done
+        assert_eq!(request.computations.load(Ordering::SeqCst), 0);
     }
 
     /// This test asserts that the bounded maximum number of recomputations is not exceeded.
