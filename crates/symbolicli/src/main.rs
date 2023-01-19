@@ -694,6 +694,7 @@ mod event {
         Some(RawFrame {
             addr_mode: value.addr_mode,
             instruction_addr: value.instruction_addr?,
+            adjust_instruction_addr: None,
             function_id: value.function_id,
             package: value.package,
             lang: value.lang,
