@@ -1,5 +1,7 @@
+use std::fmt::Write;
 use std::io::SeekFrom;
 
+use crate::services::cacher::CacheKey;
 use crate::services::{bitcode::BcSymbolMapHandle, il2cpp::Il2cppHandle};
 
 /// This is the legacy marker that was used previously to flag a SymCache that was created
@@ -36,6 +38,15 @@ impl SymCacheMarkers {
             markers |= MARKER_IL2CPP;
         }
         Self { markers }
+    }
+
+    /// Appends the marker state to the [`CacheKey`] in order to have unique cache files depending
+    /// on the applied sources.
+    pub fn append_to_key(&self, mut key: CacheKey) -> CacheKey {
+        if self.markers > 0 {
+            write!(&mut key.cache_key, "_{}", self.markers).unwrap();
+        }
+        key
     }
 
     /// Extracts the markers embedded in the given `data`.

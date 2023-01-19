@@ -147,7 +147,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
     fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
+        let markers = SymCacheMarkers::from_sources(&self.secondary_sources);
+        markers.append_to_key(self.object_meta.cache_key())
     }
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
@@ -172,6 +173,8 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn should_load(&self, data: &[u8]) -> bool {
+        // FIXME(swatinem): we can remove the whole `should_load` machinery once we bump this
+        // cache version, as afterwards the markers in cache files will always be in sync.
         SymCache::parse(data)
             .map(|_symcache| {
                 // NOTE: we do *not* check for the `is_latest` version here.
