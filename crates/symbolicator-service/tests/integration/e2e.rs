@@ -41,7 +41,7 @@ fn request_fixture() -> (Vec<RawObjectInfo>, Vec<RawStacktrace>) {
 /// tests that nothing happens when no source is supplied
 #[tokio::test]
 async fn test_no_sources() {
-    let (symbolication, cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -65,7 +65,7 @@ async fn test_no_sources() {
 /// Tests that source file types are correctly filtered
 #[tokio::test]
 async fn test_sources_filetypes() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -91,7 +91,7 @@ async fn test_sources_filetypes() {
 /// tests that sourcce `path_patterns` work as expected
 #[tokio::test]
 async fn test_path_patterns() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -149,7 +149,7 @@ async fn test_path_patterns() {
 /// Tests permission errors for http, s3 and gcs sources
 #[tokio::test]
 async fn test_no_permission() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let hitcounter = Server::new();
 
@@ -257,7 +257,7 @@ async fn test_reserved_ip_addresses() {
 
     let request = get_symbolication_request(sources);
 
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
     let candidates = response.modules.pop().unwrap().candidates.0;
 
@@ -291,8 +291,7 @@ async fn test_reserved_ip_addresses() {
 
     let (symbolication, _cache_dir) = setup_service(|cfg| {
         cfg.connect_to_reserved_ips = false;
-    })
-    .await;
+    });
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
     let candidates = response.modules.pop().unwrap().candidates.0;
 
@@ -329,7 +328,7 @@ async fn test_reserved_ip_addresses() {
 /// Tests that symbolicator correctly follows redirects
 #[tokio::test]
 async fn test_redirects() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -359,7 +358,7 @@ async fn test_redirects() {
 /// Tests what candidate info we get for different response codes
 #[tokio::test]
 async fn test_unreachable_bucket() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -423,7 +422,7 @@ async fn test_unreachable_bucket() {
 /// Tests request coalescing and effect of caches
 #[tokio::test]
 async fn test_lookup_deduplication() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let (modules, stacktraces) = request_fixture();
 
@@ -512,8 +511,7 @@ async fn test_basic_windows() {
                 if !with_cache {
                     cfg.cache_dir = None;
                 }
-            })
-            .await;
+            });
 
             let request = SymbolicateStacktraces {
                 modules: modules.iter().cloned().map(From::from).collect(),

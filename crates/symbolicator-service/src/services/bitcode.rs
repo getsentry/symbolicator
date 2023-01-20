@@ -23,7 +23,7 @@ use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
 use super::fetch_file;
-use super::shared_cache::SharedCacheService;
+use super::shared_cache::SharedCacheRef;
 
 /// Handle to a valid BCSymbolMap.
 ///
@@ -163,11 +163,11 @@ pub struct BitcodeService {
 impl BitcodeService {
     pub fn new(
         difs_cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
+        shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
     ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache, shared_cache_svc)),
+            cache: Arc::new(Cacher::new(difs_cache, shared_cache)),
             download_svc,
         }
     }

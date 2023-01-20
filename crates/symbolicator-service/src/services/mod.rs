@@ -9,8 +9,6 @@
 //! The internal services require a separate asynchronous runtimes dedicated for I/O-intensive work,
 //! such as downloads and access to the shared cache.
 
-use std::sync::Arc;
-
 use anyhow::{Context, Result};
 
 use crate::cache::Caches;
@@ -41,7 +39,7 @@ use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 pub use fetch_file::fetch_file;
 
-pub async fn create_service(
+pub fn create_service(
     config: &Config,
     io_pool: tokio::runtime::Handle,
 ) -> Result<(SymbolicationActor, ObjectsActor)> {
@@ -52,8 +50,7 @@ pub async fn create_service(
 
     let downloader = DownloadService::new(config, io_pool.clone());
 
-    let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone()).await;
-    let shared_cache = Arc::new(shared_cache);
+    let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool);
 
     let objects = ObjectsActor::new(
         caches.object_meta,

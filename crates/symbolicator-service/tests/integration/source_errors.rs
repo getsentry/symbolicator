@@ -12,8 +12,7 @@ use crate::symbolication::{get_symbolication_request, setup_service};
 async fn test_download_errors() {
     let (symbolication, _cache_dir) = setup_service(|config| {
         config.max_download_timeout = Duration::from_millis(200);
-    })
-    .await;
+    });
 
     let hitcounter = Server::new();
 

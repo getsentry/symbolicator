@@ -92,7 +92,6 @@ async fn main() -> Result<()> {
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
         symbolicator_service::services::create_service(&service_config, runtime)
-            .await
             .context("failed starting symbolication service")?;
     let symbolication = Arc::new(symbolication);
 

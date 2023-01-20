@@ -84,7 +84,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
@@ -110,7 +110,7 @@ mod tests {
     async fn test_integration_microsoft() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
         let source = test::microsoft_symsrv();
 
         let file_contents = test::read_fixture("windows.dmp");
@@ -138,7 +138,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let file_contents = test::read_fixture("windows.dmp");
         let file_part = multipart::Part::bytes(file_contents).file_name("windows.dmp");
@@ -162,7 +162,7 @@ mod tests {
     async fn test_body_limit() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let len = 96 * 1024 * 1024;
         let mut buf = vec![b'.'; len];

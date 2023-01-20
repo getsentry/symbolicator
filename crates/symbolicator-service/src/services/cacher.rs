@@ -15,7 +15,7 @@ use tempfile::NamedTempFile;
 use tokio::fs;
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheService};
+use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
 use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
@@ -41,7 +41,7 @@ pub struct Cacher<T: CacheItemRequest> {
     current_computations: ComputationMap<T::Item>,
 
     /// A service used to communicate with the shared cache.
-    shared_cache_service: Arc<SharedCacheService>,
+    shared_cache: SharedCacheRef,
 }
 
 impl<T: CacheItemRequest> Clone for Cacher<T> {
@@ -50,16 +50,16 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
         Cacher {
             config: self.config.clone(),
             current_computations: self.current_computations.clone(),
-            shared_cache_service: Arc::clone(&self.shared_cache_service),
+            shared_cache: Arc::clone(&self.shared_cache),
         }
     }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    pub fn new(config: Cache, shared_cache_service: Arc<SharedCacheService>) -> Self {
+    pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
         Cacher {
             config,
-            shared_cache_service,
+            shared_cache,
             current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -199,22 +199,22 @@ impl<T: CacheItemRequest> Cacher<T> {
         // - we refreshed the local cache time, so we also refresh the shared cache time.
         let needs_reupload = expiration.was_touched();
         if entry.is_ok() && version == T::VERSIONS.current && needs_reupload {
-            let shared_cache_key = SharedCacheKey {
-                name: self.config.name(),
-                version: T::VERSIONS.current,
-                local_key: key.clone(),
-            };
-            match fs::File::open(&item_path)
-                .await
-                .context("Local cache path not available for shared cache")
-            {
-                Ok(fd) => {
-                    self.shared_cache_service
-                        .store(shared_cache_key, fd, CacheStoreReason::Refresh)
-                        .await;
-                }
-                Err(err) => {
-                    sentry::capture_error(&*err);
+            if let Some(shared_cache) = self.shared_cache.get() {
+                let shared_cache_key = SharedCacheKey {
+                    name: self.config.name(),
+                    version: T::VERSIONS.current,
+                    local_key: key.clone(),
+                };
+                match fs::File::open(&item_path)
+                    .await
+                    .context("Local cache path not available for shared cache")
+                {
+                    Ok(fd) => {
+                        shared_cache.store(shared_cache_key, fd, CacheStoreReason::Refresh);
+                    }
+                    Err(err) => {
+                        sentry::capture_error(&*err);
+                    }
                 }
             }
         }
@@ -260,10 +260,11 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
 
         let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
-        let shared_cache_hit = self
-            .shared_cache_service
-            .fetch(&shared_cache_key, temp_fd)
-            .await;
+        let shared_cache_hit = if let Some(shared_cache) = self.shared_cache.get() {
+            shared_cache.fetch(&shared_cache_key, temp_fd).await
+        } else {
+            false
+        };
 
         let mut entry = Err(CacheError::NotFound);
         if shared_cache_hit {
@@ -337,13 +338,13 @@ impl<T: CacheItemRequest> Cacher<T> {
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
         if !shared_cache_hit && entry.is_ok() {
-            self.shared_cache_service
-                .store(
+            if let Some(shared_cache) = self.shared_cache.get() {
+                shared_cache.store(
                     shared_cache_key,
                     tokio::fs::File::from_std(file),
                     CacheStoreReason::New,
-                )
-                .await;
+                );
+            }
         }
 
         // we just created a fresh cache, so use the initial expiration times
@@ -661,9 +662,7 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let runtime = tokio::runtime::Handle::current();
-        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
-        let cacher = Cacher::new(cache, shared_cache);
+        let cacher = Cacher::new(cache, Default::default());
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -705,9 +704,7 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let runtime = tokio::runtime::Handle::current();
-        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
-        let cacher = Cacher::new(cache, shared_cache);
+        let cacher = Cacher::new(cache, Default::default());
 
         let request = TestCacheItem::new("some_cache_key");
 
@@ -741,9 +738,7 @@ mod tests {
             Arc::new(AtomicIsize::new(1)),
         )
         .unwrap();
-        let runtime = tokio::runtime::Handle::current();
-        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
-        let cacher = Cacher::new(cache, shared_cache);
+        let cacher = Cacher::new(cache, Default::default());
 
         let request = TestCacheItem::new("0");
 

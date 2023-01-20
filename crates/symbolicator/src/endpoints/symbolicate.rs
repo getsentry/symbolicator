@@ -92,7 +92,7 @@ mod tests {
     async fn test_body_limit() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let mut buf = vec![b'.'; 4 * 1024 * 1024];
         buf[0] = b'"';
@@ -128,7 +128,7 @@ mod tests {
     async fn test_unknown_field() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let payload = r##"{
             "stacktraces": [],
@@ -153,7 +153,7 @@ mod tests {
     async fn test_no_dif_candidates() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let payload = r##"{
             "stacktraces": [{
@@ -194,7 +194,7 @@ mod tests {
     async fn test_unknown_source_config() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let payload = r##"{
             "stacktraces": [{
