@@ -292,8 +292,7 @@ mod tests {
             ..Config::default()
         };
 
-        let runtime = tokio::runtime::Handle::current();
-        let download_svc = DownloadService::new(&config, runtime.clone());
+        let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)
     }
 

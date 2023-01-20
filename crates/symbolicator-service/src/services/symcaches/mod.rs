@@ -372,10 +372,9 @@ mod tests {
             ..Default::default()
         };
 
-        let runtime = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(&config, runtime.clone());
+        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
         let shared_cache = SharedCacheRef::default();
         let objects = ObjectsActor::new(
             caches.object_meta,

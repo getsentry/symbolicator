@@ -50,7 +50,7 @@ pub fn create_service(
 
     let downloader = DownloadService::new(config, io_pool.clone());
 
-    let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone());
+    let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool);
 
     let objects = ObjectsActor::new(
         caches.object_meta,

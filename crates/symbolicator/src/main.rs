@@ -41,7 +41,7 @@ mod test {
             connect_to_reserved_ips: true,
             ..Config::default()
         };
-        let service = RequestService::create(config, handle.clone(), handle.clone()).unwrap();
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         Server::with_router(endpoints::create_app(service))
     }

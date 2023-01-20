@@ -527,7 +527,7 @@ impl SharedCacheBackend {
     }
 }
 
-/// Message to send upload tasks across the [`InnerSharedCacheService::upload_queue_tx`].
+/// Message to send upload tasks across the [`SharedCacheService::upload_queue_tx`].
 #[derive(Debug)]
 struct UploadMessage {
     /// The cache key to store the data at.
