@@ -21,7 +21,7 @@ use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::shared_cache::SharedCacheService;
+use super::shared_cache::SharedCacheRef;
 
 /// The supported cficache versions.
 ///
@@ -74,13 +74,9 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(
-        cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
-        objects: ObjectsActor,
-    ) -> Self {
+    pub fn new(cache: Cache, shared_cache: SharedCacheRef, objects: ObjectsActor) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
         }
     }

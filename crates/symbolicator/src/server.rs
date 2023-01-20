@@ -30,30 +30,29 @@ pub fn run(config: Config) -> Result<()> {
 
     let megs = 1024 * 1024;
     let io_pool = tokio::runtime::Builder::new_multi_thread()
-        .thread_name("symbolicator-io")
+        .thread_name("sym-io")
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;
     let cpu_pool = tokio::runtime::Builder::new_multi_thread()
-        .thread_name("symbolicator-cpu")
+        .thread_name("sym-cpu")
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;
     let web_pool = tokio::runtime::Builder::new_multi_thread()
-        .thread_name("symbolicator-web")
+        .thread_name("sym-web")
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;
 
     let mut servers: Vec<BoxFuture<_>> = vec![];
 
-    let service = web_pool
-        .block_on(RequestService::create(
-            config.clone(),
-            io_pool.handle().to_owned(),
-            cpu_pool.handle().to_owned(),
-        ))
-        .context("failed to create service state")?;
+    let service = RequestService::create(
+        config.clone(),
+        io_pool.handle().to_owned(),
+        cpu_pool.handle().to_owned(),
+    )
+    .context("failed to create service state")?;
 
     let svc = endpoints::create_app(service).into_make_service();
 

@@ -173,7 +173,7 @@ struct RequestServiceInner {
 
 impl RequestService {
     /// Creates a new [`RequestService`].
-    pub async fn create(
+    pub fn create(
         mut config: Config,
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
@@ -186,7 +186,7 @@ impl RequestService {
         }
 
         let (symbolication, objects) =
-            symbolicator_service::services::create_service(&config, io_pool.clone()).await?;
+            symbolicator_service::services::create_service(&config, io_pool.clone())?;
 
         let symbolication_taskmon = tokio_metrics::TaskMonitor::new();
         {
@@ -538,9 +538,7 @@ mod tests {
         // Make sure we can repeatedly poll for the response
         let config = Config::default();
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -619,9 +617,7 @@ mod tests {
         };
 
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         let hitcounter = test::Server::new();
         let source = hitcounter.source("pending", "/delay/1h/");

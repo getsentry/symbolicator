@@ -24,7 +24,7 @@ use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::il2cpp::Il2cppService;
-use super::shared_cache::SharedCacheService;
+use super::shared_cache::SharedCacheRef;
 
 mod markers;
 
@@ -91,13 +91,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
+        shared_cache: SharedCacheRef,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         il2cpp_svc: Il2cppService,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
             bitcode_svc,
             il2cpp_svc,
@@ -352,6 +352,7 @@ mod tests {
     use crate::cache::Caches;
     use crate::config::{CacheConfigs, Config};
     use crate::services::bitcode::BitcodeService;
+    use crate::services::shared_cache::SharedCacheRef;
     use crate::services::DownloadService;
     use crate::test::{self, fixture};
     use symbolicator_sources::{
@@ -375,7 +376,7 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let downloader = DownloadService::new(&config, runtime.clone());
-        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let shared_cache = SharedCacheRef::default();
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,

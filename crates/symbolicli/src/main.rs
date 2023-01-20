@@ -31,7 +31,6 @@ async fn main() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
         symbolicator_service::services::create_service(&symbolicator_config, runtime)
-            .await
             .context("failed to start symbolication service")?;
 
     let mut sources = vec![];

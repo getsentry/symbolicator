@@ -262,7 +262,6 @@ mod tests {
     use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;
     use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
-    use crate::services::shared_cache::SharedCacheService;
     use crate::test::{self, tempdir};
 
     use symbolic::common::DebugId;
@@ -295,8 +294,7 @@ mod tests {
 
         let runtime = tokio::runtime::Handle::current();
         let download_svc = DownloadService::new(&config, runtime.clone());
-        let shared_cache_svc = Arc::new(SharedCacheService::new(None, runtime).await);
-        ObjectsActor::new(meta_cache, data_cache, shared_cache_svc, download_svc)
+        ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)
     }
 
     #[tokio::test]

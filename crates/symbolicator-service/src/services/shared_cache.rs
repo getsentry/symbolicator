@@ -22,7 +22,7 @@ use sentry::{Hub, SentryFutureExt};
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncSeekExt, AsyncWrite};
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
@@ -560,39 +560,35 @@ impl AsRef<str> for CacheStoreReason {
     }
 }
 
+pub type SharedCacheRef = Arc<OnceCell<SharedCacheService>>;
+
 /// A shared cache service.
-///
-/// For simplicity in the rest of the application this service always exists, regardless of
-/// whether it is configured or not.  If it is not configured calls to it's methods become a
-/// no-op.
 ///
 /// Initialising is asynchronous since it may take some time.
 #[derive(Debug, Clone)]
 pub struct SharedCacheService {
-    inner: Arc<RwLock<Option<InnerSharedCacheService>>>,
+    backend: Arc<SharedCacheBackend>,
+    upload_queue_tx: mpsc::Sender<UploadMessage>,
     runtime: tokio::runtime::Handle,
 }
 
-#[derive(Debug)]
-struct InnerSharedCacheService {
-    backend: Arc<SharedCacheBackend>,
-    upload_queue_tx: mpsc::Sender<UploadMessage>,
-}
-
 impl SharedCacheService {
-    pub async fn new(config: Option<SharedCacheConfig>, runtime: tokio::runtime::Handle) -> Self {
-        let inner = Arc::new(RwLock::new(None));
-        let slf = Self {
-            inner: inner.clone(),
-            runtime,
-        };
-        if let Some(cfg) = config {
-            slf.runtime.spawn(Self::init(inner, cfg));
+    pub fn new(
+        config: Option<SharedCacheConfig>,
+        runtime: tokio::runtime::Handle,
+    ) -> SharedCacheRef {
+        let cache = SharedCacheRef::default();
+        if let Some(config) = config {
+            runtime.spawn(Self::init(runtime.clone(), cache.clone(), config));
         }
-        slf
+        cache
     }
 
-    async fn init(inner: Arc<RwLock<Option<InnerSharedCacheService>>>, config: SharedCacheConfig) {
+    async fn init(
+        runtime: tokio::runtime::Handle,
+        cache: SharedCacheRef,
+        config: SharedCacheConfig,
+    ) {
         let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
         if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
             let backend = Arc::new(backend);
@@ -600,9 +596,10 @@ impl SharedCacheService {
                 Self::upload_worker(rx, backend.clone(), config.max_concurrent_uploads)
                     .bind_hub(Hub::new_from_top(Hub::current())),
             );
-            *inner.write().await = Some(InnerSharedCacheService {
+            let _ = cache.set(SharedCacheService {
                 backend,
                 upload_queue_tx: tx,
+                runtime,
             });
         }
     }
@@ -720,11 +717,8 @@ impl SharedCacheService {
     }
 
     /// Returns the name of the backend configured.
-    async fn backend_name(&self) -> &'static str {
-        match self.inner.read().await.as_ref() {
-            Some(inner) => inner.backend.name(),
-            None => "<not-configured>",
-        }
+    fn backend_name(&self) -> &'static str {
+        self.backend.name()
     }
 
     /// Retrieve a file from the shared cache.
@@ -738,7 +732,7 @@ impl SharedCacheService {
     /// Errors are transparently hidden, either a cache item is available or it is not.
     pub async fn fetch(&self, key: &SharedCacheKey, mut file: tokio::fs::File) -> bool {
         let _guard = Hub::current().push_scope();
-        let backend_name = self.backend_name().await;
+        let backend_name = self.backend_name();
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
@@ -749,20 +743,17 @@ impl SharedCacheService {
             );
             scope.set_context("Shared Cache", Context::Other(map));
         });
-        let res = match self.inner.read().await.as_ref() {
-            Some(inner) => match inner.backend.as_ref() {
-                SharedCacheBackend::Gcs(state) => {
-                    let state = Arc::clone(state);
-                    let key = key.to_owned();
-                    let future = async move { state.fetch(&key, &mut file).await };
+        let res = match self.backend.as_ref() {
+            SharedCacheBackend::Gcs(state) => {
+                let state = Arc::clone(state);
+                let key = key.to_owned();
+                let future = async move { state.fetch(&key, &mut file).await };
 
-                    CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())))
-                        .await
-                        .unwrap_or(Err(CacheError::ConnectTimeout))
-                }
-                SharedCacheBackend::Fs(cfg) => cfg.fetch(key, &mut file).await,
-            },
-            None => return false,
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())))
+                    .await
+                    .unwrap_or(Err(CacheError::ConnectTimeout))
+            }
+            SharedCacheBackend::Fs(cfg) => cfg.fetch(key, &mut file).await,
         };
         match res {
             Ok(Some(bytes)) => {
@@ -814,7 +805,7 @@ impl SharedCacheService {
     ///
     /// # Return
     ///
-    /// If the shared cache is enabled a [`oneshot::Receiver`] is returned which will
+    /// A [`oneshot::Receiver`] is returned which will
     /// receive a value once the file has been stored in the shared cache.  Due to
     /// backpressure it is possible that the file is never stored, in which case the
     /// corresponding [`oneshot::Sender`] is dropped and awaiting the receiver will resolve
@@ -826,36 +817,29 @@ impl SharedCacheService {
     /// If [`CacheStoreReason::Refresh`] is used the implementation will trade off an extra
     /// request to check if the file already exists before uploading.  This is racy but a
     /// good tradeoff for refreshed stores.
-    pub async fn store(
+    pub fn store(
         &self,
         key: SharedCacheKey,
         src: File,
         reason: CacheStoreReason,
-    ) -> Option<oneshot::Receiver<()>> {
-        let inner_guard = self.inner.read().await;
-        match inner_guard.as_ref() {
-            Some(inner) => {
-                metric!(
-                    gauge("services.shared_cache.uploads_queue_capacity") =
-                        inner.upload_queue_tx.capacity() as u64
-                );
-                let (done_tx, done_rx) = oneshot::channel::<()>();
-                inner
-                    .upload_queue_tx
-                    .try_send(UploadMessage {
-                        key,
-                        src,
-                        done_tx,
-                        reason,
-                    })
-                    .unwrap_or_else(|_| {
-                        metric!(counter("services.shared_cache.store.dropped") += 1);
-                        tracing::error!("Shared cache upload queue full");
-                    });
-                Some(done_rx)
-            }
-            None => None,
-        }
+    ) -> oneshot::Receiver<()> {
+        metric!(
+            gauge("services.shared_cache.uploads_queue_capacity") =
+                self.upload_queue_tx.capacity() as u64
+        );
+        let (done_tx, done_rx) = oneshot::channel::<()>();
+        self.upload_queue_tx
+            .try_send(UploadMessage {
+                key,
+                src,
+                done_tx,
+                reason,
+            })
+            .unwrap_or_else(|_| {
+                metric!(counter("services.shared_cache.store.dropped") += 1);
+                tracing::error!("Shared cache upload queue full");
+            });
+        done_rx
     }
 }
 
@@ -880,57 +864,18 @@ mod tests {
         }
     }
 
-    fn tempfile() -> tokio::fs::File {
-        tokio::fs::File::from_std(tempfile::tempfile().unwrap())
-    }
-
-    async fn wait_init(service: &SharedCacheService) {
+    async fn wait_init(service: &SharedCacheRef) -> &SharedCacheService {
         const MAX_DELAY: Duration = Duration::from_secs(3);
         let start = Instant::now();
         loop {
             if start.elapsed() > MAX_DELAY {
-                break;
+                panic!("shared cache not ready");
             }
-            if service.inner.read().await.is_some() {
-                break;
+            if let Some(service) = service.get() {
+                return service;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-    }
-
-    #[tokio::test]
-    async fn test_noop_fetch() {
-        symbolicator_test::setup();
-        let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
-            },
-        };
-
-        let ret = svc.fetch(&key, tempfile()).await;
-        assert!(!ret);
-    }
-
-    #[tokio::test]
-    async fn test_noop_store() {
-        symbolicator_test::setup();
-        let svc = SharedCacheService::new(None, tokio::runtime::Handle::current()).await;
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
-            },
-        };
-        let stdfile = tempfile::tempfile().unwrap();
-        let file = File::from_std(stdfile);
-
-        svc.store(key, file, CacheStoreReason::New).await;
     }
 
     #[tokio::test]
@@ -959,8 +904,8 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
-        wait_init(&svc).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
 
         // This mimics how Cacher::compute creates this file.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -994,8 +939,8 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
-        wait_init(&svc).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
 
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
@@ -1029,8 +974,8 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
-        wait_init(&svc).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -1042,10 +987,9 @@ mod tests {
             file.flush().await.unwrap();
         }
 
-        if let Some(recv) = svc.store(key, temp_fd, CacheStoreReason::New).await {
-            // Wait for storing to complete.
-            recv.await.unwrap();
-        }
+        let recv = svc.store(key, temp_fd, CacheStoreReason::New);
+        // Wait for storing to complete.
+        recv.await.unwrap();
 
         let data = fs::read(&cache_path)
             .await
@@ -1073,8 +1017,8 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
-        wait_init(&svc).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
 
         let dir = symbolicator_test::tempdir();
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -1133,8 +1077,8 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current()).await;
-        wait_init(&svc).await;
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
 
         // This mimics how the downloader and Cacher::compute write the cache data.
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -1146,10 +1090,9 @@ mod tests {
             file.flush().await.unwrap();
         }
 
-        if let Some(recv) = svc.store(key.clone(), temp_fd, CacheStoreReason::New).await {
-            // Wait for storing to complete.
-            recv.await.unwrap();
-        }
+        let recv = svc.store(key.clone(), temp_fd, CacheStoreReason::New);
+        // Wait for storing to complete.
+        recv.await.unwrap();
 
         let file = File::from_std(temp_file.reopen().unwrap());
 

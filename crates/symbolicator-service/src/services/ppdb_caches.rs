@@ -19,7 +19,7 @@ use crate::utils::sentry::ConfigureScope;
 use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
-use super::shared_cache::SharedCacheService;
+use super::shared_cache::SharedCacheRef;
 
 /// The supported ppdb_cache versions.
 ///
@@ -64,13 +64,9 @@ pub struct PortablePdbCacheActor {
 }
 
 impl PortablePdbCacheActor {
-    pub fn new(
-        cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
-        objects: ObjectsActor,
-    ) -> Self {
+    pub fn new(cache: Cache, shared_cache: SharedCacheRef, objects: ObjectsActor) -> Self {
         Self {
-            ppdb_caches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            ppdb_caches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
         }
     }

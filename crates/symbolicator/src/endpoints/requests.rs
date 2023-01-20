@@ -54,7 +54,7 @@ mod tests {
         test::setup();
 
         let client = Client::new();
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
         let hitcounter = test::Server::new();
 
         let payload = r##"{

@@ -21,7 +21,7 @@ use symbolicator_test::{assert_snapshot, fixture};
 ///
 /// The service is configured with `connect_to_reserved_ips = True`. This allows to use a local
 /// symbol server to test object file downloads.
-pub async fn setup_service(
+pub fn setup_service(
     update_config: impl FnOnce(&mut Config),
 ) -> (SymbolicationActor, test::TempDir) {
     test::setup();
@@ -36,7 +36,7 @@ pub async fn setup_service(
     update_config(&mut config);
 
     let handle = tokio::runtime::Handle::current();
-    let (symbolication, _objects) = create_service(&config, handle).await.unwrap();
+    let (symbolication, _objects) = create_service(&config, handle).unwrap();
 
     (symbolication, cache_dir)
 }
@@ -72,7 +72,7 @@ async fn test_remove_bucket() {
     // Test with sources first, and then without. This test should verify that we do not leak
     // cached debug files to requests that no longer specify a source.
 
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = test::symbol_server();
 
     let request = get_symbolication_request(vec![source]);
@@ -91,7 +91,7 @@ async fn test_add_bucket() {
     // Test without sources first, then with. This test should verify that we apply a new source
     // to requests immediately.
 
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = test::symbol_server();
 
     let request = get_symbolication_request(vec![]);
@@ -107,7 +107,7 @@ async fn test_add_bucket() {
 
 #[tokio::test]
 async fn test_apple_crash_report() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = test::symbol_server();
 
     let report_file = std::fs::File::open(fixture("apple_crash_report.txt")).unwrap();
@@ -121,7 +121,7 @@ async fn test_apple_crash_report() {
 
 #[tokio::test]
 async fn test_wasm_payload() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = test::symbol_server();
 
     let modules: Vec<RawObjectInfo> = serde_json::from_str(
@@ -160,7 +160,7 @@ async fn test_wasm_payload() {
 
 #[tokio::test]
 async fn test_source_candidates() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = test::symbol_server();
 
     // its not wasm, but that is the easiest to write tests because of relative
@@ -200,7 +200,7 @@ async fn test_source_candidates() {
 
 #[tokio::test]
 async fn test_dotnet_integration() {
-    let (symbolication, _cache_dir) = setup_service(|_| ()).await;
+    let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = test::symbol_server();
 
     let modules: Vec<RawObjectInfo> = serde_json::from_str(
