@@ -438,8 +438,7 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        // FIXME(swatinem): We are still serializing old cache statuses right now
-        assert_eq!(result, CacheError::Timeout(Duration::ZERO));
+        assert_eq!(result, err);
         assert_eq!(hitcounter.accesses(), 0);
     }
 
@@ -486,8 +485,7 @@ mod tests {
             .unwrap()
             .handle
             .unwrap_err();
-        // FIXME(swatinem): We are still serializing old cache statuses right now
-        assert_eq!(result, CacheError::PermissionDenied("".into()));
+        assert_eq!(result, err);
         assert_eq!(hitcounter.accesses(), 0);
     }
 }
