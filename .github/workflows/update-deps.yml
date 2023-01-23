@@ -14,4 +14,4 @@ jobs:
       path: crates/symbolicator-crash/sentry-native
       name: Native SDK
     secrets:
-      api-token: ${{ secrets.FIX_MY_NAME }}
+      api-token: ${{ secrets.GH_RELEASE_PAT }}
