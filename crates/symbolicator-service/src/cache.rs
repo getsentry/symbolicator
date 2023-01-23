@@ -77,8 +77,6 @@ impl CacheError {
     const TIMEOUT_MARKER: &[u8] = b"timeout";
     const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
 
-    const SHOULD_WRITE_LEGACY_MARKERS: bool = true;
-
     // These markers were used in the older `CacheStatus` implementation:
     const LEGACY_PERMISSION_DENIED_MARKER: &[u8] =
         b"cachespecificerrormissing permissions for file";
@@ -107,29 +105,16 @@ impl CacheError {
                 file.write_all(details.as_bytes()).await?;
             }
             CacheError::PermissionDenied(details) => {
-                if Self::SHOULD_WRITE_LEGACY_MARKERS {
-                    file.write_all(Self::LEGACY_PERMISSION_DENIED_MARKER)
-                        .await?;
-                } else {
-                    file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
-                    file.write_all(details.as_bytes()).await?;
-                }
+                file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
             }
             CacheError::Timeout(duration) => {
-                if Self::SHOULD_WRITE_LEGACY_MARKERS {
-                    file.write_all(Self::LEGACY_TIMEOUT_MARKER).await?;
-                } else {
-                    file.write_all(Self::TIMEOUT_MARKER).await?;
-                    file.write_all(format_duration(*duration).to_string().as_bytes())
-                        .await?;
-                }
+                file.write_all(Self::TIMEOUT_MARKER).await?;
+                file.write_all(format_duration(*duration).to_string().as_bytes())
+                    .await?;
             }
             CacheError::DownloadError(details) => {
-                if Self::SHOULD_WRITE_LEGACY_MARKERS {
-                    file.write_all(Self::LEGACY_DOWNLOAD_ERROR_MARKER).await?;
-                } else {
-                    file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
-                }
+                file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
             }
             CacheError::InternalError => {
@@ -1554,13 +1539,13 @@ mod tests {
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            CacheError::LEGACY_PERMISSION_DENIED_MARKER.len()
+            CacheError::PERMISSION_DENIED_MARKER.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(CacheError::LEGACY_PERMISSION_DENIED_MARKER);
+        expected.extend(CacheError::PERMISSION_DENIED_MARKER);
 
         assert_eq!(contents, expected);
 
@@ -1590,13 +1575,13 @@ mod tests {
         let current_pos = async_file.stream_position().await?;
         assert_eq!(
             current_pos as usize,
-            CacheError::LEGACY_PERMISSION_DENIED_MARKER.len()
+            CacheError::PERMISSION_DENIED_MARKER.len()
         );
 
         let contents = fs::read(&path)?;
 
         let mut expected: Vec<u8> = Vec::new();
-        expected.extend(CacheError::LEGACY_PERMISSION_DENIED_MARKER);
+        expected.extend(CacheError::PERMISSION_DENIED_MARKER);
 
         assert_eq!(contents, expected);
 

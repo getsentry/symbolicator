@@ -14,7 +14,7 @@ use crate::utils::compression::maybe_decompress_file;
 /// [`NamedTempFile`] back to the caller. This is either the original in case no decompression
 /// needs to happen, or a new one in case the downloaded file needs to be decompressed. In that case,
 /// a new [`NamedTempFile`] in the same directory will be created and returned.
-#[tracing::instrument(skip(downloader, temp_file))]
+#[tracing::instrument(skip(downloader, temp_file), fields(%file_id))]
 pub async fn fetch_file(
     downloader: Arc<DownloadService>,
     file_id: RemoteFile,
