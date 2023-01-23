@@ -14,4 +14,4 @@ jobs:
       path: crates/symbolicator-crash/sentry-native
       name: Native SDK
     secrets:
-      api-token: ${{ secrets.GITHUB_TOKEN }}
+      api-token: ${{ secrets.CI_DEPLOY_KEY }}
