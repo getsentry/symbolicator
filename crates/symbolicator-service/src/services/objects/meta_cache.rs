@@ -52,10 +52,7 @@ pub struct ObjectMetaHandle {
 
 impl ObjectMetaHandle {
     pub fn cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
+        CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
     pub fn features(&self) -> ObjectFeatures {
@@ -120,10 +117,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
+        CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {

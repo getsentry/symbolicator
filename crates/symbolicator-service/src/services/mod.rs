@@ -15,6 +15,7 @@ use crate::cache::Caches;
 use crate::config::Config;
 
 pub mod bitcode;
+mod cache_key;
 pub mod cacher;
 pub mod cficaches;
 pub mod derived;

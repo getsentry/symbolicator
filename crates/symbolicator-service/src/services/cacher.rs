@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
-use std::fmt;
 use std::io::{self, Error, ErrorKind};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -13,9 +12,9 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
+pub use super::cache_key::CacheKey;
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
-use crate::types::Scope;
 use crate::utils::futures::CallOnDrop;
 
 type ComputationChannel<T> = Shared<oneshot::Receiver<CacheEntry<T>>>;
@@ -68,38 +67,6 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct CacheKey {
-    pub cache_key: String,
-    pub scope: Scope,
-}
-
-impl fmt::Display for CacheKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} (scope {})", self.cache_key, self.scope)
-    }
-}
-
-impl CacheKey {
-    /// Returns the relative path inside the cache for this cache key.
-    pub fn relative_path(&self) -> PathBuf {
-        let mut path = PathBuf::new();
-        path.push(safe_path_segment(self.scope.as_ref()));
-        path.push(safe_path_segment(&self.cache_key));
-        path
-    }
-
-    /// Returns the full cache path for this key inside the provided cache directory.
-    pub fn cache_path(&self, cache_dir: &Path, version: u32) -> PathBuf {
-        let mut path = PathBuf::from(cache_dir);
-        if version != 0 {
-            path.push(version.to_string());
-        }
-        path.push(self.relative_path());
-        path
-    }
-}
-
 /// Cache Version Configuration used during cache lookup and generation.
 ///
 /// The `current` version is tried first, and written during cache generation.
@@ -115,14 +82,6 @@ pub struct CacheVersions {
     /// A list of fallback cache versions that are being tried on lookup,
     /// in descending order of priority.
     pub fallbacks: &'static [u32],
-}
-
-/// Protect against:
-/// * ".."
-/// * absolute paths
-/// * ":" (not a threat on POSIX filesystems, but confuses OS X Finder)
-fn safe_path_segment(s: &str) -> String {
-    s.replace(['.', '/', ':'], "_")
 }
 
 pub trait CacheItemRequest: 'static + Send + Sync + Clone {
@@ -574,6 +533,7 @@ mod tests {
     use crate::cache::CacheName;
     use crate::config::{CacheConfig, CacheConfigs};
     use crate::test;
+    use crate::types::Scope;
 
     use super::*;
 
