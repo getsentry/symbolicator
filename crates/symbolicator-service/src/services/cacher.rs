@@ -533,7 +533,6 @@ mod tests {
     use crate::cache::CacheName;
     use crate::config::{CacheConfig, CacheConfigs};
     use crate::test;
-    use crate::types::Scope;
 
     use super::*;
 
@@ -563,7 +562,6 @@ mod tests {
         fn get_cache_key(&self) -> CacheKey {
             CacheKey {
                 cache_key: String::from(self.key),
-                scope: Scope::Global,
             }
         }
 

@@ -846,8 +846,6 @@ mod tests {
 
     use symbolicator_test::TestGcsCredentials;
 
-    use crate::types::Scope;
-
     use super::*;
 
     impl From<TestGcsCredentials> for GcsSharedCacheConfig {
@@ -882,8 +880,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
         let cache_path = dir.path().join(key.relative_path());
@@ -922,8 +919,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
 
@@ -956,8 +952,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
         let cache_path = dir.path().join(key.relative_path());
@@ -996,8 +991,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1029,8 +1023,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1055,8 +1048,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1096,8 +1088,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1140,8 +1131,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
