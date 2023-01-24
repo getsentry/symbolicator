@@ -13,6 +13,7 @@ mod minidump;
 mod multipart;
 mod proxy;
 mod requests;
+mod sourcemap;
 mod symbolicate;
 
 pub use error::ResponseError;
@@ -22,6 +23,7 @@ use self::minidump::handle_minidump_request as minidump;
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
 use proxy::proxy_symstore_request as proxy;
 use requests::poll_request as requests;
+use sourcemap::handle_sourcemap_request as sourcemap;
 use symbolicate::symbolicate_frames as symbolicate;
 
 pub async fn healthcheck() -> &'static str {
@@ -43,6 +45,7 @@ pub fn create_app(service: RequestService) -> Router {
         .route("/requests/:request_id", get(requests))
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
+        .route("/sourcemap", post(sourcemap))
         .route("/symbolicate", symbolicate_route)
         .with_state(service)
         .layer(layer)

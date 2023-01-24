@@ -2,16 +2,19 @@
 //!
 //! This allows to fetch files which were directly uploaded to Sentry itself.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
 use sentry::SentryFutureExt;
+use serde::de::DeserializeOwned;
+use serde::Deserialize;
 use url::Url;
 
 use symbolicator_sources::{
-    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
+    ObjectId, RemoteFile, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
 };
 
 use super::{FileType, USER_AGENT};
@@ -19,10 +22,19 @@ use crate::cache::{CacheEntry, CacheError};
 use crate::config::Config;
 use crate::utils::futures::CancelOnDrop;
 
-#[derive(Clone, Debug, serde::Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 struct SearchResult {
-    id: SentryFileId,
-    // TODO: Add more fields
+    pub id: SentryFileId,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SearchArtifactResult {
+    pub id: SentryFileId,
+    pub name: String,
+    pub sha1: String,
+    pub dist: Option<String>,
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -66,10 +78,13 @@ impl SentryDownloader {
     }
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
-    async fn fetch_sentry_json(
+    async fn fetch_sentry_json<T>(
         client: &reqwest::Client,
         query: &SearchQuery,
-    ) -> CacheEntry<Vec<SearchResult>> {
+    ) -> CacheEntry<Vec<T>>
+    where
+        T: DeserializeOwned,
+    {
         let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token)
@@ -174,10 +189,42 @@ impl SentryDownloader {
         let search = self.cached_sentry_search(query).await?;
         let file_ids = search
             .into_iter()
-            .map(|search_result| SentryRemoteFile::new(source.clone(), search_result.id).into())
+            .map(|search_result| {
+                SentryRemoteFile::new(source.clone(), search_result.id, SentryFileType::DebugFile)
+                    .into()
+            })
             .collect();
 
         Ok(file_ids)
+    }
+
+    pub async fn list_artifacts(
+        &self,
+        source: Arc<SentrySourceConfig>,
+    ) -> CacheEntry<Vec<SearchArtifactResult>> {
+        let query = SearchQuery {
+            index_url: source.url.clone(),
+            token: source.token.clone(),
+        };
+
+        tracing::debug!(
+            "Fetching list of Sentry artifacts from {}",
+            &query.index_url
+        );
+
+        let entries = {
+            let client = self.client.clone();
+            let query = query.clone();
+            let future =
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            future.await.map_err(|_| CacheError::InternalError)??
+        };
+
+        Ok(entries)
     }
 
     /// Downloads a source hosted on Sentry.
@@ -217,7 +264,11 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(
+            Arc::new(source),
+            SentryFileId("abc123".into()),
+            SentryFileType::DebugFile,
+        );
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -229,7 +280,11 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()));
+        let file_source = SentryRemoteFile::new(
+            Arc::new(source),
+            SentryFileId("abc123".into()),
+            SentryFileType::DebugFile,
+        );
         let uri = file_source.uri();
         assert_eq!(
             uri,

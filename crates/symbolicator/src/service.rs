@@ -33,7 +33,7 @@ use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;
 use symbolicator_service::services::symbolication::SymbolicationActor;
-use symbolicator_service::types::CompletedSymbolicationResponse;
+use symbolicator_service::types::{CompletedResponse, CompletedSymbolicationResponse};
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
@@ -41,8 +41,12 @@ use symbolicator_sources::SourceConfig;
 pub use symbolicator_service::services::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
-pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
-pub use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope, Signal};
+pub use symbolicator_service::services::symbolication::{
+    JsProcessingSymbolicateStacktraces, StacktraceOrigin, SymbolicateStacktraces,
+};
+pub use symbolicator_service::types::{
+    JsProcessingRawStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
+};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -91,7 +95,7 @@ pub enum SymbolicationResponse {
         /// An indication when the next poll would be suitable.
         retry_after: usize,
     },
-    Completed(Box<CompletedSymbolicationResponse>),
+    Completed(Box<CompletedResponse>),
     Failed {
         message: String,
     },
@@ -258,8 +262,32 @@ impl RequestService {
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
             let res = slf.symbolication.symbolicate(request).await;
             transaction.finish();
-            res
+            res.map(Into::into)
         })
+    }
+
+    pub fn js_processing_symbolicate_stacktraces(
+        &self,
+        request: JsProcessingSymbolicateStacktraces,
+    ) -> Result<RequestId, MaxRequestsError> {
+        let slf = self.inner.clone();
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "js_processing_symbolicate_stacktraces",
+            "js_processing_symbolicate_stacktraces",
+            span,
+        );
+        self.create_symbolication_request(
+            "js_processing_symbolicate",
+            RequestOptions::default(),
+            async move {
+                let transaction = sentry::start_transaction(ctx);
+                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+                let res = slf.symbolication.js_processing_symbolicate(request).await;
+                transaction.finish();
+                res.map(Into::into)
+            },
+        )
     }
 
     /// Creates a new request to process a minidump.
@@ -288,7 +316,7 @@ impl RequestService {
                 .process_minidump(scope, minidump_file, sources)
                 .await;
             transaction.finish();
-            res
+            res.map(Into::into)
         })
     }
 
@@ -318,7 +346,7 @@ impl RequestService {
                 .process_apple_crash_report(scope, apple_crash_report, sources)
                 .await;
             transaction.finish();
-            res
+            res.map(Into::into)
         })
     }
 
@@ -361,7 +389,7 @@ impl RequestService {
         f: F,
     ) -> Result<RequestId, MaxRequestsError>
     where
-        F: Future<Output = Result<CompletedSymbolicationResponse, anyhow::Error>> + Send + 'static,
+        F: Future<Output = Result<CompletedResponse, anyhow::Error>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -413,10 +441,12 @@ impl RequestService {
             let response = match result {
                 Ok(mut response) => {
                     if !options.dif_candidates {
-                        clear_dif_candidates(&mut response);
+                        if let CompletedResponse::Symbolication(ref mut res) = response {
+                            clear_dif_candidates(res)
+                        }
                     }
                     sentry::end_session_with_status(SessionStatus::Exited);
-                    SymbolicationResponse::Completed(Box::new(response))
+                    SymbolicationResponse::Completed(Box::new(response.into()))
                 }
                 Err(error) => {
                     // a timeout is an abnormal session exit, all other errors are considered "crashed"

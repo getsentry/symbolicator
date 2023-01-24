@@ -27,6 +27,7 @@ mod minidump;
 pub mod objects;
 pub mod ppdb_caches;
 pub mod shared_cache;
+pub mod sourcemap;
 pub mod symbolication;
 pub mod symcaches;
 
@@ -37,6 +38,7 @@ use self::il2cpp::Il2cppService;
 use self::objects::ObjectsActor;
 use self::ppdb_caches::PortablePdbCacheActor;
 use self::shared_cache::SharedCacheService;
+use self::sourcemap::SourceMapService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 pub use fetch_file::fetch_file;
@@ -64,7 +66,7 @@ pub async fn create_service(
 
     let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
 
-    let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
+    let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader.clone());
 
     let symcaches = SymCacheActor::new(
         caches.symcaches,
@@ -78,12 +80,15 @@ pub async fn create_service(
 
     let ppdb_caches = PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache, objects.clone());
 
+    let sourcemaps = SourceMapService::new(downloader);
+
     let symbolication = SymbolicationActor::new(
         objects.clone(),
         symcaches,
         cficaches,
         ppdb_caches,
         caches.diagnostics,
+        sourcemaps,
     );
 
     Ok((symbolication, objects))
