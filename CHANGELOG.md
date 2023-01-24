@@ -16,6 +16,12 @@
 - Migrate from `rusoto` to `aws-sdk-s3`. ([#849](https://github.com/getsentry/symbolicator/pull/849), [#954](https://github.com/getsentry/symbolicator/pull/954))
 - Replace the last remaining LRU caches with `moka` versions and remove `lru` dependency. ([#978](https://github.com/getsentry/symbolicator/pull/978))
 
+### Dependencies
+
+- Bump Native SDK from v0.5.0 to v0.5.3 ([#940](https://github.com/getsentry/symbolicator/pull/940))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#053)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.5.0...0.5.3)
+
 ## 0.6.0
 
 ### Features
