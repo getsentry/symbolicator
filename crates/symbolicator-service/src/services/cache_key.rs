@@ -26,10 +26,8 @@ impl CacheKey {
     }
 
     /// Returns the relative path inside the cache for this cache key.
-    pub fn relative_path(&self) -> PathBuf {
-        let mut path = PathBuf::new();
-        path.push(&self.cache_key);
-        path
+    pub fn relative_path(&self) -> &str {
+        &self.cache_key
     }
 
     /// Returns the full cache path for this key inside the provided cache directory.
