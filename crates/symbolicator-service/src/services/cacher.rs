@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures::future::BoxFuture;
 use parking_lot::Mutex;
@@ -58,10 +59,16 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 
 impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
+        // TODO: eventually hook up configuration to this
+        // The capacity(0) and ttl(0) make sure we are not (yet) reusing in-memory caches, except
+        // for request coalescing right now.
+        let cache = InMemoryCache::builder()
+            .max_capacity(0)
+            .time_to_live(Duration::ZERO)
+            .build();
         Cacher {
             config,
-            // TODO: eventually hook up configuration to this
-            cache: InMemoryCache::new(0),
+            cache,
             refreshes: Default::default(),
             shared_cache,
         }
