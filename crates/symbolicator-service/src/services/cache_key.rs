@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use symbolicator_sources::RemoteFile;
 
+use crate::cache::CacheName;
 use crate::types::Scope;
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
@@ -26,8 +27,15 @@ impl CacheKey {
     }
 
     /// Returns the relative path inside the cache for this cache key.
-    pub fn relative_path(&self) -> &str {
-        &self.cache_key
+    pub fn path_for_shared_cache(&self, cache_name: CacheName, version: Option<u32>) -> String {
+        use std::fmt::Write;
+
+        let mut path = cache_name.to_string();
+        if let Some(version) = version {
+            write!(path, "/{}", version).unwrap();
+        }
+        write!(path, "/{}", &self.cache_key).unwrap();
+        path
     }
 
     /// Returns the full cache path for this key inside the provided cache directory.

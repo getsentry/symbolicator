@@ -14,7 +14,7 @@ use tokio::fs;
 
 pub use super::cache_key::CacheKey;
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
+use crate::services::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
 type ComputationChannel<T> = Shared<oneshot::Receiver<CacheEntry<T>>>;
@@ -135,7 +135,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         });
         let (entry, expiration) = self
             .config
-            .open_cachefile(&file)?
+            .open_cachefile(file)?
             .ok_or(CacheError::NotFound)?;
 
         if let Ok(byteview) = &entry {
@@ -172,15 +172,13 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(self, request: T, key: CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let mut temp_file = self.tempfile()?;
-        let shared_cache_key = SharedCacheKey {
-            name: self.config.name(),
-            version: T::VERSIONS.current,
-            local_key: key.clone(),
-        };
 
-        let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
         let shared_cache_hit = if let Some(shared_cache) = self.shared_cache.get() {
-            shared_cache.fetch(&shared_cache_key, temp_fd).await
+            let cache_name = self.config.name();
+            let key = key.path_for_shared_cache(cache_name, Some(T::VERSIONS.current));
+            let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
+
+            shared_cache.fetch(cache_name, key, temp_fd).await
         } else {
             false
         };
@@ -254,11 +252,25 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
+<<<<<<< HEAD
         if !shared_cache_hit {
             if let Ok(byteview) = &entry {
                 if let Some(shared_cache) = self.shared_cache.get() {
                     shared_cache.store(shared_cache_key, byteview.clone(), CacheStoreReason::New);
                 }
+=======
+        if !shared_cache_hit && entry.is_ok() {
+            if let Some(shared_cache) = self.shared_cache.get() {
+                let cache_name = self.config.name();
+                let key = key.path_for_shared_cache(cache_name, Some(T::VERSIONS.current));
+
+                shared_cache.store(
+                    cache_name,
+                    key,
+                    tokio::fs::File::from_std(file),
+                    CacheStoreReason::New,
+                );
+>>>>>>> 2ab1365 (use the CacheKey directly in shared cache)
             }
         }
 
@@ -427,17 +439,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                 let needs_reupload = expiration.was_touched();
                 if entry.is_ok() && version == T::VERSIONS.current && needs_reupload {
                     if let Some(shared_cache) = self.shared_cache.get() {
-                        let shared_cache_key = SharedCacheKey {
-                            name: self.config.name(),
-                            version: T::VERSIONS.current,
-                            local_key: key.clone(),
-                        };
+                        let cache_name = self.config.name();
+                        let key = key.path_for_shared_cache(cache_name, Some(T::VERSIONS.current));
+
                         match fs::File::open(&file)
                             .await
                             .context("Local cache path not available for shared cache")
                         {
                             Ok(fd) => {
-                                shared_cache.store(shared_cache_key, fd, CacheStoreReason::Refresh);
+                                shared_cache.store(cache_name, key, fd, CacheStoreReason::Refresh);
                             }
                             Err(err) => {
                                 sentry::capture_error(&*err);
