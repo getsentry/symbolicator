@@ -590,7 +590,7 @@ pub enum ExpirationStrategy {
 }
 
 /// This gives the time at which different cache items need to be refreshed or touched.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ExpirationTime {
     /// The [`Duration`] after which [`Negative`](ExpirationStrategy::Negative) or
     /// [`Malformed`](ExpirationStrategy::Malformed) cache entries expire and need
