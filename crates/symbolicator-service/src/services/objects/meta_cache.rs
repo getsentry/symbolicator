@@ -89,12 +89,12 @@ impl FetchFileMetaRequest {
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
     async fn compute_file_meta(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
-        let cache_key = self.get_cache_key();
+        let cache_key = CacheKey::from_scoped_file(&self.scope, &self.file_source);
         tracing::trace!("Fetching file meta for {}", cache_key);
 
         let object_handle = self
             .data_cache
-            .compute_memoized(FetchFileDataRequest(self.clone()))
+            .compute_memoized(FetchFileDataRequest(self.clone()), cache_key.clone())
             .await?;
 
         let object = object_handle.object();
@@ -115,10 +115,6 @@ impl FetchFileMetaRequest {
 
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
-
-    fn get_cache_key(&self) -> CacheKey {
-        CacheKey::from_scoped_file(&self.scope, &self.file_source)
-    }
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         Box::pin(self.compute_file_meta(temp_file))

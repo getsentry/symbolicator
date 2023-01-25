@@ -204,12 +204,9 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = Arc<ObjectHandle>;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.0.get_cache_key()
-    }
-
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        tracing::trace!("Fetching file data for {}", self.get_cache_key());
+        let cache_key = CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source);
+        tracing::trace!("Fetching file data for {}", cache_key);
         let future = fetch_object_file(
             &self.0.object_id,
             self.0.file_source.clone(),
@@ -238,7 +235,7 @@ impl CacheItemRequest for FetchFileDataRequest {
             object,
 
             scope: self.0.scope.clone(),
-            cache_key: self.get_cache_key(),
+            cache_key: CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source),
         };
 
         // FIXME(swatinem): This `configure_scope` call happens in a spawned/deduplicated

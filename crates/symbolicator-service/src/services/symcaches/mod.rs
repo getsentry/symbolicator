@@ -12,7 +12,7 @@ use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::bitcode::BitcodeService;
-use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -146,10 +146,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
-    }
-
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_symcache(
             temp_file,
@@ -253,14 +249,14 @@ impl SymCacheActor {
                 il2cpp_handle,
             };
 
-            self.symcaches
-                .compute_memoized(FetchSymCacheInternal {
-                    request,
-                    objects_actor: self.objects.clone(),
-                    secondary_sources,
-                    object_meta: Arc::clone(&handle),
-                })
-                .await
+            let cache_key = handle.cache_key();
+            let request = FetchSymCacheInternal {
+                request,
+                objects_actor: self.objects.clone(),
+                secondary_sources,
+                object_meta: Arc::clone(&handle),
+            };
+            self.symcaches.compute_memoized(request, cache_key).await
         })
         .await
     }

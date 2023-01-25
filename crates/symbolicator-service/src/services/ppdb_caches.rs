@@ -16,7 +16,7 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use super::cacher::{CacheItemRequest, CacheVersions, Cacher};
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
 use super::shared_cache::SharedCacheRef;
@@ -86,12 +86,13 @@ impl PortablePdbCacheActor {
             })
             .await;
         derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| {
-            self.ppdb_caches
-                .compute_memoized(FetchPortablePdbCacheInternal {
-                    request,
-                    objects_actor: self.objects.clone(),
-                    object_meta,
-                })
+            let cache_key = object_meta.cache_key();
+            let request = FetchPortablePdbCacheInternal {
+                request,
+                objects_actor: self.objects.clone(),
+                object_meta,
+            };
+            self.ppdb_caches.compute_memoized(request, cache_key)
         })
         .await
     }
@@ -133,10 +134,6 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
     type Item = OwnedPortablePdbCache;
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
-
-    fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
-    }
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_ppdb_cache(

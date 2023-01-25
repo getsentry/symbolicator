@@ -12,7 +12,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use crate::services::cacher::{CacheItemRequest, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -109,10 +109,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.meta_handle.cache_key()
-    }
-
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = compute_cficache(&self.objects_actor, self.meta_handle.clone(), temp_file);
 
@@ -171,11 +167,13 @@ impl CfiCacheActor {
             .await;
 
         derive_from_object_handle(found_object, CandidateStatus::Unwind, |meta_handle| {
-            self.cficaches.compute_memoized(FetchCfiCacheInternal {
+            let cache_key = meta_handle.cache_key();
+            let request = FetchCfiCacheInternal {
                 request,
                 objects_actor: self.objects.clone(),
                 meta_handle,
-            })
+            };
+            self.cficaches.compute_memoized(request, cache_key)
         })
         .await
     }
