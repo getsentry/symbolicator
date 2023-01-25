@@ -5,7 +5,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use futures::channel::oneshot;
-use futures::future::{BoxFuture, FutureExt, Shared, TryFutureExt};
+use futures::future::{BoxFuture, Shared};
+use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -94,9 +95,6 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
         current: 0,
         fallbacks: &[],
     };
-
-    /// Returns the key by which this item is cached.
-    fn get_cache_key(&self) -> CacheKey;
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
@@ -372,14 +370,14 @@ impl<T: CacheItemRequest> Cacher<T> {
     fn spawn_computation(
         &self,
         request: T,
+        cache_key: CacheKey,
         is_refresh: bool,
     ) -> BoxFuture<'static, CacheEntry<T::Item>> {
-        let key = request.get_cache_key();
         let name = self.config.name();
 
         let channel = {
             let mut current_computations = self.current_computations.lock();
-            if let Some(channel) = current_computations.get(&key) {
+            if let Some(channel) = current_computations.get(&cache_key) {
                 // A concurrent cache lookup was deduplicated.
                 metric!(counter(&format!("caches.{name}.channel.hit")) += 1);
                 channel.clone()
@@ -405,9 +403,9 @@ impl<T: CacheItemRequest> Cacher<T> {
                     return Box::pin(async { result });
                 }
 
-                let computation = self.clone().compute(request, key.clone(), is_refresh);
-                let channel = self.create_channel(key.clone(), computation, is_refresh);
-                let evicted = current_computations.insert(key, channel.clone());
+                let computation = self.clone().compute(request, cache_key.clone(), is_refresh);
+                let channel = self.create_channel(cache_key.clone(), computation, is_refresh);
+                let evicted = current_computations.insert(cache_key, channel.clone());
                 debug_assert!(evicted.is_none());
                 channel
             }
@@ -433,9 +431,8 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
-    pub async fn compute_memoized(&self, request: T) -> CacheEntry<T::Item> {
+    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        let key = request.get_cache_key();
 
         // cache_path is None when caching is disabled.
         if let Some(cache_dir) = self.config.cache_dir() {
@@ -443,7 +440,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 std::iter::once(T::VERSIONS.current).chain(T::VERSIONS.fallbacks.iter().copied());
 
             for version in versions {
-                let item = match self.lookup_local_cache(&request, &key, version) {
+                let item = match self.lookup_local_cache(&request, &cache_key, version) {
                     Err(CacheError::NotFound) => continue,
                     Err(err) => return Err(err),
                     Ok(item) => item,
@@ -456,13 +453,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                     tracing::trace!(
                         "Spawning deduplicated {} computation for path {:?}",
                         name,
-                        key.cache_path(cache_dir, T::VERSIONS.current).display()
+                        cache_key
+                            .cache_path(cache_dir, T::VERSIONS.current)
+                            .display()
                     );
                     metric!(
                         counter(&format!("caches.{name}.file.fallback")) += 1,
                         "version" => &version.to_string(),
                     );
-                    let _not_awaiting_future = self.spawn_computation(request, true);
+                    let _not_awaiting_future = self.spawn_computation(request, cache_key, true);
                 }
 
                 return item;
@@ -473,7 +472,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // just got pruned.
         metric!(counter(&format!("caches.{name}.file.miss")) += 1);
 
-        self.spawn_computation(request, false).await
+        self.spawn_computation(request, cache_key, false).await
     }
 }
 
@@ -539,14 +538,12 @@ mod tests {
     #[derive(Clone, Default)]
     struct TestCacheItem {
         computations: Arc<AtomicUsize>,
-        key: &'static str,
     }
 
     impl TestCacheItem {
-        fn new(key: &'static str) -> Self {
+        fn new() -> Self {
             Self {
                 computations: Default::default(),
-                key,
             }
         }
     }
@@ -558,12 +555,6 @@ mod tests {
             current: 1,
             fallbacks: &[0],
         };
-
-        fn get_cache_key(&self) -> CacheKey {
-            CacheKey {
-                cache_key: String::from(self.key),
-            }
-        }
 
         fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
             self.computations.fetch_add(1, Ordering::SeqCst);
@@ -609,17 +600,20 @@ mod tests {
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
 
-        let request = TestCacheItem::new("global/some_cache_key");
+        let request = TestCacheItem::new();
+        let key = CacheKey {
+            cache_key: "global/some_cache_key".into(),
+        };
 
-        let first_result = cacher.compute_memoized(request.clone()).await;
+        let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
         assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
 
-        let second_result = cacher.compute_memoized(request.clone()).await;
+        let second_result = cacher.compute_memoized(request.clone(), key.clone()).await;
         assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
 
         tokio::time::sleep(Duration::from_millis(200)).await;
 
-        let third_result = cacher.compute_memoized(request.clone()).await;
+        let third_result = cacher.compute_memoized(request.clone(), key).await;
         assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
 
         // we only want to have the actual computation be done a single time
@@ -651,9 +645,12 @@ mod tests {
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
 
-        let request = TestCacheItem::new("global/some_cache_key");
+        let request = TestCacheItem::new();
+        let key = CacheKey {
+            cache_key: "global/some_cache_key".into(),
+        };
 
-        let first_result = cacher.compute_memoized(request.clone()).await;
+        let first_result = cacher.compute_memoized(request.clone(), key).await;
         assert_eq!(first_result, Err(CacheError::NotFound));
 
         // no computation should be done
@@ -684,13 +681,15 @@ mod tests {
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
 
-        let request = TestCacheItem::new("0");
+        let request = TestCacheItem::new();
 
         for key in keys {
-            let mut request = request.clone();
-            request.key = key;
+            let request = request.clone();
+            let key = CacheKey {
+                cache_key: String::from(*key),
+            };
 
-            let result = cacher.compute_memoized(request.clone()).await;
+            let result = cacher.compute_memoized(request.clone(), key).await;
             assert_eq!(result.unwrap().as_str(), "some old cached contents");
         }
 
@@ -704,10 +703,12 @@ mod tests {
         let mut num_outdated = 0;
 
         for key in keys {
-            let mut request = request.clone();
-            request.key = key;
+            let request = request.clone();
+            let key = CacheKey {
+                cache_key: String::from(*key),
+            };
 
-            let result = cacher.compute_memoized(request.clone()).await;
+            let result = cacher.compute_memoized(request.clone(), key).await;
             if result.unwrap().as_str() == "some old cached contents" {
                 num_outdated += 1;
             }

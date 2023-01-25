@@ -74,7 +74,6 @@ impl Display for AuxDifKind {
 /// The main work is done by the [`CacheItemRequest`] impl.
 #[derive(Debug, Clone)]
 struct FetchFileRequest {
-    scope: Scope,
     file_source: RemoteFile,
     uuid: DebugId,
     kind: AuxDifKind,
@@ -119,10 +118,6 @@ impl FetchFileRequest {
 
 impl CacheItemRequest for FetchFileRequest {
     type Item = Arc<CacheHandle>;
-
-    fn get_cache_key(&self) -> CacheKey {
-        CacheKey::from_scoped_file(&self.scope, &self.file_source)
-    }
 
     /// Downloads a file, writing it to `path`.
     ///
@@ -235,13 +230,15 @@ impl BitcodeService {
                 scope.set_extra("auxdif.source", file_source.source_metric_key().into());
             });
             let request = FetchFileRequest {
-                scope,
                 file_source,
                 uuid,
                 kind: dif_kind,
                 download_svc: self.download_svc.clone(),
             };
-            self.cache.compute_memoized(request).bind_hub(hub)
+            let cache_key = CacheKey::from_scoped_file(&scope, &request.file_source);
+            self.cache
+                .compute_memoized(request, cache_key)
+                .bind_hub(hub)
         });
 
         let all_results = future::join_all(fetch_jobs).await;

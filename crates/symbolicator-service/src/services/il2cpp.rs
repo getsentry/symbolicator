@@ -47,7 +47,6 @@ impl Il2cppHandle {
 /// The main work is done by the [`CacheItemRequest`] impl.
 #[derive(Debug, Clone)]
 struct FetchFileRequest {
-    scope: Scope,
     file_source: RemoteFile,
     download_svc: Arc<DownloadService>,
 }
@@ -73,10 +72,6 @@ impl FetchFileRequest {
 
 impl CacheItemRequest for FetchFileRequest {
     type Item = Il2cppHandle;
-
-    fn get_cache_key(&self) -> CacheKey {
-        CacheKey::from_scoped_file(&self.scope, &self.file_source)
-    }
 
     /// Downloads a file, writing it to `path`.
     ///
@@ -144,12 +139,12 @@ impl Il2cppService {
                 scope.set_tag("il2cpp.debugid", debug_id);
                 scope.set_extra("il2cpp.source", file_source.source_metric_key().into());
             });
+            let cache_key = CacheKey::from_scoped_file(&scope, &file_source);
             let request = FetchFileRequest {
-                scope,
                 file_source,
                 download_svc: self.download_svc.clone(),
             };
-            self.cache.compute_memoized(request)
+            self.cache.compute_memoized(request, cache_key)
         });
 
         let all_results = future::join_all(fetch_jobs).await;

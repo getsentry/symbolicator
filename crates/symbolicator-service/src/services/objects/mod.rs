@@ -17,6 +17,7 @@ use meta_cache::FetchFileMetaRequest;
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
 
+use super::cacher::CacheKey;
 use super::shared_cache::SharedCacheRef;
 
 mod data_cache;
@@ -101,6 +102,7 @@ impl ObjectsActor {
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
     pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
+        let cache_key = CacheKey::from_scoped_file(&file_handle.scope, &file_handle.file_source);
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -109,7 +111,7 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache.compute_memoized(request).await
+        self.data_cache.compute_memoized(request, cache_key).await
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -160,6 +162,7 @@ impl ObjectsActor {
             } else {
                 scope.clone()
             };
+            let cache_key = CacheKey::from_scoped_file(&scope, &file_source);
             let request = FetchFileMetaRequest {
                 scope,
                 file_source: file_source.clone(),
@@ -171,7 +174,7 @@ impl ObjectsActor {
             let meta_cache = self.meta_cache.clone();
 
             async move {
-                let handle = meta_cache.compute_memoized(request).await;
+                let handle = meta_cache.compute_memoized(request, cache_key).await;
                 FoundMeta {
                     file_source,
                     handle,
