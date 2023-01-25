@@ -8,7 +8,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt;
-use std::io::SeekFrom;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -19,9 +18,10 @@ use gcp_auth::{AuthenticationManager, CustomServiceAccount, Token};
 use reqwest::{Body, Client, StatusCode};
 use sentry::protocol::Context;
 use sentry::{Hub, SentryFutureExt};
+use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
-use tokio::io::{self, AsyncSeekExt, AsyncWrite};
+use tokio::io::{self, AsyncWrite};
 use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
@@ -270,7 +270,7 @@ impl GcsState {
     async fn store(
         &self,
         key: SharedCacheKey,
-        mut src: File,
+        content: ByteView<'static>,
         reason: CacheStoreReason,
     ) -> Result<SharedCacheStoreResult, CacheError> {
         sentry::configure_scope(|scope| {
@@ -296,11 +296,7 @@ impl GcsState {
             }
         }
 
-        let total_bytes = src
-            .seek(SeekFrom::End(0))
-            .await
-            .context("failed to seek to end")?;
-        src.rewind().await.context("failed to rewind")?;
+        let total_bytes = content.len() as u64;
         let token = self.get_token().await?;
         let mut url =
             Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
@@ -316,7 +312,7 @@ impl GcsState {
             // Upload only if it's not already there
             .append_pair("ifGenerationMatch", "0");
 
-        let stream = ReaderStream::new(src);
+        let stream = ReaderStream::new(std::io::Cursor::new(content));
         let body = Body::wrap_stream(stream);
         let request = self
             .client
@@ -392,7 +388,7 @@ impl FilesystemSharedCacheConfig {
     async fn store(
         &self,
         key: SharedCacheKey,
-        mut src: File,
+        content: ByteView<'static>,
     ) -> Result<SharedCacheStoreResult, CacheError> {
         let abspath = self.path.join(key.relative_path());
         let parent_dir = abspath
@@ -413,8 +409,8 @@ impl FilesystemSharedCacheConfig {
         let dup_file = temp_file.reopen().context("failed to dup filedescriptor")?;
         let mut dest = File::from_std(dup_file);
 
-        src.rewind().await.context("failed to rewind")?;
-        let bytes = io::copy(&mut src, &mut dest)
+        let mut reader: &[u8] = &content;
+        let bytes = io::copy(&mut reader, &mut dest)
             .await
             .context("Failed to copy data into file")?;
 
@@ -532,8 +528,8 @@ impl SharedCacheBackend {
 struct UploadMessage {
     /// The cache key to store the data at.
     key: SharedCacheKey,
-    /// The [`File`] to read the cache data from.
-    src: File,
+    /// The cache contents.
+    content: ByteView<'static>,
     /// A channel to notify completion of storage.
     done_tx: oneshot::Sender<()>,
     /// The reason to store this item.
@@ -642,7 +638,7 @@ impl SharedCacheService {
     ) {
         let UploadMessage {
             key,
-            src,
+            content,
             done_tx: complete_tx,
             reason,
         } = message;
@@ -660,8 +656,8 @@ impl SharedCacheService {
 
         let cache_name = key.name;
         let res = match *backend {
-            SharedCacheBackend::Gcs(ref state) => state.store(key, src, reason).await,
-            SharedCacheBackend::Fs(ref cfg) => cfg.store(key, src).await,
+            SharedCacheBackend::Gcs(ref state) => state.store(key, content, reason).await,
+            SharedCacheBackend::Fs(ref cfg) => cfg.store(key, content).await,
         };
         match res {
             Ok(op) => {
@@ -820,7 +816,7 @@ impl SharedCacheService {
     pub fn store(
         &self,
         key: SharedCacheKey,
-        src: File,
+        content: ByteView<'static>,
         reason: CacheStoreReason,
     ) -> oneshot::Receiver<()> {
         metric!(
@@ -831,7 +827,7 @@ impl SharedCacheService {
         self.upload_queue_tx
             .try_send(UploadMessage {
                 key,
-                src,
+                content,
                 done_tx,
                 reason,
             })
@@ -846,7 +842,6 @@ impl SharedCacheService {
 #[cfg(test)]
 mod tests {
     use tempfile::NamedTempFile;
-    use tokio::io::AsyncWriteExt;
     use uuid::Uuid;
 
     use symbolicator_test::TestGcsCredentials;
@@ -977,17 +972,11 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
-        // This mimics how the downloader and Cacher::compute write the cache data.
-        let temp_file = NamedTempFile::new_in(&dir).unwrap();
-        let dup_file = temp_file.reopen().unwrap();
-        let temp_fd = File::from_std(dup_file);
-        {
-            let mut file = File::create(temp_file.path()).await.unwrap();
-            file.write_all(b"cache data").await.unwrap();
-            file.flush().await.unwrap();
-        }
-
-        let recv = svc.store(key, temp_fd, CacheStoreReason::New);
+        let recv = svc.store(
+            key,
+            ByteView::from_slice(b"cache data"),
+            CacheStoreReason::New,
+        );
         // Wait for storing to complete.
         recv.await.unwrap();
 
@@ -1080,20 +1069,15 @@ mod tests {
         let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
-        // This mimics how the downloader and Cacher::compute write the cache data.
-        let temp_file = NamedTempFile::new_in(&dir).unwrap();
-        let dup_file = temp_file.reopen().unwrap();
-        let temp_fd = File::from_std(dup_file);
-        {
-            let mut file = File::create(temp_file.path()).await.unwrap();
-            file.write_all(b"cache data").await.unwrap();
-            file.flush().await.unwrap();
-        }
-
-        let recv = svc.store(key.clone(), temp_fd, CacheStoreReason::New);
+        let recv = svc.store(
+            key.clone(),
+            ByteView::from_slice(b"cache data"),
+            CacheStoreReason::New,
+        );
         // Wait for storing to complete.
         recv.await.unwrap();
 
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
         let ret = svc.fetch(&key, file).await;
@@ -1121,28 +1105,23 @@ mod tests {
             .await
             .unwrap();
 
-        // This mimics how the downloader and Cacher::compute write the cache data.
-        let temp_file = NamedTempFile::new().unwrap();
-        let dup_file = temp_file.reopen().unwrap();
-        let temp_fd = File::from_std(dup_file);
-        {
-            let mut file = File::create(temp_file.path()).await.unwrap();
-            file.write_all(b"cache data").await.unwrap();
-            file.flush().await.unwrap();
-        }
-
         let ret = state
-            .store(key.clone(), temp_fd, CacheStoreReason::New)
+            .store(
+                key.clone(),
+                ByteView::from_slice(b"cache data"),
+                CacheStoreReason::New,
+            )
             .await
             .unwrap();
 
         assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
 
-        let dup_file = temp_file.reopen().unwrap();
-        let temp_fd = File::from_std(dup_file);
-
         let ret = state
-            .store(key, temp_fd, CacheStoreReason::New)
+            .store(
+                key,
+                ByteView::from_slice(b"cache data"),
+                CacheStoreReason::New,
+            )
             .await
             .unwrap();
 
@@ -1168,12 +1147,12 @@ mod tests {
 
         assert!(!state.exists(&key).await.unwrap());
 
-        let fd = tempfile::tempfile().unwrap();
-        let mut fd = File::from_std(fd);
-        fd.write_all(b"cache data").await.unwrap();
-        fd.flush().await.unwrap();
         state
-            .store(key.clone(), fd, CacheStoreReason::New)
+            .store(
+                key.clone(),
+                ByteView::from_slice(b"cache data"),
+                CacheStoreReason::New,
+            )
             .await
             .unwrap();
 

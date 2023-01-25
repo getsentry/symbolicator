@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use anyhow::Context;
 use futures::channel::oneshot;
 use futures::future::{BoxFuture, FutureExt, Shared, TryFutureExt};
 use parking_lot::Mutex;
@@ -161,7 +160,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
     /// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
-    async fn lookup_local_cache(
+    fn lookup_local_cache(
         &self,
         request: &T,
         key: &CacheKey,
@@ -191,33 +190,28 @@ impl<T: CacheItemRequest> Cacher<T> {
                 metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
                 return Err(CacheError::NotFound);
             }
-        }
 
-        // store things into the shared cache when:
-        // - we have a positive cache
-        // - that has the latest version (we don’t want to upload old versions)
-        // - we refreshed the local cache time, so we also refresh the shared cache time.
-        let needs_reupload = expiration.was_touched();
-        if entry.is_ok() && version == T::VERSIONS.current && needs_reupload {
-            if let Some(shared_cache) = self.shared_cache.get() {
-                let shared_cache_key = SharedCacheKey {
-                    name: self.config.name(),
-                    version: T::VERSIONS.current,
-                    local_key: key.clone(),
-                };
-                match fs::File::open(&item_path)
-                    .await
-                    .context("Local cache path not available for shared cache")
-                {
-                    Ok(fd) => {
-                        shared_cache.store(shared_cache_key, fd, CacheStoreReason::Refresh);
-                    }
-                    Err(err) => {
-                        sentry::capture_error(&*err);
-                    }
+            // store things into the shared cache when:
+            // - we have a positive cache
+            // - that has the latest version (we don’t want to upload old versions)
+            // - we refreshed the local cache time, so we also refresh the shared cache time.
+            let needs_reupload = expiration.was_touched();
+            if version == T::VERSIONS.current && needs_reupload {
+                if let Some(shared_cache) = self.shared_cache.get() {
+                    let shared_cache_key = SharedCacheKey {
+                        name: self.config.name(),
+                        version: T::VERSIONS.current,
+                        local_key: key.clone(),
+                    };
+                    shared_cache.store(
+                        shared_cache_key,
+                        byteview.clone(),
+                        CacheStoreReason::Refresh,
+                    );
                 }
             }
         }
+
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
         metric!(counter(&format!("caches.{name}.file.hit")) += 1);
@@ -245,10 +239,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         // lookup without going through the deduplication/channel creation logic. This creates a
         // small opportunity of invoking compute another time after a fresh cache has just been
         // computed. To avoid duplicated work in that case, we will check the cache here again.
-        if let Ok(item) = self
-            .lookup_local_cache(&request, &key, T::VERSIONS.current)
-            .await
-        {
+        if let Ok(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current) {
             return item;
         }
 
@@ -295,7 +286,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
-        let file = if let Some(cache_dir) = self.config.cache_dir() {
+        if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
             let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
@@ -330,20 +321,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                 cache_path.display()
             );
 
-            persist_tempfile(temp_file, cache_path).await?
-        } else {
-            temp_file.into_file()
+            persist_tempfile(temp_file, cache_path).await?;
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
-        if !shared_cache_hit && entry.is_ok() {
-            if let Some(shared_cache) = self.shared_cache.get() {
-                shared_cache.store(
-                    shared_cache_key,
-                    tokio::fs::File::from_std(file),
-                    CacheStoreReason::New,
-                );
+        if !shared_cache_hit {
+            if let Ok(byteview) = &entry {
+                if let Some(shared_cache) = self.shared_cache.get() {
+                    shared_cache.store(shared_cache_key, byteview.clone(), CacheStoreReason::New);
+                }
             }
         }
 
@@ -497,7 +484,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 std::iter::once(T::VERSIONS.current).chain(T::VERSIONS.fallbacks.iter().copied());
 
             for version in versions {
-                let item = match self.lookup_local_cache(&request, &key, version).await {
+                let item = match self.lookup_local_cache(&request, &key, version) {
                     Err(CacheError::NotFound) => continue,
                     Err(err) => return Err(err),
                     Ok(item) => item,
