@@ -75,10 +75,7 @@ impl CacheItemRequest for FetchFileRequest {
     type Item = Il2cppHandle;
 
     fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
+        CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
     /// Downloads a file, writing it to `path`.

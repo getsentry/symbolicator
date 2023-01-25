@@ -8,7 +8,6 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::fmt;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -175,11 +174,11 @@ impl GcsState {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
-            map.insert("key".to_string(), key.gcs_bucket_key().into());
+            map.insert("key".to_string(), key.relative_path().into());
             scope.set_context("GCS Shared Cache", Context::Other(map));
         });
         let token = self.get_token().await?;
-        let url = gcs::download_url(&self.config.bucket, key.gcs_bucket_key().as_ref())
+        let url = gcs::download_url(&self.config.bucket, key.relative_path().as_ref())
             .context("URL construction failed")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
@@ -190,10 +189,7 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     _ if status.is_success() => {
-                        tracing::trace!(
-                            "Success hitting shared_cache GCS {}",
-                            key.gcs_bucket_key()
-                        );
+                        tracing::trace!("Success hitting shared_cache GCS {}", key.relative_path());
                         let stream = response
                             .bytes_stream()
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -217,7 +213,7 @@ impl GcsState {
             Ok(Err(e)) => {
                 tracing::trace!(
                     "Error in shared_cache GCS response for {}",
-                    key.gcs_bucket_key()
+                    key.relative_path()
                 );
                 Err(e).context("Bad GCS response for shared_cache")?
             }
@@ -227,7 +223,7 @@ impl GcsState {
 
     async fn exists(&self, key: &SharedCacheKey) -> Result<bool, CacheError> {
         let token = self.get_token().await?;
-        let url = gcs::object_url(&self.config.bucket, key.gcs_bucket_key().as_ref())
+        let url = gcs::object_url(&self.config.bucket, &key.relative_path())
             .context("failed to build object url")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
@@ -276,7 +272,7 @@ impl GcsState {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
-            map.insert("key".to_string(), key.gcs_bucket_key().into());
+            map.insert("key".to_string(), key.relative_path().into());
             scope.set_context("GCS Shared Cache", Context::Other(map));
         });
         if reason == CacheStoreReason::Refresh {
@@ -308,7 +304,7 @@ impl GcsState {
             .context("failed to build url")?
             .extend(&[&self.config.bucket, "o"]);
         url.query_pairs_mut()
-            .append_pair("name", &key.gcs_bucket_key())
+            .append_pair("name", &key.relative_path())
             // Upload only if it's not already there
             .append_pair("ifGenerationMatch", "0");
 
@@ -328,10 +324,7 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     successful if successful.is_success() => {
-                        tracing::trace!(
-                            "Success hitting shared_cache GCS {}",
-                            key.gcs_bucket_key()
-                        );
+                        tracing::trace!("Success hitting shared_cache GCS {}", key.relative_path());
                         Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
@@ -347,7 +340,7 @@ impl GcsState {
             Ok(Err(err)) => {
                 tracing::trace!(
                     "Error in shared_cache GCS response for {}",
-                    key.gcs_bucket_key()
+                    key.relative_path()
                 );
                 Err(err).context("Bad GCS response for shared_cache")?
             }
@@ -458,29 +451,15 @@ pub struct SharedCacheKey {
 
 impl SharedCacheKey {
     /// The relative path of this cache key within a shared cache.
-    fn relative_path(&self) -> PathBuf {
+    fn relative_path(&self) -> String {
         // Note that this always pushes the version into the path, this is fine since we do
         // not need any backwards compatibility with existing caches for the shared cache.
-        let mut path = PathBuf::new();
-        path.push(self.name.to_string());
-        path.push(self.version.to_string());
-        path.push(self.local_key.relative_path());
-        path
-    }
-
-    /// The [`SharedCacheKey::relative_path`] as a GCS bucket key.
-    fn gcs_bucket_key(&self) -> String {
-        // All our paths should be UTF-8, we don't construct non-UTF-8 paths.
-        match self.relative_path().to_str() {
-            Some(s) => s.to_owned(),
-            None => {
-                tracing::error!(
-                    "Non UTF-8 path in SharedCacheKey: {}",
-                    self.relative_path().display()
-                );
-                self.relative_path().to_string_lossy().into_owned()
-            }
-        }
+        format!(
+            "{}/{}/{}",
+            self.name,
+            self.version,
+            self.local_key.relative_path()
+        )
     }
 }
 
@@ -647,10 +626,7 @@ impl SharedCacheService {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend.name().into());
             map.insert("cache".to_string(), key.name.as_ref().into());
-            map.insert(
-                "path".to_string(),
-                key.relative_path().to_string_lossy().into(),
-            );
+            map.insert("path".to_string(), key.relative_path().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
 
@@ -733,10 +709,7 @@ impl SharedCacheService {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
             map.insert("cache".to_string(), key.name.as_ref().into());
-            map.insert(
-                "path".to_string(),
-                key.relative_path().to_string_lossy().into(),
-            );
+            map.insert("path".to_string(), key.relative_path().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
         let res = match self.backend.as_ref() {
@@ -846,8 +819,6 @@ mod tests {
 
     use symbolicator_test::TestGcsCredentials;
 
-    use crate::types::Scope;
-
     use super::*;
 
     impl From<TestGcsCredentials> for GcsSharedCacheConfig {
@@ -882,8 +853,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
         let cache_path = dir.path().join(key.relative_path());
@@ -922,8 +892,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
 
@@ -956,8 +925,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Global,
+                cache_key: "global/some_item".to_string(),
             },
         };
         let cache_path = dir.path().join(key.relative_path());
@@ -996,8 +964,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1029,8 +996,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1055,8 +1021,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1096,8 +1061,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
@@ -1140,8 +1104,7 @@ mod tests {
             name: CacheName::Objects,
             version: 0,
             local_key: CacheKey {
-                cache_key: "some_item".to_string(),
-                scope: Scope::Scoped(Uuid::new_v4().to_string()),
+                cache_key: format!("{}/some_item", Uuid::new_v4()),
             },
         };
 
