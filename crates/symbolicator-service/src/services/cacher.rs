@@ -609,7 +609,7 @@ mod tests {
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
 
-        let request = TestCacheItem::new("some_cache_key");
+        let request = TestCacheItem::new("global/some_cache_key");
 
         let first_result = cacher.compute_memoized(request.clone()).await;
         assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
@@ -651,7 +651,7 @@ mod tests {
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
 
-        let request = TestCacheItem::new("some_cache_key");
+        let request = TestCacheItem::new("global/some_cache_key");
 
         let first_result = cacher.compute_memoized(request.clone()).await;
         assert_eq!(first_result, Err(CacheError::NotFound));
@@ -665,13 +665,12 @@ mod tests {
     async fn test_lazy_computation_limit() {
         test::setup();
 
-        let keys = &["1", "2", "3"];
+        let keys = &["global/1", "global/2", "global/3"];
 
         let cache_dir = test::tempdir().path().join("test");
         std::fs::create_dir_all(cache_dir.join("global")).unwrap();
         for key in keys {
-            let mut path = cache_dir.join("global");
-            path.push(key);
+            let path = cache_dir.join(key);
             std::fs::write(path, "some old cached contents").unwrap();
         }
 
