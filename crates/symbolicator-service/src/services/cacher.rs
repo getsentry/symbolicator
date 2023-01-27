@@ -319,6 +319,27 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
 
+        // We log quite a few metrics directly:
+        // - caches.X.access
+        // - caches.X.file.hit (emitted inside `lookup_local_cache`)
+        // - caches.X.file.miss
+        // - caches.X.file.write (emitted inside `compute`)
+        // - caches.X.file.fallback
+        // - services.shared_cache.fetch (tagged with `hit`)
+        // Plus some others:
+        // - caches.X.file.size
+        // - services.shared_cache.store
+        // - services.shared_cache.store.bytes
+        // From these we can infer other metrics:
+        // - computations (aka in-memory hit):
+        //   `file.hits + file.miss` which should be the same as `file.write` and `shared_cache.fetch`
+        //   depending on errors and shared cache usage.
+        // - ^ Well actually, eager `computations` should be `file.hits + file.miss - file.fallback`,
+        //   as cache fallback does trigger a background computation.
+        // - in-memory miss: access - computations
+        // FIXME: is it better to use a different metrics key or tags for the cache name?
+        metric!(counter(&format!("caches.{name}.access")) += 1);
+
         let compute = Box::pin(async {
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
