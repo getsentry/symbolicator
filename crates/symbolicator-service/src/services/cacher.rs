@@ -535,10 +535,12 @@ mod tests {
         )
         .unwrap();
         let cacher = Cacher::new(cache, Default::default());
-
-        let fut = cacher.compute_memoized(TestCacheItem::new("foo"));
+        let key = CacheKey {
+            cache_key: "foo".into(),
+        };
+        let fut = cacher.compute_memoized(TestCacheItem::new(), key);
         let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 800 && size < 850);
+        assert!(size > 750 && size < 800);
     }
 
     /// This test asserts that the cache is served from outdated cache files, and that a computation
