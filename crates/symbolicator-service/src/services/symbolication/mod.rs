@@ -38,6 +38,7 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
         },
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
+        debug_checksum: object_info.debug_checksum.clone(),
         object_type: object_info.ty,
     }
 }

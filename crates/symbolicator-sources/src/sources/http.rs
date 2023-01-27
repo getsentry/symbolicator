@@ -30,6 +30,8 @@ pub struct HttpRemoteFile {
     /// The underlying [`HttpSourceConfig`].
     pub source: Arc<HttpSourceConfig>,
     pub(crate) location: SourceLocation,
+    /// Additional HTTP headers to send with a symbol request.
+    pub headers: BTreeMap<String, String>,
 }
 
 impl From<HttpRemoteFile> for RemoteFile {
@@ -41,7 +43,11 @@ impl From<HttpRemoteFile> for RemoteFile {
 impl HttpRemoteFile {
     /// Creates a new [`HttpRemoteFile`].
     pub fn new(source: Arc<HttpSourceConfig>, location: SourceLocation) -> Self {
-        Self { source, location }
+        Self {
+            source,
+            location,
+            headers: Default::default(),
+        }
     }
 
     pub(crate) fn uri(&self) -> RemoteFileUri {

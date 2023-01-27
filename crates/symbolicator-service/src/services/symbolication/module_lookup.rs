@@ -525,9 +525,9 @@ mod tests {
             debug_id: None,
             code_file: None,
             debug_file: None,
+            debug_checksum: None,
             image_addr: HexValue(42),
             image_size: Some(0),
-            checksum: None,
         });
 
         let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));

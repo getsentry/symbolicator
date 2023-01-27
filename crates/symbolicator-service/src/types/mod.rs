@@ -249,6 +249,10 @@ pub struct RawObjectInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_file: Option<String>,
 
+    /// Checksum of the file's contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug_checksum: Option<String>,
+
     /// Absolute address at which the image was mounted into virtual memory.
     ///
     /// We do allow the `image_addr` to be skipped if it is zero. This is because systems like WASM
@@ -262,10 +266,6 @@ pub struct RawObjectInfo {
     /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
-
-    /// Checksum of the file's contents.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checksum: Option<String>,
 }
 
 /// Information on the symbolication status of this frame.
