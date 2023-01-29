@@ -49,4 +49,8 @@ modules:
         location: "http://localhost:<port>/symbols/bd/a18fd85d4a4eb893022d6bfad846b1.src.zip"
         download:
           status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/demo.wasm/BDA18FD85D4A4EB893022D6BFAD846B10/demo.wasm"
+        download:
+          status: notfound
 
