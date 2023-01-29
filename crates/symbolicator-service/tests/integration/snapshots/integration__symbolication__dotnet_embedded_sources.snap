@@ -14,6 +14,12 @@ stacktraces:
         filename: Program.cs
         abs_path: "C:\\dev\\sentry-dotnet\\samples\\Sentry.Samples.Console.Basic\\Program.cs"
         lineno: 13
+        pre_context:
+          - "    o.Debug = true;"
+          - "});"
+          - ""
+          - // The following unhandled exception will be captured and sent to Sentry.
+        context_line: "throw new Exception(\"test\");"
 modules:
   - debug_status: found
     features:
