@@ -185,6 +185,7 @@ impl SymbolicatorSymbolProvider {
                     debug_file: module
                         .debug_file()
                         .map(|debug_file| debug_file.into_owned()),
+                    debug_checksum: None,
                     object_type: self.object_type,
                 };
 
@@ -260,12 +261,12 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
         code_file,
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
+        debug_checksum: None,
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
             0 => None,
             size => Some(size),
         },
-        checksum: None,
     })
 }
 

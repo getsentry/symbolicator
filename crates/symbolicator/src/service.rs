@@ -598,7 +598,7 @@ mod tests {
                 image_size: Some(4096),
                 code_file: None,
                 debug_file: None,
-                checksum: None,
+                debug_checksum: None,
             })],
         }
     }

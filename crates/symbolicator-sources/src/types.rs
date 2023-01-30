@@ -111,6 +111,9 @@ pub struct ObjectId {
     /// Path to the debug file.
     pub debug_file: Option<String>,
 
+    /// Checksum of the debug file's contents.
+    pub debug_checksum: Option<String>,
+
     /// Hint to what we believe the file type should be.
     pub object_type: ObjectType,
 }

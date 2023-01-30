@@ -39,14 +39,20 @@ impl HttpDownloader {
         tracing::debug!("Fetching debug file from {}", download_url);
         let mut builder = self.client.get(download_url.clone());
 
-        for (key, value) in file_source.source.headers.iter() {
+        let headers = file_source
+            .source
+            .headers
+            .iter()
+            .chain(file_source.headers.iter());
+        for (key, value) in headers {
             if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
                 builder = builder.header(key, value.as_str());
             }
         }
-        let source = RemoteFile::from(file_source);
+
         let request = builder.header(header::USER_AGENT, USER_AGENT);
 
+        let source = RemoteFile::from(file_source);
         super::download_reqwest(
             &source,
             request,

@@ -484,6 +484,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                debug_checksum: None,
                 object_type: ObjectType::Elf,
             },
         ))
@@ -495,6 +496,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                debug_checksum: None,
                 object_type: ObjectType::Elf,
             },
         ))
@@ -507,6 +509,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                debug_checksum: None,
                 object_type: ObjectType::Macho,
             },
         ))
@@ -518,6 +521,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                debug_checksum: None,
                 object_type: ObjectType::Macho,
             },
         ))
@@ -529,6 +533,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: None,
                 debug_id: Some(DebugId::from_breakpad(signature).ok()?),
                 debug_file: Some(leading_fn.into()),
+                debug_checksum: None,
                 object_type: ObjectType::Pe,
             },
         ))
@@ -540,6 +545,7 @@ pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)
                 code_file: Some(leading_fn.into()),
                 debug_id: None,
                 debug_file: None,
+                debug_checksum: None,
                 object_type: ObjectType::Pe,
             },
         ))
@@ -583,6 +589,7 @@ mod tests {
             code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
             debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
             debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+                debug_checksum: None,
             object_type: ObjectType::Pe,
         };
         static ref MACHO_OBJECT_ID: ObjectId = ObjectId {
@@ -590,6 +597,7 @@ mod tests {
             code_file: Some("/Users/travis/build/getsentry/breakpad-tools/macos/build/./crash".into()),
             debug_id: Some("67e9247c-814e-392b-a027-dbde6748fcbf".parse().unwrap()),
             debug_file: Some("crash".into()),
+                debug_checksum: None,
             object_type: ObjectType::Macho,
         };
         static ref ELF_OBJECT_ID: ObjectId = ObjectId {
@@ -597,6 +605,7 @@ mod tests {
             code_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
             debug_id: Some("e45db8df-af2d-09fd-640c-8fe377d572de".parse().unwrap()),
             debug_file: Some("/lib/x86_64-linux-gnu/libm-2.23.so".into()),
+                debug_checksum: None,
             object_type: ObjectType::Elf,
         };
         static ref WASM_OBJECT_ID: ObjectId = ObjectId {
@@ -604,6 +613,7 @@ mod tests {
             code_file: None,
             debug_id: Some("67e9247c-814e-392b-a027-dbde6748fcbf".parse().unwrap()),
             debug_file: Some("file://foo.invalid/demo.wasm".into()),
+                debug_checksum: None,
             object_type: ObjectType::Wasm,
         };
     }

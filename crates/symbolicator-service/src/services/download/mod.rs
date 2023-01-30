@@ -240,7 +240,26 @@ impl DownloadService {
                         }
                     }
                 }
-                SourceConfig::Http(cfg) => check_source!(cfg => HttpRemoteFile),
+                SourceConfig::Http(cfg) => {
+                    let mut iter =
+                        SourceLocationIter::new(&cfg.files, filetypes, object_id).peekable();
+                    if iter.peek().is_none() {
+                        // TODO: create a special "no file on source" `RemoteFile`?
+                    } else {
+                        remote_files.extend(iter.map(|loc| {
+                            let mut file = HttpRemoteFile::new(cfg.clone(), loc);
+
+                            // This is a special case for Portable PDB files that, when requested
+                            // from the NuGet symbol server need a special `SymbolChecksum` header.
+                            if let Some(checksum) = object_id.debug_checksum.as_ref() {
+                                file.headers
+                                    .insert("SymbolChecksum".into(), checksum.into());
+                            }
+
+                            file.into()
+                        }))
+                    }
+                }
                 SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
                 SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
                 SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
@@ -542,6 +561,7 @@ mod tests {
             code_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe".into()),
             debug_id: Some("3249d99d-0c40-4931-8610-f4e4fb0b6936-1".parse().unwrap()),
             debug_file: Some("C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb".into()),
+            debug_checksum: None,
             object_type: ObjectType::Pe,
         };
 

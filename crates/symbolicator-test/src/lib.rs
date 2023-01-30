@@ -124,6 +124,20 @@ pub fn microsoft_symsrv() -> SourceConfig {
     }))
 }
 
+pub fn nuget_source() -> SourceConfig {
+    SourceConfig::Http(Arc::new(HttpSourceConfig {
+        id: SourceId::new("nuget"),
+        url: "https://symbols.nuget.org/download/symbols/"
+            .parse()
+            .unwrap(),
+        headers: Default::default(),
+        files: source_config(
+            symbolicator_sources::DirectoryLayoutType::Symstore,
+            vec![FileType::Pe, FileType::Pdb, FileType::PortablePdb],
+        ),
+    }))
+}
+
 /// Gives a [`CommonSourceConfig`] with the given layout type and file types filter.
 pub fn source_config(ty: DirectoryLayoutType, filetypes: Vec<FileType>) -> CommonSourceConfig {
     CommonSourceConfig {
