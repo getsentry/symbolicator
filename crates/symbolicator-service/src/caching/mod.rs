@@ -83,7 +83,20 @@
 //!
 //! ## Cache Fallback and [`CacheVersions`]
 //!
-//! TODO
+//! Each type of cache defines both a current cache version and a list of fallback versions. Different
+//! versions correspond to separate directories on the file system. When an item is looked up in a file
+//! system cache, the current version will be tried first, followed by each fallback version in order. Then:
+//!
+//! 1. If an entry for the current version was found, we just use it.
+//! 2. If an entry for a fallback version was found, we use it and schedule a redownload/recomputation for the current version.
+//! 3. If no entry was found at all, we compute the item and store it under the current version.
+//!
+//! This procedure ensures that when we update a cache's format to a new version, we don't immediately throw away
+//! all old cache entries if they're still usable, but rather migrate to the new version over time.
+//!
+//! The number of simultaneous redownloads/recomputations of outdated cache items can be configured via the options
+//! `max_lazy_redownloads` (default: 50) for "downloaded" caches and `max_lazy_recomputations` (default: 20) for
+//! "derived" caches, respectively.
 //!
 //! ## Using the Cache / Creating a cached item
 //!
