@@ -13,7 +13,7 @@
 //!   (deduplicating concurrent accesses).
 //! - A file-system layer that persists the results of downloads and computations to the file system,
 //!   and also persists errors happening during those.
-//! - A shared-cache layer which is being backed by a shared GCS bucket, to more evenly distribute
+//! - A shared cache layer which is backed by a shared GCS bucket, to more evenly distribute
 //!   the load to multiple Symbolicator instances, and to help the fresh startup path without any
 //!   file-system caches available. The shared-cache layer does not persist errors, but only
 //!   "immutable" cache results.
@@ -21,9 +21,10 @@
 //! A cache request goes through the following steps:
 //! - First, it goes through the in-memory layer.
 //! - On miss, it will try to load the cache item from the file-system.
-//! - On miss, it will try the shared-cache next.
+//! - On miss, it will try the shared cache next.
 //! - On miss, it will finally generate a fresh item, by downloading or doing a computation,
-//!   possibly requesting another cached item.
+//!   possibly requesting another cached item. The freshly computed item will also be uploaded
+//!   to the shared cache.
 //!
 //! ### Metrics
 //!
@@ -35,7 +36,7 @@
 //! configuration for the in-memory cache may be added in the future.
 //!
 //! The rest of the caching infrastructure is gated by the [`Config::cache_dir`] option. If no
-//! `cache_dir` is configured, a request is computed directly after the in-memory cache.
+//! `cache_dir` is configured, requests are computed directly after the in-memory cache.
 //!
 //! [`Config::caches`] is responsible for the configuration of the file-system caches.
 //! It is divided into the categories "downloaded" and "derived". Both categories have settings
@@ -44,7 +45,7 @@
 //! See the section on [`CacheVersions`] for more details.
 //!
 //! The `retry_X_after` options specify a time-to-live after which the cache expires and will be
-//! re-computed. The `max_unused_for` option is rather a time-to-idle time, after which the item
+//! re-computed. The `max_unused_for` option is rather a time-to-idle value, after which the item
 //! will be evicted. File-system `mtime` is used to check for these. Cache items that are in use
 //! will have their `mtime` updated once an hour to keep them from expiring.
 //!
@@ -70,7 +71,7 @@
 //! [`CacheError::NotFound`].
 //!
 //! Other than that, [`CacheError::Malformed`] signals a malformed source file, or a problem on
-//! our end processing that file. This variant is being logged internally to be able to fix these
+//! our end processing that file. This variant is logged internally to be able to fix these
 //! problems which are indeed fixable.
 //!
 //! Lastly, the [`CacheError::InternalError`] is a catch-all for unexpected errors that might happen.
