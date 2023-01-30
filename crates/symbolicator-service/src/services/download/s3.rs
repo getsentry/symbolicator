@@ -18,7 +18,7 @@ use symbolicator_sources::{
     AwsCredentialsProvider, RemoteFile, S3Region, S3RemoteFile, S3SourceKey,
 };
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 
 use super::content_length_timeout;
 

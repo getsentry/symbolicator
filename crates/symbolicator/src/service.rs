@@ -24,11 +24,11 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolicator_service::cache::CacheEntry;
 use tempfile::TempPath;
 use thiserror::Error;
 use uuid::Uuid;
 
+use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;

@@ -1,8 +1,8 @@
-//! A global cache to be shared between different symbolicator instances.
+//! A global cache to be shared between different Symbolicator instances.
 //!
-//! The goal of this cache is to have a faster warm-up time when starting a new symbolicator
+//! The goal of this cache is to have a faster warm-up time when starting a new Symbolicator
 //! instance by reducing the cost of populating its cache via an additional caching layer that
-//! lives closer to symbolicator. Expensive computations related to the computation of derived
+//! lives closer to Symbolicator. Expensive computations related to the computation of derived
 //! caches may also be saved via this shared cache.
 
 use std::collections::BTreeMap;
@@ -25,15 +25,16 @@ use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
-use crate::cache::{
-    CacheName, FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheBackendConfig,
-    SharedCacheConfig,
-};
 use crate::services::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs::{self, GcsError};
 
-use super::cacher::CacheKey;
+use super::{CacheKey, CacheName};
+
+pub mod config;
+
+pub use config::SharedCacheConfig;
+use config::{FilesystemSharedCacheConfig, GcsSharedCacheConfig, SharedCacheBackendConfig};
 
 // TODO: get timeouts from global config?
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);

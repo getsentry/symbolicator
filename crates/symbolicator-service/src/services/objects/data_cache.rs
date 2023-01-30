@@ -4,7 +4,7 @@
 //! implementing the [`CacheItemRequest`] trait for a [`FetchFileDataRequest`] which can be
 //! used with a [`Cacher`] to make a filesystem based cache.
 //!
-//! [`Cacher`]: crate::services::cacher::Cacher
+//! [`Cacher`]: crate::caching::Cacher
 
 use std::cmp;
 use std::fmt;
@@ -21,8 +21,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
-use crate::cache::{CacheEntry, CacheError, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey};
+use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, ExpirationTime};
 use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
@@ -254,7 +253,8 @@ mod tests {
 
     use symbolicator_sources::FileType;
 
-    use crate::cache::{Cache, CacheError, CacheName};
+    use super::*;
+    use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
     use crate::services::download::DownloadService;
     use crate::services::objects::data_cache::Scope;

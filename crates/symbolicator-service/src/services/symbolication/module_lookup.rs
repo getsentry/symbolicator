@@ -7,7 +7,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
 use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{

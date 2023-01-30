@@ -66,7 +66,7 @@ async fn test_download_errors() {
                 ObjectFileStatus::Timeout,
                 ObjectUseInfo::None,
                 ObjectDownloadInfo::Error {
-                    details: "download timed out".into()
+                    details: "download timed out after 200ms".into()
                 }
             )
         );

@@ -14,14 +14,15 @@ use symbolic::il2cpp::LineMapping;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
 use super::fetch_file;
-use super::shared_cache::SharedCacheRef;
 
 /// Handle to a valid [`LineMapping`].
 ///

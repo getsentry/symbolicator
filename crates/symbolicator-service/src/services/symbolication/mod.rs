@@ -7,7 +7,7 @@ use symbolic::symcache::SymCache;
 use symbolicator_sources::ObjectId;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
-use crate::cache::CacheError;
+use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
@@ -97,7 +97,7 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    diagnostics_cache: crate::cache::Cache,
+    diagnostics_cache: Cache,
 }
 
 impl SymbolicationActor {
@@ -106,7 +106,7 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         ppdb_caches: PortablePdbCacheActor,
-        diagnostics_cache: crate::cache::Cache,
+        diagnostics_cache: Cache,
     ) -> Self {
         SymbolicationActor {
             objects,

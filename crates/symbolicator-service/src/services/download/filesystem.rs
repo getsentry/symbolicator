@@ -9,7 +9,7 @@ use tokio::fs;
 
 use symbolicator_sources::FilesystemRemoteFile;
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 
 /// Downloader implementation that supports the filesystem source.
 #[derive(Debug)]

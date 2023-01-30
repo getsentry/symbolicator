@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::extract;
 use axum::http::{Method, Request, Response, StatusCode};
 
-use symbolicator_service::cache::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheEntry, CacheError};
 use symbolicator_sources::parse_symstore_path;
 
 use crate::service::{FindObject, ObjectHandle, ObjectPurpose, RequestService, Scope};

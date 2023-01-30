@@ -4,7 +4,7 @@ pub mod macros;
 #[macro_use]
 pub mod metrics;
 
-pub mod cache;
+pub mod caching;
 pub mod config;
 pub mod services;
 pub mod types;

@@ -11,15 +11,16 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use super::cacher::{CacheItemRequest, CacheVersions, Cacher};
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
-use super::shared_cache::SharedCacheRef;
 
 /// The supported ppdb_cache versions.
 ///

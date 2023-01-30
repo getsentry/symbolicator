@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::services::objects::{FindResult, ObjectMetaHandle};
 use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
 

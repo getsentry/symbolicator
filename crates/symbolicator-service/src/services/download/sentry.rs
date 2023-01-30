@@ -15,7 +15,7 @@ use symbolicator_sources::{
 };
 
 use super::{FileType, USER_AGENT};
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::config::Config;
 use crate::utils::futures::CancelOnDrop;
 

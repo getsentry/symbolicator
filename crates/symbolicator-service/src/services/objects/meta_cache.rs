@@ -15,8 +15,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
 use tempfile::NamedTempFile;
 
-use crate::cache::{CacheEntry, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
+use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher, ExpirationTime};
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;

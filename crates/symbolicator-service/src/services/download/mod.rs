@@ -23,7 +23,7 @@ use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;

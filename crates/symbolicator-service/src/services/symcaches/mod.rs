@@ -10,9 +10,11 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::services::bitcode::BitcodeService;
-use crate::services::cacher::{CacheItemRequest, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -24,7 +26,6 @@ use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::il2cpp::Il2cppService;
-use super::shared_cache::SharedCacheRef;
 
 mod markers;
 
@@ -345,10 +346,9 @@ mod tests {
     use symbolic::common::{DebugId, Uuid};
 
     use super::*;
-    use crate::cache::Caches;
+    use crate::caching::Caches;
     use crate::config::{CacheConfigs, Config};
     use crate::services::bitcode::BitcodeService;
-    use crate::services::shared_cache::SharedCacheRef;
     use crate::services::DownloadService;
     use crate::test::{self, fixture};
     use symbolicator_sources::{

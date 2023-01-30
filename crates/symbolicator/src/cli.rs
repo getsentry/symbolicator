@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use structopt::StructOpt;
 
-use symbolicator_service::cache;
+use symbolicator_service::caching;
 use symbolicator_service::metrics;
 
 use crate::config::Config;
@@ -124,7 +124,7 @@ pub fn execute() -> Result<()> {
 
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
-        Command::Cleanup => cache::cleanup(config).context("failed to clean up caches")?,
+        Command::Cleanup => caching::cleanup(config).context("failed to clean up caches")?,
     }
 
     Ok(())
