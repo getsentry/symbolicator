@@ -4,7 +4,7 @@
 //! implementing the [`CacheItemRequest`] trait for a [`FetchFileDataRequest`] which can be
 //! used with a [`Cacher`] to make a filesystem based cache.
 //!
-//! [`Cacher`]: crate::services::cacher::Cacher
+//! [`Cacher`]: crate::caching::Cacher
 
 use std::cmp;
 use std::fmt;

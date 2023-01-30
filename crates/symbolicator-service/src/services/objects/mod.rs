@@ -25,7 +25,7 @@ mod meta_cache;
 /// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
 /// along some errors, so we use this wrapper.
 ///
-/// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
+/// [`CacheItemRequest`]: crate::caching::CacheItemRequest
 /// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Clone, Debug)]
 pub struct CacheLookupError {

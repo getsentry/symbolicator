@@ -20,11 +20,12 @@
 //!
 //! A cache request goes through the following steps:
 //! - First, it goes through the in-memory layer.
-//! - On miss, it will try to load the cache item from the file-system.
-//! - On miss, it will try the shared cache next.
+//! - On miss, it will try to load the cache item from the file-system, if enabled
+//! - On miss, it will try the shared cache next, if enabled.
 //! - On miss, it will finally generate a fresh item, by downloading or doing a computation,
-//!   possibly requesting another cached item. The freshly computed item will also be uploaded
-//!   to the shared cache.
+//!   possibly requesting another cached item.
+//! - The freshly computed item will be stored on the file-system and uploaded to the shared cache
+//!   in case both caches are enabled.
 //!
 //! ### Metrics
 //!
@@ -54,8 +55,11 @@
 //! The "derived" category will keep entries alive for up to 7 days, and will also retry "missing"
 //! entries every hour, and "malformed" entries every 24 hours.
 //!
-//! A "successful" entry is considered immutable (with one exception) and it will be reused
-//! indefinitely as long as it is being actively used.
+//! A "successful" entry is considered immutable and it will be reused indefinitely as long as it
+//! is being actively used.
+//! FIXME: One current exception to this is the `should_load` functionality that is used in combination
+//! with SymCache entries that are "mutable" depending on availability of secondary mapping files.
+//! This is subject to change: <https://github.com/getsentry/symbolicator/issues/983>
 //!
 //! The [`SharedCacheConfig`] is optional, and no shared cache will be used when it is absent. The
 //! configuration is done by providing a GCS bucket and `service_account_path`. A file-system based
@@ -124,9 +128,9 @@ pub use cache_error::{CacheEntry, CacheError};
 pub use cache_key::CacheKey;
 pub use cleanup::cleanup;
 pub use config::CacheName;
-pub use fs::{Cache, ExpirationTime};
+pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
 pub use memory::{CacheItemRequest, CacheVersions, Cacher};
-pub use shared_cache::{SharedCacheConfig, SharedCacheRef, SharedCacheService};
+pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
 
 pub struct Caches {
     /// Caches for object files, used by [`crate::services::objects::ObjectsActor`].

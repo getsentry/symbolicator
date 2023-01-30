@@ -22,7 +22,7 @@ const TOUCH_EVERY: Duration = Duration::from_secs(3600);
 
 /// Common cache configuration.
 ///
-/// Many parts of symbolicator use a cache to save having to re-download data or reprocess
+/// Many parts of Symbolicator use a cache to save having to re-download data or reprocess
 /// downloaded data.  All caches behave similarly and their behaviour is determined by this
 /// struct.
 #[derive(Debug, Clone)]
