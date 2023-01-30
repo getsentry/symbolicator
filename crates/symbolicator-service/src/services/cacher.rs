@@ -1,10 +1,12 @@
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::collections::BTreeMap;
+use std::io::{self, Error, ErrorKind};
+use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
 
-use futures::future::BoxFuture;
+use futures::channel::oneshot;
+use futures::future::{BoxFuture, Shared};
+use futures::{FutureExt, TryFutureExt};
 use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -16,7 +18,8 @@ use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
 use crate::services::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
+type ComputationChannel<T> = Shared<oneshot::Receiver<CacheEntry<T>>>;
+type ComputationMap<T> = Arc<Mutex<BTreeMap<CacheKey, ComputationChannel<T>>>>;
 
 /// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
 /// it:
@@ -33,25 +36,19 @@ type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 
-    /// An in-memory Cache for some items which also does request-coalescing when requesting items.
-    cache: InMemoryCache<T::Item>,
-
-    /// A [`HashSet`] of currently running cache refreshes.
-    refreshes: Arc<Mutex<HashSet<CacheKey>>>,
+    /// Used for deduplicating cache lookups.
+    current_computations: ComputationMap<T::Item>,
 
     /// A service used to communicate with the shared cache.
     shared_cache: SharedCacheRef,
 }
 
-// FIXME(swatinem): This is currently ~216 bytes that we copy around when spawning computations.
-// The different cache actors have this behind an `Arc` already, maybe we should move that internally.
 impl<T: CacheItemRequest> Clone for Cacher<T> {
     fn clone(&self) -> Self {
         // https://github.com/rust-lang/rust/issues/26925
         Cacher {
             config: self.config.clone(),
-            cache: self.cache.clone(),
-            refreshes: Arc::clone(&self.refreshes),
+            current_computations: self.current_computations.clone(),
             shared_cache: Arc::clone(&self.shared_cache),
         }
     }
@@ -59,18 +56,10 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 
 impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
-        // TODO: eventually hook up configuration to this
-        // The capacity(0) and ttl(0) make sure we are not (yet) reusing in-memory caches, except
-        // for request coalescing right now.
-        let cache = InMemoryCache::builder()
-            .max_capacity(0)
-            .time_to_live(Duration::ZERO)
-            .build();
         Cacher {
             config,
-            cache,
-            refreshes: Default::default(),
             shared_cache,
+            current_computations: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
@@ -131,10 +120,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     fn lookup_local_cache(
         &self,
         request: &T,
-        cache_dir: &Path,
         key: &CacheKey,
         version: u32,
     ) -> CacheEntry<CacheEntry<T::Item>> {
+        let Some(cache_dir) = self.config.cache_dir() else {
+            return Err(CacheError::NotFound);
+        };
         let name = self.config.name();
         let item_path = key.cache_path(cache_dir, version);
         tracing::trace!("Trying {} cache at path {}", name, item_path.display());
@@ -200,7 +191,15 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+    async fn compute(self, request: T, key: CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+        // We do another cache lookup here. `compute_memoized` has a fast-path that does a cache
+        // lookup without going through the deduplication/channel creation logic. This creates a
+        // small opportunity of invoking compute another time after a fresh cache has just been
+        // computed. To avoid duplicated work in that case, we will check the cache here again.
+        if let Ok(item) = self.lookup_local_cache(&request, &key, T::VERSIONS.current) {
+            return item;
+        }
+
         let mut temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
             name: self.config.name(),
@@ -304,6 +303,122 @@ impl<T: CacheItemRequest> Cacher<T> {
         // sentry::capture_error(&*err);
     }
 
+    /// Creates a shareable channel that computes an item.
+    ///
+    /// In case the `is_refresh` flag is set, the computation request will count towards the configured
+    /// `max_lazy_refreshes`, and will return immediately with an error if the threshold was reached.
+    fn create_channel<F>(
+        &self,
+        key: CacheKey,
+        computation: F,
+        is_refresh: bool,
+    ) -> ComputationChannel<T::Item>
+    where
+        F: std::future::Future<Output = CacheEntry<T::Item>> + Send + 'static,
+    {
+        let (sender, receiver) = oneshot::channel();
+
+        let max_lazy_refreshes = self.config.max_lazy_refreshes();
+        let current_computations = self.current_computations.clone();
+        let remove_computation_token = CallOnDrop::new(move || {
+            if is_refresh {
+                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+            }
+            current_computations.lock().remove(&key);
+        });
+
+        // Run the computation and wrap the result in Arcs to make them clonable.
+        let channel = async move {
+            // only start an independent transaction if this is a "background" task,
+            // otherwise it will not "outlive" its parent span, so attach it to the parent transaction.
+            let transaction = if is_refresh {
+                let span = sentry::configure_scope(|scope| scope.get_span());
+                let ctx = sentry::TransactionContext::continue_from_span(
+                    "Lazy Cache Computation",
+                    "spawn_computation",
+                    span,
+                );
+                let transaction = sentry::start_transaction(ctx);
+                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+                Some(transaction)
+            } else {
+                None
+            };
+            let result = computation.await;
+            // Drop the token first to evict from the map.  This ensures that callers either
+            // get a channel that will receive data, or they create a new channel.
+            drop(remove_computation_token);
+            if let Some(transaction) = transaction {
+                transaction.finish();
+            }
+            sender.send(result).ok();
+        }
+        .bind_hub(Hub::new_from_top(Hub::current()));
+
+        // These computations are spawned on the current runtime, which in all cases is the CPU-pool.
+        tokio::spawn(channel);
+
+        receiver.shared()
+    }
+
+    /// Spawns the computation as a separate task.
+    ///
+    /// This does deduplication, by keeping track of the running computations based on their [`CacheKey`].
+    ///
+    /// NOTE: This function itself is *not* `async`, because it should eagerly spawn the computation
+    /// on an executor, even if you don’t explicitly `await` its results.
+    fn spawn_computation(
+        &self,
+        request: T,
+        cache_key: CacheKey,
+        is_refresh: bool,
+    ) -> BoxFuture<'static, CacheEntry<T::Item>> {
+        let name = self.config.name();
+
+        let channel = {
+            let mut current_computations = self.current_computations.lock();
+            if let Some(channel) = current_computations.get(&cache_key) {
+                // A concurrent cache lookup was deduplicated.
+                metric!(counter(&format!("caches.{name}.channel.hit")) += 1);
+                channel.clone()
+            } else {
+                // A concurrent cache lookup is considered new. This does not imply a cache miss.
+                metric!(counter(&format!("caches.{name}.channel.miss")) += 1);
+
+                // We count down towards zero, and if we reach or surpass it, we will short circuit here.
+                // Doing the short-circuiting here means we don't create a channel at all, and don't
+                // put it into `current_computations`.
+                let max_lazy_refreshes = self.config.max_lazy_refreshes();
+                if is_refresh && max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
+                    max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+
+                    metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
+                    // This error is purely here to satisfy the return type, it should not show
+                    // up anywhere, as lazy computation will not unwrap the error.
+                    let result = Err(Error::new(
+                        ErrorKind::Other,
+                        "maximum number of lazy recomputations reached; aborting cache computation",
+                    )
+                    .into());
+                    return Box::pin(async { result });
+                }
+
+                let computation = self.clone().compute(request, cache_key.clone(), is_refresh);
+                let channel = self.create_channel(cache_key.clone(), computation, is_refresh);
+                let evicted = current_computations.insert(cache_key, channel.clone());
+                debug_assert!(evicted.is_none());
+                channel
+            }
+        };
+
+        let future = channel.unwrap_or_else(move |_cancelled_error| {
+            let message = format!("{name} computation channel dropped");
+            Err(std::io::Error::new(std::io::ErrorKind::Interrupted, message).into())
+        });
+
+        Box::pin(future)
+    }
+
     /// Computes an item by loading from or populating the cache.
     ///
     /// The actual computation is deduplicated between concurrent requests. Finally, the result is
@@ -319,131 +434,52 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
 
-        // We log quite a few metrics directly:
-        // - caches.X.access
-        // - caches.X.file.hit (emitted inside `lookup_local_cache`)
-        // - caches.X.file.miss
-        // - caches.X.file.write (emitted inside `compute`)
-        // - caches.X.file.fallback
-        // - services.shared_cache.fetch (tagged with `hit`)
-        // Plus some others:
-        // - caches.X.file.size
-        // - services.shared_cache.store
-        // - services.shared_cache.store.bytes
-        // From these we can infer other metrics:
-        // - computations (aka in-memory hit):
-        //   `file.hits + file.miss` which should be the same as `file.write` and `shared_cache.fetch`
-        //   depending on errors and shared cache usage.
-        // - ^ Well actually, eager `computations` should be `file.hits + file.miss - file.fallback`,
-        //   as cache fallback does trigger a background computation.
-        // - in-memory miss: access - computations
-        // FIXME: is it better to use a different metrics key or tags for the cache name?
-        metric!(counter(&format!("caches.{name}.access")) += 1);
+        // cache_path is None when caching is disabled.
+        if let Some(cache_dir) = self.config.cache_dir() {
+            let versions =
+                std::iter::once(T::VERSIONS.current).chain(T::VERSIONS.fallbacks.iter().copied());
 
-        let compute = Box::pin(async {
-            // cache_path is None when caching is disabled.
-            if let Some(cache_dir) = self.config.cache_dir() {
-                let versions = std::iter::once(T::VERSIONS.current)
-                    .chain(T::VERSIONS.fallbacks.iter().copied());
+            for version in versions {
+                let item = match self.lookup_local_cache(&request, &cache_key, version) {
+                    Err(CacheError::NotFound) => continue,
+                    Err(err) => return Err(err),
+                    Ok(item) => item,
+                };
 
-                for version in versions {
-                    let item =
-                        match self.lookup_local_cache(&request, cache_dir, &cache_key, version) {
-                            Err(CacheError::NotFound) => continue,
-                            Err(err) => return Err(err),
-                            Ok(item) => item,
-                        };
-
-                    if version != T::VERSIONS.current {
-                        // we have found an outdated cache that we will use right away,
-                        // and we will kick off a recomputation for the `current` cache version
-                        // in a deduplicated background task, which we will not await
-                        metric!(
-                            counter(&format!("caches.{name}.file.fallback")) += 1,
-                            "version" => &version.to_string(),
-                        );
-                        self.spawn_refresh(cache_key.clone(), request);
-                    }
-
-                    return item;
+                if version != T::VERSIONS.current {
+                    // we have found an outdated cache that we will use right away,
+                    // and we will kick off a recomputation for the `current` cache version
+                    // in a deduplicated background task, which we will not await
+                    tracing::trace!(
+                        "Spawning deduplicated {} computation for path {:?}",
+                        name,
+                        cache_key
+                            .cache_path(cache_dir, T::VERSIONS.current)
+                            .display()
+                    );
+                    metric!(
+                        counter(&format!("caches.{name}.file.fallback")) += 1,
+                        "version" => &version.to_string(),
+                    );
+                    let _not_awaiting_future = self.spawn_computation(request, cache_key, true);
                 }
+
+                return item;
             }
-
-            // A file was not found. If this spikes, it's possible that the filesystem cache
-            // just got pruned.
-            metric!(counter(&format!("caches.{name}.file.miss")) += 1);
-
-            self.compute(request, &cache_key, false).await
-        });
-
-        self.cache.get_with_by_ref(&cache_key, compute).await
-    }
-
-    fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
-        let Some(cache_dir) = self.config.cache_dir() else { return };
-        let name = self.config.name();
-
-        let mut refreshes = self.refreshes.lock();
-        if refreshes.contains(&cache_key) {
-            return;
         }
 
-        // We count down towards zero, and if we reach or surpass it, we will stop here.
-        let max_lazy_refreshes = self.config.max_lazy_refreshes();
-        if max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+        // A file was not found. If this spikes, it's possible that the filesystem cache
+        // just got pruned.
+        metric!(counter(&format!("caches.{name}.file.miss")) += 1);
 
-            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
-            return;
-        }
-
-        let done_token = {
-            let key = cache_key.clone();
-            let refreshes = Arc::clone(&self.refreshes);
-            CallOnDrop::new(move || {
-                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-                refreshes.lock().remove(&key);
-            })
-        };
-        refreshes.insert(cache_key.clone());
-        drop(refreshes);
-
-        tracing::trace!(
-            "Spawning deduplicated {} computation for path {:?}",
-            name,
-            cache_key
-                .cache_path(cache_dir, T::VERSIONS.current)
-                .display()
-        );
-
-        let this = self.clone();
-        let task = async move {
-            let _done_token = done_token; // move into the future
-
-            let span = sentry::configure_scope(|scope| scope.get_span());
-            let ctx = sentry::TransactionContext::continue_from_span(
-                "Lazy Cache Computation",
-                "spawn_computation",
-                span,
-            );
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-
-            let result = this.compute(request, &cache_key, true).await;
-
-            // refresh the memory cache with the newly refreshed result
-            this.cache.insert(cache_key, result).await;
-
-            transaction.finish();
-        };
-        tokio::spawn(task.bind_hub(Hub::new_from_top(Hub::current())));
+        self.spawn_computation(request, cache_key, false).await
     }
 }
 
 async fn persist_tempfile(
     mut temp_file: NamedTempFile,
     cache_path: PathBuf,
-) -> std::io::Result<std::fs::File> {
+) -> io::Result<std::fs::File> {
     let parent = cache_path.parent().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -538,30 +574,6 @@ mod tests {
         ) -> CacheEntry<Self::Item> {
             Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
         }
-    }
-
-    /// Tests that the size of the `compute_memoized` future does not grow out of bounds.
-    /// See <https://github.com/moka-rs/moka/issues/212> for one of the main issues here.
-    /// The size assertion will naturally change with compiler, dependency and code changes.
-    #[tokio::test]
-    async fn future_size() {
-        test::setup();
-
-        let cache = Cache::from_config(
-            CacheName::Objects,
-            None,
-            None,
-            CacheConfig::from(CacheConfigs::default().derived),
-            Arc::new(AtomicIsize::new(1)),
-        )
-        .unwrap();
-        let cacher = Cacher::new(cache, Default::default());
-        let key = CacheKey {
-            cache_key: "foo".into(),
-        };
-        let fut = cacher.compute_memoized(TestCacheItem::new(), key);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 750 && size < 800);
     }
 
     /// This test asserts that the cache is served from outdated cache files, and that a computation
