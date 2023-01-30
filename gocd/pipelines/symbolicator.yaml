@@ -28,6 +28,7 @@ pipelines:
                       GITHUB_TOKEN: "{{SECRET:[devinfra-github][token]}}"
                   jobs:
                       checks:
+                          timeout: 1200
                           elastic_profile_id: symbolicator
                           tasks:
                               - script: |
