@@ -9,6 +9,7 @@
 - Added offline mode and caching to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967),[#968](https://github.com/getsentry/symbolicator/pull/968))
 - Support PortablePDB embedded sources. ([#996](https://github.com/getsentry/symbolicator/pull/996))
 - Properly support NuGet symbols with SymbolChecksum. ([#993](https://github.com/getsentry/symbolicator/pull/993))
+- Use `moka` as an in-memory `Cacher` implementation. ([#1010](https://github.com/getsentry/symbolicator/pull/1010))
 
 ### Internal
 
