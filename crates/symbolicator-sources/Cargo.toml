@@ -8,11 +8,11 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.68"
+aws-types = { version = "0.52.0", features = ["hardcoded-credentials"] }
 glob = "0.3.0"
 lazy_static = "1.4.0"
-rusoto_core = "0.48.0"
 serde = { version = "1.0.137", features = ["derive", "rc"] }
-symbolic = "10.0.0"
+symbolic = "11.0.0"
 url = { version = "2.2.0", features = ["serde"] }
 
 [dev-dependencies]

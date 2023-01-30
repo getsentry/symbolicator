@@ -1,0 +1,55 @@
+---
+source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 296
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0x2f"
+        function_id: "0x5"
+        lang: csharp
+        filename: Program.cs
+        abs_path: "C:\\dev\\sentry-dotnet\\samples\\Sentry.Samples.Console.Basic\\Program.cs"
+        lineno: 13
+        pre_context:
+          - "    o.Debug = true;"
+          - "});"
+          - ""
+          - // The following unhandled exception will be captured and sent to Sentry.
+        context_line: "throw new Exception(\"test\");"
+modules:
+  - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: true
+    arch: unknown
+    type: pe_dotnet
+    debug_id: b6919861-510c-4887-9994-943f64f70c37-870b9ef9
+    debug_file: portable-embedded.pdb
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37870b9ef9/portable-embedded.src.zip"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37ffffffff/portable-embedded.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: false
+            has_symbols: false
+            has_sources: true
+        debug:
+          status: ok
+      - source: local
+        location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37ffffffff/portable-embedded.src.zip"
+        download:
+          status: notfound
+

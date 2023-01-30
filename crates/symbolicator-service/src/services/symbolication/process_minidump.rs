@@ -12,6 +12,7 @@ use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
     SymbolProvider,
 };
+use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use tempfile::TempPath;
 
@@ -184,6 +185,7 @@ impl SymbolicatorSymbolProvider {
                     debug_file: module
                         .debug_file()
                         .map(|debug_file| debug_file.into_owned()),
+                    debug_checksum: None,
                     object_type: self.object_type,
                 };
 
@@ -194,6 +196,11 @@ impl SymbolicatorSymbolProvider {
                         sources,
                         scope,
                     })
+                    // NOTE: this `bind_hub` is important!
+                    // `load_cfi_module` is being called concurrently from `rust-minidump` via
+                    // `join_all`. We do need proper isolation of any async task that might
+                    // manipulate any Sentry scope.
+                    .bind_hub(Hub::new_from_top(Hub::current()))
                     .await
             })
             .await
@@ -254,12 +261,12 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
         code_file,
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
         debug_file: module.debug_file().map(|c| c.into_owned()),
+        debug_checksum: None,
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
             0 => None,
             size => Some(size),
         },
-        checksum: None,
     })
 }
 
@@ -342,7 +349,9 @@ async fn stackwalk(
                 None => ObjectFileStatus::Unused,
                 Some(cfi_module) => {
                     obj_info.features.merge(cfi_module.features);
-                    obj_info.candidates.merge(&cfi_module.candidates);
+                    // NOTE: minidump stackwalking is the first thing that happens to a request,
+                    // hence the current candidate list is empty.
+                    obj_info.candidates = cfi_module.candidates;
                     object_file_status_from_cache_entry(&cfi_module.cache)
                 }
             });

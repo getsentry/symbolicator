@@ -63,7 +63,7 @@ mod tests {
     async fn test_basic() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");
@@ -83,14 +83,14 @@ mod tests {
 
         let body = response.text().await.unwrap();
         let response = serde_json::from_str::<SymbolicationResponse>(&body).unwrap();
-        insta::assert_yaml_snapshot!(response);
+        test::assert_snapshot!(response);
     }
 
     #[tokio::test]
     async fn test_unknown_field() {
         test::setup();
 
-        let server = test::server_with_default_service().await;
+        let server = test::server_with_default_service();
 
         let file_contents = test::read_fixture("apple_crash_report.txt");
         let file_part = multipart::Part::bytes(file_contents).file_name("apple_crash_report.txt");

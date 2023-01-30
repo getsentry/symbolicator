@@ -15,8 +15,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
 use tempfile::NamedTempFile;
 
-use crate::cache::{CacheEntry, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, Cacher};
+use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher, ExpirationTime};
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -52,10 +51,7 @@ pub struct ObjectMetaHandle {
 
 impl ObjectMetaHandle {
     pub fn cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
+        CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
     pub fn features(&self) -> ObjectFeatures {
@@ -91,13 +87,13 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(self, mut temp_file: NamedTempFile) -> CacheEntry<NamedTempFile> {
-        let cache_key = self.get_cache_key();
+    async fn compute_file_meta(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+        let cache_key = CacheKey::from_scoped_file(&self.scope, &self.file_source);
         tracing::trace!("Fetching file meta for {}", cache_key);
 
-        let data_cache = self.data_cache.clone();
-        let object_handle = data_cache
-            .compute_memoized(FetchFileDataRequest(self))
+        let object_handle = self
+            .data_cache
+            .compute_memoized(FetchFileDataRequest(self.clone()), cache_key.clone())
             .await?;
 
         let object = object_handle.object();
@@ -112,23 +108,15 @@ impl FetchFileMetaRequest {
         tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);
         serde_json::to_writer(temp_file.as_file_mut(), &meta)?;
 
-        Ok(temp_file)
+        Ok(())
     }
 }
 
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
 
-    fn get_cache_key(&self) -> CacheKey {
-        CacheKey {
-            cache_key: self.file_source.cache_key(),
-            scope: self.scope.clone(),
-        }
-    }
-
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
-        let future = self.clone().compute_file_meta(temp_file);
-        Box::pin(future)
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        Box::pin(self.compute_file_meta(temp_file))
     }
 
     fn should_load(&self, data: &[u8]) -> bool {

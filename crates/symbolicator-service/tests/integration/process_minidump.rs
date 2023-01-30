@@ -6,14 +6,14 @@ use tempfile::NamedTempFile;
 
 use symbolicator_service::types::Scope;
 use symbolicator_test as test;
+use symbolicator_test::assert_snapshot;
 
-use crate::assert_snapshot;
 use crate::symbolication::setup_service;
 
 macro_rules! stackwalk_minidump {
     ($path:expr) => {
         async {
-            let (symbolication, cache_dir) = setup_service(|_| ()).await;
+            let (symbolication, cache_dir) = setup_service(|_| ());
             let (_symsrv, source) = test::symbol_server();
 
             let minidump = test::read_fixture($path);

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::future::Future;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use tokio::task::JoinHandle;
 
@@ -213,23 +213,5 @@ pub mod m {
             Ok(inner) => self::result(inner),
             Err(_) => "timeout",
         }
-    }
-}
-
-/// Try to run a future up to 3 times with 20 millisecond delays on failure.
-pub async fn retry<G, F, T, E>(mut task_gen: G) -> Result<T, E>
-where
-    G: FnMut() -> F,
-    F: Future<Output = Result<T, E>>,
-{
-    let mut tries = 0;
-    loop {
-        tries += 1;
-        let result = task_gen().await;
-        if result.is_ok() || tries >= 3 {
-            break result;
-        }
-
-        tokio::time::sleep(Duration::from_millis(20)).await;
     }
 }

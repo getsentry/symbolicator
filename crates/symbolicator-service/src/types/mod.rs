@@ -33,8 +33,10 @@ pub struct Signal(pub u32);
 /// request must match the scope of a file.
 #[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd)]
 #[serde(untagged)]
+#[derive(Default)]
 pub enum Scope {
     #[serde(rename = "global")]
+    #[default]
     Global,
     Scoped(String),
 }
@@ -45,12 +47,6 @@ impl AsRef<str> for Scope {
             Scope::Global => "global",
             Scope::Scoped(ref s) => s,
         }
-    }
-}
-
-impl Default for Scope {
-    fn default() -> Self {
-        Scope::Global
     }
 }
 
@@ -85,6 +81,19 @@ pub struct RawFrame {
     ///
     /// See [`addr_mode`](Self::addr_mode) for the exact behavior of addresses.
     pub instruction_addr: HexValue,
+
+    /// Whether this stack frame's instruction address needs to be adjusted for symbolication.
+    ///
+    /// Briefly,
+    /// * `Some(true)` means that the address will definitely be adjusted;
+    /// * `Some(false)` means that the address will definitely not be adjusted;
+    /// * `None` means the address may or may not be adjusted based on heuristics and the value
+    ///   of this field in other frames in the same stacktrace.
+    ///
+    /// Internally this is converted to a value of type `AdjustInstructionAddr`. See also the
+    /// documentation of `for_frame`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjust_instruction_addr: Option<bool>,
 
     /// The index of the frame's function in the Portable PDB method table.
     ///
@@ -156,8 +165,10 @@ pub struct RawFrame {
 /// information.
 #[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum FrameTrust {
     /// Unknown.
+    #[default]
     None,
     /// Found by scanning the stack.
     Scan,
@@ -174,12 +185,6 @@ pub enum FrameTrust {
     /// This is only possible for the topmost, i.e. the crashing, frame as for the other
     /// frames the registers need to be reconstructed when unwinding the stack.
     Context,
-}
-
-impl Default for FrameTrust {
-    fn default() -> Self {
-        FrameTrust::None
-    }
 }
 
 impl From<minidump_processor::FrameTrust> for FrameTrust {
@@ -244,6 +249,10 @@ pub struct RawObjectInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug_file: Option<String>,
 
+    /// Checksum of the file's contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug_checksum: Option<String>,
+
     /// Absolute address at which the image was mounted into virtual memory.
     ///
     /// We do allow the `image_addr` to be skipped if it is zero. This is because systems like WASM
@@ -257,17 +266,15 @@ pub struct RawObjectInfo {
     /// The size is infered from the module list if not specified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_size: Option<u64>,
-
-    /// Checksum of the file's contents.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub checksum: Option<String>,
 }
 
 /// Information on the symbolication status of this frame.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum FrameStatus {
     /// The frame was symbolicated successfully.
+    #[default]
     Symbolicated,
     /// The symbol (i.e. function) was not found within the debug file.
     MissingSymbol,
@@ -277,12 +284,6 @@ pub enum FrameStatus {
     Missing,
     /// The retrieved debug file could not be processed.
     Malformed,
-}
-
-impl Default for FrameStatus {
-    fn default() -> Self {
-        FrameStatus::Symbolicated
-    }
 }
 
 /// A potentially symbolicated frame in the symbolication response.
@@ -336,10 +337,12 @@ pub struct CompleteStacktrace {
 /// Information on a debug information file.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ObjectFileStatus {
     /// The file was found and successfully processed.
     Found,
     /// The image was not referenced in the stack trace and not further handled.
+    #[default]
     Unused,
     /// The file could not be found in any of the specified sources.
     Missing,
@@ -365,12 +368,6 @@ impl ObjectFileStatus {
             ObjectFileStatus::Timeout => "timeout",
             ObjectFileStatus::Other => "other",
         }
-    }
-}
-
-impl Default for ObjectFileStatus {
-    fn default() -> Self {
-        ObjectFileStatus::Unused
     }
 }
 
@@ -504,38 +501,39 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 pub struct CompletedSymbolicationResponse {
     /// When the crash occurred.
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
         with = "chrono::serde::ts_seconds_option"
     )]
     pub timestamp: Option<DateTime<Utc>>,
 
     /// The signal that caused this crash.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signal: Option<Signal>,
 
     /// Information about the operating system.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_info: Option<SystemInfo>,
 
     /// True if the process crashed, false if the dump was produced outside of an exception
     /// handler. Only set for minidumps.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crashed: Option<bool>,
 
     /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
     /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
     /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crash_reason: Option<String>,
 
     /// A detailed explanation of the crash, potentially in human readable form. This may
     /// include a string representation of the crash reason or application-specific info.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crash_details: Option<String>,
 
     /// If there was an assertion that was hit, a textual representation of that assertion,
     /// possibly including the file and line at which it occurred.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assertion: Option<String>,
 
     /// The threads containing symbolicated stack frames.

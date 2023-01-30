@@ -6,8 +6,7 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
-use crate::cache::{Cache, CacheEntry, CacheError};
-use crate::services::cacher::Cacher;
+use crate::caching::{Cache, CacheEntry, CacheError, CacheKey, Cacher, SharedCacheRef};
 use crate::services::download::DownloadService;
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
@@ -16,8 +15,6 @@ use meta_cache::FetchFileMetaRequest;
 
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
-
-use super::shared_cache::SharedCacheService;
 
 mod data_cache;
 mod meta_cache;
@@ -28,7 +25,7 @@ mod meta_cache;
 /// itself contain the [`SourceId`] and [`SourceLocation`].  However we need to carry this
 /// along some errors, so we use this wrapper.
 ///
-/// [`CacheItemRequest`]: crate::services::cacher::CacheItemRequest
+/// [`CacheItemRequest`]: crate::caching::CacheItemRequest
 /// [`SourceLocation`]: crate::services::download::SourceLocation
 #[derive(Clone, Debug)]
 pub struct CacheLookupError {
@@ -86,12 +83,12 @@ impl ObjectsActor {
     pub fn new(
         meta_cache: Cache,
         data_cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
+        shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
     ) -> Self {
         ObjectsActor {
-            meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache_svc))),
-            data_cache: Arc::new(Cacher::new(data_cache, shared_cache_svc)),
+            meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
+            data_cache: Arc::new(Cacher::new(data_cache, shared_cache)),
             download_svc,
         }
     }
@@ -101,6 +98,7 @@ impl ObjectsActor {
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
     pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
+        let cache_key = CacheKey::from_scoped_file(&file_handle.scope, &file_handle.file_source);
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
             file_source: file_handle.file_source.clone(),
@@ -109,7 +107,7 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache.compute_memoized(request).await
+        self.data_cache.compute_memoized(request, cache_key).await
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -129,7 +127,10 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-        let file_ids = self.list_files(&sources, filetypes, &identifier).await;
+        let file_ids = self
+            .download_svc
+            .list_files(&sources, filetypes, &identifier)
+            .await;
 
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
@@ -137,43 +138,6 @@ impl ObjectsActor {
         let meta = select_meta(file_metas, purpose);
 
         FindResult { meta, candidates }
-    }
-
-    /// Collect the list of files to download from all the sources.
-    ///
-    /// This concurrently contacts all the sources and asks them for the files we should try
-    /// to download from them matching the required filetypes and object IDs.  Not all
-    /// sources guarantee that the returned files actually exist.
-    async fn list_files(
-        &self,
-        sources: &[SourceConfig],
-        filetypes: &[FileType],
-        identifier: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        let queries = sources.iter().map(|source| {
-            async move {
-                let type_name = source.type_name();
-                self.download_svc
-                    .list_files(source.clone(), filetypes, identifier)
-                    .await
-                    .unwrap_or_else(|err| {
-                        // This basically only happens for the Sentry source type, when doing
-                        // the search by debug/code id. We do not surface those errors to the
-                        // user (instead we default to an empty search result) and only report
-                        // them internally.
-                        let stderr: &dyn std::error::Error = &err;
-                        tracing::error!(stderr, "Failed to fetch file list from {}", type_name);
-                        Vec::new()
-                    })
-            }
-            .bind_hub(Hub::new_from_top(Hub::current()))
-        });
-
-        future::join_all(queries)
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
     }
 
     /// Fetch all [`ObjectMetaHandle`]s for the files.
@@ -194,6 +158,7 @@ impl ObjectsActor {
             } else {
                 scope.clone()
             };
+            let cache_key = CacheKey::from_scoped_file(&scope, &file_source);
             let request = FetchFileMetaRequest {
                 scope,
                 file_source: file_source.clone(),
@@ -205,7 +170,7 @@ impl ObjectsActor {
             let meta_cache = self.meta_cache.clone();
 
             async move {
-                let handle = meta_cache.compute_memoized(request).await;
+                let handle = meta_cache.compute_memoized(request, cache_key).await;
                 FoundMeta {
                     file_source,
                     handle,

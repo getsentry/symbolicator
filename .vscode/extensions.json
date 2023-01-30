@@ -3,7 +3,7 @@
   // for the documentation about the extensions.json format
   "recommendations": [
     // Rust language server
-    "matklad.rust-analyzer",
+    "rust-lang.rust-analyzer",
     // TOML language support
     "bungcip.better-toml",
     // Crates.io dependency versions

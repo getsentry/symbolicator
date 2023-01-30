@@ -12,6 +12,14 @@ symbolicli -o <ORG> -p <PROJECT> --auth-token <TOKEN> <EVENT>
 * `<TOKEN>` is a Sentry authentication token that has access to the project;
 * `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event from the Sentry instance.
 
+Alternatively, you can run `symbolicli` in offline mode:
+```
+symbolicli --offline <EVENT>
+```
+
+In offline mode `symbolicli` will not attempt to access a Sentry server, which means you can only
+process local events.
+
 # Configuration
 
 `symbolicli` can be configured via the `~/.symboliclirc` config file, written in the TOML format.
@@ -20,6 +28,7 @@ global settings.
 
 The available options are:
 
+* `cache_dir`: A directory where downloaded debug files will be cached.
 * `url`: The base URL of the sentry instance. Defaults to `https://sentry.io/`.
 * `auth_token`: A Sentry authentication token. This can be overridden with the `SENTRY_AUTH_TOKEN`
   environment variable or the `--auth-token` command line option.
@@ -29,3 +38,10 @@ The available options are:
   command line option.
 * `sources`: A list of debug file sources that will be queried in addition to the project's uploaded
   files.
+
+# Logging
+You can enable logging by setting the `RUST_LOG` environment variable to the desired log level. Available levels
+are `error`, `warn`, `info`, `debug`, `trace`.
+```
+RUST_LOG=debug symbolicli […]
+```

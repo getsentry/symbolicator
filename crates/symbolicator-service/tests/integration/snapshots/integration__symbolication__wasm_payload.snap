@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 166
+assertion_line: 158
 expression: response.unwrap()
 ---
 stacktraces:
@@ -31,11 +31,11 @@ modules:
     image_addr: "0x0"
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1"
+        location: "http://localhost:<port>/symbols/bd/a18fd85d4a4eb893022d6bfad846b1"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1.debug"
+        location: "http://localhost:<port>/symbols/bd/a18fd85d4a4eb893022d6bfad846b1.debug"
         download:
           status: ok
           features:
@@ -46,7 +46,11 @@ modules:
         debug:
           status: ok
       - source: local
-        location: "http://localhost:<port>/download/bd/a18fd85d4a4eb893022d6bfad846b1.src.zip"
+        location: "http://localhost:<port>/symbols/bd/a18fd85d4a4eb893022d6bfad846b1.src.zip"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/demo.wasm/BDA18FD85D4A4EB893022D6BFAD846B10/demo.wasm"
         download:
           status: notfound
 

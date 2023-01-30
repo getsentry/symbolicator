@@ -11,8 +11,10 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -21,7 +23,6 @@ use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::shared_cache::SharedCacheService;
 
 /// The supported cficache versions.
 ///
@@ -74,13 +75,9 @@ pub struct CfiCacheActor {
 }
 
 impl CfiCacheActor {
-    pub fn new(
-        cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
-        objects: ObjectsActor,
-    ) -> Self {
+    pub fn new(cache: Cache, shared_cache: SharedCacheRef, objects: ObjectsActor) -> Self {
         CfiCacheActor {
-            cficaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            cficaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
         }
     }
@@ -99,15 +96,13 @@ struct FetchCfiCacheInternal {
 /// [`CfiCache`] format.
 #[tracing::instrument(skip_all)]
 async fn compute_cficache(
-    objects_actor: ObjectsActor,
+    objects_actor: &ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
-    mut temp_file: NamedTempFile,
-) -> CacheEntry<NamedTempFile> {
+    temp_file: &mut NamedTempFile,
+) -> CacheEntry {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    write_cficache(temp_file.as_file_mut(), &object)?;
-
-    Ok(temp_file)
+    write_cficache(temp_file.as_file_mut(), &object)
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -115,16 +110,8 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.meta_handle.cache_key()
-    }
-
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
-        let future = compute_cficache(
-            self.objects_actor.clone(),
-            self.meta_handle.clone(),
-            temp_file,
-        );
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        let future = compute_cficache(&self.objects_actor, self.meta_handle.clone(), temp_file);
 
         let num_sources = self.request.sources.len().to_string().into();
 
@@ -181,11 +168,13 @@ impl CfiCacheActor {
             .await;
 
         derive_from_object_handle(found_object, CandidateStatus::Unwind, |meta_handle| {
-            self.cficaches.compute_memoized(FetchCfiCacheInternal {
+            let cache_key = meta_handle.cache_key();
+            let request = FetchCfiCacheInternal {
                 request,
                 objects_actor: self.objects.clone(),
                 meta_handle,
-            })
+            };
+            self.cficaches.compute_memoized(request, cache_key)
         })
         .await
     }
@@ -196,7 +185,7 @@ impl CfiCacheActor {
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
-fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
+fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
     object_handle.configure_scope();
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key);

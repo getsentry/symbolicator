@@ -7,7 +7,7 @@ use symbolic::symcache::SymCache;
 use symbolicator_sources::ObjectId;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
-use crate::cache::CacheError;
+use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
@@ -38,7 +38,54 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
         },
         debug_file: object_info.debug_file.clone(),
         code_file: object_info.code_file.clone(),
+        debug_checksum: object_info.debug_checksum.clone(),
         object_type: object_info.ty,
+    }
+}
+
+/// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AdjustInstructionAddr {
+    /// The frame's address definitely needs to be adjusted.
+    Yes,
+    /// The frame's address definitely does not need to be adjusted.
+    No,
+    /// The frame's address might need to be adjusted.
+    ///
+    /// This defers to the heuristic in [InstructionInfo::caller_address].
+    Auto,
+}
+
+impl AdjustInstructionAddr {
+    /// Returns the adjustment strategy for the given frame.
+    ///
+    /// If the frame has the
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
+    /// field set, this will be [`Yes`](Self::Yes) or [`No`](Self::No) accordingly, otherwise
+    /// the given default is used.
+    fn for_frame(frame: &RawFrame, default: Self) -> Self {
+        match frame.adjust_instruction_addr {
+            Some(true) => Self::Yes,
+            Some(false) => Self::No,
+            None => default,
+        }
+    }
+
+    /// Returns the default adjustment strategy for the given thread.
+    ///
+    /// This will be [`Yes`](Self::Yes) if any frame in the thread has the
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
+    /// field set, otherwise it will be [`Auto`](Self::Auto).
+    fn default_for_thread(thread: &RawStacktrace) -> Self {
+        if thread
+            .frames
+            .iter()
+            .any(|frame| frame.adjust_instruction_addr.is_some())
+        {
+            AdjustInstructionAddr::Yes
+        } else {
+            AdjustInstructionAddr::Auto
+        }
     }
 }
 
@@ -50,7 +97,7 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    diagnostics_cache: crate::cache::Cache,
+    diagnostics_cache: Cache,
 }
 
 impl SymbolicationActor {
@@ -59,7 +106,7 @@ impl SymbolicationActor {
         symcaches: SymCacheActor,
         cficaches: CfiCacheActor,
         ppdb_caches: PortablePdbCacheActor,
-        diagnostics_cache: crate::cache::Cache,
+        diagnostics_cache: Cache,
     ) -> Self {
         SymbolicationActor {
             objects,
@@ -180,6 +227,7 @@ fn symbolicate_frame(
     signal: Option<Signal>,
     frame: &mut RawFrame,
     index: usize,
+    adjustment: AdjustInstructionAddr,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -195,6 +243,7 @@ fn symbolicate_frame(
             signal,
             frame,
             index,
+            adjustment,
         ),
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
             symbolicate_dotnet_frame(ppdb_cache.get(), frame, index)
@@ -241,6 +290,7 @@ fn symbolicate_native_frame(
     signal: Option<Signal>,
     frame: &RawFrame,
     index: usize,
+    adjustment: AdjustInstructionAddr,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     // get the relative caller address
     let relative_addr = if let Some(addr) = lookup_result.relative_addr {
@@ -259,11 +309,19 @@ fn symbolicate_native_frame(
             } else {
                 None
             };
-            let absolute_caller_addr = InstructionInfo::new(symcache.arch(), absolute_addr)
+
+            let mut instruction_info = InstructionInfo::new(symcache.arch(), absolute_addr);
+            let instruction_info = instruction_info
                 .is_crashing_frame(is_crashing_frame)
                 .signal(signal.map(|signal| signal.0))
-                .ip_register_value(ip_register_value)
-                .caller_address();
+                .ip_register_value(ip_register_value);
+
+            let absolute_caller_addr = match adjustment {
+                AdjustInstructionAddr::Yes => instruction_info.previous_address(),
+                AdjustInstructionAddr::No => instruction_info.aligned_address(),
+                AdjustInstructionAddr::Auto => instruction_info.caller_address(),
+            };
+
             lookup_result
                 .object_info
                 .abs_to_rel_addr(absolute_caller_addr)
@@ -340,6 +398,7 @@ fn symbolicate_native_frame(
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
+                adjust_instruction_addr: frame.adjust_instruction_addr,
                 function_id: frame.function_id,
                 symbol: Some(symbol.to_string()),
                 abs_path: if !abs_path.is_empty() {
@@ -586,11 +645,20 @@ fn symbolicate_stacktrace(
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
 ) -> CompleteStacktrace {
+    let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
     let mut unsymbolicated_frames_iter = thread.frames.into_iter().enumerate().peekable();
 
     while let Some((index, mut frame)) = unsymbolicated_frames_iter.next() {
-        match symbolicate_frame(caches, &thread.registers, signal, &mut frame, index) {
+        let adjustment = AdjustInstructionAddr::for_frame(&frame, default_adjustment);
+        match symbolicate_frame(
+            caches,
+            &thread.registers,
+            signal,
+            &mut frame,
+            index,
+            adjustment,
+        ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
                     metrics.scanned_frames += 1;

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
+use settings::Mode;
 use symbolicator_service::services::symbolication::SymbolicationActor;
 use symbolicator_service::types::{CompletedSymbolicationResponse, Scope};
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
@@ -20,12 +21,9 @@ mod settings;
 async fn main() -> anyhow::Result<()> {
     let settings::Settings {
         event_id,
-        project,
-        org,
-        auth_token,
-        base_url,
         symbolicator_config,
         output_format,
+        mode,
     } = settings::Settings::get()?;
 
     tracing_subscriber::fmt::init();
@@ -33,32 +31,33 @@ async fn main() -> anyhow::Result<()> {
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
         symbolicator_service::services::create_service(&symbolicator_config, runtime)
-            .await
             .context("failed to start symbolication service")?;
 
-    let mut headers = header::HeaderMap::new();
-    headers.insert(
-        header::AUTHORIZATION,
-        header::HeaderValue::from_str(&format!("Bearer {auth_token}")).unwrap(),
-    );
+    let mut sources = vec![];
+    if let Mode::Online {
+        ref org,
+        ref project,
+        ref base_url,
+        ref auth_token,
+    } = mode
+    {
+        let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
+            id: SourceId::new("sentry:project"),
+            token: auth_token.clone(),
+            url: base_url
+                .join(&format!("projects/{org}/{project}/files/dsyms/"))
+                .unwrap(),
+        }));
 
-    let client = reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .unwrap();
-
-    let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
-        id: SourceId::new("sentry:project"),
-        token: auth_token,
-        url: base_url
-            .join(&format!("projects/{org}/{project}/files/dsyms/"))
-            .unwrap(),
-    }));
-    let mut sources = vec![project_source.clone()];
+        sources.push(project_source);
+    }
     sources.extend(symbolicator_config.sources.iter().cloned());
     let sources = Arc::from(sources.into_boxed_slice());
 
-    let scope = Scope::Scoped(project.clone());
+    let scope = match mode {
+        Mode::Online { ref project, .. } => Scope::Scoped(project.clone()),
+        Mode::Offline => Scope::Global,
+    };
 
     let res = match Payload::parse(&event_id)? {
         Some(local) => {
@@ -67,6 +66,21 @@ async fn main() -> anyhow::Result<()> {
         }
         None => {
             tracing::info!("event not found in local file system");
+            let Mode::Online { base_url, org, project, auth_token } = mode else {
+                anyhow::bail!("Event not found in local file system and `symbolicli` is in offline mode. Stopping.");
+            };
+
+            let mut headers = header::HeaderMap::new();
+            headers.insert(
+                header::AUTHORIZATION,
+                header::HeaderValue::from_str(&format!("Bearer {auth_token}")).unwrap(),
+            );
+
+            let client = reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .unwrap();
+
             let key = EventKey {
                 base_url: &base_url,
                 org: &org,
@@ -679,6 +693,7 @@ mod event {
         Some(RawFrame {
             addr_mode: value.addr_mode,
             instruction_addr: value.instruction_addr?,
+            adjust_instruction_addr: None,
             function_id: value.function_id,
             package: value.package,
             lang: value.lang,

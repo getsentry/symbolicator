@@ -7,7 +7,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_sources::{FileType, ObjectType, SourceConfig};
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
 use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
 use crate::services::ppdb_caches::{
@@ -525,9 +525,9 @@ mod tests {
             debug_id: None,
             code_file: None,
             debug_file: None,
+            debug_checksum: None,
             image_addr: HexValue(42),
             image_size: Some(0),
-            checksum: None,
         });
 
         let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));

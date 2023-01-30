@@ -27,18 +27,9 @@ release:
 
 # Tests
 
-test: test-rust test-integration
-.PHONY: test
-
-test-rust:
+test:
 	cargo test --workspace --all-features --locked
-.PHONY: test-rust
-
-test-integration: .venv/bin/python
-	.venv/bin/pip install -U pytest pytest-localserver requests pytest-xdist pytest-icdiff boto3
-	cargo build --locked
-	@.venv/bin/pytest tests/integration -n12 -vv
-.PHONY: test-integration
+.PHONY: test
 
 # Documentation
 
@@ -61,50 +52,26 @@ travis-upload-docs: docs
 
 # Style checking
 
-style: style-rust style-python
-.PHONY: style
-
-style-python: .venv/bin/python
-	.venv/bin/pip install -U black
-	.venv/bin/black --check tests
-.PHONY: style-python
-
-style-rust:
+style:
 	@rustup component add rustfmt --toolchain stable 2> /dev/null
 	cargo +stable fmt -- --check
-.PHONY: style-rust
+.PHONY: style
 
 # Linting
 
-lint: lint-rust lint-python
-.PHONY: lint
-
-lint-python: .venv/bin/python
-	.venv/bin/pip install -U flake8
-	.venv/bin/flake8 tests
-.PHONY: lint-python
-
-lint-rust:
+lint:
 	@rustup component add clippy --toolchain stable 2> /dev/null
 	cargo +stable clippy --all-features --workspace --tests --examples
-.PHONY: lint-rust
+.PHONY: lint
 
 # Formatting
 
-format: format-rust format-python
-.PHONY: format
-
-format-rust:
+format:
 	@rustup component add rustfmt --toolchain stable 2> /dev/null
 	cargo +stable fmt
 .PHONY: format-rust
 
-format-python: .venv/bin/python
-	.venv/bin/pip install -U black
-	.venv/bin/black tests
-.PHONY: format-python
-
-# Dependencies
+# Dependencies (currently needed for docs)
 
 .venv/bin/python: Makefile
 	rm -rf .venv

@@ -49,16 +49,13 @@ pub fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
 
 #[cfg(test)]
 mod tests {
-    use warp::Filter;
-
     use super::*;
 
     #[tokio::test]
     async fn test_untrusted_client() {
         symbolicator_test::setup();
 
-        let server =
-            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -77,16 +74,16 @@ mod tests {
     async fn test_untrusted_client_loopback() {
         symbolicator_test::setup();
 
-        let server =
-            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
-
+        let server = symbolicator_test::Server::new();
         let config = Config {
             connect_to_reserved_ips: false,
             ..Config::default()
         };
 
+        let mut url = server.url("/");
+        url.set_host(Some("127.0.0.1")).unwrap();
         let result = create_client(&config, false) // untrusted
-            .get(&format!("http://127.0.0.1:{}/", server.addr().port()))
+            .get(url)
             .send()
             .await;
 
@@ -97,8 +94,7 @@ mod tests {
     async fn test_untrusted_client_allowed() {
         symbolicator_test::setup();
 
-        let server =
-            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: true,
@@ -106,7 +102,7 @@ mod tests {
         };
 
         let response = create_client(&config, false) // untrusted
-            .get(server.url("/"))
+            .get(server.url("/garbage_data/OK"))
             .send()
             .await
             .unwrap();
@@ -119,8 +115,7 @@ mod tests {
     async fn test_trusted() {
         symbolicator_test::setup();
 
-        let server =
-            symbolicator_test::Server::new(warp::get().and(warp::path::end()).map(|| "OK"));
+        let server = symbolicator_test::Server::new();
 
         let config = Config {
             connect_to_reserved_ips: false,
@@ -128,7 +123,7 @@ mod tests {
         };
 
         let response = create_client(&config, true) // trusted
-            .get(server.url("/"))
+            .get(server.url("/garbage_data/OK"))
             .send()
             .await
             .unwrap();

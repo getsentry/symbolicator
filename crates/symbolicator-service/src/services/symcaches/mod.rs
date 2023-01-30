@@ -10,9 +10,11 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::services::bitcode::BitcodeService;
-use crate::services::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -24,7 +26,6 @@ use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::il2cpp::Il2cppService;
-use super::shared_cache::SharedCacheService;
 
 mod markers;
 
@@ -91,13 +92,13 @@ pub struct SymCacheActor {
 impl SymCacheActor {
     pub fn new(
         cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
+        shared_cache: SharedCacheRef,
         objects: ObjectsActor,
         bitcode_svc: BitcodeService,
         il2cpp_svc: Il2cppService,
     ) -> Self {
         SymCacheActor {
-            symcaches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            symcaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
             bitcode_svc,
             il2cpp_svc,
@@ -131,16 +132,14 @@ struct FetchSymCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_symcache", skip_all)]
 async fn fetch_difs_and_compute_symcache(
-    mut temp_file: NamedTempFile,
+    temp_file: &mut NamedTempFile,
+    objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-    objects_actor: ObjectsActor,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<NamedTempFile> {
+) -> CacheEntry {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)?;
-
-    Ok(temp_file)
+    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -148,15 +147,11 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
-    }
-
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_symcache(
             temp_file,
+            &self.objects_actor,
             self.object_meta.clone(),
-            self.objects_actor.clone(),
             self.secondary_sources.clone(),
         );
 
@@ -255,14 +250,14 @@ impl SymCacheActor {
                 il2cpp_handle,
             };
 
-            self.symcaches
-                .compute_memoized(FetchSymCacheInternal {
-                    request,
-                    objects_actor: self.objects.clone(),
-                    secondary_sources,
-                    object_meta: Arc::clone(&handle),
-                })
-                .await
+            let cache_key = handle.cache_key();
+            let request = FetchSymCacheInternal {
+                request,
+                objects_actor: self.objects.clone(),
+                secondary_sources,
+                object_meta: Arc::clone(&handle),
+            };
+            self.symcaches.compute_memoized(request, cache_key).await
         })
         .await
     }
@@ -277,7 +272,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: SecondarySymCacheSources,
-) -> CacheEntry<()> {
+) -> CacheEntry {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();
@@ -351,7 +346,7 @@ mod tests {
     use symbolic::common::{DebugId, Uuid};
 
     use super::*;
-    use crate::cache::Caches;
+    use crate::caching::Caches;
     use crate::config::{CacheConfigs, Config};
     use crate::services::bitcode::BitcodeService;
     use crate::services::DownloadService;
@@ -373,11 +368,10 @@ mod tests {
             ..Default::default()
         };
 
-        let runtime = tokio::runtime::Handle::current();
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(&config, runtime.clone());
-        let shared_cache = Arc::new(SharedCacheService::new(None, runtime.clone()).await);
+        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let shared_cache = SharedCacheRef::default();
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,

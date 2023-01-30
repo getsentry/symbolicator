@@ -2,11 +2,27 @@
 
 ## Unreleased
 
+### Features
+
+- Added a field `adjust_instruction_addr: Option<bool>` to `RawFrame` to signal whether the
+  frame's instruction address needs to be adjusted for symbolication. ([#948](https://github.com/getsentry/symbolicator/pull/948))
+- Added offline mode and caching to `symbolicli`. ([#967](https://github.com/getsentry/symbolicator/pull/967),[#968](https://github.com/getsentry/symbolicator/pull/968))
+- Support PortablePDB embedded sources. ([#996](https://github.com/getsentry/symbolicator/pull/996))
+- Properly support NuGet symbols with SymbolChecksum. ([#993](https://github.com/getsentry/symbolicator/pull/993))
+
 ### Internal
 
 - Use a default crash DB if we have a Cache configured. ([#941](https://github.com/getsentry/symbolicator/pull/941))
 - Simplified internal error and cache architecture. ([#929](https://github.com/getsentry/symbolicator/pull/929),
   [#936](https://github.com/getsentry/symbolicator/pull/936), [#937](https://github.com/getsentry/symbolicator/pull/937))
+- Migrate from `rusoto` to `aws-sdk-s3`. ([#849](https://github.com/getsentry/symbolicator/pull/849), [#954](https://github.com/getsentry/symbolicator/pull/954))
+- Replace the last remaining LRU caches with `moka` versions and remove `lru` dependency. ([#978](https://github.com/getsentry/symbolicator/pull/978))
+
+### Dependencies
+
+- Bump Native SDK from v0.5.0 to v0.5.4 ([#940](https://github.com/getsentry/symbolicator/pull/940), [#997](https://github.com/getsentry/symbolicator/pull/997))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#054)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.5.0...0.5.4)
 
 ## 0.6.0
 

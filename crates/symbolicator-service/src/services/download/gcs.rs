@@ -1,30 +1,20 @@
 //! Support to download from Google Cloud Storage buckets.
-//!
-//! Specifically this supports the [`GcsSourceConfig`] source.
 
-use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
 
-use futures::prelude::*;
-use parking_lot::Mutex;
-use reqwest::{header, Client, StatusCode};
+use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
-use symbolicator_sources::{
-    FileType, GcsRemoteFile, GcsSourceConfig, GcsSourceKey, ObjectId, RemoteFile,
-};
-
-use crate::utils::gcs::{self, request_new_token, GcsError, GcsToken};
-
-use super::{content_length_timeout, DownloadError, DownloadStatus};
+use crate::caching::{CacheEntry, CacheError};
+use crate::utils::gcs::{self, GcsToken};
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = lru::LruCache<Arc<GcsSourceKey>, Arc<GcsToken>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheEntry<Arc<GcsToken>>>;
 
-/// Downloader implementation that supports the [`GcsSourceConfig`] source.
+/// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
 pub struct GcsDownloader {
-    token_cache: Mutex<GcsTokenCache>,
+    token_cache: GcsTokenCache,
     client: reqwest::Client,
     connect_timeout: std::time::Duration,
     streaming_timeout: std::time::Duration,
@@ -32,13 +22,15 @@ pub struct GcsDownloader {
 
 impl GcsDownloader {
     pub fn new(
-        client: Client,
+        client: reqwest::Client,
         connect_timeout: std::time::Duration,
         streaming_timeout: std::time::Duration,
-        token_capacity: NonZeroUsize,
+        token_capacity: u64,
     ) -> Self {
         Self {
-            token_cache: Mutex::new(GcsTokenCache::new(token_capacity)),
+            token_cache: GcsTokenCache::builder()
+                .max_capacity(token_capacity)
+                .build(),
             client,
             connect_timeout,
             streaming_timeout,
@@ -49,34 +41,35 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> Result<Arc<GcsToken>, GcsError> {
-        if let Some(token) = self.token_cache.lock().get(source_key) {
-            if !token.is_expired() {
-                metric!(counter("source.gcs.token.cached") += 1);
-                return Ok(token.clone());
-            }
-        }
-
-        let source_key = source_key.clone();
-        let token = request_new_token(&self.client, &source_key).await?;
-        metric!(counter("source.gcs.token.requests") += 1);
-        let token = Arc::new(token);
-        self.token_cache.lock().put(source_key, token.clone());
-        Ok(token)
+    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheEntry<Arc<GcsToken>> {
+        self.token_cache
+            .get_with_if(
+                source_key.clone(),
+                async {
+                    let token = gcs::request_new_token(&self.client, source_key).await;
+                    metric!(counter("source.gcs.token.requests") += 1);
+                    token.map(Arc::new).map_err(CacheError::from)
+                },
+                |entry| match entry {
+                    Ok(token) => {
+                        let is_expired = token.is_expired();
+                        if !is_expired {
+                            metric!(counter("source.gcs.token.cached") += 1);
+                        }
+                        is_expired
+                    }
+                    Err(_) => true,
+                },
+            )
+            .await
     }
 
     /// Downloads a source hosted on GCS.
-    ///
-    /// # Directly thrown errors
-    /// - [`GcsError::InvalidUrl`]
-    /// - [`DownloadError::Reqwest`]
-    /// - [`DownloadError::Rejected`]
-    /// - [`DownloadError::Canceled`]
     pub async fn download_source(
         &self,
         file_source: GcsRemoteFile,
         destination: &Path,
-    ) -> Result<DownloadStatus<()>, DownloadError> {
+    ) -> CacheEntry {
         let key = file_source.key();
         let bucket = file_source.source.bucket.clone();
         tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
@@ -89,83 +82,16 @@ impl GcsDownloader {
         let request = self
             .client
             .get(url.clone())
-            .header("authorization", token.bearer_token())
-            .send();
-        let request = tokio::time::timeout(self.connect_timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+            .header("authorization", token.bearer_token());
 
-        let response = request
-            .await
-            .map_err(|_| DownloadError::Canceled)? // Timeout
-            .map_err(|e| {
-                tracing::debug!(
-                    "Skipping response from GCS {} (from {}): {}",
-                    &key,
-                    &bucket,
-                    &e
-                );
-                DownloadError::Reqwest(e)
-            })?;
-
-        if response.status().is_success() {
-            tracing::trace!("Success hitting GCS {} (from {})", &key, bucket);
-
-            let content_length = response
-                .headers()
-                .get(header::CONTENT_LENGTH)
-                .and_then(|hv| hv.to_str().ok())
-                .and_then(|s| s.parse::<u32>().ok());
-
-            let timeout =
-                content_length.map(|cl| content_length_timeout(cl, self.streaming_timeout));
-            let stream = response.bytes_stream().map_err(DownloadError::Reqwest);
-
-            super::download_stream(&source, stream, destination, timeout).await
-        } else if matches!(
-            response.status(),
-            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED
-        ) {
-            tracing::debug!(
-                "Insufficient permissions to download from GCS {} (from {})",
-                &key,
-                &bucket,
-            );
-            Ok(DownloadStatus::PermissionDenied)
-        // If it's a client error, chances are either it's a 404 or it's permission-related.
-        } else if response.status().is_client_error() {
-            tracing::debug!(
-                "Unexpected client error status code from GCS {} (from {}): {}",
-                &key,
-                &bucket,
-                response.status()
-            );
-            Ok(DownloadStatus::NotFound)
-        } else {
-            tracing::debug!(
-                "Unexpected status code from GCS {} (from {}): {}",
-                &key,
-                &bucket,
-                response.status()
-            );
-            Err(DownloadError::Rejected(response.status()))
-        }
-    }
-
-    pub fn list_files(
-        &self,
-        source: Arc<GcsSourceConfig>,
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        super::SourceLocationIter {
-            filetypes: filetypes.iter(),
-            filters: &source.files.filters,
-            object_id,
-            layout: source.files.layout,
-            next: Vec::new(),
-        }
-        .map(|loc| GcsRemoteFile::new(source.clone(), loc).into())
-        .collect()
+        super::download_reqwest(
+            &source,
+            request,
+            self.connect_timeout,
+            self.streaming_timeout,
+            destination,
+        )
+        .await
     }
 }
 
@@ -174,12 +100,13 @@ mod tests {
     use super::*;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, ObjectType, RemoteFileUri, SourceId,
+        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, RemoteFileUri, SourceId,
         SourceLocation,
     };
 
     use crate::test;
 
+    use reqwest::Client;
     use sha1::{Digest as _, Sha1};
 
     fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
@@ -190,35 +117,6 @@ mod tests {
             source_key: Arc::new(source_key),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         })
-    }
-
-    #[test]
-    fn test_list_files() {
-        test::setup();
-
-        let source = gcs_source(test::gcs_source_key!());
-        let downloader = GcsDownloader::new(
-            Client::new(),
-            std::time::Duration::from_secs(30),
-            std::time::Duration::from_secs(30),
-            100.try_into().unwrap(),
-        );
-
-        let object_id = ObjectId {
-            code_id: Some("e514c9464eed3be5943a2c61d9241fad".parse().unwrap()),
-            code_file: Some("/usr/lib/system/libdyld.dylib".to_owned()),
-            debug_id: Some("e514c946-4eed-3be5-943a-2c61d9241fad".parse().unwrap()),
-            debug_file: Some("libdyld.dylib".to_owned()),
-            object_type: ObjectType::Macho,
-        };
-
-        let list = downloader.list_files(source, &[FileType::MachCode], &object_id);
-        assert_eq!(list.len(), 1);
-
-        assert!(list[0]
-            .uri()
-            .to_string()
-            .ends_with("e5/14c9464eed3be5943a2c61d9241fad/executable"));
     }
 
     #[tokio::test]
@@ -240,12 +138,9 @@ mod tests {
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader
-            .download_source(file_source, &target_path)
-            .await
-            .unwrap();
+        let download_status = downloader.download_source(file_source, &target_path).await;
 
-        assert!(matches!(download_status, DownloadStatus::Completed(_)));
+        assert!(download_status.is_ok());
         assert!(target_path.exists());
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
@@ -271,12 +166,9 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader
-            .download_source(file_source, &target_path)
-            .await
-            .unwrap();
+        let download_status = downloader.download_source(file_source, &target_path).await;
 
-        assert!(matches!(download_status, DownloadStatus::NotFound));
+        assert_eq!(download_status, Err(CacheError::NotFound));
         assert!(!target_path.exists());
     }
 

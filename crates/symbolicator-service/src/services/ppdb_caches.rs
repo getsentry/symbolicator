@@ -11,15 +11,16 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use super::cacher::{CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
-use super::shared_cache::SharedCacheService;
 
 /// The supported ppdb_cache versions.
 ///
@@ -64,13 +65,9 @@ pub struct PortablePdbCacheActor {
 }
 
 impl PortablePdbCacheActor {
-    pub fn new(
-        cache: Cache,
-        shared_cache_svc: Arc<SharedCacheService>,
-        objects: ObjectsActor,
-    ) -> Self {
+    pub fn new(cache: Cache, shared_cache: SharedCacheRef, objects: ObjectsActor) -> Self {
         Self {
-            ppdb_caches: Arc::new(Cacher::new(cache, shared_cache_svc)),
+            ppdb_caches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
         }
     }
@@ -90,12 +87,13 @@ impl PortablePdbCacheActor {
             })
             .await;
         derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| {
-            self.ppdb_caches
-                .compute_memoized(FetchPortablePdbCacheInternal {
-                    request,
-                    objects_actor: self.objects.clone(),
-                    object_meta,
-                })
+            let cache_key = object_meta.cache_key();
+            let request = FetchPortablePdbCacheInternal {
+                request,
+                objects_actor: self.objects.clone(),
+                object_meta,
+            };
+            self.ppdb_caches.compute_memoized(request, cache_key)
         })
         .await
     }
@@ -124,15 +122,13 @@ struct FetchPortablePdbCacheInternal {
 /// code.
 #[tracing::instrument(name = "compute_ppdb_cache", skip_all)]
 async fn fetch_difs_and_compute_ppdb_cache(
-    mut temp_file: NamedTempFile,
+    temp_file: &mut NamedTempFile,
+    objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-    objects_actor: ObjectsActor,
-) -> CacheEntry<NamedTempFile> {
+) -> CacheEntry {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
-    write_ppdb_cache(temp_file.as_file_mut(), &object_handle)?;
-
-    Ok(temp_file)
+    write_ppdb_cache(temp_file.as_file_mut(), &object_handle)
 }
 
 impl CacheItemRequest for FetchPortablePdbCacheInternal {
@@ -140,15 +136,11 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
 
-    fn get_cache_key(&self) -> CacheKey {
-        self.object_meta.cache_key()
-    }
-
-    fn compute(&self, temp_file: NamedTempFile) -> BoxFuture<'static, CacheEntry<NamedTempFile>> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = fetch_difs_and_compute_ppdb_cache(
             temp_file,
+            &self.objects_actor,
             self.object_meta.clone(),
-            self.objects_actor.clone(),
         );
 
         let num_sources = self.request.sources.len().to_string().into();
@@ -177,7 +169,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 ///
 /// It is assumed that the `object_handle` contains a positive cache.
 #[tracing::instrument(skip_all)]
-fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry<()> {
+fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
     object_handle.configure_scope();
 
     let ppdb_obj = match object_handle.object() {

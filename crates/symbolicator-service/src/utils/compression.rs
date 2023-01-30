@@ -9,10 +9,9 @@ use tempfile::NamedTempFile;
 /// Some compression methods are implemented by spawning an external tool and can only
 /// process from a named pathname, hence we need a [`NamedTempFile`] as source.
 ///
-/// On success, this will return the [`NamedTempFile`] with the decompressed file contents. This
-/// can either be the original temp file if it was already uncompressed, or a new temp file in the
-/// same directory if decompression was performed.
-pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
+/// The passed [`NamedTempFile`] might be swapped with a fresh one in case decompression happens.
+/// That new temp file will be created in the same directory as the original one.
+pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
     let mut file = src.as_file();
@@ -41,9 +40,10 @@ pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
 
-            let mut dst = tempfile_in_parent(&src)?;
+            let mut dst = tempfile_in_parent(src)?;
             zstd::stream::copy_decode(file, &mut dst)?;
-            Ok(dst)
+
+            std::mem::swap(src, &mut dst);
         }
         // Magic bytes for gzip
         // https://tools.ietf.org/html/rfc1952#section-2.3.1
@@ -52,25 +52,27 @@ pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
-            let mut dst = tempfile_in_parent(&src)?;
+            let mut dst = tempfile_in_parent(src)?;
             let mut reader = MultiGzDecoder::new(file);
             io::copy(&mut reader, &mut dst)?;
-            Ok(dst)
+
+            std::mem::swap(src, &mut dst);
         }
         // Magic bytes for zlib
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
 
-            let mut dst = tempfile_in_parent(&src)?;
+            let mut dst = tempfile_in_parent(src)?;
             let mut reader = ZlibDecoder::new(file);
             io::copy(&mut reader, &mut dst)?;
-            Ok(dst)
+
+            std::mem::swap(src, &mut dst);
         }
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
 
-            let dst = tempfile_in_parent(&src)?;
+            let mut dst = tempfile_in_parent(src)?;
             let status = Command::new("cabextract")
                 .arg("-sfqp")
                 .arg(src.path())
@@ -85,14 +87,15 @@ pub fn maybe_decompress_file(src: NamedTempFile) -> io::Result<NamedTempFile> {
                 ));
             }
 
-            Ok(dst)
+            std::mem::swap(src, &mut dst);
         }
         // Probably not compressed
         _ => {
             metric!(counter("compression") += 1, "type" => "none");
-            Ok(src)
         }
     }
+
+    Ok(())
 }
 
 // FIXME(swatinem): this fn needs a better place

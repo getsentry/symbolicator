@@ -29,31 +29,21 @@ mod service;
 
 #[cfg(test)]
 mod test {
-    use std::net::SocketAddr;
-
     use crate::config::Config;
     use crate::service::RequestService;
     pub use symbolicator_test::*;
 
     use crate::endpoints;
 
-    pub async fn server_with_default_service() -> Server {
+    pub fn server_with_default_service() -> Server {
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(Config::default(), handle.clone(), handle.clone())
-            .await
-            .unwrap();
+        let config = Config {
+            connect_to_reserved_ips: true,
+            ..Config::default()
+        };
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
-        let socket = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server =
-            axum::Server::bind(&socket).serve(endpoints::create_app(service).into_make_service());
-
-        let socket = server.local_addr();
-        let handle = tokio::spawn(async {
-            let _ = server.await;
-        });
-
-        Server { handle, socket }
+        Server::with_router(endpoints::create_app(service))
     }
 }
 

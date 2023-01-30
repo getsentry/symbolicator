@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 121
+assertion_line: 119
 expression: response.unwrap()
 ---
 timestamp: 1547055742
@@ -127,35 +127,35 @@ modules:
     image_size: 108797951
     candidates:
       - source: local
-        location: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00"
+        location: "http://localhost:<port>/symbols/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app"
+        location: "http://localhost:<port>/symbols/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.app"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.src.zip"
+        location: "http://localhost:<port>/symbols/2D90/3291/397D/3D14/BFCA/52C7FB8C5E00.src.zip"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/2d/903291397d3d14bfca52c7fb8c5e00.debug"
+        location: "http://localhost:<port>/symbols/2d/903291397d3d14bfca52c7fb8c5e00.debug"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMa_"
+        location: "http://localhost:<port>/symbols/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMa_"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac"
+        location: "http://localhost:<port>/symbols/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.src.zip"
+        location: "http://localhost:<port>/symbols/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.src.zip"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/download/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym"
+        location: "http://localhost:<port>/symbols/YetAnotherMac/2D903291397D3D14BFCA52C7FB8C5E000/YetAnotherMac.sym"
         download:
           status: notfound
   - debug_status: unused

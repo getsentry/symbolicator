@@ -26,6 +26,18 @@ pub enum OutputFormat {
     Compact,
 }
 
+/// Controls whether `symbolicli` will attempt to access a Sentry server.
+#[derive(Clone, Debug)]
+pub enum Mode {
+    Offline,
+    Online {
+        org: String,
+        project: String,
+        auth_token: String,
+        base_url: reqwest::Url,
+    },
+}
+
 /// A utility that provides local symbolication of Sentry events.
 ///
 /// A valid auth token needs to be provided via the `--auth-token` option,
@@ -65,6 +77,12 @@ struct Cli {
     /// The output format.
     #[arg(long, value_enum, default_value = "json")]
     format: OutputFormat,
+
+    /// Run in offline mode, i.e., don't access the Sentry server.
+    ///
+    /// In offline mode symbolicli will still access manually configured symbol sources.
+    #[arg(long)]
+    offline: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -74,8 +92,7 @@ struct ConfigFile {
     pub project: Option<String>,
     pub url: Option<String>,
     pub auth_token: Option<String>,
-    //pub cache_dir: Option<PathBuf>,
-    //pub caches: CacheConfigs,
+    pub cache_dir: Option<PathBuf>,
     pub sources: Vec<SourceConfig>,
 }
 
@@ -103,12 +120,9 @@ impl ConfigFile {
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub event_id: String,
-    pub org: String,
-    pub project: String,
-    pub auth_token: String,
-    pub base_url: reqwest::Url,
     pub symbolicator_config: Config,
     pub output_format: OutputFormat,
+    pub mode: Mode,
 }
 
 impl Settings {
@@ -121,54 +135,71 @@ impl Settings {
             None => ConfigFile::default(),
         };
 
-        let Some(auth_token) = cli
-            .auth_token
-            .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
-            .or_else(|| project_config_file.auth_token.take())
-            .or_else(|| global_config_file.auth_token.take()) else {
-            bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
-    };
+        let mode = if cli.offline {
+            Mode::Offline
+        } else {
+            let Some(auth_token) = cli
+                .auth_token
+                .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
+                .or_else(|| project_config_file.auth_token.take())
+                .or_else(|| global_config_file.auth_token.take()) else {
+                bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
+            };
 
-        let sentry_url = cli
-            .url
-            .as_deref()
-            .or(project_config_file.url.as_deref())
-            .or(global_config_file.url.as_deref())
-            .unwrap_or(DEFAULT_URL);
+            let sentry_url = cli
+                .url
+                .as_deref()
+                .or(project_config_file.url.as_deref())
+                .or(global_config_file.url.as_deref())
+                .unwrap_or(DEFAULT_URL);
 
-        let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
-        let url = sentry_url.join("/api/0/").unwrap();
+            let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
+            let url = sentry_url.join("/api/0/").unwrap();
 
-        let Some(org) = cli.org
-            .or_else(|| project_config_file.org.take())
-            .or_else(|| global_config_file.org.take()) else {
-            bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");  
-        };
+            let Some(org) = cli.org
+                .or_else(|| project_config_file.org.take())
+                .or_else(|| global_config_file.org.take()) else {
+                bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");  
+            };
 
-        let Some(project) = cli.project
-            .or_else(|| project_config_file.project.take())
-            .or_else(|| global_config_file.project.take()) else {
-            bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");  
+            let Some(project) = cli.project
+                .or_else(|| project_config_file.project.take())
+                .or_else(|| global_config_file.project.take()) else {
+                bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");  
+            };
+
+            Mode::Online {
+                base_url: url,
+                org,
+                project,
+                auth_token,
+            }
         };
 
         let symbolicator_config = {
             let mut sources = project_config_file.sources;
             sources.append(&mut global_config_file.sources);
 
+            let cache_dir = project_config_file
+                .cache_dir
+                .or(global_config_file.cache_dir);
+
+            if let Some(path) = cache_dir.as_ref() {
+                std::fs::create_dir_all(path)?;
+            }
+
             Config {
                 sources: Arc::from(sources),
+                cache_dir,
                 ..Default::default()
             }
         };
 
         let args = Settings {
             event_id: cli.event,
-            org,
-            project,
-            auth_token,
-            base_url: url,
             symbolicator_config,
             output_format: cli.format,
+            mode,
         };
 
         Ok(args)

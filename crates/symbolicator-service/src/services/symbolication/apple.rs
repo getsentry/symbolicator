@@ -173,12 +173,12 @@ fn map_apple_binary_image(image: apple_crash_report_parser::BinaryImage) -> Comp
         code_file: Some(image.path.clone()),
         debug_id: Some(debug_id.to_string()),
         debug_file: Some(image.path),
+        debug_checksum: None,
         image_addr: HexValue(image.addr.0),
         image_size: match image.size {
             0 => None,
             size => Some(size),
         },
-        checksum: None,
     };
 
     raw_info.into()

@@ -24,11 +24,11 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolicator_service::cache::CacheEntry;
 use tempfile::TempPath;
 use thiserror::Error;
 use uuid::Uuid;
 
+use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;
@@ -124,7 +124,7 @@ impl From<&SymbolicationError> for SymbolicationResponse {
 ///
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
@@ -173,7 +173,7 @@ struct RequestServiceInner {
 
 impl RequestService {
     /// Creates a new [`RequestService`].
-    pub async fn create(
+    pub fn create(
         mut config: Config,
         io_pool: tokio::runtime::Handle,
         cpu_pool: tokio::runtime::Handle,
@@ -186,7 +186,7 @@ impl RequestService {
         }
 
         let (symbolication, objects) =
-            symbolicator_service::services::create_service(&config, io_pool.clone()).await?;
+            symbolicator_service::services::create_service(&config, io_pool.clone())?;
 
         let symbolication_taskmon = tokio_metrics::TaskMonitor::new();
         {
@@ -538,9 +538,7 @@ mod tests {
         // Make sure we can repeatedly poll for the response
         let config = Config::default();
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         let stacktraces = serde_json::from_str(
             r#"[
@@ -600,7 +598,7 @@ mod tests {
                 image_size: Some(4096),
                 code_file: None,
                 debug_file: None,
-                checksum: None,
+                debug_checksum: None,
             })],
         }
     }
@@ -619,25 +617,24 @@ mod tests {
         };
 
         let handle = tokio::runtime::Handle::current();
-        let service = RequestService::create(config, handle.clone(), handle)
-            .await
-            .unwrap();
+        let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
-        let symbol_server = test::FailingSymbolServer::new();
+        let hitcounter = test::Server::new();
+        let source = hitcounter.source("pending", "/delay/1h/");
 
         // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
         // two concurrent requests, the first two should succeed and the third one should fail.
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        let request = get_symbolication_request(vec![source.clone()]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source.clone()]);
+        let request = get_symbolication_request(vec![source.clone()]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_ok());
 
-        let request = get_symbolication_request(vec![symbol_server.pending_source]);
+        let request = get_symbolication_request(vec![source]);
         assert!(service
             .symbolicate_stacktraces(request, RequestOptions::default())
             .is_err());

@@ -86,13 +86,12 @@ async fn main() -> Result<()> {
     let config_path = cli.config;
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
-    // TODO: initialize logging maybe?
+    tracing_subscriber::fmt::init();
 
     // start symbolicator service
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
         symbolicator_service::services::create_service(&service_config, runtime)
-            .await
             .context("failed starting symbolication service")?;
     let symbolication = Arc::new(symbolication);
 
@@ -153,8 +152,8 @@ async fn main() -> Result<()> {
     println!();
 
     // run the workloads concurrently
-    let mut tasks = vec![];
-    for (i, (concurrency, workload)) in workloads.into_iter().enumerate() {
+    let mut tasks = Vec::with_capacity(workloads.len());
+    for (concurrency, workload) in workloads.into_iter() {
         let start = Instant::now();
         let duration = cli.duration;
         let deadline = tokio::time::Instant::from_std(start + duration);
@@ -192,16 +191,23 @@ async fn main() -> Result<()> {
 
             // we only count finished tasks
             let ops = finished_tasks.load(Ordering::Relaxed);
-            let ops_ps = ops as f32 / duration.as_secs() as f32;
-            println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps} ops/s");
 
-            // by aquiring *all* the semaphores, we essentially wait for all tasks to finish
+            // by acquiring *all* the semaphores, we essentially wait for all outstanding tasks to finish
             let _permits = semaphore.acquire_many(concurrency as u32).await;
+
+            (concurrency, ops)
         });
         tasks.push(task);
     }
 
-    futures::future::join_all(tasks).await;
+    let finished_tasks = futures::future::join_all(tasks).await;
+
+    for (i, task) in finished_tasks.into_iter().enumerate() {
+        let (concurrency, ops) = task.unwrap();
+
+        let ops_ps = ops as f32 / cli.duration.as_secs() as f32;
+        println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps} ops/s");
+    }
 
     Ok(())
 }
@@ -219,7 +225,7 @@ async fn process_payload(
             } = payload;
 
             // processing a minidump requires a tempfile that can be persisted -_-
-            // so that means we have to make a copy our minidump
+            // so that means we have to make a copy of our minidump
             let mut temp_file = tempfile::Builder::new();
             temp_file.prefix("minidump").suffix(".dmp");
             let temp_file = temp_file.tempfile().unwrap();
