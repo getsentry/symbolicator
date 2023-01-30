@@ -5,7 +5,7 @@ use symbolicator_sources::RemoteFile;
 
 use crate::types::Scope;
 
-#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CacheKey {
     pub cache_key: String,
 }

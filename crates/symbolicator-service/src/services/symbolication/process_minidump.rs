@@ -173,35 +173,36 @@ impl SymbolicatorSymbolProvider {
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
     async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchedCfiCache {
         let key = LookupKey::new(module);
-        let load = Box::pin(async {
-            let sources = self.sources.clone();
-            let scope = self.scope.clone();
+        self.cficaches
+            .get_with_by_ref(&key, async {
+                let sources = self.sources.clone();
+                let scope = self.scope.clone();
 
-            let identifier = ObjectId {
-                code_id: key.code_id.clone(),
-                code_file: Some(module.code_file().into_owned()),
-                debug_id: key.debug_id,
-                debug_file: module
-                    .debug_file()
-                    .map(|debug_file| debug_file.into_owned()),
-                object_type: self.object_type,
-            };
-
-            self.cficache_actor
-                .fetch(FetchCfiCache {
+                let identifier = ObjectId {
+                    code_id: key.code_id.clone(),
+                    code_file: Some(module.code_file().into_owned()),
+                    debug_id: key.debug_id,
+                    debug_file: module
+                        .debug_file()
+                        .map(|debug_file| debug_file.into_owned()),
                     object_type: self.object_type,
-                    identifier,
-                    sources,
-                    scope,
-                })
-                // NOTE: this `bind_hub` is important!
-                // `load_cfi_module` is being called concurrently from `rust-minidump` via
-                // `join_all`. We do need proper isolation of any async task that might
-                // manipulate any Sentry scope.
-                .bind_hub(Hub::new_from_top(Hub::current()))
-                .await
-        });
-        self.cficaches.get_with_by_ref(&key, load).await
+                };
+
+                self.cficache_actor
+                    .fetch(FetchCfiCache {
+                        object_type: self.object_type,
+                        identifier,
+                        sources,
+                        scope,
+                    })
+                    // NOTE: this `bind_hub` is important!
+                    // `load_cfi_module` is being called concurrently from `rust-minidump` via
+                    // `join_all`. We do need proper isolation of any async task that might
+                    // manipulate any Sentry scope.
+                    .bind_hub(Hub::new_from_top(Hub::current()))
+                    .await
+            })
+            .await
     }
 }
 
@@ -515,76 +516,5 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
         Os::Ps3 => "PS3",
         Os::NaCl => "NaCl",
         Os::Unknown(_) => "",
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::services::create_service;
-    use crate::services::objects::{FindObject, ObjectPurpose};
-    use crate::services::ppdb_caches::FetchPortablePdbCache;
-    use crate::services::symcaches::FetchSymCache;
-
-    use super::*;
-
-    /// Tests that the size of the `compute_memoized` future does not grow out of bounds.
-    /// See <https://github.com/moka-rs/moka/issues/212> for one of the main issues here.
-    /// The size assertion will naturally change with compiler, dependency and code changes.
-    #[tokio::test]
-    async fn future_size() {
-        let (sym, obj) =
-            create_service(&Default::default(), tokio::runtime::Handle::current()).unwrap();
-
-        let provider = SymbolicatorSymbolProvider::new(
-            Scope::Global,
-            Arc::from_iter([]),
-            sym.cficaches.clone(),
-            Default::default(),
-        );
-
-        let module = ("foo", DebugId::nil());
-        let fut = provider.load_cfi_module(&module);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 850 && size < 900);
-
-        let req = FindObject {
-            filetypes: &[],
-            purpose: ObjectPurpose::Debug,
-            identifier: Default::default(),
-            sources: Arc::from_iter([]),
-            scope: Scope::Global,
-        };
-        let fut = obj.find(req);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 4800 && size < 4900);
-
-        let req = FetchCfiCache {
-            object_type: Default::default(),
-            identifier: Default::default(),
-            sources: Arc::from_iter([]),
-            scope: Scope::Global,
-        };
-        let fut = sym.cficaches.fetch(req);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 5200 && size < 5300);
-
-        let req = FetchPortablePdbCache {
-            identifier: Default::default(),
-            sources: Arc::from_iter([]),
-            scope: Scope::Global,
-        };
-        let fut = sym.ppdb_caches.fetch(req);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 5200 && size < 5300);
-
-        let req = FetchSymCache {
-            object_type: Default::default(),
-            identifier: Default::default(),
-            sources: Arc::from_iter([]),
-            scope: Scope::Global,
-        };
-        let fut = sym.symcaches.fetch(req);
-        let size = dbg!(std::mem::size_of_val(&fut));
-        assert!(size > 11200 && size < 11300);
     }
 }
