@@ -11,8 +11,10 @@ use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::cache::{Cache, CacheEntry, CacheError, ExpirationTime};
-use crate::services::cacher::{CacheItemRequest, CacheVersions, Cacher};
+use crate::caching::{
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
+    SharedCacheRef,
+};
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
@@ -21,7 +23,6 @@ use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::shared_cache::SharedCacheRef;
 
 /// The supported cficache versions.
 ///

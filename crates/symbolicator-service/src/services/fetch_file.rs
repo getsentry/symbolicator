@@ -4,7 +4,7 @@ use std::sync::Arc;
 use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::services::download::DownloadService;
 use crate::utils::compression::maybe_decompress_file;
 

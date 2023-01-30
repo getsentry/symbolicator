@@ -11,12 +11,10 @@
 
 use anyhow::{Context, Result};
 
-use crate::cache::Caches;
+use crate::caching::{Caches, SharedCacheService};
 use crate::config::Config;
 
 pub mod bitcode;
-mod cache_key;
-pub mod cacher;
 pub mod cficaches;
 pub mod derived;
 pub mod download;
@@ -25,7 +23,6 @@ pub mod il2cpp;
 mod minidump;
 pub mod objects;
 pub mod ppdb_caches;
-pub mod shared_cache;
 pub mod symbolication;
 pub mod symcaches;
 
@@ -35,7 +32,6 @@ use self::download::DownloadService;
 use self::il2cpp::Il2cppService;
 use self::objects::ObjectsActor;
 use self::ppdb_caches::PortablePdbCacheActor;
-use self::shared_cache::SharedCacheService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 pub use fetch_file::fetch_file;

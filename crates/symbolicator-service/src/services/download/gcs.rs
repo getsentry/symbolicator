@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 use crate::utils::gcs::{self, GcsToken};
 
 /// An LRU cache for GCS OAuth tokens.
@@ -104,7 +104,6 @@ mod tests {
         SourceLocation,
     };
 
-    use crate::cache::CacheError;
     use crate::test;
 
     use reqwest::Client;

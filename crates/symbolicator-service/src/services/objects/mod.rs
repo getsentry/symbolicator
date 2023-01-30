@@ -6,8 +6,7 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
-use crate::cache::{Cache, CacheEntry, CacheError};
-use crate::services::cacher::Cacher;
+use crate::caching::{Cache, CacheEntry, CacheError, CacheKey, Cacher, SharedCacheRef};
 use crate::services::download::DownloadService;
 use crate::types::{AllObjectCandidates, ObjectCandidate, ObjectDownloadInfo, Scope};
 
@@ -16,9 +15,6 @@ use meta_cache::FetchFileMetaRequest;
 
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
-
-use super::cacher::CacheKey;
-use super::shared_cache::SharedCacheRef;
 
 mod data_cache;
 mod meta_cache;

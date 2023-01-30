@@ -7,7 +7,7 @@ use reqwest::{header, Client};
 
 use symbolicator_sources::{HttpRemoteFile, RemoteFile};
 
-use crate::cache::{CacheEntry, CacheError};
+use crate::caching::{CacheEntry, CacheError};
 
 use super::USER_AGENT;
 
