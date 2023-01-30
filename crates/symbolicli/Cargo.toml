@@ -14,7 +14,7 @@ reqwest = { version = "0.11.12", features = ["json"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.9.14"
-symbolic = "10.1.2"
+symbolic = "11.0.0"
 symbolicator-service = { version = "0.6.0", path = "../symbolicator-service" }
 symbolicator-sources = { version = "0.6.0", path = "../symbolicator-sources" }
 tempfile = "3.3.0"
