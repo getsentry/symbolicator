@@ -2892,7 +2892,7 @@ dependencies = [
  "serde",
  "serde_json",
  "structopt",
- "symbolic-common 10.2.1",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3757,7 +3757,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f5219610b220c2114858461fa469f8ead9dd9920556c4fbb41878d669c92278"
 dependencies = [
  "symbolic-cfi",
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-demangle",
  "symbolic-il2cpp",
@@ -3771,21 +3771,9 @@ version = "11.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "955422a57183507e8d0cf3ae6256055d7c915d6450993cd71ba511582c8a7695"
 dependencies = [
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "thiserror",
-]
-
-[[package]]
-name = "symbolic-common"
-version = "10.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b55cdc318ede251d0957f07afe5fed912119b8c1bc5a7804151826db999e737"
-dependencies = [
- "debugid",
- "memmap2",
- "stable_deref_trait",
- "uuid",
 ]
 
 [[package]]
@@ -3826,7 +3814,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "symbolic-ppdb",
  "thiserror",
  "wasmparser",
@@ -3843,7 +3831,7 @@ dependencies = [
  "cpp_demangle",
  "msvc-demangler",
  "rustc-demangle",
- "symbolic-common 11.0.0",
+ "symbolic-common",
 ]
 
 [[package]]
@@ -3854,7 +3842,7 @@ checksum = "06db0c594e1dfcc1e7993bf63635ffc596a65881c81375de264a78e7270ac696"
 dependencies = [
  "indexmap",
  "serde_json",
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
 ]
 
@@ -3866,7 +3854,7 @@ checksum = "1ae4243c9bab0da49a75c2d3aeee737d82e65d6d94b68fec9a7a6e6e977ace00"
 dependencies = [
  "flate2",
  "indexmap",
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "thiserror",
  "uuid",
  "watto",
@@ -3879,7 +3867,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fb5cb538fa9dea7b76619252ac19617af25e3e5608230cfbe105cea3453e945"
 dependencies = [
  "indexmap",
- "symbolic-common 11.0.0",
+ "symbolic-common",
  "symbolic-debuginfo",
  "symbolic-il2cpp",
  "thiserror",
