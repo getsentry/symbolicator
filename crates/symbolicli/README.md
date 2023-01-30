@@ -38,3 +38,10 @@ The available options are:
   command line option.
 * `sources`: A list of debug file sources that will be queried in addition to the project's uploaded
   files.
+
+# Logging
+You can enable logging by setting the `RUST_LOG` environment variable to the desired log level. Available levels
+are `error`, `warn`, `info`, `debug`, `trace`.
+```
+RUST_LOG=debug symbolicli […]
+```

@@ -256,3 +256,42 @@ async fn test_dotnet_integration() {
 
     assert_snapshot!(response.unwrap());
 }
+
+#[tokio::test]
+async fn test_dotnet_embedded_sources() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = test::symbol_server();
+
+    let modules: Vec<RawObjectInfo> = serde_json::from_str(
+        r#"[{
+          "type":"pe_dotnet",
+          "debug_file":"portable-embedded.pdb",
+          "debug_id":"b6919861-510c-4887-9994-943f64f70c37-870b9ef9"
+        }]"#,
+    )
+    .unwrap();
+
+    let stacktraces = serde_json::from_str(
+        r#"[{
+          "frames":[{
+            "instruction_addr": 47,
+            "function_id": 5,
+            "addr_mode":"rel:0"
+          }]
+        }]"#,
+    )
+    .unwrap();
+
+    let request = SymbolicateStacktraces {
+        modules: modules.into_iter().map(From::from).collect(),
+        stacktraces,
+        signal: None,
+        origin: StacktraceOrigin::Symbolicate,
+        sources: Arc::new([source]),
+        scope: Default::default(),
+    };
+
+    let response = symbolication.symbolicate(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
