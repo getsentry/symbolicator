@@ -1,0 +1,36 @@
+name: Lint Deployment Pipelines
+
+on:
+    pull_request:
+    push:
+        branches: [main, test-me-*]
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
+
+jobs:
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: cache bin
+              id: cache-bin
+              uses: actions/cache@v3
+              with:
+                  path: ${HOME}/.local/bin
+                  # Bump this key if you're changing gocd-cli versions.
+                  key: ${{ runner.os }}-bin
+
+            - name: Install gocd-cli
+              run: |
+                # this is on github runner's PATH but it isn't created, lol
+                mkdir -p "${HOME}/.local/bin"
+                bin="${HOME}/.local/bin/gocd-cli"
+                curl -L -o "$bin" 'https://sentry-dev-infra-assets.storage.googleapis.com/gocd-085ab00-linux-amd64'
+                echo "11d517c0c0058d1204294d01bfac987c0eaf9e37ba533ad54107b0949403321e  ${bin}" | sha256sum -c -
+                chmod +x "$bin"
+
+            - name: Lint Pipelines with gocd-cli
+              run: ./.github/workflows/lint-pipelines.sh
