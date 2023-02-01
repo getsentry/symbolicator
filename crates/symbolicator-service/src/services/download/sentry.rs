@@ -233,6 +233,8 @@ impl SentryDownloader {
         file_source: SentryRemoteFile,
         destination: &Path,
     ) -> CacheEntry {
+        tracing::debug!("Fetching Sentry artifact from {}", file_source.url());
+
         let request = self
             .client
             .get(file_source.url())

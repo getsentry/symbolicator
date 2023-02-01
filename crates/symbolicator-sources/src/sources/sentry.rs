@@ -90,11 +90,11 @@ impl fmt::Display for SentryFileId {
     }
 }
 
-/// TODO: Hi clippy
+/// Available file types stored on Sentry servers.
 #[derive(Debug, Clone)]
 pub enum SentryFileType {
-    /// TODO: Hi clippy
+    /// Native Debug Information File
     DebugFile,
-    /// TODO: Hi clippy
+    /// JavaScript Release Artifact (SourceCode/SourceMap)
     ReleaseArtifact,
 }

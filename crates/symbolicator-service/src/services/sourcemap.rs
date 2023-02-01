@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use symbolicator_sources::{SentryRemoteFile, SentrySourceConfig};
+use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::services::download::sentry::SearchArtifactResult;
@@ -33,13 +33,19 @@ impl SourceMapService {
             .collect()
     }
 
-    pub async fn fetch_artifact(&self, file_id: SentryRemoteFile) -> Option<NamedTempFile> {
+    pub async fn fetch_artifact(
+        &self,
+        source: Arc<SentrySourceConfig>,
+        file_id: SentryFileId,
+    ) -> Option<NamedTempFile> {
         let mut temp_file = NamedTempFile::new().unwrap();
-        // FIXME: Not sure why I cannot infere the correct type here
-        // and not let me return `fetch_file` instead.
-        fetch_file(self.download_svc.clone(), file_id.into(), &mut temp_file)
-            .await
-            .map(|_| temp_file)
-            .ok()
+        fetch_file(
+            self.download_svc.clone(),
+            SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into(),
+            &mut temp_file,
+        )
+        .await
+        .map(|_| temp_file)
+        .ok()
     }
 }

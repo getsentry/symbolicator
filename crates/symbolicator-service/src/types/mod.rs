@@ -554,13 +554,6 @@ pub struct CompletedSymbolicationResponse {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingCompletedSymbolicationResponse {
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "chrono::serde::ts_seconds_option"
-    )]
-    pub timestamp: Option<DateTime<Utc>>,
-
     pub stacktraces: Vec<CompleteJsStacktrace>,
 }
 
@@ -619,6 +612,7 @@ pub struct JsProcessingRawStacktrace {
 pub struct JsProcessingSymbolicatedFrame {
     pub status: FrameStatus,
 
+    #[serde(flatten)]
     pub raw: JsProcessingRawFrame,
 }
 
