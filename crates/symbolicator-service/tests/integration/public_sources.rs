@@ -47,3 +47,38 @@ async fn test_nuget_source() {
 
     assert_snapshot!(response.unwrap());
 }
+
+#[tokio::test]
+async fn test_ubuntu_source() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+        id: SourceId::new("ubuntu"),
+        url: "https://debuginfod.ubuntu.com/buildid/".parse().unwrap(),
+        headers: Default::default(),
+        files: source_config(
+            DirectoryLayoutType::Debuginfod,
+            vec![FileType::ElfCode, FileType::ElfDebug],
+        ),
+    }));
+
+    let request = make_symbolication_request(
+        vec![source],
+        r#"[{
+          "type": "elf",
+          "code_id": "69389d485a9793dbe873f0ea2c93e02efaa9aa3d",
+          "code_file": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+          "debug_id": "489d3869-975a-db93-e873-f0ea2c93e02e",
+          "debug_file": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+          "image_addr": "0x7fa923a8a000",
+          "image_size": 1822720
+        }]"#,
+        r#"[{
+          "frames":[{
+            "instruction_addr": "0x7fa923b1df1a"
+          }]
+        }]"#,
+    );
+    let response = symbolication.symbolicate(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
