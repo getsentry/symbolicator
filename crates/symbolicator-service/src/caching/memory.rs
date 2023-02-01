@@ -144,7 +144,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         if let Ok(byteview) = &entry {
             if !request.should_load(byteview) {
                 tracing::trace!("Discarding {} at path {}", name, item_path.display());
-                metric!(counter(&format!("caches.{name}.file.discarded")) += 1);
+                metric!(counter("caches.file.discarded") += 1, "cache" => name.as_ref());
                 return Err(CacheError::NotFound);
             }
 
@@ -171,11 +171,12 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
-        metric!(counter(&format!("caches.{name}.file.hit")) += 1);
+        metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
         if let Ok(byteview) = &entry {
             metric!(
-                time_raw(&format!("caches.{name}.file.size")) = byteview.len() as u64,
-                "hit" => "true"
+                time_raw("caches.file.size") = byteview.len() as u64,
+                "hit" => "true",
+                "cache" => name.as_ref(),
             );
         }
 
@@ -244,6 +245,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         if let Some(cache_dir) = self.config.cache_dir() {
+            let name = self.config.name();
             // Cache is enabled, write it!
             let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
@@ -254,7 +256,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 );
             });
             metric!(
-                counter(&format!("caches.{}.file.write", self.config.name())) += 1,
+                counter("caches.file.write") += 1,
                 "status" => match &entry {
                     Ok(_) => "positive",
                     // TODO: should we create a `metrics_tag` method?
@@ -263,6 +265,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     Err(_) => "cache-specific error",
                 },
                 "is_refresh" => &is_refresh.to_string(),
+                "cache" => name.as_ref(),
             );
             if let Ok(byte_view) = &entry {
                 metric!(
@@ -379,11 +382,11 @@ impl<T: CacheItemRequest> Cacher<T> {
             let mut current_computations = self.current_computations.lock();
             if let Some(channel) = current_computations.get(&cache_key) {
                 // A concurrent cache lookup was deduplicated.
-                metric!(counter(&format!("caches.{name}.channel.hit")) += 1);
+                metric!(counter("caches.channel.hit") += 1, "cache" => name.as_ref());
                 channel.clone()
             } else {
                 // A concurrent cache lookup is considered new. This does not imply a cache miss.
-                metric!(counter(&format!("caches.{name}.channel.miss")) += 1);
+                metric!(counter("caches.channel.miss") += 1, "cache" => name.as_ref());
 
                 // We count down towards zero, and if we reach or surpass it, we will short circuit here.
                 // Doing the short-circuiting here means we don't create a channel at all, and don't
@@ -458,8 +461,9 @@ impl<T: CacheItemRequest> Cacher<T> {
                             .display()
                     );
                     metric!(
-                        counter(&format!("caches.{name}.file.fallback")) += 1,
+                        counter("caches.file.fallback") += 1,
                         "version" => &version.to_string(),
+                        "cache" => name.as_ref(),
                     );
                     let _not_awaiting_future = self.spawn_computation(request, cache_key, true);
                 }
@@ -470,7 +474,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // A file was not found. If this spikes, it's possible that the filesystem cache
         // just got pruned.
-        metric!(counter(&format!("caches.{name}.file.miss")) += 1);
+        metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
 
         self.spawn_computation(request, cache_key, false).await
     }
