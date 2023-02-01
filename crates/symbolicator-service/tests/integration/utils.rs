@@ -43,6 +43,7 @@ pub fn setup_service(
 
 /// Creates a new Symbolication request with the given modules and stack traces,
 /// which are being parsed from JSON.
+#[track_caller]
 pub fn make_symbolication_request(
     sources: Vec<SourceConfig>,
     modules: &str,

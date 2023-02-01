@@ -22,10 +22,7 @@ async fn test_nuget_source() {
             .parse()
             .unwrap(),
         headers: Default::default(),
-        files: source_config(
-            DirectoryLayoutType::Symstore,
-            vec![FileType::Pe, FileType::Pdb, FileType::PortablePdb],
-        ),
+        files: source_config(DirectoryLayoutType::Symstore, vec![FileType::PortablePdb]),
     }));
 
     let request = make_symbolication_request(
