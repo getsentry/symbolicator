@@ -5,18 +5,16 @@ use std::sync::Arc;
 use tempfile::NamedTempFile;
 
 use symbolicator_service::types::Scope;
-use symbolicator_test as test;
-use symbolicator_test::assert_snapshot;
 
-use crate::symbolication::setup_service;
+use crate::{assert_snapshot, read_fixture, setup_service, symbol_server};
 
 macro_rules! stackwalk_minidump {
     ($path:expr) => {
         async {
             let (symbolication, cache_dir) = setup_service(|_| ());
-            let (_symsrv, source) = test::symbol_server();
+            let (_symsrv, source) = symbol_server();
 
-            let minidump = test::read_fixture($path);
+            let minidump = read_fixture($path);
             let mut minidump_file = NamedTempFile::new().unwrap();
             minidump_file.write_all(&minidump).unwrap();
             let response = symbolication

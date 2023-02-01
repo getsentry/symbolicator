@@ -107,6 +107,8 @@ pub fn local_source() -> SourceConfig {
 }
 
 /// Get bucket configuration for the microsoft symbol server.
+// FIXME(swatinem): this is used for a couple of http endpoint tests, which we could migrate to our
+// local source as well.
 pub fn microsoft_symsrv() -> SourceConfig {
     SourceConfig::Http(Arc::new(HttpSourceConfig {
         id: SourceId::new("microsoft"),
@@ -121,20 +123,6 @@ pub fn microsoft_symsrv() -> SourceConfig {
             },
             ..Default::default()
         },
-    }))
-}
-
-pub fn nuget_source() -> SourceConfig {
-    SourceConfig::Http(Arc::new(HttpSourceConfig {
-        id: SourceId::new("nuget"),
-        url: "https://symbols.nuget.org/download/symbols/"
-            .parse()
-            .unwrap(),
-        headers: Default::default(),
-        files: source_config(
-            symbolicator_sources::DirectoryLayoutType::Symstore,
-            vec![FileType::Pe, FileType::Pdb, FileType::PortablePdb],
-        ),
     }))
 }
 
@@ -332,7 +320,7 @@ impl Default for Server {
 /// Spawn an actual HTTP symbol server for local fixtures.
 ///
 /// The symbol server serves static files from the local symbols fixture location under the
-/// `/download` prefix. The layout of this folder is `DirectoryLayoutType::Native`. This function
+/// `/symbols` prefix. The layout of this folder is `DirectoryLayoutType::Native`. This function
 /// returns the test server as well as a source configuration, which can be used to access the
 /// symbol server in symbolication requests.
 ///
