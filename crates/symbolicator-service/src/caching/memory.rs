@@ -269,9 +269,10 @@ impl<T: CacheItemRequest> Cacher<T> {
             );
             if let Ok(byte_view) = &entry {
                 metric!(
-                    time_raw(&format!("caches.{}.file.size", self.config.name())) = byte_view.len() as u64,
+                    time_raw("caches.file.size") = byte_view.len() as u64,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
+                    "cache" => self.config.name().as_ref(),
                 );
             }
 
