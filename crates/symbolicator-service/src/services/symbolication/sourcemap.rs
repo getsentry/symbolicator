@@ -181,9 +181,8 @@ impl SymbolicationActor {
                 continue
             };
 
-            let mut source_file: Option<NamedTempFile> = None;
-            let mut source_artifact: Option<SearchArtifactResult> = None;
-            let mut sourcemap_file: Option<NamedTempFile> = None;
+            let mut source_file = None;
+            let mut source_artifact = None;
 
             for candidate in get_release_file_candidate_urls(&abs_path_url) {
                 dbg!(&candidate);
@@ -197,38 +196,41 @@ impl SymbolicationActor {
                     {
                         source_file = Some(sf);
                         source_artifact = Some(sa.to_owned());
-                        continue;
+                        break;
                     }
                 }
             }
 
-            if let Some(sourcemap_url) = get_sourcemap_reference(&source_artifact, &source_file) {
-                if let Ok(resolved_sourcemap_url) = resolve_sourcemap_url(&abs_path, &sourcemap_url)
-                {
-                    for candidate in get_release_file_candidate_urls(&resolved_sourcemap_url) {
-                        if let Some(sourcemap_artifact) = release_archive.get(&candidate) {
-                            if let Some(sf) = self
-                                .sourcemaps
-                                .fetch_artifact(
-                                    request.source.clone(),
-                                    sourcemap_artifact.id.clone(),
-                                )
-                                .await
-                            {
-                                sourcemap_file = Some(sf);
-                                continue;
-                            }
-                        }
+            let (Some(mut source_file), Some(source_artifact)) = (source_file, source_artifact) else {
+                continue;
+            };
+
+            let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, &source_artifact, &source_file) else {
+                continue;
+            };
+
+            let mut sourcemap_file = None;
+            for candidate in get_release_file_candidate_urls(&sourcemap_url) {
+                if let Some(sourcemap_artifact) = release_archive.get(&candidate) {
+                    if let Some(sf) = self
+                        .sourcemaps
+                        .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
+                        .await
+                    {
+                        sourcemap_file = Some(sf);
+                        break;
                     }
                 }
             }
 
-            if let Some(source_file) = source_file.as_mut() {
-                if let Some(sourcemap_file) = sourcemap_file.as_mut() {
-                    collected_artifacts
-                        .insert(abs_path, smcache_from_files(source_file, sourcemap_file));
-                }
-            }
+            let Some(mut sourcemap_file) = sourcemap_file else {
+                continue;
+            };
+
+            collected_artifacts.insert(
+                abs_path,
+                smcache_from_files(&mut source_file, &mut sourcemap_file),
+            );
         }
 
         collected_artifacts
@@ -367,31 +369,19 @@ fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
 }
 
 // Joins together frames `abs_path` and discovered sourcemap reference.
-fn resolve_sourcemap_url(abs_path: &str, sourcemap_location: &str) -> Result<Url, url::ParseError> {
-    Url::parse(abs_path).and_then(|base| base.join(sourcemap_location))
-}
-
-fn get_sourcemap_reference(
-    source_artifact: &Option<SearchArtifactResult>,
-    source_file: &Option<NamedTempFile>,
-) -> Option<String> {
-    if let Some(source_artifact) = &source_artifact {
-        if let Some(header) = source_artifact.headers.get("Sourcemap") {
-            return Some(header.to_owned());
-        }
-
-        if let Some(header) = source_artifact.headers.get("X-SourceMap") {
-            return Some(header.to_owned());
-        }
+fn resolve_sourcemap_url(
+    abs_path: &Url,
+    source_artifact: &SearchArtifactResult,
+    source_file: &NamedTempFile,
+) -> Option<Url> {
+    if let Some(header) = source_artifact.headers.get("Sourcemap") {
+        abs_path.join(header).ok()
+    } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
+        abs_path.join(header).ok()
+    } else {
+        let sm_ref = locate_sourcemap_reference(BufReader::new(source_file.as_file())).ok()??;
+        abs_path.join(sm_ref.get_url()).ok()
     }
-
-    if let Some(source_file) = &source_file {
-        return locate_sourcemap_reference(BufReader::new(source_file.as_file()))
-            .map(|v| v.map(|s| s.get_url().to_string()))
-            .unwrap_or_default();
-    }
-
-    None
 }
 
 #[cfg(test)]
