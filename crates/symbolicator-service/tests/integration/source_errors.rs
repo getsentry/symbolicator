@@ -4,9 +4,8 @@ use symbolicator_service::types::{
     CompletedSymbolicationResponse, FrameStatus, ObjectDownloadInfo, ObjectFileStatus,
     ObjectUseInfo,
 };
-use symbolicator_test::Server;
 
-use crate::symbolication::{get_symbolication_request, setup_service};
+use crate::{example_request, setup_service, Server};
 
 #[tokio::test]
 async fn test_download_errors() {
@@ -39,7 +38,7 @@ async fn test_download_errors() {
     for _ in 0..2 {
         // NOTE: we try this 3 times on error
         let source = hitcounter.source("rejected", "/respond_statuscode/500/");
-        let request = get_symbolication_request(vec![source]);
+        let request = example_request(vec![source]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
         assert_eq!(
@@ -56,7 +55,7 @@ async fn test_download_errors() {
 
         // NOTE: we should probably try this 3 times?
         let source = hitcounter.source("pending", "/delay/1h/");
-        let request = get_symbolication_request(vec![source]);
+        let request = example_request(vec![source]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
         assert_eq!(
@@ -72,7 +71,7 @@ async fn test_download_errors() {
         );
 
         let source = hitcounter.source("notfound", "/respond_statuscode/404/");
-        let request = get_symbolication_request(vec![source]);
+        let request = example_request(vec![source]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
         assert_eq!(
@@ -86,7 +85,7 @@ async fn test_download_errors() {
         );
 
         let source = hitcounter.source("permissiondenied", "/respond_statuscode/403/");
-        let request = get_symbolication_request(vec![source]);
+        let request = example_request(vec![source]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
         assert_eq!(
@@ -102,7 +101,7 @@ async fn test_download_errors() {
         );
 
         let source = hitcounter.source("invalid", "/garbage_data/invalid");
-        let request = get_symbolication_request(vec![source]);
+        let request = example_request(vec![source]);
         let response = symbolication.symbolicate(request).await.unwrap();
 
         assert_eq!(
