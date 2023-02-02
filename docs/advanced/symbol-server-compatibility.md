@@ -190,10 +190,6 @@ Source bundles are only supported for PE/PDB files with the following format:
 
 - **Source bundle**: `<debug_name>/<Signature><Age>/<debug_name>.src.zip`
 
-**NOTE**: Fetching Portable PDB files from the nuget symbol server
-(https://symbols.nuget.org/download/symbols/) also requires a correct
-`SymbolChecksum` header.
-
 The following layout types support this lookup:
 
 - `symstore` for a regular symbol server
@@ -226,6 +222,16 @@ Symbol bundles are only supported for PE/PDB files with the following format:
 The following layout types support this lookup:
 
 - `ssqp`
+
+### Nuget
+
+See "Microsoft Symbol Server" for casing rules.
+
+Nuget only supports Portable PDB files.
+Downloading them also requires the file's debug checksum
+to be supplied via the `SymbolChecksum` header.
+
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 
 ### LLDB Debugger (macOS)
 
