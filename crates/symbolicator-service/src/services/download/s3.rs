@@ -58,32 +58,31 @@ impl S3Downloader {
             metric!(counter("source.s3.client.cached") += 1);
         }
 
-        self.client_cache
-            .get_with_by_ref(key, async {
-                metric!(counter("source.s3.client.create") += 1);
+        let init = Box::pin(async {
+            metric!(counter("source.s3.client.create") += 1);
 
-                tracing::debug!(
-                    "Using AWS credentials provider: {:?}",
-                    key.aws_credentials_provider
-                );
-                Arc::new(match key.aws_credentials_provider {
-                    AwsCredentialsProvider::Container => {
-                        let provider = LazyCachingCredentialsProvider::builder()
-                            .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
-                            .build();
-                        self.create_s3_client(provider, &key.region).await
-                    }
-                    AwsCredentialsProvider::Static => {
-                        let provider = Credentials::from_keys(
-                            key.access_key.clone(),
-                            key.secret_key.clone(),
-                            None,
-                        );
-                        self.create_s3_client(provider, &key.region).await
-                    }
-                })
+            tracing::debug!(
+                "Using AWS credentials provider: {:?}",
+                key.aws_credentials_provider
+            );
+            Arc::new(match key.aws_credentials_provider {
+                AwsCredentialsProvider::Container => {
+                    let provider = LazyCachingCredentialsProvider::builder()
+                        .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
+                        .build();
+                    self.create_s3_client(provider, &key.region).await
+                }
+                AwsCredentialsProvider::Static => {
+                    let provider = Credentials::from_keys(
+                        key.access_key.clone(),
+                        key.secret_key.clone(),
+                        None,
+                    );
+                    self.create_s3_client(provider, &key.region).await
+                }
             })
-            .await
+        });
+        self.client_cache.get_with_by_ref(key, init).await
     }
 
     async fn create_s3_client(

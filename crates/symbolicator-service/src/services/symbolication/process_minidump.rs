@@ -173,37 +173,36 @@ impl SymbolicatorSymbolProvider {
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
     async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchedCfiCache {
         let key = LookupKey::new(module);
-        self.cficaches
-            .get_with_by_ref(&key, async {
-                let sources = self.sources.clone();
-                let scope = self.scope.clone();
+        let init = Box::pin(async {
+            let sources = self.sources.clone();
+            let scope = self.scope.clone();
 
-                let identifier = ObjectId {
-                    code_id: key.code_id.clone(),
-                    code_file: Some(module.code_file().into_owned()),
-                    debug_id: key.debug_id,
-                    debug_file: module
-                        .debug_file()
-                        .map(|debug_file| debug_file.into_owned()),
-                    debug_checksum: None,
+            let identifier = ObjectId {
+                code_id: key.code_id.clone(),
+                code_file: Some(module.code_file().into_owned()),
+                debug_id: key.debug_id,
+                debug_file: module
+                    .debug_file()
+                    .map(|debug_file| debug_file.into_owned()),
+                debug_checksum: None,
+                object_type: self.object_type,
+            };
+
+            self.cficache_actor
+                .fetch(FetchCfiCache {
                     object_type: self.object_type,
-                };
-
-                self.cficache_actor
-                    .fetch(FetchCfiCache {
-                        object_type: self.object_type,
-                        identifier,
-                        sources,
-                        scope,
-                    })
-                    // NOTE: this `bind_hub` is important!
-                    // `load_cfi_module` is being called concurrently from `rust-minidump` via
-                    // `join_all`. We do need proper isolation of any async task that might
-                    // manipulate any Sentry scope.
-                    .bind_hub(Hub::new_from_top(Hub::current()))
-                    .await
-            })
-            .await
+                    identifier,
+                    sources,
+                    scope,
+                })
+                // NOTE: this `bind_hub` is important!
+                // `load_cfi_module` is being called concurrently from `rust-minidump` via
+                // `join_all`. We do need proper isolation of any async task that might
+                // manipulate any Sentry scope.
+                .bind_hub(Hub::new_from_top(Hub::current()))
+                .await
+        });
+        self.cficaches.get_with_by_ref(&key, init).await
     }
 }
 
