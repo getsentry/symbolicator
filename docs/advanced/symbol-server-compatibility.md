@@ -80,7 +80,7 @@ Specifically, the code and debug identifiers are defined as follows:
 - **Code ID:** The bytes as specified in the `build_id` custom section.
 - **Debug ID:** The same as code ID but truncated to 16 bytes + `0` for age.
 
-**PE** / **PDB**/ **Portable PDB**:
+**PE** / **PDB**:
 
 - **Code ID:** The hex value of the `time_date_stamp` in the COFF header
   formatted as `%08X` followed by `size_of_image` in the optional header
@@ -90,6 +90,10 @@ Specifically, the code and debug identifiers are defined as follows:
   the debug information stream in the PDB. The fields in the signature GUID
   are converted to network byte order first. This identifier can also be
   computed from a PE by reading the `code_view_pdb_70` records.
+
+**Portable PDB**:
+
+  - **Debug ID:** As for **PDB**, but the age is masked as `FFFFFFFF`.
 
 **Breakpad**:
 
@@ -168,7 +172,8 @@ Casing rules for Symbol Server are mixed:
 **Schema**:
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
-- **PDB** / **Portable PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -199,7 +204,8 @@ Casing rules for SSQP are mixed:
 - The age of a PDB identifier is **uppercase**.
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
-- **PDB** / **Portable PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -311,7 +317,8 @@ automatically create source bundles.
 The debug id is in all cases lowercase in hex format and computed as follows:
 
 - **PE**: `<Signature><Age>` (age in hex, not padded)
-- **PDB** / **Portable PDB**: `<Signature><Age>` (age in hex, not padded)
+- **PDB**: `<Signature><Age>` (age in hex, not padded)
+- **Portable PDB**: `<Signature>FFFFFFFF`
 - **ELF**: `<code_note_byte_sequence>`
 - **MachO**: `<uuid_bytes>`
 - **WASM**: `<BuildId>`
