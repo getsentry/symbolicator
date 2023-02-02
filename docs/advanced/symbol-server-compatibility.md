@@ -80,7 +80,7 @@ Specifically, the code and debug identifiers are defined as follows:
 - **Code ID:** The bytes as specified in the `build_id` custom section.
 - **Debug ID:** The same as code ID but truncated to 16 bytes + `0` for age.
 
-**PE** / **PDB**:
+**PE** / **PDB**/ **Portable PDB**:
 
 - **Code ID:** The hex value of the `time_date_stamp` in the COFF header
   formatted as `%08X` followed by `size_of_image` in the optional header
@@ -168,7 +168,7 @@ Casing rules for Symbol Server are mixed:
 **Schema**:
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
-- **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **PDB** / **Portable PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -199,7 +199,7 @@ Casing rules for SSQP are mixed:
 - The age of a PDB identifier is **uppercase**.
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
-- **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **PDB** / **Portable PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -311,7 +311,7 @@ automatically create source bundles.
 The debug id is in all cases lowercase in hex format and computed as follows:
 
 - **PE**: `<Signature><Age>` (age in hex, not padded)
-- **PDB**: `<Signature><Age>` (age in hex, not padded)
+- **PDB** / **Portable PDB**: `<Signature><Age>` (age in hex, not padded)
 - **ELF**: `<code_note_byte_sequence>`
 - **MachO**: `<uuid_bytes>`
 - **WASM**: `<BuildId>`
