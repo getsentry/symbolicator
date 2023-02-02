@@ -42,25 +42,23 @@ impl GcsDownloader {
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
     async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheEntry<Arc<GcsToken>> {
+        let init = Box::pin(async {
+            let token = gcs::request_new_token(&self.client, source_key).await;
+            metric!(counter("source.gcs.token.requests") += 1);
+            token.map(Arc::new).map_err(CacheError::from)
+        });
+        let replace_if = |entry: &CacheEntry<Arc<GcsToken>>| match entry {
+            Ok(token) => {
+                let is_expired = token.is_expired();
+                if !is_expired {
+                    metric!(counter("source.gcs.token.cached") += 1);
+                }
+                is_expired
+            }
+            Err(_) => true,
+        };
         self.token_cache
-            .get_with_if(
-                source_key.clone(),
-                async {
-                    let token = gcs::request_new_token(&self.client, source_key).await;
-                    metric!(counter("source.gcs.token.requests") += 1);
-                    token.map(Arc::new).map_err(CacheError::from)
-                },
-                |entry| match entry {
-                    Ok(token) => {
-                        let is_expired = token.is_expired();
-                        if !is_expired {
-                            metric!(counter("source.gcs.token.cached") += 1);
-                        }
-                        is_expired
-                    }
-                    Err(_) => true,
-                },
-            )
+            .get_with_if(source_key.clone(), init, replace_if)
             .await
     }
 
