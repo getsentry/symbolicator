@@ -35,6 +35,7 @@ to determine the ID (see below for exact conversion algorithms):
   `debug_id`.
 - **PDB**: Windows PDBs have their own `debug_id`, which can be read from the
   PDB or PE header. It is mandatory, as it cannot be derived from the `code_id`.
+- **Portable PDB**: Like PDBs, portable PDBs have their own `debug_id`.
 - **Breakpad**: Google Breakpad uses `debug_id` for all symbol kinds. If it is
   missing, it can be computed from the `code_id` if this is possible using the
   above rules.
@@ -61,9 +62,10 @@ How we deviate from this in practice is documented separately.
 
 | Platform | 1. Choice    | 2. Choice  | 3. Choice |
 | -------- | ------------ | ---------- | --------- |
-| MachO    | MachO (dSYM) | Breakpad   |
+| MachO    | MachO (dSYM) | Breakpad   |           |
 | ELF      | ELF (debug)  | ELF (code) | Breakpad  |
-| PE       | PDB          | Breakpad   |
+| PE       | PDB          | Breakpad   |           |
+| .NET PE  | Portable PDB |            |           |
 
 ### Unwind Information
 
