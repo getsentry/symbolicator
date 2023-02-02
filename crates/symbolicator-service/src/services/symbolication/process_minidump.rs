@@ -173,7 +173,7 @@ impl SymbolicatorSymbolProvider {
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
     async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchedCfiCache {
         let key = LookupKey::new(module);
-        let load = Box::pin(async {
+        let init = Box::pin(async {
             let sources = self.sources.clone();
             let scope = self.scope.clone();
 
@@ -202,7 +202,7 @@ impl SymbolicatorSymbolProvider {
                 .bind_hub(Hub::new_from_top(Hub::current()))
                 .await
         });
-        self.cficaches.get_with_by_ref(&key, load).await
+        self.cficaches.get_with_by_ref(&key, init).await
     }
 }
 
