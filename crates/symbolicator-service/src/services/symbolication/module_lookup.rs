@@ -202,14 +202,13 @@ impl ModuleLookup {
                                 features,
                             } = ppdb_cache_actor.fetch(request).await;
 
-                            (
-                                idx,
-                                CacheFile {
-                                    file: cache.map(CacheFileEntry::PortablePdbCache),
-                                    candidates,
-                                    features,
-                                },
-                            )
+                            let cache_file = CacheFile {
+                                file: cache.map(CacheFileEntry::PortablePdbCache),
+                                candidates,
+                                features,
+                            };
+
+                            (idx, cache_file)
                         }
                         _ => {
                             let request = FetchSymCache {
@@ -225,30 +224,27 @@ impl ModuleLookup {
                                 features,
                             } = symcache_actor.fetch(request).await;
 
-                            (
-                                idx,
-                                CacheFile {
-                                    file: cache.map(CacheFileEntry::SymCache),
-                                    candidates,
-                                    features,
-                                },
-                            )
+                            let cache_file = CacheFile {
+                                file: cache.map(CacheFileEntry::SymCache),
+                                candidates,
+                                features,
+                            };
+
+                            (idx, cache_file)
                         }
                     }
-                }
-                .bind_hub(Hub::new_from_top(Hub::current()));
-                Some(fut)
+                };
+
+                Some(fut.bind_hub(Hub::new_from_top(Hub::current())))
             });
 
-        for (
-            idx,
-            CacheFile {
+        for (idx, cache_file) in future::join_all(futures).await {
+            let CacheFile {
                 file,
                 candidates,
                 features,
-            },
-        ) in future::join_all(futures).await
-        {
+            } = cache_file;
+
             if let Some(entry) = self.modules.get_mut(idx) {
                 entry.object_info.arch = Default::default();
                 entry.object_info.features.merge(features);
@@ -303,22 +299,21 @@ impl ModuleLookup {
                     scope: self.scope.clone(),
                 };
 
-                Some(
-                    async move {
-                        let FindResult { meta, candidates } = objects.find(find_request).await;
+                let fut = async move {
+                    let FindResult { meta, candidates } = objects.find(find_request).await;
 
-                        let source_object = match meta {
-                            Some(meta) => match meta.handle {
-                                Ok(handle) => objects.fetch(handle).await,
-                                Err(err) => Err(err),
-                            },
-                            None => Err(CacheError::NotFound),
-                        };
+                    let source_object = match meta {
+                        Some(meta) => match meta.handle {
+                            Ok(handle) => objects.fetch(handle).await,
+                            Err(err) => Err(err),
+                        },
+                        None => Err(CacheError::NotFound),
+                    };
 
-                        (idx, source_object, candidates)
-                    }
-                    .bind_hub(Hub::new_from_top(Hub::current())),
-                )
+                    (idx, source_object, candidates)
+                };
+
+                Some(fut.bind_hub(Hub::new_from_top(Hub::current())))
             });
 
         for (idx, source_object, candidates) in future::join_all(futures).await {
