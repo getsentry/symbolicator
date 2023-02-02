@@ -190,6 +190,10 @@ Source bundles are only supported for PE/PDB files with the following format:
 
 - **Source bundle**: `<debug_name>/<Signature><Age>/<debug_name>.src.zip`
 
+**NOTE**: Fetching Portable PDB files from the nuget symbol server
+(https://symbols.nuget.org/download/symbols/) also requires a correct
+`SymbolChecksum` header.
+
 The following layout types support this lookup:
 
 - `symstore` for a regular symbol server
