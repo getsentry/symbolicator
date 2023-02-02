@@ -214,16 +214,9 @@ impl CacheItemRequest for FetchFileDataRequest {
         )
         .bind_hub(Hub::current());
 
-        let type_name = self.0.file_source.source_type_name().into();
-
         let timeout = Duration::from_secs(600);
         let future = tokio::time::timeout(timeout, future);
-        let future = measure(
-            "objects",
-            m::timed_result,
-            Some(("source_type", type_name)),
-            future,
-        );
+        let future = measure("objects", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 

@@ -401,7 +401,7 @@ impl RequestService {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
 
             let f = tokio::time::timeout(Duration::from_secs(3600), f);
-            let f = measure(task_name, m::timed_result, None, f);
+            let f = measure(task_name, m::timed_result, f);
 
             // This flattens the `Result<Result<_, Error>, Timeout>` into a
             // `Result<_, SymbolicationError>` so we can match on it more easily.

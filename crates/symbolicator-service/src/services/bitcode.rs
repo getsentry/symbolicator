@@ -126,16 +126,9 @@ impl CacheItemRequest for FetchFileRequest {
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let fut = self.fetch_file(temp_file).bind_hub(Hub::current());
 
-        let source_name = self.file_source.source_type_name().into();
-
         let timeout = Duration::from_secs(1200);
         let future = tokio::time::timeout(timeout, fut);
-        let future = measure(
-            "auxdifs",
-            m::timed_result,
-            Some(("source_type", source_name)),
-            future,
-        );
+        let future = measure("auxdifs", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 

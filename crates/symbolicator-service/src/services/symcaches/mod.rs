@@ -108,9 +108,6 @@ impl SymCacheActor {
 
 #[derive(Clone, Debug)]
 struct FetchSymCacheInternal {
-    /// The external request, as passed into [`SymCacheActor::fetch`].
-    request: FetchSymCache,
-
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
 
@@ -155,16 +152,9 @@ impl CacheItemRequest for FetchSymCacheInternal {
             self.secondary_sources.clone(),
         );
 
-        let num_sources = self.request.sources.len().to_string().into();
-
         let timeout = Duration::from_secs(1200);
         let future = tokio::time::timeout(timeout, future);
-        let future = measure(
-            "symcaches",
-            m::timed_result,
-            Some(("num_sources", num_sources)),
-            future,
-        );
+        let future = measure("symcaches", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
@@ -252,7 +242,6 @@ impl SymCacheActor {
 
             let cache_key = handle.cache_key();
             let request = FetchSymCacheInternal {
-                request,
                 objects_actor: self.objects.clone(),
                 secondary_sources,
                 object_meta: Arc::clone(&handle),
