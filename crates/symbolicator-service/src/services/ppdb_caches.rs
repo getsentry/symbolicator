@@ -80,16 +80,15 @@ impl PortablePdbCacheActor {
             .objects
             .find(FindObject {
                 filetypes: &[FileType::PortablePdb],
-                identifier: request.identifier.clone(),
-                sources: request.sources.clone(),
-                scope: request.scope.clone(),
+                identifier: request.identifier,
+                sources: request.sources,
+                scope: request.scope,
                 purpose: ObjectPurpose::Debug,
             })
             .await;
         derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| {
             let cache_key = object_meta.cache_key();
             let request = FetchPortablePdbCacheInternal {
-                request,
                 objects_actor: self.objects.clone(),
                 object_meta,
             };
@@ -101,9 +100,6 @@ impl PortablePdbCacheActor {
 
 #[derive(Clone, Debug)]
 struct FetchPortablePdbCacheInternal {
-    /// The external request, as passed into [`PortablePdbCacheActor::fetch`].
-    request: FetchPortablePdbCache,
-
     /// The objects actor, used to fetch original DIF objects from.
     objects_actor: ObjectsActor,
 
@@ -143,16 +139,9 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
             self.object_meta.clone(),
         );
 
-        let num_sources = self.request.sources.len().to_string().into();
-
         let timeout = Duration::from_secs(1200);
         let future = tokio::time::timeout(timeout, future);
-        let future = measure(
-            "ppdb_caches",
-            m::timed_result,
-            Some(("num_sources", num_sources)),
-            future,
-        );
+        let future = measure("ppdb_caches", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 

@@ -85,7 +85,6 @@ impl CfiCacheActor {
 
 #[derive(Clone, Debug)]
 struct FetchCfiCacheInternal {
-    request: FetchCfiCache,
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
 }
@@ -113,16 +112,9 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let future = compute_cficache(&self.objects_actor, self.meta_handle.clone(), temp_file);
 
-        let num_sources = self.request.sources.len().to_string().into();
-
         let timeout = Duration::from_secs(1200);
         let future = tokio::time::timeout(timeout, future);
-        let future = measure(
-            "cficaches",
-            m::timed_result,
-            Some(("num_sources", num_sources)),
-            future,
-        );
+        let future = measure("cficaches", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
@@ -160,9 +152,9 @@ impl CfiCacheActor {
             .objects
             .find(FindObject {
                 filetypes: FileType::from_object_type(request.object_type),
-                identifier: request.identifier.clone(),
-                sources: request.sources.clone(),
-                scope: request.scope.clone(),
+                identifier: request.identifier,
+                sources: request.sources,
+                scope: request.scope,
                 purpose: ObjectPurpose::Unwind,
             })
             .await;
@@ -170,7 +162,6 @@ impl CfiCacheActor {
         derive_from_object_handle(found_object, CandidateStatus::Unwind, |meta_handle| {
             let cache_key = meta_handle.cache_key();
             let request = FetchCfiCacheInternal {
-                request,
                 objects_actor: self.objects.clone(),
                 meta_handle,
             };

@@ -38,7 +38,7 @@ mod sentry;
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
         scope.set_tag("source.id", self.source_id());
-        scope.set_tag("source.type", self.source_type_name());
+        scope.set_tag("source.type", self.source_metric_key());
         scope.set_tag("source.is_public", self.is_public());
         scope.set_tag("source.uri", self.uri());
     }
@@ -183,7 +183,7 @@ impl DownloadService {
         let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
-        let job = measure("service.download", m::timed_result, None, job);
+        let job = measure("service.download", m::timed_result, job);
 
         job.await
             .map_err(|_| CacheError::Timeout(self.max_download_timeout))? // Timeout
@@ -228,7 +228,7 @@ impl DownloadService {
                     let job = self.sentry.list_files(cfg.clone(), object_id, filetypes);
                     let timeout = Duration::from_secs(30);
                     let job = tokio::time::timeout(timeout, job);
-                    let job = measure("service.download.list_files", m::timed_result, None, job);
+                    let job = measure("service.download.list_files", m::timed_result, job);
 
                     let sentry_files = job.await.map_err(|_| CacheError::Timeout(timeout));
                     match sentry_files {

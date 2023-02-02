@@ -225,17 +225,6 @@ impl RemoteFile {
         }
     }
 
-    /// A short name for the source type.
-    pub fn source_type_name(&self) -> &'static str {
-        match *self {
-            Self::Sentry(..) => "sentry",
-            Self::S3(..) => "s3",
-            Self::Gcs(..) => "gcs",
-            Self::Http(..) => "http",
-            Self::Filesystem(..) => "filesystem",
-        }
-    }
-
     /// Returns a key that uniquely identifies the source for metrics.
     ///
     /// If this is a built-in source the source_id is returned, otherwise this falls
@@ -247,9 +236,14 @@ impl RemoteFile {
         // source, then the source_id is a random string which inflates the cardinality of this
         // metric as the tag values will greatly vary.
         if id.starts_with("sentry:") {
-            id
-        } else {
-            self.source_type_name()
+            return id;
+        }
+        match self {
+            Self::Sentry(..) => "sentry",
+            Self::S3(..) => "s3",
+            Self::Gcs(..) => "gcs",
+            Self::Http(..) => "http",
+            Self::Filesystem(..) => "filesystem",
         }
     }
 
