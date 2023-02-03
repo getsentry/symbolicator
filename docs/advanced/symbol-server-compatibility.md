@@ -229,7 +229,8 @@ See "Microsoft Symbol Server" for casing rules.
 
 Nuget only supports Portable PDB files.
 Downloading them also requires the file's debug checksum
-to be supplied via the `SymbolChecksum` header.
+to be supplied via the `SymbolChecksum` header; see
+https://github.com/getsentry/rfcs/blob/main/text/0013-portable-pdb.md#nuget-symbol-server-lookups.
 
 - **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 
