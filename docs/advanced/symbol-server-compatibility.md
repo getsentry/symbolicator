@@ -80,7 +80,7 @@ Specifically, the code and debug identifiers are defined as follows:
 - **Code ID:** The bytes as specified in the `build_id` custom section.
 - **Debug ID:** The same as code ID but truncated to 16 bytes + `0` for age.
 
-**PE** / **PDB**:
+**PE** / **PDB** / **Portable PDB**:
 
 - **Code ID:** The hex value of the `time_date_stamp` in the COFF header
   formatted as `%08X` followed by `size_of_image` in the optional header
@@ -169,6 +169,7 @@ Casing rules for Symbol Server are mixed:
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
 - **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -200,6 +201,7 @@ Casing rules for SSQP are mixed:
 
 - **PE**: `<code_name>/<Timestamp><SizeOfImage>/<code_name>`
 - **PDB**: `<debug_name>/<Signature><Age>/<debug_name>`
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 - **ELF** (binary, potentially stripped):
   `<code_name>/elf-buildid-<note_byte_sequence>/<code_name>`
 - **ELF** (debug info): `_.debug/elf-buildid-sym-<note_byte_sequence>/_.debug`
@@ -216,6 +218,17 @@ Symbol bundles are only supported for PE/PDB files with the following format:
 The following layout types support this lookup:
 
 - `ssqp`
+
+### Nuget
+
+See "Microsoft Symbol Server" for casing rules.
+
+Nuget only supports Portable PDB files.
+Downloading them also requires the file's debug checksum
+to be supplied via the `SymbolChecksum` header; see
+https://github.com/getsentry/rfcs/blob/main/text/0013-portable-pdb.md#nuget-symbol-server-lookups.
+
+- **Portable PDB**: `<debug_name>/<Signature>FFFFFFFF/<debug_name>`
 
 ### LLDB Debugger (macOS)
 
@@ -312,6 +325,7 @@ The debug id is in all cases lowercase in hex format and computed as follows:
 
 - **PE**: `<Signature><Age>` (age in hex, not padded)
 - **PDB**: `<Signature><Age>` (age in hex, not padded)
+- **Portable PDB**: `<Signature><Age>` (age in hex, not padded)
 - **ELF**: `<code_note_byte_sequence>`
 - **MachO**: `<uuid_bytes>`
 - **WASM**: `<BuildId>`
