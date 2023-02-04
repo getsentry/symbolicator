@@ -18,7 +18,7 @@ symbolic = "11.0.0"
 symbolicator-service = { version = "0.6.0", path = "../symbolicator-service" }
 symbolicator-sources = { version = "0.6.0", path = "../symbolicator-sources" }
 tempfile = "3.3.0"
-tokio = { version = "1.23.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
 toml = "0.5.9"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["tracing-log", "local-time", "env-filter", "json"] }
