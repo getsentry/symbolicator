@@ -10,7 +10,7 @@ futures = "0.3.12"
 humantime = "2.0.1"
 symbolicator-service = { path = "../symbolicator-service" }
 serde = { version = "1.0.137", features = ["derive"] }
-tokio = { version = "1.23.1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
 serde_yaml = "0.9.14"
 tempfile = "3.2.0"
 structopt = "0.3.21"
