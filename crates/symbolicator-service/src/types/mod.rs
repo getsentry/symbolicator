@@ -491,6 +491,28 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
     }
 }
 
+/// A wrapper around possible completed endpoint responses.
+///
+/// This allows us to support multiple independent types of symbolication.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum CompletedResponse {
+    Symbolication(CompletedSymbolicationResponse),
+    SourceMap(JsProcessingCompletedSymbolicationResponse),
+}
+
+impl From<CompletedSymbolicationResponse> for CompletedResponse {
+    fn from(response: CompletedSymbolicationResponse) -> Self {
+        Self::Symbolication(response)
+    }
+}
+
+impl From<JsProcessingCompletedSymbolicationResponse> for CompletedResponse {
+    fn from(response: JsProcessingCompletedSymbolicationResponse) -> Self {
+        Self::SourceMap(response)
+    }
+}
+
 /// The symbolicated crash data.
 ///
 /// It contains the symbolicated stack frames, module information as well as other
@@ -543,6 +565,11 @@ pub struct CompletedSymbolicationResponse {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct JsProcessingCompletedSymbolicationResponse {
+    pub stacktraces: Vec<CompleteJsStacktrace>,
+}
+
 /// Information about the operating system.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SystemInfo {
@@ -560,4 +587,49 @@ pub struct SystemInfo {
 
     /// Device model name
     pub device_model: String,
+}
+
+// TODO: Verify which are required fields
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct JsProcessingRawFrame {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub function: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filename: Option<String>,
+
+    pub abs_path: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lineno: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub colno: Option<u32>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pre_context: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_line: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub post_context: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct JsProcessingRawStacktrace {
+    pub frames: Vec<JsProcessingRawFrame>,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct JsProcessingSymbolicatedFrame {
+    pub status: FrameStatus,
+
+    #[serde(flatten)]
+    pub raw: JsProcessingRawFrame,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct CompleteJsStacktrace {
+    pub frames: Vec<JsProcessingSymbolicatedFrame>,
 }

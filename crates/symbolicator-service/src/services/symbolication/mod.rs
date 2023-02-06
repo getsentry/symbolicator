@@ -4,19 +4,19 @@ use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
-use symbolicator_sources::ObjectId;
+use symbolicator_sources::{ObjectId, SentrySourceConfig};
 use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
+use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
-use crate::types::RawObjectInfo;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
-    SymbolicatedFrame,
+    FrameTrust, JsProcessingRawStacktrace, ObjectFileStatus, RawFrame, RawObjectInfo,
+    RawStacktrace, Registers, Scope, Signal, SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
@@ -25,6 +25,7 @@ use module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 mod apple;
 mod module_lookup;
 mod process_minidump;
+pub mod sourcemap;
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
@@ -98,6 +99,7 @@ pub struct SymbolicationActor {
     cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
     diagnostics_cache: Cache,
+    sourcemaps: SourceMapService,
 }
 
 impl SymbolicationActor {
@@ -107,6 +109,7 @@ impl SymbolicationActor {
         cficaches: CfiCacheActor,
         ppdb_caches: PortablePdbCacheActor,
         diagnostics_cache: Cache,
+        sourcemaps: SourceMapService,
     ) -> Self {
         SymbolicationActor {
             objects,
@@ -114,6 +117,7 @@ impl SymbolicationActor {
             cficaches,
             ppdb_caches,
             diagnostics_cache,
+            sourcemaps,
         }
     }
 
@@ -219,6 +223,13 @@ pub struct SymbolicateStacktraces {
     /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
     /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct JsProcessingSymbolicateStacktraces {
+    pub source: Arc<SentrySourceConfig>,
+    pub stacktraces: Vec<JsProcessingRawStacktrace>,
+    pub dist: Option<String>,
 }
 
 fn symbolicate_frame(
