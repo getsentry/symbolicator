@@ -24,6 +24,8 @@ jobs:
         if: matrix.arch == 'arm64'
 
       - name: build builder img
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
           set -euxo pipefail
           args=()
