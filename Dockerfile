@@ -40,12 +40,7 @@ RUN objcopy --only-keep-debug target/release/symbolicator target/release/symboli
     && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
-RUN sentry-cli --version \
-    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator.debug)" \
-    && SENTRY_URL="https://sentry.my.sentry.io/" sentry-cli upload-dif \
-       -o sentry \
-       -p symbolicator \
-       "$SOURCE_BUNDLE" /opt/symbolicator-debug.zip
+RUN scripts/build-and-upload-difs.sh
 
 #############################################
 # Copy the compiled binary to a clean image #
