@@ -42,7 +42,10 @@ RUN objcopy --only-keep-debug target/release/symbolicator target/release/symboli
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
     && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator.debug)" \
-    && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
+    && SENTRY_URL="https://sentry.my.sentry.io/" sentry-cli upload-dif \
+       -o sentry \
+       -p symbolicator \
+       "$SOURCE_BUNDLE" /opt/symbolicator-debug.zip
 
 #############################################
 # Copy the compiled binary to a clean image #
@@ -68,7 +71,6 @@ RUN mkdir -p /etc/symbolicator /data && \
 EXPOSE 3021
 
 COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
-COPY --from=symbolicator-build /opt/symbolicator-debug.zip /opt/symbolicator.src.zip /opt/
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]

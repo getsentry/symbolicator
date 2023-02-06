@@ -26,6 +26,8 @@ steps:
       ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"]
 
   - name: "gcr.io/cloud-builders/docker"
+    # SENTRY_AUTH_TOKEN is used for DIF uploading via sentry-cli.
+    secretEnv: ["SENTRY_AUTH_TOKEN"]
     args:
       [
         "build",
@@ -91,10 +93,17 @@ options:
   machineType: "N1_HIGHCPU_8"
 secrets:
   - kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
+    # To encrypt a secret:
+    # $ gcloud --project sentryio kms encrypt --location global \
+    #  --keyring service-credentials --key cloudbuild \
+    #  --plaintext-file foo \
+    #  --ciphertext-file foo.encrypted
+    # $ base64 foo.encrypted
     secretEnv:
-      # This is a personal access token for the sentrybuilder account, encrypted using the
-      # short guide at http://bit.ly/2Pg6uw9
+      # This is a personal access token for the sentrybuilder account
       DOCKER_PASSWORD: |
         CiQAE8gN7y3OMxn+a1kofmK4Bi8jQZtdRFj2lYYwaZHVeIIBUzMSTQA9tvn8XCv2vqj6u8CHoeSP
         TVW9pLvSCorKoeNtOp0eb+6V1yNJW/+JC07DNO1KLbTbodbuza6jKJHU5xeAJ4kGQI78UY5Vu1Gp
         QcMK
+      SENTRY_AUTH_TOKEN: |
+        TODO
