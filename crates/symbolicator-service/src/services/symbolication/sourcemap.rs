@@ -40,48 +40,39 @@ impl SymbolicationActor {
                 continue
             };
 
-            let mut source_file = None;
-            let mut source_artifact = None;
-
-            for candidate in get_release_file_candidate_urls(&abs_path_url) {
-                if let Some(sa) = release_archive.get(&candidate) {
-                    if let Some(sf) = self
-                        .sourcemaps
+            let futures = get_release_file_candidate_urls(&abs_path_url)
+                .iter()
+                .filter_map(|candidate| release_archive.get(candidate))
+                .map(|sa| async move {
+                    self.sourcemaps
                         .fetch_artifact(request.source.clone(), sa.id.clone())
                         .await
-                    {
-                        source_file = Some(sf);
-                        source_artifact = Some(sa.to_owned());
-                        break;
-                    }
-                }
-            }
+                        .map(|sf| (sf, sa))
+                })
+                .collect::<Vec<_>>();
 
             // TODO(sourcemap): Report missing source error
-            let (Some(source_file), Some(source_artifact)) = (source_file, source_artifact) else {
+            let Some((source_file, source_artifact)) = futures::future::join_all(futures).await.into_iter().flatten().next() else {
                 continue;
             };
 
+            // TODO(sourcemap): Report missing sourcemap url error
             let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, &source_artifact, &source_file) else {
                 continue;
             };
 
-            let mut sourcemap_file = None;
-            for candidate in get_release_file_candidate_urls(&sourcemap_url) {
-                if let Some(sourcemap_artifact) = release_archive.get(&candidate) {
-                    if let Some(sf) = self
-                        .sourcemaps
+            let futures = get_release_file_candidate_urls(&sourcemap_url)
+                .iter()
+                .filter_map(|candidate| release_archive.get(candidate))
+                .map(|sourcemap_artifact| async move {
+                    self.sourcemaps
                         .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
                         .await
-                    {
-                        sourcemap_file = Some(sf);
-                        break;
-                    }
-                }
-            }
+                })
+                .collect::<Vec<_>>();
 
             // TODO(sourcemap): Report missing source error
-            let Some(sourcemap_file) = sourcemap_file else {
+            let Some(sourcemap_file) = futures::future::join_all(futures).await.into_iter().flatten().next() else {
                 continue;
             };
 
