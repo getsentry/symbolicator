@@ -5,53 +5,20 @@ use std::{
 
 use reqwest::Url;
 use sourcemap::locate_sourcemap_reference;
-use symbolic::{
-    common::{ByteView, SelfCell},
-    sourcemapcache::{ScopeLookupResult, SourceMapCache, SourceMapCacheWriter, SourcePosition},
-};
+use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use tempfile::NamedTempFile;
 use url::Position;
 
-use crate::{
-    services::download::sentry::SearchArtifactResult,
-    types::{
-        CompleteJsStacktrace, FrameStatus, JsProcessingCompletedSymbolicationResponse,
-        JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
-    },
+use crate::services::{download::sentry::SearchArtifactResult, sourcemap::OwnedSourceMapCache};
+use crate::types::{
+    CompleteJsStacktrace, FrameStatus, JsProcessingCompletedSymbolicationResponse,
+    JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
 };
 
 use super::{JsProcessingSymbolicateStacktraces, SymbolicationActor};
 
 // TODO(sourcemap): Use our generic caching solution for all Artifacts.
 // TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
-
-pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
-
-fn smcache_from_files(
-    source: &mut NamedTempFile,
-    sourcemap: &mut NamedTempFile,
-) -> OwnedSourceMapCache {
-    use std::io::Read;
-
-    let mut source_buf = String::new();
-    source.as_file_mut().read_to_string(&mut source_buf).ok();
-
-    let mut sourcemap_buf = String::new();
-    sourcemap
-        .as_file_mut()
-        .read_to_string(&mut sourcemap_buf)
-        .ok();
-
-    let smcache_writer = SourceMapCacheWriter::new(&source_buf, &sourcemap_buf).unwrap();
-    let mut smcache_buf = vec![];
-    smcache_writer.serialize(&mut smcache_buf).unwrap();
-
-    let byteview = ByteView::from_vec(smcache_buf);
-    SelfCell::try_new::<symbolic::sourcemapcache::SourceMapCacheError, _>(byteview, |data| unsafe {
-        SourceMapCache::parse(&*data)
-    })
-    .unwrap()
-}
 
 // TODO(sourcemap): Move this and related functions to its own file, similar to how `ModuleLookup` works.
 impl SymbolicationActor {
@@ -94,7 +61,7 @@ impl SymbolicationActor {
             }
 
             // TODO(sourcemap): Report missing source error
-            let (Some(mut source_file), Some(source_artifact)) = (source_file, source_artifact) else {
+            let (Some(source_file), Some(source_artifact)) = (source_file, source_artifact) else {
                 continue;
             };
 
@@ -117,13 +84,17 @@ impl SymbolicationActor {
             }
 
             // TODO(sourcemap): Report missing source error
-            let Some(mut sourcemap_file) = sourcemap_file else {
+            let Some(sourcemap_file) = sourcemap_file else {
                 continue;
             };
 
             collected_artifacts.insert(
                 abs_path,
-                smcache_from_files(&mut source_file, &mut sourcemap_file),
+                self.sourcemaps
+                    .fetch_cache(&source_file, &sourcemap_file)
+                    .await
+                    // TODO: properly report errors here
+                    .unwrap(),
             );
         }
 

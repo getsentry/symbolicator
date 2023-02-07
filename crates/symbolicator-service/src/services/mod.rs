@@ -72,9 +72,10 @@ pub fn create_service(
 
     let cficaches = CfiCacheActor::new(caches.cficaches, shared_cache.clone(), objects.clone());
 
-    let ppdb_caches = PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache, objects.clone());
+    let ppdb_caches =
+        PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache.clone(), objects.clone());
 
-    let sourcemaps = SourceMapService::new(downloader);
+    let sourcemaps = SourceMapService::new(caches.sourcemap_caches, shared_cache, downloader);
 
     let symbolication = SymbolicationActor::new(
         objects.clone(),

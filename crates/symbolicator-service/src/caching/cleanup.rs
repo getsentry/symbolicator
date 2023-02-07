@@ -41,6 +41,7 @@ impl Caches {
             symcaches,
             cficaches,
             ppdb_caches,
+            sourcemap_caches,
             diagnostics,
         } = &self;
 
@@ -55,6 +56,7 @@ impl Caches {
             auxdifs.cleanup(),
             il2cpp.cleanup(),
             ppdb_caches.cleanup(),
+            sourcemap_caches.cleanup(),
         ];
 
         let mut first_error = None;
