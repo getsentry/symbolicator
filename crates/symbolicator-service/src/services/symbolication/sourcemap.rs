@@ -24,7 +24,6 @@ impl SymbolicationActor {
         &self,
         request: &JsProcessingSymbolicateStacktraces,
     ) -> HashMap<String, OwnedSourceMapCache> {
-        // TODO(sourcemap): Fetch all files concurrently using futures join
         let mut unique_abs_paths = HashSet::new();
         for stacktrace in &request.stacktraces {
             for frame in &stacktrace.frames {
@@ -32,12 +31,11 @@ impl SymbolicationActor {
             }
         }
 
-        let mut collected_artifacts = HashMap::new();
         let release_archive = self.sourcemaps.list_artifacts(request.source.clone()).await;
 
-        for abs_path in unique_abs_paths {
-            let Ok(abs_path_url) = Url::parse(&abs_path) else {
-                continue
+        let compute_caches = unique_abs_paths.into_iter().map(|abs_path| async {
+             let Ok(abs_path_url) = Url::parse(&abs_path) else {
+                return None;
             };
 
             let candidate_urls = get_release_file_candidate_urls(&abs_path_url);
@@ -56,12 +54,12 @@ impl SymbolicationActor {
 
             // TODO(sourcemap): Report missing source error
             let Ok(((source_file, source_artifact),_)) = futures::future::select_ok(futures).await else {
-                continue;
+                return None;
             };
 
             // TODO(sourcemap): Report missing sourcemap url error
             let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file) else {
-                continue;
+                return None;
             };
 
             let candidate_urls = get_release_file_candidate_urls(&sourcemap_url);
@@ -79,20 +77,23 @@ impl SymbolicationActor {
 
             // TODO(sourcemap): Report missing source error
             let Ok((sourcemap_file, _)) = futures::future::select_ok(futures).await else {
-                continue;
+                return None;
             };
 
-            collected_artifacts.insert(
-                abs_path,
-                self.sourcemaps
+            let cache = self.sourcemaps
                     .fetch_cache(&source_file, &sourcemap_file)
                     .await
                     // TODO: properly report errors here
-                    .unwrap(),
-            );
-        }
+                    .unwrap();
 
-        collected_artifacts
+            Some((abs_path, cache))
+        });
+
+        futures::future::join_all(compute_caches)
+            .await
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
     #[tracing::instrument(skip_all)]
