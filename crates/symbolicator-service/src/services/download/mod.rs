@@ -20,11 +20,13 @@ pub use symbolicator_sources::{
     SourceFilters, SourceLocation,
 };
 use symbolicator_sources::{
-    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SentrySourceConfig,
+    SourceLocationIter,
 };
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
+use crate::services::download::sentry::SearchArtifactResult;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::sentry::ConfigureScope;
@@ -33,7 +35,7 @@ mod filesystem;
 mod gcs;
 mod http;
 mod s3;
-mod sentry;
+pub mod sentry;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -266,6 +268,26 @@ impl DownloadService {
             }
         }
         remote_files
+    }
+
+    pub async fn list_artifacts(
+        &self,
+        source: Arc<SentrySourceConfig>,
+    ) -> Vec<SearchArtifactResult> {
+        let mut remote_artifacts = vec![];
+        let job = self.sentry.list_artifacts(source.clone());
+        let timeout = Duration::from_secs(30);
+        let job = tokio::time::timeout(timeout, job);
+        let job = measure("service.download.list_artifacts", m::timed_result, job);
+        let sentry_files = job.await.map_err(|_| CacheError::Timeout(timeout));
+        match sentry_files {
+            Ok(Ok(files)) => remote_artifacts.extend(files),
+            Ok(Err(error)) | Err(error) => {
+                let error: &dyn std::error::Error = &error;
+                tracing::error!(error, "Failed to fetch artifacts list");
+            }
+        }
+        remote_artifacts
     }
 }
 

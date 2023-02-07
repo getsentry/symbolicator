@@ -1,0 +1,320 @@
+use std::{
+    collections::{HashMap, HashSet},
+    io::BufReader,
+};
+
+use reqwest::Url;
+use sourcemap::locate_sourcemap_reference;
+use symbolic::{
+    common::{ByteView, SelfCell},
+    sourcemapcache::{ScopeLookupResult, SourceMapCache, SourceMapCacheWriter, SourcePosition},
+};
+use tempfile::NamedTempFile;
+use url::Position;
+
+use crate::{
+    services::download::sentry::SearchArtifactResult,
+    types::{
+        CompleteJsStacktrace, FrameStatus, JsProcessingCompletedSymbolicationResponse,
+        JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
+    },
+};
+
+use super::{JsProcessingSymbolicateStacktraces, SymbolicationActor};
+
+// TODO(sourcemap): Use our generic caching solution for all Artifacts.
+// TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
+
+pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
+
+fn smcache_from_files(
+    source: &mut NamedTempFile,
+    sourcemap: &mut NamedTempFile,
+) -> OwnedSourceMapCache {
+    use std::io::Read;
+
+    let mut source_buf = String::new();
+    source.as_file_mut().read_to_string(&mut source_buf).ok();
+
+    let mut sourcemap_buf = String::new();
+    sourcemap
+        .as_file_mut()
+        .read_to_string(&mut sourcemap_buf)
+        .ok();
+
+    let smcache_writer = SourceMapCacheWriter::new(&source_buf, &sourcemap_buf).unwrap();
+    let mut smcache_buf = vec![];
+    smcache_writer.serialize(&mut smcache_buf).unwrap();
+
+    let byteview = ByteView::from_vec(smcache_buf);
+    SelfCell::try_new::<symbolic::sourcemapcache::SourceMapCacheError, _>(byteview, |data| unsafe {
+        SourceMapCache::parse(&*data)
+    })
+    .unwrap()
+}
+
+// TODO(sourcemap): Move this and related functions to its own file, similar to how `ModuleLookup` works.
+impl SymbolicationActor {
+    // TODO(sourcemap): Handle 3rd party servers fetching (payload should decide about it, as it's user-configurable in the UI)
+    async fn collect_stacktrace_artifacts(
+        &self,
+        request: &JsProcessingSymbolicateStacktraces,
+    ) -> HashMap<String, OwnedSourceMapCache> {
+        // TODO(sourcemap): Fetch all files concurrently using futures join
+        let mut unique_abs_paths = HashSet::new();
+        for stacktrace in &request.stacktraces {
+            for frame in &stacktrace.frames {
+                unique_abs_paths.insert(frame.abs_path.clone());
+            }
+        }
+
+        let mut collected_artifacts = HashMap::new();
+        let release_archive = self.sourcemaps.list_artifacts(request.source.clone()).await;
+
+        for abs_path in unique_abs_paths {
+            let Ok(abs_path_url) = Url::parse(&abs_path) else {
+                continue
+            };
+
+            let mut source_file = None;
+            let mut source_artifact = None;
+
+            for candidate in get_release_file_candidate_urls(&abs_path_url) {
+                if let Some(sa) = release_archive.get(&candidate) {
+                    if let Some(sf) = self
+                        .sourcemaps
+                        .fetch_artifact(request.source.clone(), sa.id.clone())
+                        .await
+                    {
+                        source_file = Some(sf);
+                        source_artifact = Some(sa.to_owned());
+                        break;
+                    }
+                }
+            }
+
+            // TODO(sourcemap): Report missing source error
+            let (Some(mut source_file), Some(source_artifact)) = (source_file, source_artifact) else {
+                continue;
+            };
+
+            let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, &source_artifact, &source_file) else {
+                continue;
+            };
+
+            let mut sourcemap_file = None;
+            for candidate in get_release_file_candidate_urls(&sourcemap_url) {
+                if let Some(sourcemap_artifact) = release_archive.get(&candidate) {
+                    if let Some(sf) = self
+                        .sourcemaps
+                        .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
+                        .await
+                    {
+                        sourcemap_file = Some(sf);
+                        break;
+                    }
+                }
+            }
+
+            // TODO(sourcemap): Report missing source error
+            let Some(mut sourcemap_file) = sourcemap_file else {
+                continue;
+            };
+
+            collected_artifacts.insert(
+                abs_path,
+                smcache_from_files(&mut source_file, &mut sourcemap_file),
+            );
+        }
+
+        collected_artifacts
+    }
+
+    #[tracing::instrument(skip_all)]
+    pub async fn js_processing_symbolicate(
+        &self,
+        request: JsProcessingSymbolicateStacktraces,
+    ) -> Result<JsProcessingCompletedSymbolicationResponse, anyhow::Error> {
+        let artifacts = self.collect_stacktrace_artifacts(&request).await;
+
+        let stacktraces: Vec<_> = request
+            .stacktraces
+            .into_iter()
+            .map(|trace| js_processing_symbolicate_stacktrace(trace, &artifacts))
+            .collect();
+
+        Ok(JsProcessingCompletedSymbolicationResponse { stacktraces })
+    }
+}
+
+fn js_processing_symbolicate_stacktrace(
+    stacktrace: JsProcessingRawStacktrace,
+    artifacts: &HashMap<String, OwnedSourceMapCache>,
+) -> CompleteJsStacktrace {
+    let mut symbolicated_frames = vec![];
+    let unsymbolicated_frames_iter = stacktrace.frames.into_iter();
+
+    for mut frame in unsymbolicated_frames_iter {
+        match js_processing_symbolicate_frame(&mut frame, artifacts) {
+            Ok(frame) => symbolicated_frames.push(frame),
+            Err(_status) => {
+                symbolicated_frames.push(JsProcessingSymbolicatedFrame {
+                    status: FrameStatus::Missing,
+                    raw: frame,
+                });
+            }
+        }
+    }
+
+    CompleteJsStacktrace {
+        frames: symbolicated_frames,
+    }
+}
+
+fn js_processing_symbolicate_frame(
+    frame: &mut JsProcessingRawFrame,
+    artifacts: &HashMap<String, OwnedSourceMapCache>,
+) -> Result<JsProcessingSymbolicatedFrame, FrameStatus> {
+    if let Some(smcache) = artifacts.get(&frame.abs_path) {
+        // TODO(sourcemap): Report invalid source location error
+        let token = smcache
+            .get()
+            .lookup(SourcePosition::new(
+                frame.lineno.unwrap() - 1,
+                frame.colno.unwrap() - 1,
+            ))
+            .unwrap();
+
+        let mut result = JsProcessingSymbolicatedFrame {
+            status: FrameStatus::Symbolicated,
+            raw: JsProcessingRawFrame {
+                function: match token.scope() {
+                    ScopeLookupResult::NamedScope(name) => Some(name.to_string()),
+                    ScopeLookupResult::AnonymousScope => Some("<anonymous>".to_string()),
+                    ScopeLookupResult::Unknown => Some("<unknown>".to_string()),
+                },
+                filename: token.name().map(ToString::to_string),
+                abs_path: token.file_name().unwrap_or("<unknown>").to_string(),
+                lineno: Some(token.line()),
+                colno: Some(token.column()),
+                pre_context: vec![],
+                context_line: None,
+                post_context: vec![],
+            },
+        };
+
+        if let Some(file) = token.file() {
+            let current_line = token.line();
+
+            result.raw.context_line = token.line_contents().map(ToString::to_string);
+
+            let pre_line = current_line.saturating_sub(5);
+            result.raw.pre_context = (pre_line..current_line)
+                .filter_map(|line| file.line(line as usize))
+                .map(|v| v.to_string())
+                .collect();
+
+            let post_line = current_line.saturating_add(5);
+            result.raw.post_context = (current_line + 1..=post_line)
+                .filter_map(|line| file.line(line as usize))
+                .map(|v| v.to_string())
+                .collect();
+        }
+
+        Ok(result)
+    } else {
+        Err(FrameStatus::Missing)
+    }
+}
+
+// Transforms a full absolute url into 2 or 4 generalized options. Based on `ReleaseFile.normalize`.
+// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
+fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
+    let mut urls = vec![];
+
+    // Absolute without fragment
+    urls.push(url[..Position::AfterQuery].to_string());
+
+    // Absolute without query
+    if url.query().is_some() {
+        urls.push(url[..Position::AfterPath].to_string())
+    }
+
+    // Relative without fragment
+    urls.push(format!(
+        "~{}",
+        &url[Position::BeforePath..Position::AfterQuery]
+    ));
+
+    // Relative without query
+    if url.query().is_some() {
+        urls.push(format!(
+            "~{}",
+            &url[Position::BeforePath..Position::AfterPath]
+        ));
+    }
+
+    urls
+}
+
+// Joins together frames `abs_path` and discovered sourcemap reference.
+fn resolve_sourcemap_url(
+    abs_path: &Url,
+    source_artifact: &SearchArtifactResult,
+    source_file: &NamedTempFile,
+) -> Option<Url> {
+    if let Some(header) = source_artifact.headers.get("Sourcemap") {
+        abs_path.join(header).ok()
+    } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
+        abs_path.join(header).ok()
+    } else {
+        let sm_ref = locate_sourcemap_reference(BufReader::new(source_file.as_file())).ok()??;
+        abs_path.join(sm_ref.get_url()).ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_release_file_candidate_urls() {
+        let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js#wat"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+    }
+}
