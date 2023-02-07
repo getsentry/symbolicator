@@ -145,26 +145,27 @@ fn js_processing_symbolicate_frame(
 ) -> Result<JsProcessingSymbolicatedFrame, FrameStatus> {
     if let Some(smcache) = artifacts.get(&frame.abs_path) {
         // TODO(sourcemap): Report invalid source location error
-        let token = smcache
-            .get()
-            .lookup(SourcePosition::new(
-                frame.lineno.unwrap() - 1,
-                frame.colno.unwrap() - 1,
-            ))
-            .unwrap();
+        let sp = SourcePosition::new(frame.lineno.unwrap() - 1, frame.colno.unwrap() - 1);
+        let token = smcache.get().lookup(sp).unwrap();
+
+        let function_name = match token.scope() {
+            ScopeLookupResult::NamedScope(name) => name.to_string(),
+            ScopeLookupResult::AnonymousScope => "<anonymous>".to_string(),
+            ScopeLookupResult::Unknown => {
+                // Fallback to minified function name
+                frame.function.clone().unwrap_or("<unknown>".to_string())
+            }
+        };
 
         let mut result = JsProcessingSymbolicatedFrame {
             status: FrameStatus::Symbolicated,
             raw: JsProcessingRawFrame {
-                function: match token.scope() {
-                    ScopeLookupResult::NamedScope(name) => Some(name.to_string()),
-                    ScopeLookupResult::AnonymousScope => Some("<anonymous>".to_string()),
-                    ScopeLookupResult::Unknown => Some("<unknown>".to_string()),
-                },
-                filename: token.name().map(ToString::to_string),
+                function: Some(fold_function_name(&function_name)),
+                filename: frame.filename.clone(),
                 abs_path: token.file_name().unwrap_or("<unknown>").to_string(),
-                lineno: Some(token.line()),
-                colno: Some(token.column()),
+                // TODO: Decide where to do off-by-1 calculations
+                lineno: Some(token.line().saturating_add(1)),
+                colno: Some(token.column().saturating_add(1)),
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
@@ -172,6 +173,8 @@ fn js_processing_symbolicate_frame(
         };
 
         if let Some(file) = token.file() {
+            result.raw.filename = file.name().map(ToString::to_string);
+
             let current_line = token.line();
 
             result.raw.context_line = token.line_contents().map(ToString::to_string);
@@ -244,6 +247,53 @@ fn resolve_sourcemap_url(
     }
 }
 
+/// Fold multiple consecutive occurences of the same property name into a single group, excluding the last component.
+///
+/// foo | foo
+/// foo.foo | foo.foo
+/// foo.foo.foo | {foo#2}.foo
+/// bar.foo.foo | bar.foo.foo
+/// bar.foo.foo.foo | bar.{foo#2}.foo
+/// bar.foo.foo.onError | bar.{foo#2}.onError
+/// bar.bar.bar.foo.foo.onError | {bar#3}.{foo#2}.onError
+/// bar.foo.foo.bar.bar.onError | bar.{foo#2}.{bar#2}.onError
+fn fold_function_name(function_name: &str) -> String {
+    let mut parts: Vec<_> = function_name.split('.').collect();
+
+    if parts.len() == 1 {
+        return function_name.to_string();
+    }
+
+    // unwrap: `parts` has at least a single item.
+    let tail = parts.pop().unwrap();
+    let mut grouped: Vec<Vec<&str>> = vec![vec![]];
+
+    for part in parts {
+        // unwrap: we initialized `grouped` with at least a single slice.
+        let current_group = grouped.last_mut().unwrap();
+        if current_group.is_empty() || current_group.last() == Some(&part) {
+            current_group.push(part);
+        } else {
+            grouped.push(vec![part]);
+        }
+    }
+
+    let folded = grouped
+        .iter()
+        .map(|group| {
+            // unwrap: each group contains at least a single item.
+            if group.len() == 1 {
+                group.first().unwrap().to_string()
+            } else {
+                format!("{{{}#{}}}", group.first().unwrap(), group.len())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".");
+
+    format!("{folded}.{tail}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,5 +337,26 @@ mod tests {
             "~/assets/bundle.min.js",
         ];
         assert_eq!(get_release_file_candidate_urls(&url), expected);
+    }
+
+    #[test]
+    fn test_fold_function_name() {
+        assert_eq!(fold_function_name("foo"), "foo");
+        assert_eq!(fold_function_name("foo.foo"), "foo.foo");
+        assert_eq!(fold_function_name("foo.foo.foo"), "{foo#2}.foo");
+        assert_eq!(fold_function_name("bar.foo.foo"), "bar.foo.foo");
+        assert_eq!(fold_function_name("bar.foo.foo.foo"), "bar.{foo#2}.foo");
+        assert_eq!(
+            fold_function_name("bar.foo.foo.onError"),
+            "bar.{foo#2}.onError"
+        );
+        assert_eq!(
+            fold_function_name("bar.bar.bar.foo.foo.onError"),
+            "{bar#3}.{foo#2}.onError"
+        );
+        assert_eq!(
+            fold_function_name("bar.foo.foo.bar.bar.onError"),
+            "bar.{foo#2}.{bar#2}.onError"
+        );
     }
 }
