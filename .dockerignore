@@ -3,3 +3,4 @@
 !Cargo.*
 !docker-entrypoint.sh
 !crates/**
+!scripts/
