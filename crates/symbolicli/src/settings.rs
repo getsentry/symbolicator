@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -98,19 +97,14 @@ struct ConfigFile {
 
 impl ConfigFile {
     pub fn parse(path: &Path) -> anyhow::Result<Self> {
-        match std::fs::File::open(path) {
-            Ok(mut file) => {
-                let mut buf = Vec::new();
-                file.read_to_end(&mut buf)
-                    .context("Could not read configuration file")?;
-                toml::de::from_slice(&buf).context("Could not parse configuration file")
-            }
+        match std::fs::read_to_string(path) {
+            Ok(buf) => toml::from_str(&buf).context("Could not parse configuration file"),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 tracing::warn!(path = %path.display(), "Configuration file not found");
                 Ok(Self::default())
             }
             Err(e) => Err(e).context(format!(
-                "Could not open configuration file at {}",
+                "Could not read configuration file at {}",
                 path.display()
             )),
         }
@@ -159,13 +153,13 @@ impl Settings {
             let Some(org) = cli.org
                 .or_else(|| project_config_file.org.take())
                 .or_else(|| global_config_file.org.take()) else {
-                bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");  
+                bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
             };
 
             let Some(project) = cli.project
                 .or_else(|| project_config_file.project.take())
                 .or_else(|| global_config_file.project.take()) else {
-                bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");  
+                bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
             };
 
             Mode::Online {
