@@ -40,7 +40,7 @@ RUN objcopy --only-keep-debug target/release/symbolicator target/release/symboli
     && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
-COPY scripts/build-and-upload-difs.sh .
+COPY ./scripts/build-and-upload-difs.sh .
 RUN build-and-upload-difs.sh
 
 #############################################
