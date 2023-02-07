@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io::BufReader,
-};
+use std::collections::{HashMap, HashSet};
 
 use reqwest::Url;
 use sourcemap::locate_sourcemap_reference;
@@ -232,14 +229,17 @@ fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_artifact: &SearchArtifactResult,
-    source_file: &NamedTempFile,
+    mut source_file: &NamedTempFile,
 ) -> Option<Url> {
     if let Some(header) = source_artifact.headers.get("Sourcemap") {
         abs_path.join(header).ok()
     } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
         abs_path.join(header).ok()
     } else {
-        let sm_ref = locate_sourcemap_reference(BufReader::new(source_file.as_file())).ok()??;
+        use std::io::Seek;
+
+        let sm_ref = locate_sourcemap_reference(source_file.as_file()).ok()??;
+        source_file.rewind().ok()?;
         abs_path.join(sm_ref.get_url()).ok()
     }
 }
