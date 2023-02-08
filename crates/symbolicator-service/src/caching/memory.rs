@@ -368,7 +368,9 @@ impl<T: CacheItemRequest> Cacher<T> {
         });
 
         let res = self.cache.get_with_by_ref(&cache_key, compute).await;
-        metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+        if was_memory_hit {
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+        }
         res
     }
 
