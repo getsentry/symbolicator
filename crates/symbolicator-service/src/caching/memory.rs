@@ -202,9 +202,10 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+        let name = self.config.name();
         let mut temp_file = self.tempfile()?;
         let shared_cache_key = SharedCacheKey {
-            name: self.config.name(),
+            name,
             version: T::VERSIONS.current,
             local_key: key.clone(),
         };
@@ -229,6 +230,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         if entry.is_err() {
+            metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
             match request.compute(&mut temp_file).await {
                 Ok(()) => {
                     // Now we have written the data to the tempfile we can mmap it, persisting it later
@@ -246,13 +248,12 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         if let Some(cache_dir) = self.config.cache_dir() {
-            let name = self.config.name();
             // Cache is enabled, write it!
             let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
-                    &format!("cache.{}.cache_path", self.config.name()),
+                    &format!("cache.{name}.cache_path"),
                     cache_path.to_string_lossy().into(),
                 );
             });
@@ -273,15 +274,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                     time_raw("caches.file.size") = byte_view.len() as u64,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
-                    "cache" => self.config.name().as_ref(),
+                    "cache" => name.as_ref(),
                 );
             }
 
-            tracing::trace!(
-                "Creating {} at path {:?}",
-                self.config.name(),
-                cache_path.display()
-            );
+            tracing::trace!("Creating {name} at path {:?}", cache_path.display());
 
             persist_tempfile(temp_file, cache_path).await?;
         };
@@ -319,7 +316,10 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_ref());
 
+        let mut was_memory_hit = true;
         let compute = Box::pin(async {
+            was_memory_hit = false;
+
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
                 let versions = std::iter::once(T::VERSIONS.current)
@@ -362,7 +362,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await
         });
 
-        self.cache.get_with_by_ref(&cache_key, compute).await
+        let res = self.cache.get_with_by_ref(&cache_key, compute).await;
+        if was_memory_hit {
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+        }
+        res
     }
 
     fn spawn_refresh(&self, cache_dir: &Path, cache_key: CacheKey, request: T) {
