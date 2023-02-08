@@ -29,7 +29,25 @@
 //!
 //! ### Metrics
 //!
-//! TODO
+//! We collect a couple of metrics, each of those is tagged with a `cache` field that corresponds to
+//! the cache item type. Here is a list of metrics that are collected:
+//!
+//! - `caches.access`: All accesses.
+//! - `caches.memory.hit`: Accesses served by the in-memory layer. (FIXME: currently only used for request coalescing)
+//! - `caches.file.hit`: Accesses served by the file-system layer.
+//! - `services.shared_cache.fetch(hit:true)`: Accesses served by the shared-cache layer.
+//! - `caches.computation`: Actual computations being run, and not served by any of the caching layers.
+//!
+//! NOTE: The sum of shared-cache hits and computations can exceed the number of cache misses of
+//! previous layers in case of lazy cache recomputation.
+//!
+//! Various other metrics are being collected as well, including:
+//! - `caches.file.size`: A histogram for the size (in bytes) of the successfully loaded / written cache files.
+//! - FIXME: `caches.file.discarded` and `shared_cache.file.discarded` is still being used in the
+//!   edge-case of mutable cache files. This will go away once cache files are truly immutable.
+//! - `caches.file.write`: The number of caches being written to disk.
+//!   This should match `caches.computation` if the file-system layer is enabled.
+//! - TODO: list all the other metrics that are missing here :-)
 //!
 //! ### Configuration
 //!
