@@ -34,57 +34,35 @@ impl SymbolicationActor {
         let release_archive = self.sourcemaps.list_artifacts(request.source.clone()).await;
 
         let compute_caches = unique_abs_paths.into_iter().map(|abs_path| async {
-             let Ok(abs_path_url) = Url::parse(&abs_path) else {
-                return None;
-            };
+            let abs_path_url = Url::parse(&abs_path).ok()?;
 
-            let candidate_urls = get_release_file_candidate_urls(&abs_path_url);
-            let futures = candidate_urls
-                .iter()
-                .filter_map(|candidate| release_archive.get(candidate))
-                .map(|sa| {
-                    Box::pin(async move {
-                        self.sourcemaps
-                            .fetch_artifact(request.source.clone(), sa.id.clone())
-                            .await
-                            .map(|sf| (sf, sa))
-                            .ok_or(())
-                    })
-                });
-
-            // TODO(sourcemap): Report missing source error
-            let Ok(((source_file, source_artifact),_)) = futures::future::select_ok(futures).await else {
-                return None;
-            };
+            let source_artifact = get_release_file_candidate_urls(&abs_path_url)
+                .into_iter()
+                .find_map(|candidate| release_archive.get(&candidate))?;
+            let source_file = self
+                .sourcemaps
+                .fetch_artifact(request.source.clone(), source_artifact.id.clone())
+                .await?;
 
             // TODO(sourcemap): Report missing sourcemap url error
-            let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file) else {
-                return None;
-            };
+            let sourcemap_url =
+                resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)?;
 
-            let candidate_urls = get_release_file_candidate_urls(&sourcemap_url);
-            let futures = candidate_urls
-                .iter()
-                .filter_map(|candidate| release_archive.get(candidate))
-                .map(|sourcemap_artifact| {
-                    Box::pin(async move {
-                        self.sourcemaps
-                            .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
-                            .await
-                            .ok_or(())
-                    })
-                });
-
+            let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
+                .into_iter()
+                .find_map(|candidate| release_archive.get(&candidate))?;
             // TODO(sourcemap): Report missing source error
-            let Ok((sourcemap_file, _)) = futures::future::select_ok(futures).await else {
-                return None;
-            };
+            let sourcemap_file = self
+                .sourcemaps
+                .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
+                .await?;
 
-            let cache = self.sourcemaps
-                    .fetch_cache(&source_file, &sourcemap_file)
-                    .await
-                    // TODO: properly report errors here
-                    .unwrap();
+            let cache = self
+                .sourcemaps
+                .fetch_cache(&sourcemap_file, &sourcemap_file)
+                .await
+                // TODO: properly report errors here
+                .unwrap();
 
             Some((abs_path, cache))
         });
