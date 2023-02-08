@@ -21,7 +21,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
-use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, ExpirationTime};
+use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey};
 use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
@@ -220,7 +220,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         let object = OwnedObject::parse(data)?;
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),

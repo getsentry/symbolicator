@@ -882,7 +882,7 @@ impl CacheItemRequest for TestCacheItem {
         })
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
     }
 }

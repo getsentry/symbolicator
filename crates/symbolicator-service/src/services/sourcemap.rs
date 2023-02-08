@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use symbolic::common::{ByteView, SelfCell};
@@ -13,8 +12,7 @@ use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, Sentr
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
-    SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
@@ -106,7 +104,7 @@ impl SourceMapService {
         req.compute(&mut temp_file).await?;
 
         let temp_bv = ByteView::map_file_ref(temp_file.as_file())?;
-        req.load(temp_bv, ExpirationTime::TouchIn(Duration::ZERO))
+        req.load(temp_bv)
     }
 }
 
@@ -135,7 +133,7 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
         true
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_sourcemap_cache_owned(data)
     }
 }

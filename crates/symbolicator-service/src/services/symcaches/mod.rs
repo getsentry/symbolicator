@@ -11,8 +11,7 @@ use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
-    SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use crate::services::bitcode::BitcodeService;
 use crate::services::objects::{
@@ -170,7 +169,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             .unwrap_or(false)
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_symcache_owned(data)
     }
 }

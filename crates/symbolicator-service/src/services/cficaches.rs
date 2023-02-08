@@ -12,8 +12,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
-    SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -124,7 +123,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_cfi_cache(data)
     }
 }

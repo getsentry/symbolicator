@@ -15,8 +15,7 @@ use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, ExpirationTime,
-    SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
@@ -86,7 +85,7 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         Ok(Il2cppHandle { data })
     }
 }

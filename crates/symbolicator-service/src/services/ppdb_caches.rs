@@ -12,8 +12,7 @@ use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, ExpirationTime,
-    SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
@@ -149,7 +148,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         true
     }
 
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_ppdb_cache_owned(data)
     }
 }

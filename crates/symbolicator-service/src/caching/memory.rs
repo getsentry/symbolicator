@@ -14,7 +14,7 @@ use tokio::fs;
 use super::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime};
+use super::{Cache, CacheEntry, CacheError, CacheKey};
 
 type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
 
@@ -120,7 +120,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     }
 
     /// Loads an existing element from the cache.
-    fn load(&self, data: ByteView<'static>, expiration: ExpirationTime) -> CacheEntry<Self::Item>;
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item>;
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -191,7 +191,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-        Ok(entry.and_then(|byteview| request.load(byteview, expiration)))
+        Ok(entry.and_then(|byteview| request.load(byteview)))
     }
 
     /// Compute an item.
@@ -296,16 +296,11 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
+        // TODO: we should eventually use this as a per-item TTL once we properly hook up in-memory caches.
         // we just created a fresh cache, so use the initial expiration times
-        let expiration = ExpirationTime::for_fresh_status(&self.config, &entry);
+        // let expiration = ExpirationTime::for_fresh_status(&self.config, &entry);
 
-        entry.and_then(|byteview| request.load(byteview, expiration))
-
-        // TODO: log error:
-        // sentry::configure_scope(|scope| {
-        //     scope.set_extra("cache_key", self.get_cache_key().to_string().into());
-        // });
-        // sentry::capture_error(&*err);
+        entry.and_then(|byteview| request.load(byteview))
     }
 
     /// Computes an item by loading from or populating the cache.
