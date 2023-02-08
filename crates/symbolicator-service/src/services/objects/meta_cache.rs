@@ -15,7 +15,7 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
 use tempfile::NamedTempFile;
 
-use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher, ExpirationTime};
+use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher};
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -124,7 +124,7 @@ impl CacheItemRequest for FetchFileMetaRequest {
     }
 
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
-    fn load(&self, data: ByteView<'static>, _expiration: ExpirationTime) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
         // get the malformed marker.
         let features = serde_json::from_slice(&data)?;
