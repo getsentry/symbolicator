@@ -24,7 +24,6 @@ impl SymbolicationActor {
         &self,
         request: &JsProcessingSymbolicateStacktraces,
     ) -> HashMap<String, OwnedSourceMapCache> {
-        // TODO(sourcemap): Fetch all files concurrently using futures join
         let mut unique_abs_paths = HashSet::new();
         for stacktrace in &request.stacktraces {
             for frame in &stacktrace.frames {
@@ -32,70 +31,47 @@ impl SymbolicationActor {
             }
         }
 
-        let mut collected_artifacts = HashMap::new();
         let release_archive = self.sourcemaps.list_artifacts(request.source.clone()).await;
 
-        for abs_path in unique_abs_paths {
-            let Ok(abs_path_url) = Url::parse(&abs_path) else {
-                continue
-            };
+        let compute_caches = unique_abs_paths.into_iter().map(|abs_path| async {
+            let abs_path_url = Url::parse(&abs_path).ok()?;
 
-            let mut source_file = None;
-            let mut source_artifact = None;
+            let source_artifact = get_release_file_candidate_urls(&abs_path_url)
+                .into_iter()
+                .find_map(|candidate| release_archive.get(&candidate))?;
+            let source_file = self
+                .sourcemaps
+                .fetch_artifact(request.source.clone(), source_artifact.id.clone())
+                .await?;
 
-            for candidate in get_release_file_candidate_urls(&abs_path_url) {
-                if let Some(sa) = release_archive.get(&candidate) {
-                    if let Some(sf) = self
-                        .sourcemaps
-                        .fetch_artifact(request.source.clone(), sa.id.clone())
-                        .await
-                    {
-                        source_file = Some(sf);
-                        source_artifact = Some(sa.to_owned());
-                        break;
-                    }
-                }
-            }
+            // TODO(sourcemap): Report missing sourcemap url error
+            let sourcemap_url =
+                resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)?;
 
+            let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
+                .into_iter()
+                .find_map(|candidate| release_archive.get(&candidate))?;
             // TODO(sourcemap): Report missing source error
-            let (Some(source_file), Some(source_artifact)) = (source_file, source_artifact) else {
-                continue;
-            };
+            let sourcemap_file = self
+                .sourcemaps
+                .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
+                .await?;
 
-            let Some(sourcemap_url) = resolve_sourcemap_url(&abs_path_url, &source_artifact, &source_file) else {
-                continue;
-            };
+            let cache = self
+                .sourcemaps
+                .fetch_cache(&sourcemap_file, &sourcemap_file)
+                .await
+                // TODO: properly report errors here
+                .unwrap();
 
-            let mut sourcemap_file = None;
-            for candidate in get_release_file_candidate_urls(&sourcemap_url) {
-                if let Some(sourcemap_artifact) = release_archive.get(&candidate) {
-                    if let Some(sf) = self
-                        .sourcemaps
-                        .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
-                        .await
-                    {
-                        sourcemap_file = Some(sf);
-                        break;
-                    }
-                }
-            }
+            Some((abs_path, cache))
+        });
 
-            // TODO(sourcemap): Report missing source error
-            let Some(sourcemap_file) = sourcemap_file else {
-                continue;
-            };
-
-            collected_artifacts.insert(
-                abs_path,
-                self.sourcemaps
-                    .fetch_cache(&source_file, &sourcemap_file)
-                    .await
-                    // TODO: properly report errors here
-                    .unwrap(),
-            );
-        }
-
-        collected_artifacts
+        futures::future::join_all(compute_caches)
+            .await
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
     #[tracing::instrument(skip_all)]
