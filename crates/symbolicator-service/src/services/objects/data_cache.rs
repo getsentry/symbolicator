@@ -257,7 +257,7 @@ mod tests {
     use symbolic::common::DebugId;
     use tempfile::TempDir;
 
-    async fn objects_actor(tempdir: &TempDir) -> ObjectsActor {
+    async fn make_objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let meta_cache = Cache::from_config(
             CacheName::ObjectMeta,
             Some(tempdir.path().join("meta")),
@@ -292,7 +292,7 @@ mod tests {
 
         let hitcounter = test::Server::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await;
+        let objects_actor = make_objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             filetypes: &[FileType::MachCode],
@@ -324,6 +324,9 @@ mod tests {
             CacheError::DownloadError("500 Internal Server Error".into())
         );
         assert_eq!(hitcounter.accesses(), 3); // up to 3 tries on failure
+
+        // NOTE: creating a fresh instance to avoid in-memory cache
+        let objects_actor = make_objects_actor(&cachedir).await;
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -344,7 +347,7 @@ mod tests {
 
         let hitcounter = test::Server::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await;
+        let objects_actor = make_objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             filetypes: &[FileType::MachCode],
@@ -373,6 +376,9 @@ mod tests {
             .unwrap_err();
         assert_eq!(result, CacheError::NotFound);
         assert_eq!(hitcounter.accesses(), 1);
+
+        // NOTE: creating a fresh instance to avoid in-memory cache
+        let objects_actor = make_objects_actor(&cachedir).await;
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -390,7 +396,7 @@ mod tests {
 
         let hitcounter = test::Server::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await;
+        let objects_actor = make_objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             filetypes: &[FileType::MachCode],
@@ -421,6 +427,9 @@ mod tests {
         assert_eq!(result, err);
         // XXX: why are we not trying this 3 times?
         assert_eq!(hitcounter.accesses(), 1);
+
+        // NOTE: creating a fresh instance to avoid in-memory cache
+        let objects_actor = make_objects_actor(&cachedir).await;
         let result = objects_actor
             .find(find_object.clone())
             .await
@@ -438,7 +447,7 @@ mod tests {
 
         let hitcounter = test::Server::new();
         let cachedir = tempdir();
-        let objects_actor = objects_actor(&cachedir).await;
+        let objects_actor = make_objects_actor(&cachedir).await;
 
         let find_object = FindObject {
             filetypes: &[FileType::MachCode],
@@ -468,6 +477,9 @@ mod tests {
             .unwrap_err();
         assert_eq!(result, err);
         assert_eq!(hitcounter.accesses(), 1);
+
+        // NOTE: creating a fresh instance to avoid in-memory cache
+        let objects_actor = make_objects_actor(&cachedir).await;
         let result = objects_actor
             .find(find_object.clone())
             .await
