@@ -565,6 +565,22 @@ pub struct CompletedSymbolicationResponse {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+/// Information on the symbolication status of this JavaScript frame.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Default)]
+pub enum JsProcessingFrameStatus {
+    /// The frame was symbolicated successfully.
+    #[default]
+    Symbolicated,
+    /// The frame's line and column could not be found in the sourcemap.
+    InvalidSourceMapLocation,
+    /// No sourcemap was found for the frame.
+    MissingSourcemap,
+    /// The retrieved sourcemap could not be processed.
+    MalformedSourcemap,
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingCompletedSymbolicationResponse {
     pub stacktraces: Vec<CompleteJsStacktrace>,
@@ -623,7 +639,7 @@ pub struct JsProcessingRawStacktrace {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingSymbolicatedFrame {
-    pub status: FrameStatus,
+    pub status: JsProcessingFrameStatus,
 
     #[serde(flatten)]
     pub raw: JsProcessingRawFrame,

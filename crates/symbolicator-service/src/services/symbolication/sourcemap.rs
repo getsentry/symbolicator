@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 
+use crate::caching::{CacheEntry, CacheError};
 use crate::services::sourcemap::OwnedSourceMapCache;
 use crate::types::{
-    CompleteJsStacktrace, FrameStatus, JsProcessingCompletedSymbolicationResponse,
+    CompleteJsStacktrace, JsProcessingCompletedSymbolicationResponse, JsProcessingFrameStatus,
     JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
 };
 
@@ -12,8 +13,6 @@ use super::{JsProcessingSymbolicateStacktraces, SymbolicationActor};
 
 // TODO(sourcemap): Use our generic caching solution for all Artifacts.
 // TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
-
-// TODO(sourcemap): Move this and related functions to its own file, similar to how `ModuleLookup` works.
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     pub async fn js_processing_symbolicate(
@@ -34,7 +33,7 @@ impl SymbolicationActor {
 
 fn js_processing_symbolicate_stacktrace(
     stacktrace: JsProcessingRawStacktrace,
-    artifacts: &HashMap<String, OwnedSourceMapCache>,
+    artifacts: &HashMap<String, CacheEntry<OwnedSourceMapCache>>,
 ) -> CompleteJsStacktrace {
     let mut symbolicated_frames = vec![];
     let unsymbolicated_frames_iter = stacktrace.frames.into_iter();
@@ -42,11 +41,8 @@ fn js_processing_symbolicate_stacktrace(
     for mut frame in unsymbolicated_frames_iter {
         match js_processing_symbolicate_frame(&mut frame, artifacts) {
             Ok(frame) => symbolicated_frames.push(frame),
-            Err(_status) => {
-                symbolicated_frames.push(JsProcessingSymbolicatedFrame {
-                    status: FrameStatus::Missing,
-                    raw: frame,
-                });
+            Err(status) => {
+                symbolicated_frames.push(JsProcessingSymbolicatedFrame { status, raw: frame });
             }
         }
     }
@@ -58,61 +54,73 @@ fn js_processing_symbolicate_stacktrace(
 
 fn js_processing_symbolicate_frame(
     frame: &mut JsProcessingRawFrame,
-    artifacts: &HashMap<String, OwnedSourceMapCache>,
-) -> Result<JsProcessingSymbolicatedFrame, FrameStatus> {
-    if let Some(smcache) = artifacts.get(&frame.abs_path) {
-        // TODO(sourcemap): Report invalid source location error
-        let sp = SourcePosition::new(frame.lineno.unwrap() - 1, frame.colno.unwrap() - 1);
-        let token = smcache.get().lookup(sp).unwrap();
+    artifacts: &HashMap<String, CacheEntry<OwnedSourceMapCache>>,
+) -> Result<JsProcessingSymbolicatedFrame, JsProcessingFrameStatus> {
+    let smcache = artifacts
+        .get(&frame.abs_path)
+        .ok_or(JsProcessingFrameStatus::MissingSourcemap)?;
+    // TODO(sourcemap): Report invalid source location error
+    let (line, col) = match (frame.lineno, frame.colno) {
+        (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
+        _ => return Err(JsProcessingFrameStatus::InvalidSourceMapLocation),
+    };
+    let sp = SourcePosition::new(line - 1, col - 1);
+    let smcache = match smcache {
+        Ok(smcache) => smcache,
+        Err(CacheError::Malformed(_)) => return Err(JsProcessingFrameStatus::MalformedSourcemap),
+        Err(_) => return Err(JsProcessingFrameStatus::MissingSourcemap),
+    };
 
-        let function_name = match token.scope() {
-            ScopeLookupResult::NamedScope(name) => name.to_string(),
-            ScopeLookupResult::AnonymousScope => "<anonymous>".to_string(),
-            ScopeLookupResult::Unknown => {
-                // Fallback to minified function name
-                frame.function.clone().unwrap_or("<unknown>".to_string())
-            }
-        };
+    let token = smcache
+        .get()
+        .lookup(sp)
+        .ok_or(JsProcessingFrameStatus::InvalidSourceMapLocation)?;
 
-        let mut result = JsProcessingSymbolicatedFrame {
-            status: FrameStatus::Symbolicated,
-            raw: JsProcessingRawFrame {
-                function: Some(fold_function_name(&function_name)),
-                filename: frame.filename.clone(),
-                abs_path: token.file_name().unwrap_or("<unknown>").to_string(),
-                // TODO: Decide where to do off-by-1 calculations
-                lineno: Some(token.line().saturating_add(1)),
-                colno: Some(token.column().saturating_add(1)),
-                pre_context: vec![],
-                context_line: None,
-                post_context: vec![],
-            },
-        };
-
-        if let Some(file) = token.file() {
-            result.raw.filename = file.name().map(ToString::to_string);
-
-            let current_line = token.line();
-
-            result.raw.context_line = token.line_contents().map(ToString::to_string);
-
-            let pre_line = current_line.saturating_sub(5);
-            result.raw.pre_context = (pre_line..current_line)
-                .filter_map(|line| file.line(line as usize))
-                .map(|v| v.to_string())
-                .collect();
-
-            let post_line = current_line.saturating_add(5);
-            result.raw.post_context = (current_line + 1..=post_line)
-                .filter_map(|line| file.line(line as usize))
-                .map(|v| v.to_string())
-                .collect();
+    let function_name = match token.scope() {
+        ScopeLookupResult::NamedScope(name) => name.to_string(),
+        ScopeLookupResult::AnonymousScope => "<anonymous>".to_string(),
+        ScopeLookupResult::Unknown => {
+            // Fallback to minified function name
+            frame.function.clone().unwrap_or("<unknown>".to_string())
         }
+    };
 
-        Ok(result)
-    } else {
-        Err(FrameStatus::Missing)
+    let mut result = JsProcessingSymbolicatedFrame {
+        status: JsProcessingFrameStatus::Symbolicated,
+        raw: JsProcessingRawFrame {
+            function: Some(fold_function_name(&function_name)),
+            filename: frame.filename.clone(),
+            abs_path: token.file_name().unwrap_or("<unknown>").to_string(),
+            // TODO: Decide where to do off-by-1 calculations
+            lineno: Some(token.line().saturating_add(1)),
+            colno: Some(token.column().saturating_add(1)),
+            pre_context: vec![],
+            context_line: None,
+            post_context: vec![],
+        },
+    };
+
+    if let Some(file) = token.file() {
+        result.raw.filename = file.name().map(ToString::to_string);
+
+        let current_line = token.line();
+
+        result.raw.context_line = token.line_contents().map(ToString::to_string);
+
+        let pre_line = current_line.saturating_sub(5);
+        result.raw.pre_context = (pre_line..current_line)
+            .filter_map(|line| file.line(line as usize))
+            .map(|v| v.to_string())
+            .collect();
+
+        let post_line = current_line.saturating_add(5);
+        result.raw.post_context = (current_line + 1..=post_line)
+            .filter_map(|line| file.line(line as usize))
+            .map(|v| v.to_string())
+            .collect();
     }
+
+    Ok(result)
 }
 
 /// Fold multiple consecutive occurences of the same property name into a single group, excluding the last component.

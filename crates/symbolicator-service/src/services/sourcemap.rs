@@ -81,7 +81,7 @@ impl SourceMapService {
         &self,
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
-    ) -> Option<NamedTempFile> {
+    ) -> CacheEntry<NamedTempFile> {
         let mut temp_file = NamedTempFile::new().unwrap();
         fetch_file(
             self.download_svc.clone(),
@@ -90,7 +90,6 @@ impl SourceMapService {
         )
         .await
         .map(|_| temp_file)
-        .ok()
     }
 
     pub async fn fetch_cache(
@@ -117,7 +116,7 @@ impl SourceMapService {
     pub async fn collect_stacktrace_artifacts(
         &self,
         request: &JsProcessingSymbolicateStacktraces,
-    ) -> HashMap<String, OwnedSourceMapCache> {
+    ) -> HashMap<String, CacheEntry<OwnedSourceMapCache>> {
         let mut unique_abs_paths = HashSet::new();
         for stacktrace in &request.stacktraces {
             for frame in &stacktrace.frames {
@@ -128,41 +127,52 @@ impl SourceMapService {
         let release_archive = self.list_artifacts(request.source.clone()).await;
 
         let compute_caches = unique_abs_paths.into_iter().map(|abs_path| async {
-            let abs_path_url = Url::parse(&abs_path).ok()?;
-
-            let source_artifact = get_release_file_candidate_urls(&abs_path_url)
-                .into_iter()
-                .find_map(|candidate| release_archive.get(&candidate))?;
-            let source_file = self
-                .fetch_artifact(request.source.clone(), source_artifact.id.clone())
-                .await?;
-
-            // TODO(sourcemap): Report missing sourcemap url error
-            let sourcemap_url =
-                resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)?;
-
-            let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
-                .into_iter()
-                .find_map(|candidate| release_archive.get(&candidate))?;
-            // TODO(sourcemap): Report missing source error
-            let sourcemap_file = self
-                .fetch_artifact(request.source.clone(), sourcemap_artifact.id.clone())
-                .await?;
-
             let cache = self
-                .fetch_cache(&sourcemap_file, &sourcemap_file)
-                .await
-                // TODO: properly report errors here
-                .unwrap();
-
-            Some((abs_path, cache))
+                .compute_cache(&abs_path, request.source.clone(), &release_archive)
+                .await;
+            (abs_path, cache)
         });
 
         futures::future::join_all(compute_caches)
             .await
             .into_iter()
-            .flatten()
             .collect()
+    }
+
+    async fn compute_cache(
+        &self,
+        abs_path: &str,
+        source: Arc<SentrySourceConfig>,
+        release_archive: &HashMap<String, SearchArtifactResult>,
+    ) -> CacheEntry<OwnedSourceMapCache> {
+        let abs_path_url = Url::parse(&abs_path).map_err(|_| {
+            CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE, url: {abs_path}}}"))
+        })?;
+
+        let source_artifact = get_release_file_candidate_urls(&abs_path_url)
+            .into_iter()
+            .find_map(|candidate| release_archive.get(&candidate))
+            .ok_or_else(|| CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE}}")))?;
+        let source_file = self
+            .fetch_artifact(source.clone(), source_artifact.id.clone())
+            .await
+            .map_err(|_| CacheError::DownloadError(format!("{{type: FETCH_GENERIC_ERROR}}")))?;
+
+        // TODO(sourcemap): Monolith just returns `None`
+        let sourcemap_url = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)
+            .ok_or_else(|| CacheError::DownloadError("sourcemap not found".into()))?;
+
+        let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
+            .into_iter()
+            .find_map(|candidate| release_archive.get(&candidate))
+            .ok_or_else(|| CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE}}")))?;
+        let sourcemap_file = self
+            .fetch_artifact(source.clone(), sourcemap_artifact.id.clone())
+            .await
+            .map_err(|_| CacheError::DownloadError(format!("{{type: FETCH_GENERIC_ERROR}}")))?;
+
+        // TODO(sourcemap): Do we just pass on the error from fetch_cache?
+        self.fetch_cache(&sourcemap_file, &sourcemap_file).await
     }
 }
 
