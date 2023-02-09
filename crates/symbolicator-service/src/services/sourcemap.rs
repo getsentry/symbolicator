@@ -176,7 +176,6 @@ impl SourceMapService {
                 CacheError::DownloadError("Could not download sourcemap file".to_string())
             })?;
 
-        // TODO(sourcemap): Do we just pass on the error from fetch_cache?
         self.fetch_cache(&sourcemap_file, &sourcemap_file).await
     }
 }
