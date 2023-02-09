@@ -145,31 +145,36 @@ impl SourceMapService {
         source: Arc<SentrySourceConfig>,
         release_archive: &HashMap<String, SearchArtifactResult>,
     ) -> CacheEntry<OwnedSourceMapCache> {
-        let abs_path_url = Url::parse(&abs_path).map_err(|_| {
-            CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE, url: {abs_path}}}"))
-        })?;
+        let abs_path_url = Url::parse(abs_path)
+            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
 
         let source_artifact = get_release_file_candidate_urls(&abs_path_url)
             .into_iter()
             .find_map(|candidate| release_archive.get(&candidate))
-            .ok_or_else(|| CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE}}")))?;
+            .ok_or_else(|| {
+                CacheError::DownloadError("Could not download source file".to_string())
+            })?;
         let source_file = self
             .fetch_artifact(source.clone(), source_artifact.id.clone())
             .await
-            .map_err(|_| CacheError::DownloadError(format!("{{type: FETCH_GENERIC_ERROR}}")))?;
+            .map_err(|_| CacheError::DownloadError("Could not download source file".to_string()))?;
 
         // TODO(sourcemap): Monolith just returns `None`
         let sourcemap_url = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)
-            .ok_or_else(|| CacheError::DownloadError("sourcemap not found".into()))?;
+            .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
 
         let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
             .into_iter()
             .find_map(|candidate| release_archive.get(&candidate))
-            .ok_or_else(|| CacheError::DownloadError(format!("{{type: JS_MISSING_SOURCE}}")))?;
+            .ok_or_else(|| {
+                CacheError::DownloadError("Could not download sourcemap file".to_string())
+            })?;
         let sourcemap_file = self
             .fetch_artifact(source.clone(), sourcemap_artifact.id.clone())
             .await
-            .map_err(|_| CacheError::DownloadError(format!("{{type: FETCH_GENERIC_ERROR}}")))?;
+            .map_err(|_| {
+                CacheError::DownloadError("Could not download sourcemap file".to_string())
+            })?;
 
         // TODO(sourcemap): Do we just pass on the error from fetch_cache?
         self.fetch_cache(&sourcemap_file, &sourcemap_file).await
