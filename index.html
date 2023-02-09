@@ -12,8 +12,12 @@
       
         <link rel="canonical" href="https://getsentry.github.io/symbolicator/">
       
+      
+      
+        <link rel="next" href="advanced/background-and-principles/">
+      
       <link rel="icon" href="assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-8.5.10">
+      <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-9.0.11">
     
     
       
@@ -21,11 +25,10 @@
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.472b142f.min.css">
+      <link rel="stylesheet" href="assets/stylesheets/main.0d440cfe.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.08040f6c.min.css">
-        
+        <link rel="stylesheet" href="assets/stylesheets/palette.2505c338.min.css">
       
       
 
@@ -58,7 +61,7 @@
     
     
     
-    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="None" data-md-color-accent="None">
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="" data-md-color-accent="">
   
     
     
@@ -135,7 +138,7 @@
           <div class="md-search-result__meta">
             Initializing search
           </div>
-          <ol class="md-search-result__list"></ol>
+          <ol class="md-search-result__list" role="presentation"></ol>
         </div>
       </div>
     </div>
@@ -147,7 +150,7 @@
         <a href="https://github.com/getsentry/symbolicator" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -191,7 +194,7 @@
       <a href="https://github.com/getsentry/symbolicator" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81z"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -212,7 +215,7 @@
   
     <li class="md-nav__item md-nav__item--active">
       
-      <input class="md-nav__toggle md-toggle" data-md-toggle="toc" type="checkbox" id="__toc">
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
       
@@ -278,17 +281,18 @@
     <li class="md-nav__item md-nav__item--nested">
       
       
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_2" type="checkbox" id="__nav_2" >
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
       
       
       
-      
-        <label class="md-nav__link" for="__nav_2">
+        <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
           Advanced
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" aria-label="Advanced" data-md-level="1">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_2">
           <span class="md-nav__icon md-icon"></span>
           Advanced
@@ -410,17 +414,18 @@
     <li class="md-nav__item md-nav__item--nested">
       
       
-        <input class="md-nav__toggle md-toggle" data-md-toggle="__nav_3" type="checkbox" id="__nav_3" >
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
       
       
       
-      
-        <label class="md-nav__link" for="__nav_3">
+        <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
           API
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" aria-label="API" data-md-level="1">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_3">
           <span class="md-nav__icon md-icon"></span>
           API
@@ -576,10 +581,9 @@
                 
                   
 
-  <a href="https://github.com/getsentry/symbolicator/edit/master/docs/index.md" title="Edit this page" class="md-content__button md-icon">
-    
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25Z"/></svg>
-  </a>
+  
+  
+
 
 
   <h1>Introduction</h1>
@@ -596,22 +600,22 @@ supporting multiple formats, such as Microsoft's symbol server or Breakpad
 symbol repositories.</p>
 <h2 id="usage">Usage</h2>
 <p>Start the server with:</p>
-<div class="codehilite"><pre><span></span><code>$ symbolicator run -c config.yml
+<div class="codehilite"><pre><span></span><code>$<span class="w"> </span>symbolicator<span class="w"> </span>run<span class="w"> </span>-c<span class="w"> </span>config.yml
 </code></pre></div>
 
 <p>The configuration file can be omitted. Symbolicator will run with default
 settings in this case.</p>
 <h2 id="configuration">Configuration</h2>
 <p>Write this to a file (<code>config.yml</code>):</p>
-<div class="codehilite"><pre><span></span><code><span class="nt">cache_dir</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/tmp/symbolicator&quot;</span><span class="w"></span>
-<span class="nt">bind</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0.0:3021&quot;</span><span class="w"></span>
-<span class="nt">logging</span><span class="p">:</span><span class="w"></span>
-<span class="w">  </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;info&quot;</span><span class="w"></span>
-<span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;pretty&quot;</span><span class="w"></span>
-<span class="w">  </span><span class="nt">enable_backtraces</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w"></span>
-<span class="nt">metrics</span><span class="p">:</span><span class="w"></span>
-<span class="w">  </span><span class="nt">statsd</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;127.0.0.1:8125&quot;</span><span class="w"></span>
-<span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;symbolicator&quot;</span><span class="w"></span>
+<div class="codehilite"><pre><span></span><code><span class="nt">cache_dir</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/tmp/symbolicator&quot;</span>
+<span class="nt">bind</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.0.0.0:3021&quot;</span>
+<span class="nt">logging</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;info&quot;</span>
+<span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;pretty&quot;</span>
+<span class="w">  </span><span class="nt">enable_backtraces</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="nt">metrics</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">statsd</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;127.0.0.1:8125&quot;</span>
+<span class="w">  </span><span class="nt">prefix</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;symbolicator&quot;</span>
 </code></pre></div>
 
 <ul>
@@ -620,47 +624,58 @@ settings in this case.</p>
   persistent volume, and <code>null</code> otherwise, which disables caching. <strong>It is
   strictly recommended to configure caches in production!</strong></li>
 <li><code>bind</code>: Host and port for HTTP interface.</li>
-<li><code>bind_https</code>: Host and port for optional HTTPS interface.</li>
+<li><code>bind_https</code>: Host and port for optional HTTPS interface.<ul>
+<li>HTTPS support is a Cargo feature, and needs to be enabled during building:
+  <code>shell
+  cargo build --features https &lt;other build options&gt;</code></li>
+<li>Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:<ul>
+<li><code>server_config</code>: web server configuration needed for serving over HTTPS.<ul>
+<li><code>https</code>: HTTPS configuration.<ul>
+<li><code>certificate_path</code>: Path to a TLS certificate file in PEM format.</li>
+<li><code>key_path</code>: Path to a TLS key file in PEM format.</li>
 </ul>
-<p>Notes:
-  - HTTPS support is a Cargo feature, and needs to be enabled during building:
-    <code>shell
-    cargo build --features https &lt;other build options&gt;</code>
-  - Additionally for HTTPS support, paths to TLS certificate and key files need to be specified in the configuration file:
-    - <code>server_config</code>: web server configuration needed for serving over HTTPS.
-      - <code>https</code>: HTTPS configuration.
-        - <code>certificate_path</code>: Path to a TLS certificate file in PEM format.
-        - <code>key_path</code>: Path to a TLS key file in PEM format.
-- <code>logging</code>: Command line logging behavior.
-    - <code>level</code>: Log level, defaults to <code>info</code>. Can be one of <code>off</code>, <code>error</code>,
-      <code>warn</code>, <code>info</code>, <code>debug</code>, or <code>trace</code>.
-    - <code>format</code>: The format with which to print logs. Defaults to <code>auto</code>. Can be
-      one of: <code>json</code>, <code>simplified</code>, <code>pretty</code>, or <code>auto</code> (pretty on console,
-      simplified on tty).
-    - <code>enable_backtraces</code>: Whether backtraces for errors should be computed. This
-      causes a slight performance hit but improves debuggability. Defaults to
-      <code>true</code>.
-- <code>metrics</code>: Configure a statsd server to send metrics to.
-    - <code>statsd</code>: The host and port to send metrics to. Defaults to STATSD_SERVER
-      environment variable or in case it is not defined, then it defaults to <code>null</code>,
-      which disables metric submission.
-    - <code>prefix</code>: A prefix for every metric, defaults to <code>symbolicator</code>.
-    - <code>hostname_tag</code>: If set, report the current hostname under the given tag name for all metrics.
-    - <code>environment_tag</code>: If set, report the current environment under the given tag name for all metrics.
-- <code>sentry_dsn</code>: DSN to a Sentry project for internal error reporting. Defaults
-  to <code>null</code>, which disables reporting to Sentry.
-- <code>sources</code>: An optional list of preconfigured sources. If these are configured
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><code>logging</code>: Command line logging behavior.<ul>
+<li><code>level</code>: Log level, defaults to <code>info</code>. Can be one of <code>off</code>, <code>error</code>,
+  <code>warn</code>, <code>info</code>, <code>debug</code>, or <code>trace</code>.</li>
+<li><code>format</code>: The format with which to print logs. Defaults to <code>auto</code>. Can be
+  one of: <code>json</code>, <code>simplified</code>, <code>pretty</code>, or <code>auto</code> (pretty on console,
+  simplified on tty).</li>
+<li><code>enable_backtraces</code>: Whether backtraces for errors should be computed. This
+  causes a slight performance hit but improves debuggability. Defaults to
+  <code>true</code>.</li>
+</ul>
+</li>
+<li><code>metrics</code>: Configure a statsd server to send metrics to.<ul>
+<li><code>statsd</code>: The host and port to send metrics to. Defaults to STATSD_SERVER
+  environment variable or in case it is not defined, then it defaults to <code>null</code>,
+  which disables metric submission.</li>
+<li><code>prefix</code>: A prefix for every metric, defaults to <code>symbolicator</code>.</li>
+<li><code>hostname_tag</code>: If set, report the current hostname under the given tag name for all metrics.</li>
+<li><code>environment_tag</code>: If set, report the current environment under the given tag name for all metrics.</li>
+</ul>
+</li>
+<li><code>sentry_dsn</code>: DSN to a Sentry project for internal error reporting. Defaults
+  to <code>null</code>, which disables reporting to Sentry.</li>
+<li><code>sources</code>: An optional list of preconfigured sources. If these are configured
   they will be used as default sources for symbolication requests and they will
   be proxied by the symbol proxy if enabled. The format for the sources here
-  matches the sources in the HTTP API.
-- <code>symstore_proxy</code>: Enables or disables the symstore proxy mode. Creates an
+  matches the sources in the HTTP API.</li>
+<li><code>symstore_proxy</code>: Enables or disables the symstore proxy mode. Creates an
   endpoint to download raw symbols from configured sources Symbolicator as if it
   were a <code>symstore</code> (Microsoft Symbol Server) compatible server. Defaults to
-  <code>true</code>.
-- <code>connect_to_reserved_ips</code>: Allow reserved IP addresses for requests to
-  sources. See <a href="#security">Security</a>. Defaults to <code>false</code>.
-- <code>max_concurrent_requests</code>: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
-  Set it to <code>null</code> to turn off the limit. Defaults to 120.</p>
+  <code>true</code>.</li>
+<li><code>connect_to_reserved_ips</code>: Allow reserved IP addresses for requests to
+  sources. See <a href="#security">Security</a>. Defaults to <code>false</code>.</li>
+<li><code>max_concurrent_requests</code>: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
+  Set it to <code>null</code> to turn off the limit. Defaults to 120.</li>
+</ul>
 <blockquote>
 <p>All time units for the following configuration settings can be either a time
 expression like <code>1s</code>.  Units can be <code>s</code>, <code>seconds</code>, <code>m</code>, <code>minutes</code>, <code>h</code>,
@@ -679,18 +694,18 @@ expression like <code>1s</code>.  Units can be <code>s</code>, <code>seconds</co
 <ul>
 <li><code>downloaded</code>: Fine-tune caches for downloaded files.<ul>
 <li><code>max_unused_for</code>: Maximum duration to keep a file since last
-   use of it.</li>
+  use of it.</li>
 <li><code>retry_misses_after</code>: Duration to wait before re-trying to
-   download a file which was not found.</li>
+  download a file which was not found.</li>
 <li><code>retry_malformed_after</code>: Duration to wait before re-trying to
-   download a file which was malformed.</li>
+  download a file which was malformed.</li>
 <li><code>max_lazy_redownloads</code>: Symbolicator will fall back to a compatible but out-of-date cache version if available,
-   and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.</li>
+  and start computing the up-to-date version in the background. This option sets the maximum number of such lazy downloads that symbolicator will do concurrently. Defaults to 50.</li>
 </ul>
 </li>
 <li><code>derived</code>: Fine-tune caches for files which are derived from
-    downloaded files.  These files are usually versions of the
-    downloaded files optimised for fast lookups.<ul>
+  downloaded files.  These files are usually versions of the
+  downloaded files optimised for fast lookups.<ul>
 <li><code>max_unused_for</code>: Maximum duration to keep a file since last
   use of it.</li>
 <li><code>retry_misses_after</code>: Duration to wait before re-trying to
@@ -702,8 +717,8 @@ expression like <code>1s</code>.  Units can be <code>s</code>, <code>seconds</co
 </ul>
 </li>
 <li><code>diagnostics</code>: This configures the duration diagnostics data
-    will be stored in cache.  E.g. minidumps which failed to be
-    processed correctly will be stored in this cache.<ul>
+  will be stored in cache.  E.g. minidumps which failed to be
+  processed correctly will be stored in this cache.<ul>
 <li><code>retention</code>: Duration a file will be kept in this cache.</li>
 </ul>
 </li>
@@ -733,27 +748,6 @@ default.</p>
       
         <footer class="md-footer">
   
-    
-    <nav class="md-footer__inner md-grid" aria-label="Footer" >
-      
-      
-        
-        <a href="advanced/background-and-principles/" class="md-footer__link md-footer__link--next" aria-label="Next: Background and Principles" rel="next">
-          <div class="md-footer__title">
-            <div class="md-ellipsis">
-              <span class="md-footer__direction">
-                Next
-              </span>
-              Background and Principles
-            </div>
-          </div>
-          <div class="md-footer__button md-icon">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11H4Z"/></svg>
-          </div>
-        </a>
-      
-    </nav>
-  
   <div class="md-footer-meta md-typeset">
     <div class="md-footer-meta__inner md-grid">
       <div class="md-copyright">
@@ -775,10 +769,10 @@ default.</p>
       <div class="md-dialog__inner md-typeset"></div>
     </div>
     
-    <script id="__config" type="application/json">{"base": ".", "features": [], "search": "assets/javascripts/workers/search.16e2a7d4.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.config.lang": "en", "search.config.pipeline": "trimmer, stopWordFilter", "search.config.separator": "[\\s\\-]+", "search.placeholder": "Search", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version.title": "Select version"}}</script>
+    <script id="__config" type="application/json">{"base": ".", "features": [], "search": "assets/javascripts/workers/search.db81ec45.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
     
     
-      <script src="assets/javascripts/bundle.d6c3db9e.min.js"></script>
+      <script src="assets/javascripts/bundle.6df46069.min.js"></script>
       
     
   </body>
