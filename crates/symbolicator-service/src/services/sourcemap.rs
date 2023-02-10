@@ -1,15 +1,18 @@
 //! Service for retrieving SourceMap artifacts.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
+use reqwest::Url;
+use sourcemap::locate_sourcemap_reference;
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
 use tempfile::NamedTempFile;
+use url::Position;
 
 use crate::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
@@ -18,6 +21,7 @@ use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
 
 use super::fetch_file;
+use super::symbolication::JsProcessingSymbolicateStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
 
@@ -75,7 +79,7 @@ impl SourceMapService {
         &self,
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
-    ) -> Option<NamedTempFile> {
+    ) -> CacheEntry<NamedTempFile> {
         let mut temp_file = NamedTempFile::new().unwrap();
         fetch_file(
             self.download_svc.clone(),
@@ -84,7 +88,6 @@ impl SourceMapService {
         )
         .await
         .map(|_| temp_file)
-        .ok()
     }
 
     pub async fn fetch_cache(
@@ -105,6 +108,122 @@ impl SourceMapService {
 
         let temp_bv = ByteView::map_file_ref(temp_file.as_file())?;
         req.load(temp_bv)
+    }
+
+    // TODO(sourcemap): Handle 3rd party servers fetching (payload should decide about it, as it's user-configurable in the UI)
+    pub async fn collect_stacktrace_artifacts(
+        &self,
+        request: &JsProcessingSymbolicateStacktraces,
+    ) -> HashMap<String, CacheEntry<OwnedSourceMapCache>> {
+        let mut unique_abs_paths = HashSet::new();
+        for stacktrace in &request.stacktraces {
+            for frame in &stacktrace.frames {
+                unique_abs_paths.insert(frame.abs_path.clone());
+            }
+        }
+
+        let release_archive = self.list_artifacts(request.source.clone()).await;
+
+        let compute_caches = unique_abs_paths.into_iter().map(|abs_path| async {
+            let cache = self
+                .compute_cache(&abs_path, request.source.clone(), &release_archive)
+                .await;
+            (abs_path, cache)
+        });
+
+        futures::future::join_all(compute_caches)
+            .await
+            .into_iter()
+            .collect()
+    }
+
+    async fn compute_cache(
+        &self,
+        abs_path: &str,
+        source: Arc<SentrySourceConfig>,
+        release_archive: &HashMap<String, SearchArtifactResult>,
+    ) -> CacheEntry<OwnedSourceMapCache> {
+        let abs_path_url = Url::parse(abs_path)
+            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
+
+        let source_artifact = get_release_file_candidate_urls(&abs_path_url)
+            .into_iter()
+            .find_map(|candidate| release_archive.get(&candidate))
+            .ok_or_else(|| {
+                CacheError::DownloadError("Could not download source file".to_string())
+            })?;
+        let source_file = self
+            .fetch_artifact(source.clone(), source_artifact.id.clone())
+            .await
+            .map_err(|_| CacheError::DownloadError("Could not download source file".to_string()))?;
+
+        // TODO(sourcemap): Monolith just returns `None`
+        let sourcemap_url = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)
+            .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
+
+        let sourcemap_artifact = get_release_file_candidate_urls(&sourcemap_url)
+            .into_iter()
+            .find_map(|candidate| release_archive.get(&candidate))
+            .ok_or_else(|| {
+                CacheError::DownloadError("Could not download sourcemap file".to_string())
+            })?;
+        let sourcemap_file = self
+            .fetch_artifact(source.clone(), sourcemap_artifact.id.clone())
+            .await
+            .map_err(|_| {
+                CacheError::DownloadError("Could not download sourcemap file".to_string())
+            })?;
+
+        self.fetch_cache(&sourcemap_file, &sourcemap_file).await
+    }
+}
+
+// Transforms a full absolute url into 2 or 4 generalized options. Based on `ReleaseFile.normalize`.
+// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
+fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
+    let mut urls = vec![];
+
+    // Absolute without fragment
+    urls.push(url[..Position::AfterQuery].to_string());
+
+    // Absolute without query
+    if url.query().is_some() {
+        urls.push(url[..Position::AfterPath].to_string())
+    }
+
+    // Relative without fragment
+    urls.push(format!(
+        "~{}",
+        &url[Position::BeforePath..Position::AfterQuery]
+    ));
+
+    // Relative without query
+    if url.query().is_some() {
+        urls.push(format!(
+            "~{}",
+            &url[Position::BeforePath..Position::AfterPath]
+        ));
+    }
+
+    urls
+}
+
+// Joins together frames `abs_path` and discovered sourcemap reference.
+fn resolve_sourcemap_url(
+    abs_path: &Url,
+    source_artifact: &SearchArtifactResult,
+    mut source_file: &NamedTempFile,
+) -> Option<Url> {
+    if let Some(header) = source_artifact.headers.get("Sourcemap") {
+        abs_path.join(header).ok()
+    } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
+        abs_path.join(header).ok()
+    } else {
+        use std::io::Seek;
+
+        let sm_ref = locate_sourcemap_reference(source_file.as_file()).ok()??;
+        source_file.rewind().ok()?;
+        abs_path.join(sm_ref.get_url()).ok()
     }
 }
 
@@ -158,4 +277,50 @@ fn write_sourcemap_cache(file: &mut File, source_buf: &str, sourcemap_buf: &str)
     file.sync_all()?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_release_file_candidate_urls() {
+        let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js#wat"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
+            .parse()
+            .unwrap();
+        let expected = vec![
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
+        ];
+        assert_eq!(get_release_file_candidate_urls(&url), expected);
+    }
 }
