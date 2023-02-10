@@ -3,7 +3,7 @@
 # - https://www.notion.so/sentry/GoCD-New-Service-Quickstart-6d8db7a6964049b3b0e78b8a4b52e25d
 format_version: 10
 pipelines:
-    deploy-symbolicator:
+    deploy-symbolicator-canary:
         environment_variables:
             GCP_PROJECT: internal-sentry
             GKE_CLUSTER: zdpwkxst
@@ -42,7 +42,8 @@ pipelines:
                                     ${GO_REVISION_SYMBOLICATOR_REPO} \
                                     sentryio \
                                     "us.gcr.io/sentryio/symbolicator"
-            - deploy_production:
+
+            - deploy_canary:
                   approval:
                       type: manual
                   fetch_materials: true
@@ -50,7 +51,7 @@ pipelines:
                       create_sentry_release:
                           environment_variables:
                               SENTRY_URL: "https://sentry.my.sentry.io/"
-                              ENVIRONMENT: production
+                              ENVIRONMENT: canary
                               # Temporary; self-service encrypted secrets aren't implemented yet.
                               # This should really be rotated to an internal integration token.
                               SENTRY_AUTH_TOKEN: "{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}"
@@ -63,26 +64,11 @@ pipelines:
                           timeout: 1200
                           elastic_profile_id: symbolicator
                           tasks:
-                              # Ideally the deploy_if_x things are changed to something like
-                              # environment=x. Then we can just call this once with the label selector
-                              # 'service=symbolicator,environment in (canary, lpq, production)'
                               - script: |
                                     /devinfra/scripts/k8s/k8stunnel \
                                     && /devinfra/scripts/k8s/k8sdeploy.py \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_canary=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
-                                    --container-name="symbolicator" \
-                                    --container-name="cleanup" \
-                                    && /devinfra/scripts/k8s/k8sdeploy.py \
-                                    --type="statefulset" \
-                                    --label-selector="service=symbolicator,deploy_if_lpq=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
-                                    --container-name="symbolicator" \
-                                    --container-name="cleanup" \
-                                    && /devinfra/scripts/k8s/k8sdeploy.py \
-                                    --type="statefulset" \
-                                    --label-selector="service=symbolicator,deploy_if_production=true" \
                                     --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                                     --container-name="symbolicator" \
                                     --container-name="cleanup"

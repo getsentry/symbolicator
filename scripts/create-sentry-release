@@ -4,6 +4,7 @@ set -eu
 #   SENTRY_AUTH_TOKEN: Sentry auth token (https://sentry.io/settings/account/api/auth-tokens/)
 
 VERSION="${1:-}"
+ENVIRONMENT="${2:-}"
 GITHUB_PROJECT="getsentry/symbolicator"
 DOCKER_IMAGE="us.gcr.io/sentryio/symbolicator:${VERSION}"
 export SENTRY_ORG="sentry"
@@ -32,6 +33,6 @@ sentry-cli upload-dif ./symbolicator-debug.zip ./symbolicator.src.zip
 echo 'Creating a new deploy in Sentry...'
 sentry-cli releases new "${VERSION}"
 sentry-cli releases set-commits "${VERSION}" --commit "${GITHUB_PROJECT}@${VERSION}"
-sentry-cli releases deploys "${VERSION}" new -e release
+sentry-cli releases deploys "${VERSION}" new -e "${ENVIRONMENT}"
 sentry-cli releases finalize "${VERSION}"
 echo 'Deploy created.'
