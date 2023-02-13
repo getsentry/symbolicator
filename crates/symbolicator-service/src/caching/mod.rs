@@ -143,7 +143,7 @@ mod shared_cache;
 mod tests;
 
 pub use cache_error::{CacheEntry, CacheError};
-pub use cache_key::CacheKey;
+pub use cache_key::{CacheKey, CacheKeyBuilder};
 pub use cleanup::cleanup;
 pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};

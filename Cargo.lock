@@ -4447,6 +4447,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha-1",
+ "sha2",
  "sourcemap",
  "symbolic",
  "symbolicator-sources",

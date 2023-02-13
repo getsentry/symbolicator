@@ -12,10 +12,10 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
-use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
+use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
-use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher};
+use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, Cacher};
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -54,16 +54,12 @@ impl ObjectMetaHandle {
         CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
+    pub fn cache_key_builder(&self) -> CacheKeyBuilder {
+        CacheKey::builder(&self.scope, &self.file_source)
+    }
+
     pub fn features(&self) -> ObjectFeatures {
         self.features
-    }
-
-    pub fn source_id(&self) -> &SourceId {
-        self.file_source.source_id()
-    }
-
-    pub fn uri(&self) -> RemoteFileUri {
-        self.file_source.uri()
     }
 
     pub fn scope(&self) -> &Scope {

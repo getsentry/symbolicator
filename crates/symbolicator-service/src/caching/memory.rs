@@ -11,7 +11,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs;
 
-use super::shared_cache::{CacheStoreReason, SharedCacheKey, SharedCacheRef};
+use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
 use super::{Cache, CacheEntry, CacheError, CacheKey};
@@ -136,7 +136,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         version: u32,
     ) -> CacheEntry<CacheEntry<T::Item>> {
         let name = self.config.name();
-        let item_path = key.cache_path(cache_dir, version);
+        let item_path = cache_dir.join(key.legacy_cache_path(version));
         tracing::trace!("Trying {} cache at path {}", name, item_path.display());
         let _scope = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
@@ -164,13 +164,9 @@ impl<T: CacheItemRequest> Cacher<T> {
             let needs_reupload = expiration.was_touched();
             if version == T::VERSIONS.current && needs_reupload {
                 if let Some(shared_cache) = self.shared_cache.get() {
-                    let shared_cache_key = SharedCacheKey {
-                        name: self.config.name(),
-                        version: T::VERSIONS.current,
-                        local_key: key.clone(),
-                    };
                     shared_cache.store(
-                        shared_cache_key,
+                        name,
+                        &key.legacy_cache_path(T::VERSIONS.current),
                         byteview.clone(),
                         CacheStoreReason::Refresh,
                     );
@@ -203,16 +199,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
+        let cache_path = key.legacy_cache_path(T::VERSIONS.current);
         let mut temp_file = self.tempfile()?;
-        let shared_cache_key = SharedCacheKey {
-            name,
-            version: T::VERSIONS.current,
-            local_key: key.clone(),
-        };
 
-        let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
         let shared_cache_hit = if let Some(shared_cache) = self.shared_cache.get() {
-            shared_cache.fetch(&shared_cache_key, temp_fd).await
+            let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
+            shared_cache.fetch(name, &cache_path, temp_fd).await
         } else {
             false
         };
@@ -249,7 +241,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
-            let cache_path = key.cache_path(cache_dir, T::VERSIONS.current);
+            let cache_path = cache_dir.join(&cache_path);
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
@@ -288,7 +280,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         if !shared_cache_hit {
             if let Ok(byteview) = &entry {
                 if let Some(shared_cache) = self.shared_cache.get() {
-                    shared_cache.store(shared_cache_key, byteview.clone(), CacheStoreReason::New);
+                    shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
                 }
             }
         }
@@ -339,7 +331,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             "version" => &version.to_string(),
                             "cache" => name.as_ref(),
                         );
-                        self.spawn_refresh(cache_dir, cache_key.clone(), request);
+                        self.spawn_refresh(cache_key.clone(), request);
                     }
 
                     return item;
@@ -371,7 +363,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         entry.into_value()
     }
 
-    fn spawn_refresh(&self, cache_dir: &Path, cache_key: CacheKey, request: T) {
+    fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
         let name = self.config.name();
 
         let mut refreshes = self.refreshes.lock();
@@ -403,9 +395,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         tracing::trace!(
             "Spawning deduplicated {} computation for path {:?}",
             name,
-            cache_key
-                .cache_path(cache_dir, T::VERSIONS.current)
-                .display()
+            cache_key.legacy_cache_path(T::VERSIONS.current)
         );
 
         let this = self.clone();

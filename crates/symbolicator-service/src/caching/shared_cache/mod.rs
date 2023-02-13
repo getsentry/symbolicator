@@ -29,7 +29,7 @@ use crate::services::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs::{self, GcsError};
 
-use super::{CacheKey, CacheName};
+use super::CacheName;
 
 pub mod config;
 
@@ -164,23 +164,18 @@ impl GcsState {
     /// # Returns
     ///
     /// If successful the number of bytes written to the writer are returned.
-    async fn fetch<W>(
-        &self,
-        key: &SharedCacheKey,
-        writer: &mut W,
-    ) -> Result<Option<u64>, CacheError>
+    async fn fetch<W>(&self, key: &str, writer: &mut W) -> Result<Option<u64>, CacheError>
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
-            map.insert("key".to_string(), key.relative_path().into());
+            map.insert("key".to_string(), key.into());
             scope.set_context("GCS Shared Cache", Context::Other(map));
         });
         let token = self.get_token().await?;
-        let url = gcs::download_url(&self.config.bucket, key.relative_path().as_ref())
-            .context("URL construction failed")?;
+        let url = gcs::download_url(&self.config.bucket, key).context("URL construction failed")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
         let request = measure_download_time("services.shared_cache.fetch.connect", "gcs", request);
@@ -190,7 +185,7 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     _ if status.is_success() => {
-                        tracing::trace!("Success hitting shared_cache GCS {}", key.relative_path());
+                        tracing::trace!("Success hitting shared_cache GCS {}", key);
                         let stream = response
                             .bytes_stream()
                             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -212,20 +207,17 @@ impl GcsState {
                 }
             }
             Ok(Err(e)) => {
-                tracing::trace!(
-                    "Error in shared_cache GCS response for {}",
-                    key.relative_path()
-                );
+                tracing::trace!("Error in shared_cache GCS response for {}", key);
                 Err(e).context("Bad GCS response for shared_cache")?
             }
             Err(_) => Err(CacheError::ConnectTimeout),
         }
     }
 
-    async fn exists(&self, key: &SharedCacheKey) -> Result<bool, CacheError> {
+    async fn exists(&self, cache: CacheName, key: &str) -> Result<bool, CacheError> {
         let token = self.get_token().await?;
-        let url = gcs::object_url(&self.config.bucket, &key.relative_path())
-            .context("failed to build object url")?;
+        let url =
+            gcs::object_url(&self.config.bucket, key).context("failed to build object url")?;
         let request = self.client.get(url).bearer_auth(token.as_str()).send();
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
 
@@ -251,7 +243,7 @@ impl GcsState {
         };
         metric!(
             counter("services.shared_cache.exists") += 1,
-            "cache" => key.name.as_ref(),
+            "cache" => cache.as_ref(),
             "status" => status
         );
         ret
@@ -266,19 +258,20 @@ impl GcsState {
     /// for no reason.
     async fn store(
         &self,
-        key: SharedCacheKey,
+        cache: CacheName,
+        key: &str,
         content: ByteView<'static>,
         reason: CacheStoreReason,
     ) -> Result<SharedCacheStoreResult, CacheError> {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
-            map.insert("key".to_string(), key.relative_path().into());
+            map.insert("key".to_string(), key.into());
             scope.set_context("GCS Shared Cache", Context::Other(map));
         });
         if reason == CacheStoreReason::Refresh {
             match self
-                .exists(&key)
+                .exists(cache, key)
                 .await
                 .context("Failed fetching GCS object metadata from shared cache")
             {
@@ -305,7 +298,7 @@ impl GcsState {
             .context("failed to build url")?
             .extend(&[&self.config.bucket, "o"]);
         url.query_pairs_mut()
-            .append_pair("name", &key.relative_path())
+            .append_pair("name", key)
             // Upload only if it's not already there
             .append_pair("ifGenerationMatch", "0");
 
@@ -325,7 +318,7 @@ impl GcsState {
                 let status = response.status();
                 match status {
                     successful if successful.is_success() => {
-                        tracing::trace!("Success hitting shared_cache GCS {}", key.relative_path());
+                        tracing::trace!("Success hitting shared_cache GCS {}", key);
                         Ok(SharedCacheStoreResult::Written(total_bytes))
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
@@ -339,10 +332,7 @@ impl GcsState {
                 }
             }
             Ok(Err(err)) => {
-                tracing::trace!(
-                    "Error in shared_cache GCS response for {}",
-                    key.relative_path()
-                );
+                tracing::trace!("Error in shared_cache GCS response for {}", key);
                 Err(err).context("Bad GCS response for shared_cache")?
             }
             Err(_) => Err(CacheError::ConnectTimeout),
@@ -356,15 +346,11 @@ impl FilesystemSharedCacheConfig {
     /// # Returns
     ///
     /// If successful the number of bytes written to the writer are returned.
-    async fn fetch<W>(
-        &self,
-        key: &SharedCacheKey,
-        writer: &mut W,
-    ) -> Result<Option<u64>, CacheError>
+    async fn fetch<W>(&self, key: &str, writer: &mut W) -> Result<Option<u64>, CacheError>
     where
         W: AsyncWrite + Unpin,
     {
-        let abspath = self.path.join(key.relative_path());
+        let abspath = self.path.join(key);
         tracing::debug!("Fetching debug file from {}", abspath.display());
         let mut file = match File::open(abspath).await {
             Ok(file) => file,
@@ -381,10 +367,13 @@ impl FilesystemSharedCacheConfig {
 
     async fn store(
         &self,
-        key: SharedCacheKey,
+        // FIXME(swatinem): using a `&str` here leads to a
+        // `hidden type ... captures lifetime that does not appear in bounds` error,
+        // though not in the GCS uploader for whatever reason
+        key: String,
         content: ByteView<'static>,
     ) -> Result<SharedCacheStoreResult, CacheError> {
-        let abspath = self.path.join(key.relative_path());
+        let abspath = self.path.join(key);
         let parent_dir = abspath
             .parent()
             .ok_or_else(|| Error::msg("Shared cache directory not found"))?;
@@ -439,31 +428,6 @@ impl fmt::Display for SharedCacheStoreResult {
     }
 }
 
-/// Key for a shared cache item.
-#[derive(Debug, Clone)]
-pub struct SharedCacheKey {
-    /// The name of the cache.
-    pub name: CacheName,
-    /// The cache version.
-    pub version: u32,
-    /// The local cache key.
-    pub local_key: CacheKey,
-}
-
-impl SharedCacheKey {
-    /// The relative path of this cache key within a shared cache.
-    fn relative_path(&self) -> String {
-        // Note that this always pushes the version into the path, this is fine since we do
-        // not need any backwards compatibility with existing caches for the shared cache.
-        format!(
-            "{}/{}/{}",
-            self.name,
-            self.version,
-            self.local_key.relative_path()
-        )
-    }
-}
-
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 enum SharedCacheBackend {
@@ -506,8 +470,10 @@ impl SharedCacheBackend {
 /// Message to send upload tasks across the [`SharedCacheService::upload_queue_tx`].
 #[derive(Debug)]
 struct UploadMessage {
+    /// The cache type/name.
+    cache: CacheName,
     /// The cache key to store the data at.
-    key: SharedCacheKey,
+    key: String,
     /// The cache contents.
     content: ByteView<'static>,
     /// A channel to notify completion of storage.
@@ -617,6 +583,7 @@ impl SharedCacheService {
         message: UploadMessage,
     ) {
         let UploadMessage {
+            cache,
             key,
             content,
             done_tx: complete_tx,
@@ -626,21 +593,20 @@ impl SharedCacheService {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend.name().into());
-            map.insert("cache".to_string(), key.name.as_ref().into());
-            map.insert("path".to_string(), key.relative_path().into());
+            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
 
-        let cache_name = key.name;
         let res = match *backend {
-            SharedCacheBackend::Gcs(ref state) => state.store(key, content, reason).await,
+            SharedCacheBackend::Gcs(ref state) => state.store(cache, &key, content, reason).await,
             SharedCacheBackend::Fs(ref cfg) => cfg.store(key, content).await,
         };
         match res {
             Ok(op) => {
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache_name.as_ref(),
+                    "cache" => cache.as_ref(),
                     "write" => op.as_ref(),
                     "status" => "ok",
                     "reason" => reason.as_ref(),
@@ -649,7 +615,7 @@ impl SharedCacheService {
                     let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                     metric!(
                         counter("services.shared_cache.store.bytes") += bytes,
-                        "cache" => cache_name.as_ref(),
+                        "cache" => cache.as_ref(),
                     );
                 }
             }
@@ -668,7 +634,7 @@ impl SharedCacheService {
                 }
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache_name.as_ref(),
+                    "cache" => cache.as_ref(),
                     "status" => "error",
                     "reason" => reason.as_ref(),
                     "errdetails" => errdetails,
@@ -703,14 +669,14 @@ impl SharedCacheService {
     /// shared cache was not found nothing will have been written to `writer`.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
-    pub async fn fetch(&self, key: &SharedCacheKey, mut file: tokio::fs::File) -> bool {
+    pub async fn fetch(&self, cache: CacheName, key: &str, mut file: tokio::fs::File) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
-            map.insert("cache".to_string(), key.name.as_ref().into());
-            map.insert("path".to_string(), key.relative_path().into());
+            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("path".to_string(), key.into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
         let res = match self.backend.as_ref() {
@@ -729,21 +695,21 @@ impl SharedCacheService {
             Ok(Some(bytes)) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => key.name.as_ref(),
+                    "cache" => cache.as_ref(),
                     "hit" => "true",
                     "status" => "ok",
                 );
                 let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                 metric!(
                     counter("services.shared_cache.fetch.bytes") += bytes,
-                    "cache" => key.name.as_ref(),
+                    "cache" => cache.as_ref(),
                 );
                 true
             }
             Ok(None) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => key.name.as_ref(),
+                    "cache" => cache.as_ref(),
                     "hit" => "false",
                     "status" => "ok",
                 );
@@ -760,7 +726,7 @@ impl SharedCacheService {
                 }
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => key.name.as_ref(),
+                    "cache" => cache.as_ref(),
                     "status" => "error",
                     "errdetails" => errdetails,
                 );
@@ -789,7 +755,8 @@ impl SharedCacheService {
     /// good tradeoff for refreshed stores.
     pub fn store(
         &self,
-        key: SharedCacheKey,
+        cache: CacheName,
+        key: &str,
         content: ByteView<'static>,
         reason: CacheStoreReason,
     ) -> oneshot::Receiver<()> {
@@ -800,7 +767,8 @@ impl SharedCacheService {
         let (done_tx, done_rx) = oneshot::channel::<()>();
         self.upload_queue_tx
             .try_send(UploadMessage {
-                key,
+                cache,
+                key: format!("{}/{key}", cache.as_ref()),
                 content,
                 done_tx,
                 reason,
@@ -850,14 +818,8 @@ mod tests {
         symbolicator_test::setup();
         let dir = symbolicator_test::tempdir();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: "global/some_item".to_string(),
-            },
-        };
-        let cache_path = dir.path().join(key.relative_path());
+        let key = "global/some_item";
+        let cache_path = dir.path().join(key);
         fs::create_dir_all(cache_path.parent().unwrap())
             .await
             .unwrap();
@@ -877,7 +839,7 @@ mod tests {
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, file).await;
+        let ret = svc.fetch(CacheName::Objects, key, file).await;
         assert!(ret);
 
         let buf = std::fs::read(temp_file).unwrap();
@@ -889,13 +851,7 @@ mod tests {
         symbolicator_test::setup();
         let dir = symbolicator_test::tempdir();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: "global/some_item".to_string(),
-            },
-        };
+        let key = "global/some_item";
 
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
@@ -910,7 +866,7 @@ mod tests {
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, file).await;
+        let ret = svc.fetch(CacheName::Objects, key, file).await;
         assert!(!ret);
 
         let buf = std::fs::read(temp_file).unwrap();
@@ -922,14 +878,8 @@ mod tests {
         symbolicator_test::setup();
         let dir = symbolicator_test::tempdir();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: "global/some_item".to_string(),
-            },
-        };
-        let cache_path = dir.path().join(key.relative_path());
+        let key = "global/some_item";
+        let cache_path = dir.path().join(key);
 
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
@@ -942,6 +892,7 @@ mod tests {
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
+            CacheName::Objects,
             key,
             ByteView::from_slice(b"cache data"),
             CacheStoreReason::New,
@@ -961,13 +912,7 @@ mod tests {
         symbolicator_test::setup();
         let credentials = symbolicator_test::gcs_credentials!();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: format!("{}/some_item", Uuid::new_v4()),
-            },
-        };
+        let key = format!("0/{}/some_item", Uuid::new_v4());
 
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
@@ -981,7 +926,7 @@ mod tests {
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, file).await;
+        let ret = svc.fetch(CacheName::Objects, &key, file).await;
         assert!(!ret);
 
         let buf = std::fs::read(temp_file).unwrap();
@@ -993,13 +938,7 @@ mod tests {
         symbolicator_test::setup();
         let credentials = symbolicator_test::gcs_credentials!();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: format!("{}/some_item", Uuid::new_v4()),
-            },
-        };
+        let key = format!("{}/some_item", Uuid::new_v4());
 
         let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
@@ -1018,13 +957,7 @@ mod tests {
         symbolicator_test::setup();
         let dir = symbolicator_test::tempdir();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: format!("{}/some_item", Uuid::new_v4()),
-            },
-        };
+        let key = format!("{}/some_item", Uuid::new_v4());
 
         let credentials = symbolicator_test::gcs_credentials!();
         let cfg = SharedCacheConfig {
@@ -1036,7 +969,8 @@ mod tests {
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
-            key.clone(),
+            CacheName::Objects,
+            &key,
             ByteView::from_slice(b"cache data"),
             CacheStoreReason::New,
         );
@@ -1046,7 +980,7 @@ mod tests {
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
         let file = File::from_std(temp_file.reopen().unwrap());
 
-        let ret = svc.fetch(&key, file).await;
+        let ret = svc.fetch(CacheName::Objects, &key, file).await;
         assert!(ret);
 
         let buf = std::fs::read(temp_file).unwrap();
@@ -1058,13 +992,7 @@ mod tests {
         symbolicator_test::setup();
         let credentials = symbolicator_test::gcs_credentials!();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: format!("{}/some_item", Uuid::new_v4()),
-            },
-        };
+        let key = format!("{}/some_item", Uuid::new_v4());
 
         let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
@@ -1072,7 +1000,8 @@ mod tests {
 
         let ret = state
             .store(
-                key.clone(),
+                CacheName::Objects,
+                &key,
                 ByteView::from_slice(b"cache data"),
                 CacheStoreReason::New,
             )
@@ -1083,7 +1012,8 @@ mod tests {
 
         let ret = state
             .store(
-                key,
+                CacheName::Objects,
+                &key,
                 ByteView::from_slice(b"cache data"),
                 CacheStoreReason::New,
             )
@@ -1101,25 +1031,20 @@ mod tests {
             .await
             .unwrap();
 
-        let key = SharedCacheKey {
-            name: CacheName::Objects,
-            version: 0,
-            local_key: CacheKey {
-                cache_key: format!("{}/some_item", Uuid::new_v4()),
-            },
-        };
+        let key = format!("{}/some_item", Uuid::new_v4());
 
-        assert!(!state.exists(&key).await.unwrap());
+        assert!(!state.exists(CacheName::Objects, &key).await.unwrap());
 
         state
             .store(
-                key.clone(),
+                CacheName::Objects,
+                &key,
                 ByteView::from_slice(b"cache data"),
                 CacheStoreReason::New,
             )
             .await
             .unwrap();
 
-        assert!(state.exists(&key).await.unwrap());
+        assert!(state.exists(CacheName::Objects, &key).await.unwrap());
     }
 }
