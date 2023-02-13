@@ -4427,6 +4427,7 @@ dependencies = [
  "backtrace",
  "cadence",
  "chrono",
+ "data-encoding",
  "filetime",
  "flate2",
  "futures",
