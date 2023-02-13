@@ -174,7 +174,7 @@ impl SourceMapService {
                 CacheError::DownloadError("Could not download sourcemap file".to_string())
             })?;
 
-        self.fetch_cache(&sourcemap_file, &sourcemap_file).await
+        self.fetch_cache(&source_file, &sourcemap_file).await
     }
 }
 
