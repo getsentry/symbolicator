@@ -62,7 +62,7 @@ impl SourceMapUrl {
 
     /// Parses a string into a [`SourceMapUrl`].
     ///
-    /// If the string starts with [`DATA_PREAMBLE`], the rest is decoded from BASE64.
+    /// If the string starts with [`DATA_PREAMBLE`](Self::DATA_PREAMBLE), the rest is decoded from BASE64.
     /// Otherwise, the string is joined to the `base` URL.
     fn parse_with_prefix(base: &Url, url_string: &str) -> CacheEntry<Self> {
         match url_string.strip_prefix(Self::DATA_PREAMBLE) {
