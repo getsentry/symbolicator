@@ -24,18 +24,24 @@ use crate::utils::sentry::ConfigureScope;
 use super::caches::versions::CFICACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 
+type CfiItem = (u32, Option<Arc<SymbolFile>>);
+
 #[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<Option<Arc<SymbolFile>>> {
+fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<CfiItem> {
+    let weight = bytes.len().try_into().unwrap_or(u32::MAX);
+    // NOTE: we estimate the in-memory structures to be ~8x as heavy in memory as on disk
+    let weight = weight.saturating_mul(8);
+
     let cfi_cache = CfiCache::from_bytes(bytes).map_err(CacheError::from_std_error)?;
 
     if cfi_cache.as_slice().is_empty() {
-        return Ok(None);
+        return Ok((weight, None));
     }
 
     let symbol_file =
         SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
 
-    Ok(Some(Arc::new(symbol_file)))
+    Ok((weight, Some(Arc::new(symbol_file))))
 }
 
 #[derive(Clone, Debug)]
@@ -75,7 +81,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = Option<Arc<SymbolFile>>;
+    type Item = CfiItem;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -90,6 +96,10 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_cfi_cache(data)
+    }
+
+    fn weight(item: &Self::Item) -> u32 {
+        item.0.max(std::mem::size_of::<Self::Item>() as u32)
     }
 }
 
@@ -129,7 +139,11 @@ impl CfiCacheActor {
                 objects_actor: self.objects.clone(),
                 meta_handle,
             };
-            self.cficaches.compute_memoized(request, cache_key)
+            async {
+                let entry = self.cficaches.compute_memoized(request, cache_key).await;
+
+                entry.map(|item| item.1)
+            }
         })
         .await
     }

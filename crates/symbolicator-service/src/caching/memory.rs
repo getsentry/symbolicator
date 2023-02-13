@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use parking_lot::Mutex;
@@ -13,9 +13,10 @@ use tempfile::NamedTempFile;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-use super::{Cache, CacheEntry, CacheError, CacheKey};
+use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime};
 
-type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
+type InMemoryItem<T> = (Instant, CacheEntry<T>);
+type InMemoryCache<T> = moka::future::Cache<CacheKey, InMemoryItem<T>>;
 
 /// Manages a filesystem cache of any kind of data that can be de/serialized from/to bytes.
 ///
@@ -53,13 +54,23 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 
 impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
-        // TODO: eventually hook up configuration to this
-        // The capacity(0) and ttl(0) make sure we are not (yet) reusing in-memory caches, except
-        // for request coalescing right now.
         let cache = InMemoryCache::builder()
-            .max_capacity(0)
-            .time_to_live(Duration::ZERO)
+            .max_capacity(config.in_memory_capacity)
+            .name(config.name().as_ref())
+            // NOTE: even though we have a per-item TTL, we still want to have a hard limit here
+            // FIXME: we have a rather conservative hard limit right now before we have properly
+            // immutable caches, and to slowly ramp this up
+            .time_to_live(Duration::from_secs(5 * 60))
+            // NOTE: we count all the bookkeeping structures to the weight as well
+            .weigher(|_k, v| {
+                let value_size =
+                    v.1.as_ref()
+                        .map_or(0, |item| T::weight(item))
+                        .max(std::mem::size_of::<CacheError>() as u32);
+                std::mem::size_of::<(CacheKey, Instant)>() as u32 + value_size
+            })
             .build();
+
         Cacher {
             config,
             cache,
@@ -102,6 +113,11 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Loads an existing element from the cache.
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item>;
+
+    /// The "cost" of keeping this item in the in-memory cache.
+    fn weight(item: &Self::Item) -> u32 {
+        std::mem::size_of_val(item) as u32
+    }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -115,7 +131,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         cache_dir: &Path,
         key: &CacheKey,
         version: u32,
-    ) -> CacheEntry<CacheEntry<T::Item>> {
+    ) -> CacheEntry<(Instant, CacheEntry<T::Item>)> {
         let name = self.config.name();
         let cache_key = key.cache_path(version);
 
@@ -165,7 +181,8 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-        Ok(entry.and_then(|byteview| request.load(byteview)))
+        let entry = entry.and_then(|byteview| request.load(byteview));
+        Ok((expiration.as_instant(), entry))
     }
 
     /// Compute an item.
@@ -264,10 +281,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         }
 
-        // TODO: we should eventually use this as a per-item TTL once we properly hook up in-memory caches.
-        // we just created a fresh cache, so use the initial expiration times
-        // let expiration = ExpirationTime::for_fresh_status(&self.config, &entry);
-
         entry.and_then(|byteview| request.load(byteview))
     }
 
@@ -295,12 +308,17 @@ impl<T: CacheItemRequest> Cacher<T> {
 
                 for version in versions {
                     // try the new cache key first, then fall back to the old cache key
-                    let item =
-                        match self.lookup_local_cache(&request, cache_dir, &cache_key, version) {
-                            Err(CacheError::NotFound) => continue,
-                            Err(err) => return Err(err),
-                            Ok(item) => item,
-                        };
+                    let item = match self
+                        .lookup_local_cache(&request, cache_dir, &cache_key, version)
+                    {
+                        Err(CacheError::NotFound) => continue,
+                        Err(err) => {
+                            let item = Err(err);
+                            let expiration = ExpirationTime::for_fresh_status(&self.config, &item);
+                            return (expiration.as_instant(), item);
+                        }
+                        Ok(item) => item,
+                    };
 
                     if version != T::VERSIONS.current {
                         // we have found an outdated cache that we will use right away,
@@ -322,25 +340,32 @@ impl<T: CacheItemRequest> Cacher<T> {
             // just got pruned.
             metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
 
-            self.compute(request, &cache_key, false)
+            let item = self
+                .compute(request, &cache_key, false)
                 // NOTE: We have seen this deadlock with an SDK that was deadlocking on
                 // out-of-order Scope pops.
                 // To guarantee that this does not happen is really the responsibility of
                 // the caller, though to be safe, we will just bind a fresh hub here.
                 .bind_hub(Hub::new_from_top(Hub::current()))
-                .await
+                .await;
+
+            // we just created a fresh cache, so use the initial expiration times
+            let expiration = ExpirationTime::for_fresh_status(&self.config, &item);
+
+            (expiration.as_instant(), item)
         });
+        let replace_if = |v: &InMemoryItem<T::Item>| Instant::now() >= v.0;
 
         let entry = self
             .cache
             .entry_by_ref(&cache_key)
-            .or_insert_with(init)
+            .or_insert_with_if(init, replace_if)
             .await;
 
         if !entry.is_fresh() {
             metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
         }
-        entry.into_value()
+        entry.into_value().1
     }
 
     fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
@@ -391,10 +416,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
 
-            let result = this.compute(request, &cache_key, true).await;
+            let item = this.compute(request, &cache_key, true).await;
+
+            // we just created a fresh cache, so use the initial expiration times
+            let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
+            let value = (expiration.as_instant(), item);
 
             // refresh the memory cache with the newly refreshed result
-            this.cache.insert(cache_key, result).await;
+            this.cache.insert(cache_key, value).await;
 
             transaction.finish();
         };

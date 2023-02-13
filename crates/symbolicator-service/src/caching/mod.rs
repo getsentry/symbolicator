@@ -178,6 +178,13 @@ impl Caches {
             config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
+        // NOTE: We default all the caches to ~100 KiB.
+        // A cache item with all its structures is at least ~100 bytes, so this gives us an
+        // estimate of the number of items in memory around ~1_000.
+        // Most items are a lot larger in reality, but giving concrete numbers here is hard to do.
+        let default_cap = 100 * 1024;
+        let in_memory = &config.caches.in_memory;
+
         let tmp_dir = config.cache_dir("tmp");
         Ok(Self {
             objects: {
@@ -188,6 +195,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
+                    default_cap,
                 )?
             },
             object_meta: {
@@ -198,6 +206,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    in_memory.object_meta_capacity,
                 )?
             },
             auxdifs: {
@@ -208,6 +217,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads.clone(),
+                    default_cap,
                 )?
             },
             il2cpp: {
@@ -218,6 +228,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.downloaded.into(),
                     max_lazy_redownloads,
+                    default_cap,
                 )?
             },
             symcaches: {
@@ -228,6 +239,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    default_cap,
                 )?
             },
             cficaches: {
@@ -238,6 +250,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    in_memory.cficaches_capacity,
                 )?
             },
             ppdb_caches: {
@@ -248,6 +261,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations.clone(),
+                    default_cap,
                 )?
             },
             sourcemap_caches: {
@@ -258,6 +272,7 @@ impl Caches {
                     tmp_dir.clone(),
                     config.caches.derived.into(),
                     max_lazy_recomputations,
+                    default_cap,
                 )?
             },
             diagnostics: {
@@ -268,6 +283,7 @@ impl Caches {
                     tmp_dir,
                     config.caches.diagnostics.into(),
                     Default::default(),
+                    default_cap,
                 )?
             },
         })

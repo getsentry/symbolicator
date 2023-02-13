@@ -2,7 +2,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use filetime::FileTime;
 use symbolic::common::ByteView;
@@ -52,6 +52,9 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
+
+    /// The capacity (in bytes) of the in-memory cache.
+    pub(super) in_memory_capacity: u64,
 }
 
 impl Cache {
@@ -61,6 +64,7 @@ impl Cache {
         tmp_dir: Option<PathBuf>,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
+        in_memory_capacity: u64,
     ) -> io::Result<Self> {
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
@@ -72,6 +76,7 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
+            in_memory_capacity,
         })
     }
 
@@ -251,7 +256,7 @@ pub enum ExpirationStrategy {
 }
 
 /// This gives the time at which different cache items need to be refreshed or touched.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpirationTime {
     /// The [`Duration`] after which [`Negative`](ExpirationStrategy::Negative) or
     /// [`Malformed`](ExpirationStrategy::Malformed) cache entries expire and need
@@ -265,7 +270,7 @@ pub enum ExpirationTime {
 
 impl ExpirationTime {
     /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheEntry`].
-    pub fn for_fresh_status(cache: &Cache, entry: &CacheEntry<ByteView<'static>>) -> Self {
+    pub fn for_fresh_status<T>(cache: &Cache, entry: &CacheEntry<T>) -> Self {
         let config = &cache.cache_config;
         let strategy = expiration_strategy(config, entry);
         match strategy {
@@ -290,13 +295,22 @@ impl ExpirationTime {
     pub fn was_touched(&self) -> bool {
         matches!(self, ExpirationTime::TouchIn(TOUCH_EVERY))
     }
+
+    /// Gives the [`Instant`] at which the item expires.
+    pub fn as_instant(&self) -> Instant {
+        let duration = match self {
+            ExpirationTime::RefreshIn(d) => d,
+            ExpirationTime::TouchIn(d) => d,
+        };
+        Instant::now() + *duration
+    }
 }
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-pub(super) fn expiration_strategy(
+pub(super) fn expiration_strategy<T>(
     cache_config: &CacheConfig,
-    status: &CacheEntry<ByteView<'static>>,
+    status: &CacheEntry<T>,
 ) -> ExpirationStrategy {
     match status {
         Ok(_) => ExpirationStrategy::None,

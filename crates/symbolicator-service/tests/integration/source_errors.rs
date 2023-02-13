@@ -124,6 +124,10 @@ async fn test_download_errors() {
 async fn test_deny_list() {
     let (symbolication, _cache_dir) = setup_service(|config| {
         config.cache_dir = None;
+        config.caches.downloaded.retry_misses_after = Some(Duration::ZERO);
+        config.caches.derived.retry_misses_after = Some(Duration::ZERO);
+        // FIXME: `object_meta` caches treat download errors as `malformed`
+        config.caches.derived.retry_malformed_after = Some(Duration::ZERO);
         config.max_download_timeout = Duration::from_millis(100);
         config.deny_list_time_window = Duration::from_millis(500);
         config.deny_list_bucket_size = Duration::from_millis(100);
@@ -171,7 +175,7 @@ async fn test_deny_list() {
         );
     }
 
-    // For the third time the host shuold be blocked
+    // For the third time the host should be blocked
     let response = symbolication.symbolicate(request.clone()).await.unwrap();
     assert_eq!(
         get_statuses(response),
@@ -206,7 +210,7 @@ async fn test_deny_list() {
         );
     }
 
-    // For the third time the host shuold be blocked
+    // For the third time the host should be blocked
     let response = symbolication.symbolicate(request.clone()).await.unwrap();
     assert_eq!(
         get_statuses(response),
