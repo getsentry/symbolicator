@@ -159,21 +159,9 @@ impl SymbolicationActor {
 
         for trace in &mut stacktraces {
             for frame in &mut trace.frames {
-                let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                    (Some(abs_path), Some(lineno)) => (abs_path, lineno),
-                    _ => continue,
-                };
-
-                let result = module_lookup.get_context_lines(
-                    &debug_sessions,
-                    frame.raw.instruction_addr.0,
-                    frame.raw.addr_mode,
-                    abs_path,
-                    lineno,
-                    5,
-                );
-
-                if let Some((pre_context, context_line, post_context)) = result {
+                if let Some((pre_context, context_line, post_context)) =
+                    module_lookup.get_context_lines(&debug_sessions, &frame.raw, 5)
+                {
                     frame.raw.pre_context = pre_context;
                     frame.raw.context_line = Some(context_line);
                     frame.raw.post_context = post_context;

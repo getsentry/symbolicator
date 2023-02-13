@@ -16,7 +16,7 @@ use crate::services::ppdb_caches::{
 use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
-    RawStacktrace, Scope,
+    RawFrame, RawStacktrace, Scope,
 };
 use crate::utils::addr::AddrMode;
 
@@ -370,18 +370,17 @@ impl ModuleLookup {
     pub fn get_context_lines(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
-        addr: u64,
-        addr_mode: AddrMode,
-        abs_path: &str,
-        lineno: u32,
-        n: usize,
+        frame: &RawFrame,
+        num_lines: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let entry = self.get_module_by_addr(addr, addr_mode)?;
+        let abs_path = frame.abs_path.as_ref()?;
+        let lineno = frame.lineno? as usize;
+
+        let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
         let source = session.source_by_path(abs_path).ok()??;
 
-        let lineno = lineno as usize;
-        let start_line = lineno.saturating_sub(n);
+        let start_line = lineno.saturating_sub(num_lines);
         let line_diff = lineno - start_line;
 
         let mut lines = source.lines().skip(start_line);
@@ -390,7 +389,7 @@ impl ModuleLookup {
             .map(|x| x.to_string())
             .collect();
         let context = lines.next()?.to_string();
-        let post_context = lines.take(n).map(|x| x.to_string()).collect();
+        let post_context = lines.take(num_lines).map(|x| x.to_string()).collect();
 
         Some((pre_context, context, post_context))
     }
