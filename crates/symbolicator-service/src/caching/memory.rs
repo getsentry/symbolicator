@@ -316,10 +316,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_ref());
 
-        let mut was_memory_hit = true;
-        let compute = Box::pin(async {
-            was_memory_hit = false;
-
+        let init = Box::pin(async {
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
                 let versions = std::iter::once(T::VERSIONS.current)
@@ -362,11 +359,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await
         });
 
-        let res = self.cache.get_with_by_ref(&cache_key, compute).await;
-        if was_memory_hit {
+        let entry = self
+            .cache
+            .entry_by_ref(&cache_key)
+            .or_insert_with(init)
+            .await;
+
+        if !entry.is_fresh() {
             metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
         }
-        res
+        entry.into_value()
     }
 
     fn spawn_refresh(&self, cache_dir: &Path, cache_key: CacheKey, request: T) {
