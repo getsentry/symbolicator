@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter};
 use std::sync::Arc;
 
 use data_encoding::BASE64;
@@ -116,28 +116,27 @@ impl SourceMapService {
         &self,
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
-    ) -> CacheEntry<NamedTempFile> {
+    ) -> CacheEntry<ByteView<'static>> {
         let mut temp_file = NamedTempFile::new().unwrap();
         fetch_file(
             self.download_svc.clone(),
             SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into(),
             &mut temp_file,
         )
-        .await
-        .map(|_| temp_file)
+        .await?;
+
+        Ok(ByteView::map_file(temp_file.into_file()).unwrap())
     }
 
     pub async fn fetch_cache(
         &self,
-        source: &NamedTempFile,
-        sourcemap: &NamedTempFile,
+        source: ByteView<'static>,
+        sourcemap: ByteView<'static>,
     ) -> CacheEntry<OwnedSourceMapCache> {
         // TODO: really hook this up to the `Cacher`.
         // this is currently blocked on figuring out combined cache keys that depend on both
         // `source` and `sourcemap`.
         // For the time being, this all happens in a temp file that we throw away afterwards.
-        let source = ByteView::map_file_ref(source.as_file())?;
-        let sourcemap = ByteView::map_file_ref(sourcemap.as_file())?;
         let req = FetchSourceMapCacheInternal { source, sourcemap };
 
         let mut temp_file = self.sourcemap_caches.tempfile()?;
@@ -194,17 +193,12 @@ impl SourceMapService {
             .await
             .map_err(|_| CacheError::DownloadError("Could not download source file".to_string()))?;
 
-        // TODO(sourcemap): Monolith just returns `None`
-        let sourcemap_url = resolve_sourcemap_url(&abs_path_url, source_artifact, &source_file)
-            .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
+        let sourcemap_url =
+            resolve_sourcemap_url(&abs_path_url, source_artifact, source_file.clone())
+                .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
 
         let sourcemap_file = match sourcemap_url {
-            SourceMapUrl::Data(decoded) => {
-                let mut file = NamedTempFile::new().unwrap();
-                file.write_all(&decoded).unwrap();
-
-                file
-            }
+            SourceMapUrl::Data(decoded) => ByteView::from_vec(decoded),
             SourceMapUrl::Remote(url) => {
                 let sourcemap_artifact = get_release_file_candidate_urls(&url)
                     .into_iter()
@@ -221,7 +215,7 @@ impl SourceMapService {
             }
         };
 
-        self.fetch_cache(&source_file, &sourcemap_file).await
+        self.fetch_cache(source_file, sourcemap_file).await
     }
 }
 
@@ -259,17 +253,14 @@ fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_artifact: &SearchArtifactResult,
-    mut source_file: &NamedTempFile,
+    source_file: ByteView<'static>,
 ) -> Option<SourceMapUrl> {
     if let Some(header) = source_artifact.headers.get("Sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
-        use std::io::Seek;
-
-        let sm_ref = locate_sourcemap_reference(source_file.as_file()).ok()??;
-        source_file.rewind().ok()?;
+        let sm_ref = locate_sourcemap_reference(source_file.as_slice()).ok()??;
         SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url()).ok()
     }
 }
