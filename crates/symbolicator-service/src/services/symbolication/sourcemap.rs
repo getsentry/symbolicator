@@ -105,18 +105,20 @@ fn js_processing_symbolicate_frame(
 
         let current_line = token.line();
 
-        result.raw.context_line = token.line_contents().map(ToString::to_string);
+        result.raw.context_line = token
+            .line_contents()
+            .map(|line| line.trim_end().to_string());
 
         let pre_line = current_line.saturating_sub(5);
         result.raw.pre_context = (pre_line..current_line)
             .filter_map(|line| file.line(line as usize))
-            .map(|v| v.to_string())
+            .map(|v| v.trim_end().to_string())
             .collect();
 
         let post_line = current_line.saturating_add(5);
         result.raw.post_context = (current_line + 1..=post_line)
             .filter_map(|line| file.line(line as usize))
-            .map(|v| v.to_string())
+            .map(|v| v.trim_end().to_string())
             .collect();
     }
 

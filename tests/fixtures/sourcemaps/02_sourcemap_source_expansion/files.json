@@ -1,0 +1,30 @@
+[
+  {
+    "id": "file.min.js",
+    "name": "~/file.min.js",
+    "dist": null,
+    "headers": {},
+    "sha1": ""
+  },
+  {
+    "id": "file.sourcemap.js",
+    "name": "~/file.sourcemap.js",
+    "dist": null,
+    "headers": {},
+    "sha1": ""
+  },
+  {
+    "id": "file1.js",
+    "name": "~/file1.js",
+    "dist": null,
+    "headers": {},
+    "sha1": ""
+  },
+  {
+    "id": "file2.js",
+    "name": "~/file2.js",
+    "dist": null,
+    "headers": {},
+    "sha1": ""
+  }
+]
