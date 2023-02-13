@@ -26,7 +26,7 @@ use axum::routing::{get, get_service};
 use axum::{middleware, Router};
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
-use tower_http::services::ServeDir;
+use tower_http::services::{ServeDir, ServeFile};
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
 
@@ -253,6 +253,36 @@ impl Server {
             .nest_service("/symbols", serve_dir)
     }
 
+    /// Creates a new `Router` that is used in sourcemap symbolication tests.
+    pub fn sourcemap_router(fixtures_dir: &str) -> Router {
+        // TODO(kamil): Add some debug logs, as its hard to realize where something went wrong during setup.
+        Router::new().nest(
+            "/files",
+            Router::new()
+                .route(
+                    "/",
+                    get_service(ServeFile::new(fixture(format!(
+                        "sourcemaps/{fixtures_dir}/files.json"
+                    ))))
+                    .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+                )
+                /*
+                 * NOTE: We change the `id` of the artifact in the `files.json` to be the path
+                 * pointing to the file  placed in the fixtures dir.
+                 *
+                 * In the real world, it would be a number pointing to the same `/files/:id` route.
+                 *
+                 * eg. with `files.json` giving us `{ "id": 2, "name": "foo.js" }`
+                 * we use `/files/foo.js` instead of `/files/2` as it's easier to reason about.
+                 */
+                .route(
+                    "/*id",
+                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))))
+                        .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+                ),
+        )
+    }
+
     /// Returns the sum total of hits and clears the hit counts.
     pub fn accesses(&self) -> usize {
         let map = std::mem::take(&mut *self.hits.lock().unwrap());
@@ -339,6 +369,10 @@ pub fn symbol_server() -> (Server, SourceConfig) {
     }));
 
     (server, source)
+}
+
+pub fn sourcemap_server(fixtures_dir: &str) -> Server {
+    Server::with_router(Server::sourcemap_router(fixtures_dir))
 }
 
 /// Returns the legacy read-only GCS credentials for testing GCS support.
