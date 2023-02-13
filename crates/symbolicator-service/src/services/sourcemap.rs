@@ -71,9 +71,9 @@ impl SourceMapUrl {
                 .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
             Ok(Self::Data(decoded))
         } else {
-            let url = base.join(url_string).map_err(|_| {
-                CacheError::DownloadError(format!("Invalid sourcemap url: {url_string}"))
-            })?;
+            let url = base
+                .join(url_string)
+                .map_err(|_| CacheError::DownloadError("Invalid sourcemap url".to_string()))?;
             Ok(Self::Remote(url))
         }
     }
@@ -191,7 +191,7 @@ impl SourceMapService {
             .map_err(|_| CacheError::DownloadError("Could not download source file".to_string()))?;
 
         let sourcemap_url =
-            resolve_sourcemap_url(&abs_path_url, source_artifact, source_file.clone())
+            resolve_sourcemap_url(&abs_path_url, source_artifact, source_file.as_slice())
                 .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
 
         let sourcemap_file = match sourcemap_url {
@@ -250,14 +250,14 @@ fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_artifact: &SearchArtifactResult,
-    source_file: ByteView<'static>,
+    source_file: &[u8],
 ) -> Option<SourceMapUrl> {
     if let Some(header) = source_artifact.headers.get("Sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else if let Some(header) = source_artifact.headers.get("X-SourceMap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
-        let sm_ref = locate_sourcemap_reference(source_file.as_slice()).ok()??;
+        let sm_ref = locate_sourcemap_reference(source_file).ok()??;
         SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url()).ok()
     }
 }
