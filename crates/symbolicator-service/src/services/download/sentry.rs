@@ -128,9 +128,12 @@ impl SentryDownloader {
 
             future.await.map_err(|_| CacheError::InternalError)?
         });
+
         self.index_cache
-            .get_with_if(query, init, |entry| entry.is_err())
+            .entry(query)
+            .or_insert_with_if(init, |entry| entry.is_err())
             .await
+            .into_value()
     }
 
     pub async fn list_files(
