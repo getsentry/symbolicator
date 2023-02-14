@@ -15,7 +15,7 @@ pub struct CacheKey {
 
 impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.legacy_cache_key)
+        write!(f, "{}", self.cache_path(1234))
     }
 }
 

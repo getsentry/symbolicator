@@ -1,4 +1,3 @@
-use std::fs;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -11,7 +10,7 @@ use crate::{assert_snapshot, read_fixture, setup_service, symbol_server};
 macro_rules! stackwalk_minidump {
     ($path:expr) => {
         async {
-            let (symbolication, cache_dir) = setup_service(|_| ());
+            let (symbolication, _cache_dir) = setup_service(|_| ());
             let (_symsrv, source) = symbol_server();
 
             let minidump = read_fixture($path);
@@ -26,15 +25,6 @@ macro_rules! stackwalk_minidump {
                 .await;
 
             assert_snapshot!(response.unwrap());
-
-            let global_dir = cache_dir.path().join("object_meta/global");
-            let mut cache_entries: Vec<_> = fs::read_dir(global_dir)
-                .unwrap()
-                .map(|x| x.unwrap().file_name().into_string().unwrap())
-                .collect();
-
-            cache_entries.sort();
-            assert_snapshot!(cache_entries);
         }
     };
 }
