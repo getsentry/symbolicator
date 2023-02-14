@@ -235,7 +235,6 @@ impl SymCacheActor {
             let (bcsymbolmap_handle, il2cpp_handle) =
                 futures::future::join(fetch_bcsymbolmap, fetch_il2cpp).await;
 
-            // TODO: The new symcache key needs to be a combination of *all* the sources
             let mut builder = handle.cache_key_builder();
             if let Some(handle) = &bcsymbolmap_handle {
                 builder.write_str("\nbcsymbolmap:\n").unwrap();

@@ -929,6 +929,46 @@ async fn test_cache_fallback() {
     assert_eq!(request.computations.load(Ordering::SeqCst), 1);
 }
 
+/// This test asserts that the cache is served from legacy cache files when new ones are not yet available
+#[tokio::test]
+async fn test_legacy_key_fallback() {
+    test::setup();
+
+    let cache_dir = test::tempdir().path().join("test");
+    std::fs::create_dir_all(cache_dir.join("1/global")).unwrap();
+    std::fs::write(
+        cache_dir.join("1/global/some_cache_key"),
+        "some old cached contents",
+    )
+    .unwrap();
+
+    let cache = Cache::from_config(
+        CacheName::Objects,
+        Some(cache_dir.clone()),
+        None,
+        CacheConfig::from(CacheConfigs::default().derived),
+        Arc::new(AtomicIsize::new(1)),
+    )
+    .unwrap();
+    let cacher = Cacher::new(cache, Default::default());
+
+    let request = TestCacheItem::new();
+    let key = CacheKey::for_testing("global/some_cache_key");
+
+    let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
+    assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
+
+    let second_result = cacher.compute_memoized(request.clone(), key.clone()).await;
+    assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
+
+    let cache_path = cache_dir.join(key.cache_path(1));
+    std::fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+    std::fs::write(cache_path, "some new cached contents").unwrap();
+
+    let third_result = cacher.compute_memoized(request.clone(), key).await;
+    assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
+}
+
 /// Makes sure that a `NotFound` result does not fall back to older cache versions.
 #[tokio::test]
 async fn test_cache_fallback_notfound() {
