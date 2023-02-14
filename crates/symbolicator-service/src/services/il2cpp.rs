@@ -32,6 +32,7 @@ use super::fetch_file;
 // to a symcache, so we need to actually parse the `LineMapping` at the very end when applying it.
 #[derive(Debug, Clone)]
 pub struct Il2cppHandle {
+    pub file: RemoteFile,
     pub data: ByteView<'static>,
 }
 
@@ -86,7 +87,10 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(Il2cppHandle { data })
+        Ok(Il2cppHandle {
+            file: self.file_source.clone(),
+            data,
+        })
     }
 }
 

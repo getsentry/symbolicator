@@ -1,4 +1,5 @@
-use std::fmt;
+use std::fmt::{self, Write};
+use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use symbolicator_sources::RemoteFile;
@@ -7,7 +8,8 @@ use crate::types::Scope;
 
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
-    legacy_cache_key: String,
+    legacy_cache_key: Arc<str>,
+    metadata: Arc<str>,
     hash: [u8; 32],
 }
 
@@ -30,6 +32,32 @@ impl std::hash::Hash for CacheKey {
 }
 
 impl CacheKey {
+    /// Creates a [`CacheKey`] for the given [`RemoteFile`] tied to [`Scope`].
+    pub fn from_scoped_file(scope: &Scope, file: &RemoteFile) -> Self {
+        Self::legacy_builder(scope, file).build()
+    }
+
+    /// Returns the human-readable metadata that forms the basis of the [`CacheKey`].
+    pub fn metadata(&self) -> &str {
+        &self.metadata
+    }
+
+    /// Returns the relative path for this cache key.
+    ///
+    /// The relative path is a sha-256 hash hex-formatted like so:
+    /// `v$version/aa/bbccdd/eeff...`
+    pub fn cache_path(&self, version: u32) -> String {
+        let mut path = format!("v{version}/{:02x}/", self.hash[0]);
+        for b in &self.hash[1..4] {
+            path.write_fmt(format_args!("{b:02x}")).unwrap();
+        }
+        path.push('/');
+        for b in &self.hash[4..] {
+            path.write_fmt(format_args!("{b:02x}")).unwrap();
+        }
+        path
+    }
+
     /// Creates a stable relative path for the given [`RemoteFile`] tied to [`Scope`].
     ///
     /// This is being used as the "legacy" [`CacheKey`], and also forms the basis for the more
@@ -40,40 +68,18 @@ impl CacheKey {
         format!("{scope}/{cache_key}")
     }
 
-    /// Creates a [`CacheKey`] for the given [`RemoteFile`] tied to [`Scope`].
-    pub fn from_scoped_file(scope: &Scope, file: &RemoteFile) -> Self {
-        Self::builder(scope, file).build()
-    }
-
     /// Create a [`CacheKeyBuilder`] that can be used to build a cache key consisting of all its
     /// contributing sources.
-    pub fn builder(scope: &Scope, file: &RemoteFile) -> CacheKeyBuilder {
+    pub fn legacy_builder(scope: &Scope, file: &RemoteFile) -> CacheKeyBuilder {
         let legacy_cache_key = Self::relative_scoped_file(scope, file);
-        let mut hasher = Sha256::new();
-        hasher.update(&legacy_cache_key);
+        let metadata = format!("scope: {scope}\n\n");
 
-        CacheKeyBuilder {
+        let mut builder = CacheKeyBuilder {
             legacy_cache_key,
-            hasher,
-        }
-    }
-
-    /// Returns the relative path for this cache key.
-    ///
-    /// The relative path is a sha-256 hash hex-formatted like so:
-    /// `v$version/aa/bbccdd/eeff...`
-    pub fn cache_path(&self, version: u32) -> String {
-        use std::fmt::Write;
-
-        let mut path = format!("v{version}/{:02x}/", self.hash[0]);
-        for b in &self.hash[1..4] {
-            path.write_fmt(format_args!("{b:02x}")).unwrap();
-        }
-        path.push('/');
-        for b in &self.hash[4..] {
-            path.write_fmt(format_args!("{b:02x}")).unwrap();
-        }
-        path
+            metadata,
+        };
+        builder.write_file_meta(file).unwrap();
+        builder
     }
 
     /// Returns the full cache path for this key inside the provided cache directory.
@@ -90,38 +96,54 @@ impl CacheKey {
     #[cfg(test)]
     pub fn for_testing(key: impl Into<String>) -> Self {
         let legacy_cache_key = key.into();
-        let mut hasher = Sha256::new();
-        hasher.update(&legacy_cache_key);
+        let metadata = legacy_cache_key.clone();
 
         CacheKeyBuilder {
             legacy_cache_key,
-            hasher,
+            metadata,
         }
         .build()
     }
 }
 
+/// A builder for [`CacheKey`]s.
+///
+/// This builder implements the [`Write`](std::fmt::Write) trait, and the intention of it is to
+/// accept human readable, but most importantly **stable**, input.
+/// This input in then being hashed to form the [`CacheKey`], and can also be serialized alongside
+/// the cache files to help debugging.
 pub struct CacheKeyBuilder {
     legacy_cache_key: String,
-    hasher: Sha256,
+    metadata: String,
 }
 
 impl CacheKeyBuilder {
-    /// Update the Cache Key hash with the provided `data`.
-    pub fn update(&mut self, data: impl AsRef<[u8]>) {
-        self.hasher.update(data);
+    /// Writes metadata about the [`RemoteFile`] into the [`CacheKey`].
+    pub fn write_file_meta(&mut self, file: &RemoteFile) -> Result<(), fmt::Error> {
+        self.metadata.write_fmt(format_args!(
+            "source: {}\nlocation: {}\n",
+            file.source_id(),
+            file.uri()
+        ))
     }
 
     /// Finalize the [`CacheKey`].
     pub fn build(self) -> CacheKey {
+        let hash = Sha256::digest(&self.metadata);
         // FIXME: `sha2` should really adopt const generics, this is such a pain right now
-        let hash = self.hasher.finalize();
         let hash = <[u8; 32]>::try_from(hash).expect("sha256 outputs 32 bytes");
 
         CacheKey {
-            legacy_cache_key: self.legacy_cache_key,
+            legacy_cache_key: self.legacy_cache_key.into(),
+            metadata: self.metadata.into(),
             hash,
         }
+    }
+}
+
+impl fmt::Write for CacheKeyBuilder {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        self.metadata.write_str(s)
     }
 }
 
@@ -161,27 +183,35 @@ mod tests {
         assert_eq!(&key.legacy_cache_path(1), "1/global/foo_bar_baz");
         assert_eq!(
             &key.cache_path(0),
-            "v0/95/ce2928/758cb655460741a6599f934db2b6186b298a58473cf61f8e0c7c8c4f"
+            "v0/6f/200788/bd4e6760d55bf6bd50c6d6e98b52379e194f9989fb788b4d37796427"
+        );
+        assert_eq!(
+            key.metadata(),
+            "scope: global\n\nsource: foo\nlocation: file:///bar.baz\n"
         );
 
-        let builder = CacheKey::builder(&scope, &file);
+        let builder = CacheKey::legacy_builder(&scope, &file);
         let built_key = builder.build();
 
         assert_eq!(built_key.legacy_cache_path(0), key.legacy_cache_path(0));
         assert_eq!(built_key.cache_path(0), key.cache_path(0));
 
-        let mut builder = CacheKey::builder(&scope, &file);
+        let mut builder = CacheKey::legacy_builder(&scope, &file);
 
         let location = SourceLocation::new("bar.quux");
         let file = FilesystemRemoteFile::new(source, location).into();
-        builder.update("second_source");
-        builder.update(CacheKey::relative_scoped_file(&scope, &file));
+        builder.write_str("\nsecond_source:\n").unwrap();
+        builder.write_file_meta(&file).unwrap();
         let key = builder.build();
 
         assert_eq!(&key.legacy_cache_path(0), "global/foo_bar_baz");
         assert_eq!(
             &key.cache_path(0),
-            "v0/ee/0bab60/b041688910474e611fc8b9cb46b8f72bac1864b02e79d9493cf1d165"
+            "v0/07/e89036/d56878a462eb7949a744afa0a4deb5ed1b7a8154be16f7dd3b220518"
+        );
+        assert_eq!(
+            key.metadata(),
+            "scope: global\n\nsource: foo\nlocation: file:///bar.baz\n\nsecond_source:\nsource: foo\nlocation: file:///bar.quux\n"
         );
     }
 }

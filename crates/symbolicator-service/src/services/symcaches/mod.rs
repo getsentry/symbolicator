@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
@@ -236,13 +237,13 @@ impl SymCacheActor {
 
             // TODO: The new symcache key needs to be a combination of *all* the sources
             let mut builder = handle.cache_key_builder();
-            if let Some(_handle) = &bcsymbolmap_handle {
-                builder.update("bcsymbolmap:");
-                // TODO: builder.update(handle.cache_key);
+            if let Some(handle) = &bcsymbolmap_handle {
+                builder.write_str("\nbcsymbolmap:\n").unwrap();
+                builder.write_file_meta(&handle.file).unwrap();
             }
-            if let Some(_handle) = &il2cpp_handle {
-                builder.update("il2cpp:");
-                // TODO: builder.update(handle.cache_key);
+            if let Some(handle) = &il2cpp_handle {
+                builder.write_str("\nil2cpp:\n").unwrap();
+                builder.write_file_meta(&handle.file).unwrap();
             }
 
             let cache_key = builder.build();

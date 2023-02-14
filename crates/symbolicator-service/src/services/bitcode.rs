@@ -31,6 +31,7 @@ use super::fetch_file;
 /// only have this handle if a positive cache existed.
 #[derive(Debug, Clone)]
 pub struct BcSymbolMapHandle {
+    pub file: RemoteFile,
     pub uuid: DebugId,
     pub data: ByteView<'static>,
 }
@@ -49,6 +50,7 @@ impl BcSymbolMapHandle {
 /// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
+    file: RemoteFile,
     uuid: DebugId,
     data: ByteView<'static>,
 }
@@ -133,6 +135,7 @@ impl CacheItemRequest for FetchFileRequest {
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         Ok(Arc::new(CacheHandle {
+            file: self.file_source.clone(),
             uuid: self.uuid,
             data,
         }))
@@ -189,6 +192,7 @@ impl BitcodeService {
             .await?;
 
         Some(BcSymbolMapHandle {
+            file: symbolmap_handle.file.clone(),
             uuid: symbolmap_handle.uuid,
             data: symbolmap_handle.data.clone(),
         })

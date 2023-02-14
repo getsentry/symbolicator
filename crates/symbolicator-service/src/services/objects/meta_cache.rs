@@ -55,7 +55,7 @@ impl ObjectMetaHandle {
     }
 
     pub fn cache_key_builder(&self) -> CacheKeyBuilder {
-        CacheKey::builder(&self.scope, &self.file_source)
+        CacheKey::legacy_builder(&self.scope, &self.file_source)
     }
 
     pub fn features(&self) -> ObjectFeatures {
