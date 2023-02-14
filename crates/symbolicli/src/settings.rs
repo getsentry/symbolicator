@@ -5,9 +5,11 @@ use symbolicator_service::config::Config;
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context};
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
+
+use crate::oauth::request_access_token;
 
 /// The default API URL
 pub const DEFAULT_URL: &str = "https://sentry.io/";
@@ -37,6 +39,14 @@ pub enum Mode {
     },
 }
 
+#[derive(Subcommand, Clone, Debug)]
+enum Commands {
+    /// Authenticate symbolicli with a short-lived access_token
+    Auth,
+    /// Symbolicate an event
+    Event,
+}
+
 /// A utility that provides local symbolication of Sentry events.
 ///
 /// A valid auth token needs to be provided via the `--auth-token` option,
@@ -46,19 +56,22 @@ pub enum Mode {
 #[derive(Clone, Parser, Debug)]
 #[command(author, version, about, long_about)]
 struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+
     /// The event to symbolicate.
     ///
     /// This can either be the name of a local file (minidump or event JSON)
     /// or an event ID.
-    pub event: String,
+    event: String,
 
     /// The organization slug.
     #[arg(long, short)]
-    pub org: Option<String>,
+    org: Option<String>,
 
     /// The project slug.
     #[arg(long, short)]
-    pub project: Option<String>,
+    project: Option<String>,
 
     /// The URL of the sentry instance to connect to.
     ///
@@ -122,6 +135,11 @@ pub struct Settings {
 impl Settings {
     pub fn get() -> anyhow::Result<Self> {
         let cli = Cli::parse();
+
+        match &cli.command {
+            Commands::Auth => request_access_token()?,
+            Commands::Event => todo!(),
+        }
 
         let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
         let mut project_config_file = match find_project_config_file() {

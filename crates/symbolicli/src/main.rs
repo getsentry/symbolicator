@@ -15,6 +15,7 @@ use anyhow::Context;
 use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
 
+mod oauth;
 mod settings;
 
 #[tokio::main]
