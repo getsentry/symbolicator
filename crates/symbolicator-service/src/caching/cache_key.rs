@@ -61,7 +61,7 @@ impl CacheKey {
     /// Returns the relative path for this cache key.
     ///
     /// The relative path is a sha-256 hash hex-formatted like so:
-    /// `$version/aa/bbccdd/eeff...`
+    /// `v$version/aa/bbccdd/eeff...`
     pub fn cache_path(&self, version: u32) -> String {
         use std::fmt::Write;
 

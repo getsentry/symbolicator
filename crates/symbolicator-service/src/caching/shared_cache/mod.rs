@@ -672,24 +672,24 @@ impl SharedCacheService {
     pub async fn fetch(&self, cache: CacheName, key: &str, mut file: tokio::fs::File) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();
+        let key = format!("{}/{key}", cache.as_ref());
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
             map.insert("cache".to_string(), cache.as_ref().into());
-            map.insert("path".to_string(), key.into());
+            map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
         let res = match self.backend.as_ref() {
             SharedCacheBackend::Gcs(state) => {
                 let state = Arc::clone(state);
-                let key = key.to_owned();
                 let future = async move { state.fetch(&key, &mut file).await };
 
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())))
                     .await
                     .unwrap_or(Err(CacheError::ConnectTimeout))
             }
-            SharedCacheBackend::Fs(cfg) => cfg.fetch(key, &mut file).await,
+            SharedCacheBackend::Fs(cfg) => cfg.fetch(&key, &mut file).await,
         };
         match res {
             Ok(Some(bytes)) => {
@@ -819,7 +819,7 @@ mod tests {
         let dir = symbolicator_test::tempdir();
 
         let key = "global/some_item";
-        let cache_path = dir.path().join(key);
+        let cache_path = dir.path().join("objects/global/some_item");
         fs::create_dir_all(cache_path.parent().unwrap())
             .await
             .unwrap();
@@ -879,7 +879,6 @@ mod tests {
         let dir = symbolicator_test::tempdir();
 
         let key = "global/some_item";
-        let cache_path = dir.path().join(key);
 
         let cfg = SharedCacheConfig {
             max_concurrent_uploads: 10,
@@ -900,6 +899,7 @@ mod tests {
         // Wait for storing to complete.
         recv.await.unwrap();
 
+        let cache_path = dir.path().join("objects/global/some_item");
         let data = fs::read(&cache_path)
             .await
             .context("Failed to read written cache file")
