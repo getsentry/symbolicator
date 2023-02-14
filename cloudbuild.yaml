@@ -26,6 +26,7 @@ steps:
       ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"]
 
   - name: "gcr.io/cloud-builders/docker"
+    id: builder-run
     args:
       [
         "build",
@@ -37,6 +38,15 @@ steps:
         "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         ".",
       ]
+
+  # Uploads DIFs to the deployment pipeline group's private bucket.
+  # These are used for sentry releases.
+  - name: "gcr.io/cloud-builders/gsutil"
+    waitFor: builder-run
+    entrypoint: "bash"
+    args:
+      - '-c'
+      - |-
 
   - name: "gcr.io/cloud-builders/docker"
     args:
