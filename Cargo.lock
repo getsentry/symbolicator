@@ -4566,6 +4566,7 @@ name = "symbolicli"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap 4.1.4",
  "dirs",
  "http-body-util",

@@ -1,19 +1,25 @@
+use axum::extract::{Query, State};
+use axum::routing::get;
+use axum::Router;
 use oauth2::basic::BasicClient;
-use oauth2::reqwest::http_client;
+use oauth2::reqwest::{async_http_client, http_client};
 use oauth2::{
     AuthUrl, AuthorizationCode, ClientId, CsrfToken, DeviceAuthorizationUrl, PkceCodeChallenge,
-    RedirectUrl, Scope, TokenResponse, TokenUrl,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 
+use reqwest::StatusCode;
 use url::Url;
 
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::process::Command;
+use std::sync::Arc;
 
 const CLIENT_ID: &str = "0oa87t4d8dCJbeZuG5d7";
 
-pub fn request_access_token() -> anyhow::Result<()> {
+pub async fn authenticate() -> anyhow::Result<()> {
     let device_auth_url = DeviceAuthorizationUrl::new(
         "https://dev-50022714.okta.com/oauth2/default/v1/device/authorize".to_string(),
     )?;
@@ -51,90 +57,146 @@ pub fn request_access_token() -> anyhow::Result<()> {
         .arg(authorize_url.to_string())
         .output()?;
 
+    let server_state = ServerState {
+        expected_csrf_token: csrf_state,
+        client,
+        pkce_verifier,
+    };
+
+    let app = Router::new()
+        .route("/", get(handle_token_request))
+        .with_state(Arc::new(server_state));
+
+    axum::Server::bind(&"127.0.0.1:8085".parse().unwrap())
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+
     // pulled from https://github.com/ramosbugs/oauth2-rs/blob/main/examples/github.rs, but we should
     // separate this out into its own function and use something more robust
-    let listener = TcpListener::bind("127.0.0.1:8085").unwrap();
-    for stream in listener.incoming() {
-        if let Ok(mut stream) = stream {
-            let code;
-            let state;
-            {
-                println!("Server listening...");
-                let mut reader = BufReader::new(&stream);
+    // let listener = TcpListener::bind("127.0.0.1:8085").unwrap();
+    // for stream in listener.incoming() {
+    //     if let Ok(mut stream) = stream {
+    //         let code;
+    //         let state;
+    //         {
+    //             println!("Server listening...");
+    //             let mut reader = BufReader::new(&stream);
 
-                let mut request_line = String::new();
-                reader.read_line(&mut request_line).unwrap();
+    //             let mut request_line = String::new();
+    //             reader.read_line(&mut request_line).unwrap();
 
-                let redirect_url = request_line.split_whitespace().nth(1).unwrap();
-                let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
+    //             dbg!(&request_line);
+    //             let redirect_url = request_line.split_whitespace().nth(1).unwrap();
+    //             let url = Url::parse(&("http://localhost".to_string() + redirect_url)).unwrap();
 
-                let code_pair = url
-                    .query_pairs()
-                    .find(|pair| {
-                        let &(ref key, _) = pair;
-                        key == "code"
-                    })
-                    .unwrap();
+    //             let code_pair = url
+    //                 .query_pairs()
+    //                 .find(|pair| {
+    //                     let &(ref key, _) = pair;
+    //                     key == "code"
+    //                 })
+    //                 .unwrap();
 
-                let (_, value) = code_pair;
-                code = AuthorizationCode::new(value.into_owned());
+    //             let (_, value) = code_pair;
+    //             code = AuthorizationCode::new(value.into_owned());
 
-                let state_pair = url
-                    .query_pairs()
-                    .find(|pair| {
-                        let &(ref key, _) = pair;
-                        key == "state"
-                    })
-                    .unwrap();
+    //             let state_pair = url
+    //                 .query_pairs()
+    //                 .find(|pair| {
+    //                     let &(ref key, _) = pair;
+    //                     key == "state"
+    //                 })
+    //                 .unwrap();
 
-                let (_, value) = state_pair;
-                state = CsrfToken::new(value.into_owned());
-            }
+    //             let (_, value) = state_pair;
+    //             state = CsrfToken::new(value.into_owned());
+    //         }
 
-            let message = "Go back to your terminal :)";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
-                message.len(),
-                message
-            );
-            stream.write_all(response.as_bytes()).unwrap();
+    //         let message = "Go back to your terminal :)";
+    //         let response = format!(
+    //             "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
+    //             message.len(),
+    //             message
+    //         );
+    //         stream.write_all(response.as_bytes()).unwrap();
 
-            println!("Okta returned the following code:\n{}\n", code.secret());
-            println!(
-                "Okta returned the following state:\n{} (expected `{}`)\n",
-                state.secret(),
-                csrf_state.secret()
-            );
+    //         println!("Okta returned the following code:\n{}\n", code.secret());
+    //         println!(
+    //             "Okta returned the following state:\n{} (expected `{}`)\n",
+    //             state.secret(),
+    //             csrf_state.secret()
+    //         );
 
-            // Exchange the code with a token.
-            let token_res = client
-                .exchange_code(code)
-                .set_pkce_verifier(pkce_verifier)
-                .request(http_client);
+    //         // Exchange the code with a token.
+    //         let token_res = client
+    //             .exchange_code(code)
+    //             .set_pkce_verifier(pkce_verifier)
+    //             .request(http_client);
 
-            println!("Okta returned the following token:\n{:?}\n", token_res);
+    //         println!("Okta returned the following token:\n{:?}\n", token_res);
 
-            if let Ok(token) = token_res {
-                // NB: Github returns a single comma-separated "scope" parameter instead of multiple
-                // space-separated scopes. Github-specific clients can parse this scope into
-                // multiple scopes by splitting at the commas. Note that it's not safe for the
-                // library to do this by default because RFC 6749 allows scopes to contain commas.
-                let scopes = if let Some(scopes_vec) = token.scopes() {
-                    scopes_vec
-                        .iter()
-                        .map(|comma_separated| comma_separated.split(','))
-                        .flatten()
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
-                println!("Okta returned the following scopes:\n{:?}\n", scopes);
-            }
+    //         if let Ok(token) = token_res {
+    //             // NB: Github returns a single comma-separated "scope" parameter instead of multiple
+    //             // space-separated scopes. Github-specific clients can parse this scope into
+    //             // multiple scopes by splitting at the commas. Note that it's not safe for the
+    //             // library to do this by default because RFC 6749 allows scopes to contain commas.
+    //             let scopes = if let Some(scopes_vec) = token.scopes() {
+    //                 scopes_vec
+    //                     .iter()
+    //                     .map(|comma_separated| comma_separated.split(','))
+    //                     .flatten()
+    //                     .collect::<Vec<_>>()
+    //             } else {
+    //                 Vec::new()
+    //             };
+    //             println!("Okta returned the following scopes:\n{:?}\n", scopes);
+    //         }
 
-            // The server will terminate itself after collecting the first code.
-            break;
-        }
-    }
+    //         // The server will terminate itself after collecting the first code.
+    //         break;
+    //     }
+    // }
 
     Ok(())
+}
+
+#[derive(Debug)]
+struct ServerState {
+    expected_csrf_token: CsrfToken,
+    client: BasicClient,
+    pkce_verifier: PkceCodeVerifier,
+}
+
+async fn handle_token_request(
+    Query(params): Query<HashMap<String, String>>,
+    State(server_state): State<Arc<ServerState>>,
+) -> Result<String, StatusCode> {
+    let Some(code )= params.get("code") else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    let Some(state)= params.get("state") else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+
+    let code = AuthorizationCode::new(code.to_string());
+    let state = CsrfToken::new(state.to_string());
+
+    // TODO: possibly constant time comparison?
+    if state.secret() != server_state.expected_csrf_token.secret() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    // Exchange the code with a token.
+    let token_res = server_state
+        .client
+        .exchange_code(code)
+        .set_pkce_verifier(PkceCodeVerifier::new(
+            server_state.pkce_verifier.secret().clone(),
+        ))
+        .request_async(async_http_client)
+        .await;
+
+    println!("Okta returned the following token:\n{token_res:?}\n");
+
+    Ok("Go back to your terminal :)".to_string())
 }

@@ -5,11 +5,9 @@ use symbolicator_service::config::Config;
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
-
-use crate::oauth::request_access_token;
 
 /// The default API URL
 pub const DEFAULT_URL: &str = "https://sentry.io/";
@@ -40,11 +38,11 @@ pub enum Mode {
 }
 
 #[derive(Subcommand, Clone, Debug)]
-enum Commands {
+pub enum Commands {
     /// Authenticate symbolicli with a short-lived access_token
     Auth,
     /// Symbolicate an event
-    Event,
+    Event(EventArgs),
 }
 
 /// A utility that provides local symbolication of Sentry events.
@@ -55,10 +53,13 @@ enum Commands {
 /// The output format can be controlled with the `--format` option.
 #[derive(Clone, Parser, Debug)]
 #[command(author, version, about, long_about)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    command: Commands,
+    pub command: Commands,
+}
 
+#[derive(Args, Debug, Clone)]
+pub struct EventArgs {
     /// The event to symbolicate.
     ///
     /// This can either be the name of a local file (minidump or event JSON)
@@ -124,99 +125,94 @@ impl ConfigFile {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Settings {
-    pub event_id: String,
-    pub symbolicator_config: Config,
-    pub output_format: OutputFormat,
-    pub mode: Mode,
-}
+// #[derive(Clone, Debug)]
+// pub struct Settings {
+//     pub event_id: String,
+//     pub symbolicator_config: Config,
+//     pub output_format: OutputFormat,
+//     pub mode: Mode,
+// }
 
-impl Settings {
-    pub fn get() -> anyhow::Result<Self> {
-        let cli = Cli::parse();
+// impl Settings {
+//     pub fn get() -> anyhow::Result<Self> {
+//         let cli = Cli::parse();
 
-        match &cli.command {
-            Commands::Auth => request_access_token()?,
-            Commands::Event => todo!(),
-        }
+//         let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
+//         let mut project_config_file = match find_project_config_file() {
+//             Some(path) => ConfigFile::parse(&path)?,
+//             None => ConfigFile::default(),
+//         };
 
-        let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
-        let mut project_config_file = match find_project_config_file() {
-            Some(path) => ConfigFile::parse(&path)?,
-            None => ConfigFile::default(),
-        };
+//         let mode = if cli.offline {
+//             Mode::Offline
+//         } else {
+//             let Some(auth_token) = cli
+//                 .auth_token
+//                 .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
+//                 .or_else(|| project_config_file.auth_token.take())
+//                 .or_else(|| global_config_file.auth_token.take()) else {
+//                 bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
+//             };
 
-        let mode = if cli.offline {
-            Mode::Offline
-        } else {
-            let Some(auth_token) = cli
-                .auth_token
-                .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
-                .or_else(|| project_config_file.auth_token.take())
-                .or_else(|| global_config_file.auth_token.take()) else {
-                bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
-            };
+//             let sentry_url = cli
+//                 .url
+//                 .as_deref()
+//                 .or(project_config_file.url.as_deref())
+//                 .or(global_config_file.url.as_deref())
+//                 .unwrap_or(DEFAULT_URL);
 
-            let sentry_url = cli
-                .url
-                .as_deref()
-                .or(project_config_file.url.as_deref())
-                .or(global_config_file.url.as_deref())
-                .unwrap_or(DEFAULT_URL);
+//             let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
+//             let url = sentry_url.join("/api/0/").unwrap();
 
-            let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
-            let url = sentry_url.join("/api/0/").unwrap();
+//             let Some(org) = cli.org
+//                 .or_else(|| project_config_file.org.take())
+//                 .or_else(|| global_config_file.org.take()) else {
+//                 bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
+//             };
 
-            let Some(org) = cli.org
-                .or_else(|| project_config_file.org.take())
-                .or_else(|| global_config_file.org.take()) else {
-                bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
-            };
+//             let Some(project) = cli.project
+//                 .or_else(|| project_config_file.project.take())
+//                 .or_else(|| global_config_file.project.take()) else {
+//                 bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
+//             };
 
-            let Some(project) = cli.project
-                .or_else(|| project_config_file.project.take())
-                .or_else(|| global_config_file.project.take()) else {
-                bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
-            };
+//             Mode::Online {
+//                 base_url: url,
+//                 org,
+//                 project,
+//                 auth_token,
+//             }
+//         };
 
-            Mode::Online {
-                base_url: url,
-                org,
-                project,
-                auth_token,
-            }
-        };
+//         let symbolicator_config = {
+//             let mut sources = project_config_file.sources;
+//             sources.append(&mut global_config_file.sources);
 
-        let symbolicator_config = {
-            let mut sources = project_config_file.sources;
-            sources.append(&mut global_config_file.sources);
+//             let cache_dir = project_config_file
+//                 .cache_dir
+//                 .or(global_config_file.cache_dir);
 
-            let cache_dir = project_config_file
-                .cache_dir
-                .or(global_config_file.cache_dir);
+//             if let Some(path) = cache_dir.as_ref() {
+//                 std::fs::create_dir_all(path)?;
+//             }
 
-            if let Some(path) = cache_dir.as_ref() {
-                std::fs::create_dir_all(path)?;
-            }
+//             Config {
+//                 sources: Arc::from(sources),
+//                 cache_dir,
+//                 ..Default::default()
+//             }
+//         };
 
-            Config {
-                sources: Arc::from(sources),
-                cache_dir,
-                ..Default::default()
-            }
-        };
+//         let args = Settings {
+//             event_id: cli.event,
+//             symbolicator_config,
+//             output_format: cli.format,
+//             mode,
+//         };
 
-        let args = Settings {
-            event_id: cli.event,
-            symbolicator_config,
-            output_format: cli.format,
-            mode,
-        };
-
-        Ok(args)
-    }
-}
+//         Ok(args)
+//     }
+// }
 
 fn find_global_config_file() -> anyhow::Result<PathBuf> {
     dirs::home_dir()
