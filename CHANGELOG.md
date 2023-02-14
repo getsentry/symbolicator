@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Introduce a `CacheKeyBuilder`. ([#1033](https://github.com/getsentry/symbolicator/pull/1033))
+
 ## 0.7.0
 
 ### Features

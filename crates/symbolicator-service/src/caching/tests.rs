@@ -912,9 +912,7 @@ async fn test_cache_fallback() {
     let cacher = Cacher::new(cache, Default::default());
 
     let request = TestCacheItem::new();
-    let key = CacheKey {
-        cache_key: "global/some_cache_key".into(),
-    };
+    let key = CacheKey::for_testing("global/some_cache_key");
 
     let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
     assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
@@ -957,9 +955,7 @@ async fn test_cache_fallback_notfound() {
     let cacher = Cacher::new(cache, Default::default());
 
     let request = TestCacheItem::new();
-    let key = CacheKey {
-        cache_key: "global/some_cache_key".into(),
-    };
+    let key = CacheKey::for_testing("global/some_cache_key");
 
     let first_result = cacher.compute_memoized(request.clone(), key).await;
     assert_eq!(first_result, Err(CacheError::NotFound));
@@ -996,9 +992,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey {
-            cache_key: String::from(*key),
-        };
+        let key = CacheKey::for_testing(*key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
         assert_eq!(result.unwrap().as_str(), "some old cached contents");
@@ -1015,9 +1009,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey {
-            cache_key: String::from(*key),
-        };
+        let key = CacheKey::for_testing(*key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
         if result.unwrap().as_str() == "some old cached contents" {
