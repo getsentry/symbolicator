@@ -83,8 +83,13 @@ impl SymCacheMarkers {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
+    use std::path::PathBuf;
+    use std::sync::Arc;
 
     use symbolic::common::ByteView;
+    use symbolicator_sources::{
+        FilesystemRemoteFile, FilesystemSourceConfig, RemoteFile, SourceId, SourceLocation,
+    };
 
     use super::*;
 
@@ -98,11 +103,21 @@ mod tests {
 
     #[test]
     fn test_marker_roundtrip() {
+        let source = Arc::new(FilesystemSourceConfig {
+            id: SourceId::new("foo"),
+            path: PathBuf::new(),
+            files: Default::default(),
+        });
+        let location = SourceLocation::new("bar.baz");
+        let file: RemoteFile = FilesystemRemoteFile::new(source, location).into();
+
         let bcsymbolmap = BcSymbolMapHandle {
+            file: file.clone(),
             uuid: Default::default(),
             data: ByteView::from_vec(vec![]),
         };
         let il2cpp = Il2cppHandle {
+            file,
             data: ByteView::from_vec(vec![]),
         };
         let sources = SecondarySymCacheSources {

@@ -4,7 +4,7 @@
 
 ### Features
 
-- Introduce a `CacheKeyBuilder`. ([#1033](https://github.com/getsentry/symbolicator/pull/1033))
+- Introduce a `CacheKeyBuilder` and human-readable `CacheKey` metadata. ([#1033](https://github.com/getsentry/symbolicator/pull/1033), [#1036](https://github.com/getsentry/symbolicator/pull/1036))
 
 ## 0.7.0
 
