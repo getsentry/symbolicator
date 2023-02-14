@@ -61,4 +61,8 @@ impl HttpRemoteFile {
     pub fn url(&self) -> anyhow::Result<Url> {
         self.location.to_url(&self.source.url)
     }
+
+    pub(crate) fn host(&self) -> String {
+        self.source.url.host_str().unwrap_or_default().to_string()
+    }
 }

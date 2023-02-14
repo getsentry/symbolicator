@@ -3,11 +3,12 @@
 //! The sources are described on
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
@@ -82,6 +83,93 @@ impl From<GcsError> for CacheError {
     }
 }
 
+/// A record of a number of download failures in a given second.
+#[derive(Debug, Clone, Copy)]
+struct FailureCount {
+    /// The second in which the failures occurred.
+    timestamp: u64,
+    /// The number of failures.
+    failures: usize,
+}
+
+type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
+
+/// A structure that keeps track of download failures in a given time interval
+/// and puts hosts on a block list accordingly.
+///
+/// The logic works like this: if a host has at least `FAILURE_THRESHOLD` download
+/// failures in a window of `TIME_WINDOW` seconds, it will be blocked for a duration of
+/// `BLOCK_TIME`.
+#[derive(Clone, Debug)]
+struct HostDenylist {
+    failures: moka::sync::Cache<String, CountedFailures>,
+    blocked_hosts: moka::sync::Cache<String, ()>,
+}
+
+impl HostDenylist {
+    const TIME_WINDOW: u64 = 60;
+    const FAILURE_THRESHOLD: usize = 20;
+    const BLOCK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
+
+    /// Creates an empty `HostrDenyList`.
+    fn new() -> Self {
+        Self {
+            failures: moka::sync::Cache::builder()
+                .time_to_idle(Duration::from_secs(Self::TIME_WINDOW))
+                .build(),
+            blocked_hosts: moka::sync::Cache::builder()
+                .time_to_live(Self::BLOCK_TIME)
+                .build(),
+        }
+    }
+
+    /// Registers a download failure for the given `host`.
+    ///
+    /// If that puts the host over the threshold, it is added
+    /// to the blocked servers.
+    fn register_failure(&self, host: String) {
+        let secs = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let entry = self.failures.entry(host.clone()).or_default();
+
+        let mut queue = entry.value().lock().unwrap();
+        match queue.back_mut() {
+            Some(last) if last.timestamp == secs => {
+                last.failures += 1;
+            }
+            _ => {
+                queue.push_back(FailureCount {
+                    timestamp: secs,
+                    failures: 1,
+                });
+            }
+        }
+
+        if queue.len() > Self::TIME_WINDOW as usize {
+            queue.pop_front();
+        }
+
+        let cutoff = secs - Self::TIME_WINDOW;
+        let total_failures: usize = queue
+            .iter()
+            .filter(|failure_count| failure_count.timestamp >= cutoff)
+            .map(|failure_count| failure_count.failures)
+            .sum();
+
+        if total_failures >= Self::FAILURE_THRESHOLD {
+            self.blocked_hosts.insert(host, ());
+        }
+    }
+
+    /// Returns true if the given `host` is currently blocked.
+    fn is_blocked(&self, host: &str) -> bool {
+        self.blocked_hosts.contains_key(host)
+    }
+}
+
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control
@@ -95,6 +183,7 @@ pub struct DownloadService {
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
+    download_failures: HostDenylist,
 }
 
 impl DownloadService {
@@ -133,6 +222,7 @@ impl DownloadService {
                 *gcs_token_capacity,
             ),
             fs: filesystem::FilesystemDownloader::new(),
+            download_failures: HostDenylist::new(),
         })
     }
 
@@ -181,15 +271,40 @@ impl DownloadService {
         source: RemoteFile,
         destination: PathBuf,
     ) -> CacheEntry {
+        let host = source.host();
+
+        // Check whether `source` is an internal Sentry source. We don't ever
+        // want to put such sources on the block list.
+        let source_is_external = !host.starts_with("sentry:");
+
+        if source_is_external && self.download_failures.is_blocked(&host) {
+            return Err(CacheError::DownloadError(
+                "Server is temporarily blocked".to_string(),
+            ));
+        }
+
         let slf = self.clone();
+
         let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, job);
 
-        job.await
+        let result = job
+            .await
             .map_err(|_| CacheError::Timeout(self.max_download_timeout))? // Timeout
-            .map_err(|_| CacheError::InternalError)? // Spawn error
+            .map_err(|_| CacheError::InternalError)?; // Spawn error
+
+        if source_is_external
+            && matches!(
+                result,
+                Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
+            )
+        {
+            self.download_failures.register_failure(host);
+        }
+
+        result
     }
 
     /// Returns all objects matching the [`ObjectId`] at the source.

@@ -57,6 +57,10 @@ impl GcsRemoteFile {
     pub fn uri(&self) -> RemoteFileUri {
         RemoteFileUri::from_parts("gs", &self.source.bucket, &self.key())
     }
+
+    pub(crate) fn host(&self) -> String {
+        self.source.bucket.clone()
+    }
 }
 
 /// GCS authorization information.

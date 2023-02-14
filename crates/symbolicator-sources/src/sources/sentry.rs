@@ -78,6 +78,10 @@ impl SentryRemoteFile {
             }
         }
     }
+
+    pub(crate) fn host(&self) -> String {
+        self.source.url.to_string()
+    }
 }
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
