@@ -4,45 +4,26 @@ use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
-use symbolicator_sources::{ObjectId, SentrySourceConfig};
+use symbolicator_sources::SentrySourceConfig;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
+use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
 use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsProcessingRawStacktrace, ObjectFileStatus, RawFrame, RawObjectInfo,
-    RawStacktrace, Registers, Scope, Signal, SymbolicatedFrame,
+    FrameTrust, JsProcessingRawStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers,
+    Scope, Signal, SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
-use module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
-
 mod apple;
-mod module_lookup;
 mod process_minidump;
 pub mod sourcemap;
-
-fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
-    ObjectId {
-        debug_id: match object_info.debug_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
-        code_id: match object_info.code_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
-        debug_file: object_info.debug_file.clone(),
-        code_file: object_info.code_file.clone(),
-        debug_checksum: object_info.debug_checksum.clone(),
-        object_type: object_info.ty,
-    }
-}
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

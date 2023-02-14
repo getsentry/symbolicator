@@ -22,6 +22,7 @@ pub mod download;
 mod fetch_file;
 pub mod il2cpp;
 mod minidump;
+mod module_lookup;
 pub mod objects;
 pub mod ppdb_caches;
 pub mod sourcemap;
