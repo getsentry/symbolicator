@@ -183,7 +183,7 @@ pub struct DownloadService {
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
-    download_failures: HostDenylist,
+    host_deny_list: HostDenylist,
 }
 
 impl DownloadService {
@@ -222,7 +222,7 @@ impl DownloadService {
                 *gcs_token_capacity,
             ),
             fs: filesystem::FilesystemDownloader::new(),
-            download_failures: HostDenylist::new(),
+            host_deny_list: HostDenylist::new(),
         })
     }
 
@@ -277,7 +277,7 @@ impl DownloadService {
         // want to put such sources on the block list.
         let source_is_external = !host.starts_with("sentry:");
 
-        if source_is_external && self.download_failures.is_blocked(&host) {
+        if source_is_external && self.host_deny_list.is_blocked(&host) {
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
             ));
@@ -301,7 +301,7 @@ impl DownloadService {
                 Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
             )
         {
-            self.download_failures.register_failure(host);
+            self.host_deny_list.register_failure(host);
         }
 
         result
