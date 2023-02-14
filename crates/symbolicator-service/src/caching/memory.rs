@@ -288,7 +288,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             cache_path.set_extension("txt");
             if let Err(err) = std::fs::write(cache_path, key.metadata()) {
                 tracing::error!(error = &err as &dyn std::error::Error);
-                // CacheError::from_std_error(err); // NOTE: this logs an internal error
             }
         };
 
