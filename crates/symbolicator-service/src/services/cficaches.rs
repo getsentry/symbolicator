@@ -49,7 +49,7 @@ use super::derived::{derive_from_object_handle, DerivedCache};
 /// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
 const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 3,
-    fallbacks: &[2],
+    fallbacks: &[],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
