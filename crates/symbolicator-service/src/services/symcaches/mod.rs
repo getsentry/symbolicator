@@ -65,7 +65,7 @@ mod markers;
 /// - `1`: New binary format based on instruction addr lookup.
 const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 5,
-    fallbacks: &[4],
+    fallbacks: &[],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
