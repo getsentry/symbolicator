@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +9,6 @@ use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
-use tokio::fs;
 
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
@@ -134,9 +133,16 @@ impl<T: CacheItemRequest> Cacher<T> {
         cache_dir: &Path,
         key: &CacheKey,
         version: u32,
+        use_legacy_key: bool,
     ) -> CacheEntry<CacheEntry<T::Item>> {
         let name = self.config.name();
-        let item_path = cache_dir.join(key.legacy_cache_path(version));
+        let cache_key = if use_legacy_key {
+            key.legacy_cache_path(version)
+        } else {
+            key.cache_path(version)
+        };
+
+        let item_path = cache_dir.join(&cache_key);
         tracing::trace!("Trying {} cache at path {}", name, item_path.display());
         let _scope = Hub::current().push_scope();
         sentry::configure_scope(|scope| {
@@ -166,7 +172,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 if let Some(shared_cache) = self.shared_cache.get() {
                     shared_cache.store(
                         name,
-                        &key.legacy_cache_path(T::VERSIONS.current),
+                        &cache_key,
                         byteview.clone(),
                         CacheStoreReason::Refresh,
                     );
@@ -176,7 +182,11 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
-        metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
+        metric!(
+            counter("caches.file.hit") += 1,
+            "cache" => name.as_ref(),
+            "key" => if use_legacy_key { "legacy" } else { "new" }
+        );
         if let Ok(byteview) = &entry {
             metric!(
                 time_raw("caches.file.size") = byteview.len() as u64,
@@ -199,7 +209,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        let cache_path = key.legacy_cache_path(T::VERSIONS.current);
+        let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.tempfile()?;
 
         let shared_cache_hit = if let Some(shared_cache) = self.shared_cache.get() {
@@ -241,7 +251,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
-            let cache_path = cache_dir.join(&cache_path);
+            let mut cache_path = cache_dir.join(&cache_path);
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
@@ -272,7 +282,13 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             tracing::trace!("Creating {name} at path {:?}", cache_path.display());
 
-            persist_tempfile(temp_file, cache_path).await?;
+            persist_tempfile(temp_file, &cache_path)?;
+
+            // NOTE: we only create the metadata file once, but do not regularly touch it for now
+            cache_path.set_extension("txt");
+            if let Err(err) = std::fs::write(cache_path, key.metadata()) {
+                tracing::error!(error = &err as &dyn std::error::Error);
+            }
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
@@ -315,12 +331,22 @@ impl<T: CacheItemRequest> Cacher<T> {
                     .chain(T::VERSIONS.fallbacks.iter().copied());
 
                 for version in versions {
-                    let item =
-                        match self.lookup_local_cache(&request, cache_dir, &cache_key, version) {
-                            Err(CacheError::NotFound) => continue,
-                            Err(err) => return Err(err),
-                            Ok(item) => item,
-                        };
+                    // try the new cache key first, then fall back to the old cache key
+                    let item = match self
+                        .lookup_local_cache(&request, cache_dir, &cache_key, version, false)
+                    {
+                        Err(CacheError::NotFound) => {
+                            match self
+                                .lookup_local_cache(&request, cache_dir, &cache_key, version, true)
+                            {
+                                Err(CacheError::NotFound) => continue,
+                                Err(err) => return Err(err),
+                                Ok(item) => item,
+                            }
+                        }
+                        Err(err) => return Err(err),
+                        Ok(item) => item,
+                    };
 
                     if version != T::VERSIONS.current {
                         // we have found an outdated cache that we will use right away,
@@ -422,9 +448,9 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
-async fn persist_tempfile(
+fn persist_tempfile(
     mut temp_file: NamedTempFile,
-    cache_path: PathBuf,
+    cache_path: &Path,
 ) -> std::io::Result<std::fs::File> {
     let parent = cache_path.parent().ok_or_else(|| {
         std::io::Error::new(
@@ -440,7 +466,7 @@ async fn persist_tempfile(
     let file = loop {
         retries += 1;
 
-        if let Err(e) = fs::create_dir_all(parent).await {
+        if let Err(e) = std::fs::create_dir_all(parent) {
             sentry::with_scope(
                 |scope| scope.set_extra("path", parent.display().to_string().into()),
                 || tracing::error!("Failed to create cache directory: {:?}", e),
@@ -451,7 +477,7 @@ async fn persist_tempfile(
             continue;
         }
 
-        match temp_file.persist(&cache_path) {
+        match temp_file.persist(cache_path) {
             Ok(file) => break file,
             Err(e) => {
                 temp_file = e.file;
