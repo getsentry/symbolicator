@@ -375,6 +375,23 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub connect_timeout: Duration,
 
+    /// The time window for the host deny list, in seconds.
+    ///
+    /// Hosts will be put on the deny list if a certain number of downloads
+    /// fail within this time window.
+    pub deny_list_time_window: u64,
+
+    /// The granularity at which download failures are tracked in the host deny list, in seconds.
+    pub deny_list_bucket_size: u64,
+
+    /// The number of failures that must occur in the configured time window for a
+    /// server to be put on the deny list.
+    pub deny_list_threshold: usize,
+
+    /// The duration for which a host will remain on the deny list.
+    #[serde(with = "humantime_serde")]
+    pub deny_list_block_time: Duration,
+
     /// The timeout per GB for streaming downloads.
     ///
     /// For downloads with a known size, this timeout applies per individual
@@ -474,6 +491,10 @@ impl Default for Config {
             max_download_timeout: Duration::from_secs(315),
             connect_timeout: Duration::from_secs(15),
             // Allow a 4MB/s connection to download 1GB without timing out
+            deny_list_time_window: 60,
+            deny_list_bucket_size: 5,
+            deny_list_threshold: 20,
+            deny_list_block_time: Duration::from_secs(24 * 60 * 60),
             streaming_timeout: Duration::from_secs(250),
             max_concurrent_requests: Some(120),
             shared_cache: None,

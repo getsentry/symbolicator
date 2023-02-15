@@ -103,20 +103,23 @@ type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
 #[derive(Clone, Debug)]
 struct HostDenyList {
     time_window: u64,
+    bucket_size: u64,
     failure_threshold: usize,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
 
 impl HostDenyList {
-    const TIME_WINDOW: u64 = 60;
-    const FAILURE_THRESHOLD: usize = 20;
-    const BLOCK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
-
     /// Creates an empty `HostrDenyList`.
-    fn new(time_window: u64, failure_threshold: usize, block_time: Duration) -> Self {
+    fn new(
+        time_window: u64,
+        bucket_size: u64,
+        failure_threshold: usize,
+        block_time: Duration,
+    ) -> Self {
         Self {
             time_window,
+            bucket_size,
             failure_threshold,
             failures: moka::sync::Cache::builder()
                 .time_to_idle(Duration::from_secs(time_window))
@@ -132,31 +135,33 @@ impl HostDenyList {
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
     fn register_failure(&self, host: String) {
-        let secs = SystemTime::now()
+        let mut current_ts = SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
+
+        current_ts -= current_ts % self.bucket_size;
 
         let entry = self.failures.entry(host.clone()).or_default();
 
         let mut queue = entry.value().lock().unwrap();
         match queue.back_mut() {
-            Some(last) if last.timestamp == secs => {
+            Some(last) if last.timestamp == current_ts => {
                 last.failures += 1;
             }
             _ => {
                 queue.push_back(FailureCount {
-                    timestamp: secs,
+                    timestamp: current_ts,
                     failures: 1,
                 });
             }
         }
 
-        if queue.len() > self.time_window as usize {
+        if queue.len() > (self.time_window / self.bucket_size) as usize {
             queue.pop_front();
         }
 
-        let cutoff = secs - self.time_window;
+        let cutoff = current_ts - self.time_window;
         let total_failures: usize = queue
             .iter()
             .filter(|failure_count| failure_count.timestamp >= cutoff)
@@ -171,12 +176,6 @@ impl HostDenyList {
     /// Returns true if the given `host` is currently blocked.
     fn is_blocked(&self, host: &str) -> bool {
         self.blocked_hosts.contains_key(host)
-    }
-}
-
-impl Default for HostDenyList {
-    fn default() -> Self {
-        Self::new(Self::TIME_WINDOW, Self::FAILURE_THRESHOLD, Self::BLOCK_TIME)
     }
 }
 
@@ -206,6 +205,10 @@ impl DownloadService {
             connect_timeout,
             streaming_timeout,
             caches: CacheConfigs { ref in_memory, .. },
+            deny_list_time_window,
+            deny_list_bucket_size,
+            deny_list_threshold,
+            deny_list_block_time,
             ..
         } = *config;
 
@@ -232,7 +235,12 @@ impl DownloadService {
                 *gcs_token_capacity,
             ),
             fs: filesystem::FilesystemDownloader::new(),
-            host_deny_list: HostDenyList::default(),
+            host_deny_list: HostDenyList::new(
+                deny_list_time_window,
+                deny_list_bucket_size,
+                deny_list_threshold,
+                deny_list_block_time,
+            ),
         })
     }
 
@@ -745,19 +753,22 @@ mod tests {
 
     #[test]
     fn test_host_deny_list() {
-        let deny_list = HostDenyList::new(5, 2, Duration::from_millis(100));
+        let deny_list = HostDenyList::new(5, 1, 2, Duration::from_millis(100));
         let host = String::from("test");
 
         deny_list.register_failure(host.clone());
 
+        // shouldn't be blocked after one failure
         assert!(!deny_list.is_blocked(&host));
 
         deny_list.register_failure(host.clone());
 
+        // should be blocked after two failures
         assert!(deny_list.is_blocked(&host));
 
         std::thread::sleep(Duration::from_millis(100));
 
+        // should be unblocked after 100ms have passed
         assert!(!deny_list.is_blocked(&host));
     }
 }
