@@ -15,7 +15,10 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
-use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, Cacher};
+use crate::caching::{
+    CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
+};
+use crate::services::caches::versions::META_CACHE_VERSIONS;
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -110,6 +113,8 @@ impl FetchFileMetaRequest {
 
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
+
+    const VERSIONS: CacheVersions = META_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         Box::pin(self.compute_file_meta(temp_file))

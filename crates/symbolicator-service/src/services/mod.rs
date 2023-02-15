@@ -15,6 +15,7 @@ use crate::caching::{Caches, SharedCacheService};
 use crate::config::Config;
 
 pub mod bitcode;
+pub mod caches;
 pub mod cficaches;
 pub mod derived;
 pub mod download;
