@@ -125,10 +125,10 @@ async fn test_deny_list() {
     let (symbolication, _cache_dir) = setup_service(|config| {
         config.cache_dir = None;
         config.max_download_timeout = Duration::from_millis(100);
-        config.deny_list_time_window = 1;
-        config.deny_list_bucket_size = 1;
+        config.deny_list_time_window = Duration::from_millis(500);
+        config.deny_list_bucket_size = Duration::from_millis(100);
         config.deny_list_threshold = 2;
-        config.deny_list_block_time = Duration::from_secs(1);
+        config.deny_list_block_time = Duration::from_millis(500);
     });
 
     let hitcounter = Server::new();
@@ -188,7 +188,7 @@ async fn test_deny_list() {
     let source = hitcounter.source("pending", "/delay/1h/");
     let request = example_request(vec![source]);
 
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_millis(500));
 
     // The first two times should return a timeout
     for _ in 0..2 {
@@ -220,7 +220,7 @@ async fn test_deny_list() {
         )
     );
 
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_millis(500));
 
     let source = hitcounter.source("notfound", "/respond_statuscode/404/");
     let request = example_request(vec![source]);
@@ -239,7 +239,7 @@ async fn test_deny_list() {
         );
     }
 
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_millis(500));
 
     let source = hitcounter.source("permissiondenied", "/respond_statuscode/403/");
     let request = example_request(vec![source]);
