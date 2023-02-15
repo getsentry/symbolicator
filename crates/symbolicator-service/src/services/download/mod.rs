@@ -308,10 +308,13 @@ impl DownloadService {
         let job = tokio::time::timeout(self.max_download_timeout, job);
         let job = measure("service.download", m::timed_result, job);
 
-        let result = job
-            .await
-            .map_err(|_| CacheError::Timeout(self.max_download_timeout))? // Timeout
-            .map_err(|_| CacheError::InternalError)?; // Spawn error
+        let result = match job.await {
+            // Timeout
+            Err(_) => Err(CacheError::Timeout(self.max_download_timeout)),
+            // Spawn error
+            Ok(Err(_)) => Err(CacheError::InternalError),
+            Ok(Ok(res)) => res,
+        };
 
         if source_is_external
             && matches!(
