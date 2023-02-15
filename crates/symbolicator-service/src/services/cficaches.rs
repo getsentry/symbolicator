@@ -21,37 +21,8 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
+use super::caches::versions::CFICACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
-
-/// The supported cficache versions.
-///
-/// # How to version
-///
-/// The initial "unversioned" version is `0`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// cficaches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken cficaches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// cficache file version as described above, and update the static assertion.
-///
-/// # Version History
-///
-/// - `3`: Proactive bump, as a bug in shared cache could have potentially
-///   uploaded `v1` cache files as `v2` erroneously.
-///
-/// - `2`: Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
-///
-/// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
-const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[],
-};
-static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 #[tracing::instrument(skip_all)]
 fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<Option<Arc<SymbolFile>>> {

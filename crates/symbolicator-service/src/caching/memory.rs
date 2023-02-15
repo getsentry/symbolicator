@@ -99,12 +99,7 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     type Item: 'static + Send + Sync + Clone;
 
     /// The cache versioning scheme that is used for this type of request.
-    ///
-    /// Defaults to a scheme that does not use versioned cache files.
-    const VERSIONS: CacheVersions = CacheVersions {
-        current: 0,
-        fallbacks: &[],
-    };
+    const VERSIONS: CacheVersions;
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.

@@ -21,30 +21,11 @@ use crate::caching::{
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
 
+use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::fetch_file;
 use super::symbolication::JsProcessingSymbolicateStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
-
-/// The supported SourceMapCache versions.
-///
-/// # How to version
-///
-/// The initial version is `1`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// sourcemap_caches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken sourcemap_caches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// SourceMapCache file version as described above, and update the static assertion.
-const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
-};
 
 /// A URL to a sourcemap file.
 ///
