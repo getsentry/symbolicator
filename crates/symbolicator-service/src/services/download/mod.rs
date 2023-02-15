@@ -101,24 +101,28 @@ type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
 /// failures in a window of `TIME_WINDOW` seconds, it will be blocked for a duration of
 /// `BLOCK_TIME`.
 #[derive(Clone, Debug)]
-struct HostDenylist {
+struct HostDenyList {
+    time_window: u64,
+    failure_threshold: usize,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
 
-impl HostDenylist {
+impl HostDenyList {
     const TIME_WINDOW: u64 = 60;
     const FAILURE_THRESHOLD: usize = 20;
     const BLOCK_TIME: Duration = Duration::from_secs(24 * 60 * 60);
 
     /// Creates an empty `HostrDenyList`.
-    fn new() -> Self {
+    fn new(time_window: u64, failure_threshold: usize, block_time: Duration) -> Self {
         Self {
+            time_window,
+            failure_threshold,
             failures: moka::sync::Cache::builder()
-                .time_to_idle(Duration::from_secs(Self::TIME_WINDOW))
+                .time_to_idle(Duration::from_secs(time_window))
                 .build(),
             blocked_hosts: moka::sync::Cache::builder()
-                .time_to_live(Self::BLOCK_TIME)
+                .time_to_live(block_time)
                 .build(),
         }
     }
@@ -148,18 +152,18 @@ impl HostDenylist {
             }
         }
 
-        if queue.len() > Self::TIME_WINDOW as usize {
+        if queue.len() > self.time_window as usize {
             queue.pop_front();
         }
 
-        let cutoff = secs - Self::TIME_WINDOW;
+        let cutoff = secs - self.time_window;
         let total_failures: usize = queue
             .iter()
             .filter(|failure_count| failure_count.timestamp >= cutoff)
             .map(|failure_count| failure_count.failures)
             .sum();
 
-        if total_failures >= Self::FAILURE_THRESHOLD {
+        if total_failures >= self.failure_threshold {
             self.blocked_hosts.insert(host, ());
         }
     }
@@ -167,6 +171,12 @@ impl HostDenylist {
     /// Returns true if the given `host` is currently blocked.
     fn is_blocked(&self, host: &str) -> bool {
         self.blocked_hosts.contains_key(host)
+    }
+}
+
+impl Default for HostDenyList {
+    fn default() -> Self {
+        Self::new(Self::TIME_WINDOW, Self::FAILURE_THRESHOLD, Self::BLOCK_TIME)
     }
 }
 
@@ -183,7 +193,7 @@ pub struct DownloadService {
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
-    host_deny_list: HostDenylist,
+    host_deny_list: HostDenyList,
 }
 
 impl DownloadService {
@@ -222,7 +232,7 @@ impl DownloadService {
                 *gcs_token_capacity,
             ),
             fs: filesystem::FilesystemDownloader::new(),
-            host_deny_list: HostDenylist::new(),
+            host_deny_list: HostDenyList::default(),
         })
     }
 
@@ -731,5 +741,23 @@ mod tests {
 
         // 1.5 GB
         assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
+    }
+
+    #[test]
+    fn test_host_deny_list() {
+        let deny_list = HostDenyList::new(5, 2, Duration::from_millis(100));
+        let host = String::from("test");
+
+        deny_list.register_failure(host.clone());
+
+        assert!(!deny_list.is_blocked(&host));
+
+        deny_list.register_failure(host.clone());
+
+        assert!(deny_list.is_blocked(&host));
+
+        std::thread::sleep(Duration::from_millis(100));
+
+        assert!(!deny_list.is_blocked(&host));
     }
 }
