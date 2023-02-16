@@ -86,8 +86,8 @@ impl From<GcsError> for CacheError {
 /// A record of a number of download failures in a given second.
 #[derive(Debug, Clone, Copy)]
 struct FailureCount {
-    /// The time at which the failures occurred, measured since the Unix Epoch.
-    timestamp: Duration,
+    /// The time at which the failures occurred, measured in milliseconds since the Unix Epoch.
+    timestamp: u64,
     /// The number of failures.
     failures: usize,
 }
@@ -102,24 +102,26 @@ type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
 /// `BLOCK_TIME`.
 #[derive(Clone, Debug)]
 struct HostDenyList {
-    time_window: Duration,
-    bucket_size: Duration,
+    time_window_millis: u64,
+    bucket_size_millis: u64,
     failure_threshold: usize,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
 
 impl HostDenyList {
-    /// Creates an empty `HostrDenyList`.
+    /// Creates an empty [`HostDenyList`].
     fn new(
         time_window: Duration,
         bucket_size: Duration,
         failure_threshold: usize,
         block_time: Duration,
     ) -> Self {
+        let time_window_millis = time_window.as_millis() as u64;
+        let bucket_size_millis = bucket_size.as_millis() as u64;
         Self {
-            time_window,
-            bucket_size,
+            time_window_millis,
+            bucket_size_millis,
             failure_threshold,
             failures: moka::sync::Cache::builder()
                 .time_to_idle(time_window)
@@ -131,17 +133,16 @@ impl HostDenyList {
     }
 
     /// Rounds a duration down to a multiple of the configured `bucket_size`.
-    fn round_duration(&self, duration: Duration) -> Duration {
-        let duration = duration.as_millis();
-        let bucket = self.bucket_size.as_millis();
+    fn round_duration(&self, duration: Duration) -> u64 {
+        let duration = duration.as_millis() as u64;
 
-        Duration::from_millis((duration - (duration % bucket)) as u64)
+        duration - (duration % self.bucket_size_millis)
     }
 
     /// The maximum length of the failure queue for one host.
     fn max_queue_len(&self) -> usize {
         // Add one to protect against round issues if `time_window` is not a multiple of `bucket_size`.
-        (self.time_window.as_millis() / self.bucket_size.as_millis()) as usize + 1
+        (self.time_window_millis / self.bucket_size_millis) as usize + 1
     }
 
     /// Registers a download failure for the given `host`.
@@ -154,7 +155,7 @@ impl HostDenyList {
             .unwrap_or_default();
 
         let current_ts = self.round_duration(current_ts);
-        let entry = self.failures.entry(host.clone()).or_default();
+        let entry = self.failures.entry_by_ref(&host).or_default();
 
         let mut queue = entry.value().lock().unwrap();
         match queue.back_mut() {
@@ -173,7 +174,7 @@ impl HostDenyList {
             queue.pop_front();
         }
 
-        let cutoff = current_ts - self.time_window;
+        let cutoff = current_ts - self.time_window_millis;
         let total_failures: usize = queue
             .iter()
             .filter(|failure_count| failure_count.timestamp >= cutoff)
