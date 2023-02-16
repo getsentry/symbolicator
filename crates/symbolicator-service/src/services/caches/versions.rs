@@ -18,6 +18,8 @@ use crate::caching::CacheVersions;
 
 /// CFI cache, with the following versions:
 ///
+/// - `4`: Recomputation to use new `CacheKey` format.
+///
 /// - `3`: Proactive bump, as a bug in shared cache could have potentially
 ///   uploaded `v1` cache files as `v2` erroneously.
 ///
@@ -27,12 +29,14 @@ use crate::caching::CacheVersions;
 ///
 /// - `0`: Initial version.
 pub const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[],
+    current: 4,
+    fallbacks: &[3],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
+///
+/// - `6`: Recomputation to use new `CacheKey` format.
 ///
 /// - `5`: Proactive bump, as a bug in shared cache could have potentially
 ///   uploaded `v2` cache files as `v3` (and later `v4`) erroneously.
@@ -54,8 +58,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 5,
-    fallbacks: &[],
+    current: 6,
+    fallbacks: &[5],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
@@ -66,23 +70,27 @@ static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 /// - `0`: Initial version.
 pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
-    fallbacks: &[0],
+    fallbacks: &[],
 };
 
 /// Objects Meta cache, with the following versions:
 ///
+/// - `1`: Recomputation to use new `CacheKey` format.
+///
 /// - `0`: Initial version.
 pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 0,
-    fallbacks: &[],
+    current: 1,
+    fallbacks: &[0],
 };
 
 /// Portable PDB cache, with the following versions:
 ///
+/// - `2`: Recomputation to use new `CacheKey` format.
+///
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// SourceMapCache, with the following versions:
@@ -100,7 +108,7 @@ pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// - `0`: Initial version.
 pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
-    fallbacks: &[0],
+    fallbacks: &[],
 };
 
 /// Bitcode / Auxdif (plist / bcsymbolmap) cache, with the following versions:
@@ -110,5 +118,5 @@ pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// - `0`: Initial version.
 pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
-    fallbacks: &[0],
+    fallbacks: &[],
 };
