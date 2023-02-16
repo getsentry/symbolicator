@@ -262,6 +262,23 @@ impl RemoteFile {
             Self::Filesystem(file_source) => file_source.uri(),
         }
     }
+
+    /// Returns a string representation of the host this file resides on.
+    ///
+    /// This is:
+    /// * The host name for http;
+    /// * The bucket name for GCS and S3;
+    /// * The URL for Sentry;
+    /// * A placeholder string for the filesystem.
+    pub fn host(&self) -> String {
+        match self {
+            RemoteFile::Filesystem(source) => source.host(),
+            RemoteFile::Gcs(source) => source.host(),
+            RemoteFile::Http(source) => source.host(),
+            RemoteFile::S3(source) => source.host(),
+            RemoteFile::Sentry(source) => source.host(),
+        }
+    }
 }
 
 /// A URI representing an [`RemoteFile`].

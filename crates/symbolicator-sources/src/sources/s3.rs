@@ -65,6 +65,10 @@ impl S3RemoteFile {
     pub fn uri(&self) -> RemoteFileUri {
         RemoteFileUri::from_parts("s3", &self.source.bucket, &self.key())
     }
+
+    pub(crate) fn host(&self) -> String {
+        self.bucket()
+    }
 }
 
 fn serialize_region<S>(region: &S3Region, s: S) -> Result<S::Ok, S::Error>
