@@ -22,13 +22,10 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
-
+use super::bitcode::BcSymbolMapHandle;
 use super::caches::versions::SYMCACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::il2cpp::Il2cppService;
-
-mod markers;
+use super::il2cpp::{Il2cppHandle, Il2cppService};
 
 pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 
@@ -116,18 +113,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
         let future = tokio::time::timeout(timeout, future);
         let future = measure("symcaches", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
-    }
-
-    fn should_load(&self, data: &[u8]) -> bool {
-        SymCache::parse(data)
-            .map(|_symcache| {
-                // NOTE: we do *not* check for the `is_latest` version here.
-                // If the symcache is parsable, we want to use even outdated versions.
-
-                let symcache_markers = SymCacheMarkers::parse(data);
-                SymCacheMarkers::from_sources(&self.secondary_sources) == symcache_markers
-            })
-            .unwrap_or(false)
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
@@ -223,6 +208,13 @@ impl SymCacheActor {
     }
 }
 
+/// Encapsulation of all the source artifacts that are being used to create SymCaches.
+#[derive(Clone, Debug, Default)]
+struct SecondarySymCacheSources {
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    il2cpp_handle: Option<Il2cppHandle>,
+}
+
 /// Computes and writes the symcache.
 ///
 /// It is assumed that the `object_handle` contains a positive cache.
@@ -236,8 +228,6 @@ fn write_symcache(
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();
-
-    let markers = SymCacheMarkers::from_sources(&secondary_sources);
 
     let bcsymbolmap_transformer = match secondary_sources.bcsymbolmap_handle {
         Some(ref handle) => {
@@ -290,8 +280,7 @@ fn write_symcache(
 
     let mut writer = BufWriter::new(file);
     converter.serialize(&mut writer)?;
-    let mut file = writer.into_inner().map_err(io::Error::from)?;
-    markers.write_to(&mut file)?;
+    let file = writer.into_inner().map_err(io::Error::from)?;
     file.sync_all()?;
 
     Ok(())

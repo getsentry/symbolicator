@@ -43,8 +43,6 @@
 //!
 //! Various other metrics are being collected as well, including:
 //! - `caches.file.size`: A histogram for the size (in bytes) of the successfully loaded / written cache files.
-//! - FIXME: `caches.file.discarded` and `shared_cache.file.discarded` is still being used in the
-//!   edge-case of mutable cache files. This will go away once cache files are truly immutable.
 //! - `caches.file.write`: The number of caches being written to disk.
 //!   This should match `caches.computation` if the file-system layer is enabled.
 //! - TODO: list all the other metrics that are missing here :-)
@@ -75,9 +73,6 @@
 //!
 //! A "successful" entry is considered immutable and it will be reused indefinitely as long as it
 //! is being actively used.
-//! FIXME: One current exception to this is the `should_load` functionality that is used in combination
-//! with SymCache entries that are "mutable" depending on availability of secondary mapping files.
-//! This is subject to change: <https://github.com/getsentry/symbolicator/issues/983>
 //!
 //! The [`SharedCacheConfig`] is optional, and no shared cache will be used when it is absent. The
 //! configuration is done by providing a GCS bucket and `service_account_path`. A file-system based

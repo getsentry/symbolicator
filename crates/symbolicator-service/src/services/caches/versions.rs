@@ -30,7 +30,7 @@ use crate::caching::CacheVersions;
 /// - `0`: Initial version.
 pub const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 4,
-    fallbacks: &[3],
+    fallbacks: &[],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
@@ -59,7 +59,7 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 6,
-    fallbacks: &[5],
+    fallbacks: &[],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
@@ -80,7 +80,7 @@ pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// - `0`: Initial version.
 pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
-    fallbacks: &[0],
+    fallbacks: &[],
 };
 
 /// Portable PDB cache, with the following versions:
@@ -90,7 +90,7 @@ pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 2,
-    fallbacks: &[1],
+    fallbacks: &[],
 };
 
 /// SourceMapCache, with the following versions:

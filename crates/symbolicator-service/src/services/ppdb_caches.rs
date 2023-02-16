@@ -125,10 +125,6 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn should_load(&self, _data: &[u8]) -> bool {
-        true
-    }
-
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_ppdb_cache_owned(data)
     }

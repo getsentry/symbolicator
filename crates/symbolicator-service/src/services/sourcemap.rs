@@ -264,10 +264,6 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
         })
     }
 
-    fn should_load(&self, _data: &[u8]) -> bool {
-        true
-    }
-
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_sourcemap_cache_owned(data)
     }
