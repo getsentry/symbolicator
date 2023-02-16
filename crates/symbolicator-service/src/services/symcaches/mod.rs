@@ -24,51 +24,11 @@ use crate::utils::sentry::ConfigureScope;
 
 use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
 
+use super::caches::versions::SYMCACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::il2cpp::Il2cppService;
 
 mod markers;
-
-/// The supported symcache versions.
-///
-/// # How to version
-///
-/// The initial "unversioned" version is `0`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// symcaches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken symcaches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// symcache file version as described above, and update the static assertion.
-///
-/// # Version History
-///
-/// - `5`: Proactive bump, as a bug in shared cache could have potentially
-///   uploaded `v2` cache files as `v3` (and later `v4`) erroneously.
-///
-/// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
-///
-/// - `3`: Another round of fixes in symcache generation:
-///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
-///        - undecorate Windows C-decorated symbols in symcaches
-///
-/// - `2`: Tons of fixes/improvements in symcache generation:
-///        - fixed problems with DWARF functions that have the
-///          same line records for different inline hierarchy
-///        - fixed problems with PDB where functions have line records that don't belong to them
-///        - fixed problems with PDB/DWARF when parent functions don't have matching line records
-///        - using a new TypeFormatter for PDB that can pretty-print function arguments
-///
-/// - `1`: New binary format based on instruction addr lookup.
-const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 5,
-    fallbacks: &[],
-};
-static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 

@@ -17,12 +17,14 @@ use symbolicator_sources::{FileType, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    SharedCacheRef,
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
+use super::caches::versions::BITCODE_CACHE_VERSIONS;
 use super::fetch_file;
 
 /// Handle to a valid BCSymbolMap.
@@ -120,6 +122,8 @@ impl FetchFileRequest {
 
 impl CacheItemRequest for FetchFileRequest {
     type Item = Arc<CacheHandle>;
+
+    const VERSIONS: CacheVersions = BITCODE_CACHE_VERSIONS;
 
     /// Downloads a file, writing it to `path`.
     ///

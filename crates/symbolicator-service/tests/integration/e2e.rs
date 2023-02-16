@@ -467,7 +467,7 @@ async fn test_basic_windows() {
                 );
 
                 if with_cache {
-                    let objects_dir = cache_dir.path().join("objects").join("v0");
+                    let objects_dir = cache_dir.path().join("objects");
                     let mut cached_objects = get_cache_files(&objects_dir);
 
                     // NOTE: the cache key depends on the exact location of the file, which is
@@ -494,8 +494,7 @@ async fn test_basic_windows() {
                         "{metadata:?} == {expected_metadata:?}"
                     );
 
-                    // NOTE: this needs to be updated when bumping symcaches
-                    let symcaches_dir = cache_dir.path().join("symcaches").join("v5");
+                    let symcaches_dir = cache_dir.path().join("symcaches");
                     let mut cached_symcaches = get_cache_files(&symcaches_dir);
 
                     cached_symcaches.sort_by_key(|(_, size)| *size);
@@ -504,7 +503,7 @@ async fn test_basic_windows() {
 
                     let metadata_file = &cached_symcaches[0].0;
                     let metadata =
-                        std::fs::read_to_string(objects_dir.join(metadata_file)).unwrap();
+                        std::fs::read_to_string(symcaches_dir.join(metadata_file)).unwrap();
                     expected_metadata.push_str("b\n"); // this truely ends in `.pdb` now
                     assert_eq!(metadata, expected_metadata);
                 }

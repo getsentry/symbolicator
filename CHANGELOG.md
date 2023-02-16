@@ -6,6 +6,7 @@
 
 - Introduce a `CacheKeyBuilder` and human-readable `CacheKey` metadata. ([#1033](https://github.com/getsentry/symbolicator/pull/1033), [#1036](https://github.com/getsentry/symbolicator/pull/1036))
 - Use new `CacheKey` for writes and shared-cache. ([#1038](https://github.com/getsentry/symbolicator/pull/1038))
+- Consolidate `CacheVersions` and bump to refresh `CacheKey` usage. ([#1041](https://github.com/getsentry/symbolicator/pull/1041), [#1042](https://github.com/getsentry/symbolicator/pull/1042))
 - Automatically block downloads from unreliable hosts. ([#1039](https://github.com/getsentry/symbolicator/pull/1039))
 
 ## 0.7.0

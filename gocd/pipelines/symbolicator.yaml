@@ -42,6 +42,35 @@ pipelines:
                                     ${GO_REVISION_SYMBOLICATOR_REPO} \
                                     sentryio \
                                     "us.gcr.io/sentryio/symbolicator"
+            - deploy_canary:
+                  approval:
+                      type: manual
+                  fetch_materials: true
+                  jobs:
+                      create_sentry_release:
+                          environment_variables:
+                              SENTRY_URL: "https://sentry.my.sentry.io/"
+                              ENVIRONMENT: canary
+                              # Temporary; self-service encrypted secrets aren't implemented yet.
+                              # This should really be rotated to an internal integration token.
+                              SENTRY_AUTH_TOKEN: "{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}"
+                          timeout: 1200
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    ./symbolicator/scripts/create-sentry-release "${GO_REVISION_SYMBOLICATOR_REPO}" "${ENVIRONMENT}"
+                      deploy:
+                          timeout: 1200
+                          elastic_profile_id: symbolicator
+                          tasks:
+                              - script: |
+                                    /devinfra/scripts/k8s/k8stunnel \
+                                    && /devinfra/scripts/k8s/k8sdeploy.py \
+                                    --type="statefulset" \
+                                    --label-selector="service=symbolicator,deploy_if_canary=true" \
+                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
+                                    --container-name="symbolicator" \
+                                    --container-name="cleanup"
             - deploy_production:
                   approval:
                       type: manual
@@ -63,23 +92,10 @@ pipelines:
                           timeout: 1200
                           elastic_profile_id: symbolicator
                           tasks:
-                              # Ideally the deploy_if_x things are changed to something like
-                              # environment=x. Then we can just call this once with the label selector
-                              # 'service=symbolicator,environment in (canary, lpq, production)'
+                              # canary and lpq have the label `deploy_if_production=true`, so this
+                              # will update all deployments.
                               - script: |
                                     /devinfra/scripts/k8s/k8stunnel \
-                                    && /devinfra/scripts/k8s/k8sdeploy.py \
-                                    --type="statefulset" \
-                                    --label-selector="service=symbolicator,deploy_if_canary=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
-                                    --container-name="symbolicator" \
-                                    --container-name="cleanup" \
-                                    && /devinfra/scripts/k8s/k8sdeploy.py \
-                                    --type="statefulset" \
-                                    --label-selector="service=symbolicator,deploy_if_lpq=true" \
-                                    --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
-                                    --container-name="symbolicator" \
-                                    --container-name="cleanup" \
                                     && /devinfra/scripts/k8s/k8sdeploy.py \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_production=true" \

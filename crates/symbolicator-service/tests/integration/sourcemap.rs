@@ -255,8 +255,6 @@ async fn test_source_expansion() {
     assert_eq!(frames[1].raw.post_context, &["o", " ", "w", "o", "r"]);
 }
 
-// TODO(kamil): Failing due to not handling base64 sourcemaps.
-#[ignore]
 #[tokio::test]
 async fn test_inlined_sources() {
     let (symbolication, _) = setup_service(|_| ());

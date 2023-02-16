@@ -21,7 +21,9 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
+use crate::caching::CacheVersions;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey};
+use crate::services::caches::versions::OBJECTS_CACHE_VERSIONS;
 use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
@@ -202,6 +204,8 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = Arc<ObjectHandle>;
+
+    const VERSIONS: CacheVersions = OBJECTS_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let cache_key = CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source);
