@@ -101,24 +101,24 @@ fn js_processing_symbolicate_frame(
     };
 
     if let Some(file) = token.file() {
-        result.raw.filename = file.name().map(ToString::to_string);
+        result.raw.filename = file.name().map(|name| name.to_string());
 
         let current_line = token.line();
 
         result.raw.context_line = token
             .line_contents()
-            .map(|line| line.trim_end().to_string());
+            .map(|line| trim_context_line(line, token.column()));
 
         let pre_line = current_line.saturating_sub(5);
         result.raw.pre_context = (pre_line..current_line)
-            .filter_map(|line| file.line(line as usize))
-            .map(|v| v.trim_end().to_string())
+            .filter_map(|line_no| file.line(line_no as usize))
+            .map(|line| trim_context_line(line, token.column()))
             .collect();
 
         let post_line = current_line.saturating_add(5);
         result.raw.post_context = (current_line + 1..=post_line)
-            .filter_map(|line| file.line(line as usize))
-            .map(|v| v.trim_end().to_string())
+            .filter_map(|line_no| file.line(line_no as usize))
+            .map(|line| trim_context_line(line, token.column()))
             .collect();
     }
 
@@ -172,9 +172,58 @@ fn fold_function_name(function_name: &str) -> String {
     format!("{folded}.{tail}")
 }
 
+/// Trims a line down to a goal of 140 characters, with a little wiggle room to be sensible
+/// and tries to trim around the given `column`. So it tries to extract 60 characters
+/// before the provided `column` and fill the rest up to 140 characters to yield a better context.
+fn trim_context_line(line: &str, column: u32) -> String {
+    let mut line = line.trim_end_matches('\n').to_string();
+    let len = line.len();
+
+    if len <= 150 {
+        return line;
+    }
+
+    let col: usize = match column.try_into() {
+        Ok(c) => std::cmp::min(c, len),
+        Err(_) => return line,
+    };
+
+    let mut start = col.saturating_sub(60);
+    // Round down if it brings us close to the edge.
+    if start < 5 {
+        start = 0;
+    }
+
+    let mut end = std::cmp::min(start + 140, len);
+    // Round up to the end if it's close.
+    if end > len.saturating_sub(5) {
+        end = len;
+    }
+
+    // If we are bumped all the way to the end, make sure we still get a full 140 chars in the line.
+    if end == len {
+        start = end.saturating_sub(140);
+    }
+
+    line = line[start..end].to_string();
+
+    if end < len {
+        // We've snipped from the end.
+        line = format!("{line} {{snip}}");
+    }
+
+    if start > 0 {
+        // We've snipped from the beginning.
+        line = format!("{{snip}} {line}");
+    }
+
+    line
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_fold_function_name() {
         assert_eq!(fold_function_name("foo"), "foo");
@@ -194,5 +243,16 @@ mod tests {
             fold_function_name("bar.foo.foo.bar.bar.onError"),
             "bar.{foo#2}.{bar#2}.onError"
         );
+    }
+
+    #[test]
+    fn test_trim_context_line() {
+        let long_line = "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.";
+        assert_eq!(trim_context_line("foo", 0), "foo".to_string());
+        assert_eq!(trim_context_line(long_line, 0), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 10), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 66), "{snip} blic is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives wi {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 190), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
+        assert_eq!(trim_context_line(long_line, 9999), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
     }
 }
