@@ -88,12 +88,6 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn should_load(&self, data: &[u8]) -> bool {
-        // NOTE: we do *not* check for the `is_latest` version here.
-        // If the cficache is parsable, we want to use even outdated versions.
-        CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
-    }
-
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_cfi_cache(data)
     }

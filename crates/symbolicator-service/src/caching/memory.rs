@@ -17,12 +17,7 @@ use super::{Cache, CacheEntry, CacheError, CacheKey};
 
 type InMemoryCache<T> = moka::future::Cache<CacheKey, CacheEntry<T>>;
 
-/// Manages a filesystem cache of any kind of data that can be serialized into bytes and read from
-/// it:
-///
-/// - Object files
-/// - Symcaches
-/// - CFI caches
+/// Manages a filesystem cache of any kind of data that can be de/serialized from/to bytes.
 ///
 /// Transparently performs cache lookups, downloads and cache stores via the [`CacheItemRequest`]
 /// trait and associated types.
@@ -105,14 +100,6 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     /// system. This is used to populate the cache for a previously missing element.
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry>;
 
-    /// Determines whether this item should be loaded.
-    ///
-    /// If this returns `false` the cache will re-computed and be overwritten with the new
-    /// result.
-    fn should_load(&self, _data: &[u8]) -> bool {
-        true
-    }
-
     /// Loads an existing element from the cache.
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item>;
 }
@@ -128,14 +115,9 @@ impl<T: CacheItemRequest> Cacher<T> {
         cache_dir: &Path,
         key: &CacheKey,
         version: u32,
-        use_legacy_key: bool,
     ) -> CacheEntry<CacheEntry<T::Item>> {
         let name = self.config.name();
-        let cache_key = if use_legacy_key {
-            key.legacy_cache_path(version)
-        } else {
-            key.cache_path(version)
-        };
+        let cache_key = key.cache_path(version);
 
         let item_path = cache_dir.join(&cache_key);
         tracing::trace!("Trying {} cache at path {}", name, item_path.display());
@@ -151,19 +133,14 @@ impl<T: CacheItemRequest> Cacher<T> {
             .open_cachefile(&item_path)?
             .ok_or(CacheError::NotFound)?;
 
-        if let Ok(byteview) = &entry {
-            if !request.should_load(byteview) {
-                tracing::trace!("Discarding {} at path {}", name, item_path.display());
-                metric!(counter("caches.file.discarded") += 1, "cache" => name.as_ref());
-                return Err(CacheError::NotFound);
-            }
-
-            // store things into the shared cache when:
-            // - we have a positive cache
-            // - that has the latest version (we don’t want to upload old versions)
-            // - we refreshed the local cache time, so we also refresh the shared cache time.
-            let needs_reupload = expiration.was_touched();
-            if version == T::VERSIONS.current && needs_reupload {
+        // store things into the shared cache when:
+        // - we have a positive cache
+        // - that has the latest version (we don’t want to upload old versions)
+        // - we refreshed the local cache time, so we also refresh the shared cache time.
+        let needs_reupload = expiration.was_touched();
+        // FIXME: let-chains would be nice here :-)
+        if version == T::VERSIONS.current && needs_reupload {
+            if let Ok(byteview) = &entry {
                 if let Some(shared_cache) = self.shared_cache.get() {
                     shared_cache.store(
                         name,
@@ -177,11 +154,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // This is also reported for "negative cache hits": When we cached
         // the 404 response from a server as empty file.
-        metric!(
-            counter("caches.file.hit") += 1,
-            "cache" => name.as_ref(),
-            "key" => if use_legacy_key { "legacy" } else { "new" }
-        );
+        metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
         if let Ok(byteview) = &entry {
             metric!(
                 time_raw("caches.file.size") = byteview.len() as u64,
@@ -214,17 +187,12 @@ impl<T: CacheItemRequest> Cacher<T> {
             false
         };
 
-        let mut entry = Err(CacheError::NotFound);
-        if shared_cache_hit {
-            // Waste an mmap call on a cold path, oh well.
-            let bv = ByteView::map_file_ref(temp_file.as_file())?;
-            if request.should_load(&bv) {
-                entry = Ok(bv);
-            } else {
-                tracing::trace!("Discarding item from shared cache {}", key);
-                metric!(counter("shared_cache.file.discarded") += 1);
-            }
-        }
+        let mut entry = if shared_cache_hit {
+            let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
+            Ok(byte_view)
+        } else {
+            Err(CacheError::NotFound)
+        };
 
         if entry.is_err() {
             metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
@@ -327,21 +295,12 @@ impl<T: CacheItemRequest> Cacher<T> {
 
                 for version in versions {
                     // try the new cache key first, then fall back to the old cache key
-                    let item = match self
-                        .lookup_local_cache(&request, cache_dir, &cache_key, version, false)
-                    {
-                        Err(CacheError::NotFound) => {
-                            match self
-                                .lookup_local_cache(&request, cache_dir, &cache_key, version, true)
-                            {
-                                Err(CacheError::NotFound) => continue,
-                                Err(err) => return Err(err),
-                                Ok(item) => item,
-                            }
-                        }
-                        Err(err) => return Err(err),
-                        Ok(item) => item,
-                    };
+                    let item =
+                        match self.lookup_local_cache(&request, cache_dir, &cache_key, version) {
+                            Err(CacheError::NotFound) => continue,
+                            Err(err) => return Err(err),
+                            Ok(item) => item,
+                        };
 
                     if version != T::VERSIONS.current {
                         // we have found an outdated cache that we will use right away,
@@ -416,7 +375,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         tracing::trace!(
             "Spawning deduplicated {} computation for path {:?}",
             name,
-            cache_key.legacy_cache_path(T::VERSIONS.current)
+            cache_key.cache_path(T::VERSIONS.current)
         );
 
         let this = self.clone();

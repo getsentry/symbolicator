@@ -8,6 +8,7 @@
 - Use new `CacheKey` for writes and shared-cache. ([#1038](https://github.com/getsentry/symbolicator/pull/1038))
 - Consolidate `CacheVersions` and bump to refresh `CacheKey` usage. ([#1041](https://github.com/getsentry/symbolicator/pull/1041), [#1042](https://github.com/getsentry/symbolicator/pull/1042))
 - Automatically block downloads from unreliable hosts. ([#1039](https://github.com/getsentry/symbolicator/pull/1039))
+- Fully migrate `CacheKey` usage and remove legacy markers. ([#1043](https://github.com/getsentry/symbolicator/pull/1043))
 
 ## 0.7.0
 

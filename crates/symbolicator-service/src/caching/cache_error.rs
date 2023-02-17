@@ -64,12 +64,6 @@ impl CacheError {
     pub(super) const TIMEOUT_MARKER: &[u8] = b"timeout";
     pub(super) const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
 
-    // These markers were used in the older `CacheStatus` implementation:
-    pub(super) const LEGACY_PERMISSION_DENIED_MARKER: &[u8] =
-        b"cachespecificerrormissing permissions for file";
-    pub(super) const LEGACY_TIMEOUT_MARKER: &[u8] = b"cachespecificerrordownload was cancelled";
-    pub(super) const LEGACY_DOWNLOAD_ERROR_MARKER: &[u8] = b"cachespecificerror";
-
     /// Writes error markers and details to a file.
     ///
     /// * If `self` is [`InternalError`](Self::InternalError), it does nothing.
@@ -124,14 +118,6 @@ impl CacheError {
         if let Some(raw_message) = bytes.strip_prefix(Self::PERMISSION_DENIED_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
             Some(Self::PermissionDenied(err_msg.into_owned()))
-        } else if let Some(raw_message) = bytes.strip_prefix(Self::LEGACY_PERMISSION_DENIED_MARKER)
-        {
-            // NOTE: `raw_message` is empty
-            let err_msg = String::from_utf8_lossy(raw_message);
-            Some(Self::PermissionDenied(err_msg.into_owned()))
-        } else if let Some(_raw_duration) = bytes.strip_prefix(Self::LEGACY_TIMEOUT_MARKER) {
-            // NOTE: `raw_duration` is empty
-            Some(Self::Timeout(Duration::from_secs(0)))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
             let raw_duration = String::from_utf8_lossy(raw_duration);
             match parse_duration(&raw_duration) {
@@ -141,9 +127,6 @@ impl CacheError {
                     Some(Self::InternalError)
                 }
             }
-        } else if let Some(raw_message) = bytes.strip_prefix(Self::LEGACY_DOWNLOAD_ERROR_MARKER) {
-            let err_msg = String::from_utf8_lossy(raw_message);
-            Some(Self::DownloadError(err_msg.into_owned()))
         } else if let Some(raw_message) = bytes.strip_prefix(Self::DOWNLOAD_ERROR_MARKER) {
             let err_msg = String::from_utf8_lossy(raw_message);
             Some(Self::DownloadError(err_msg.into_owned()))
