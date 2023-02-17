@@ -105,6 +105,7 @@ struct HostDenyList {
     time_window_millis: u64,
     bucket_size_millis: u64,
     failure_threshold: usize,
+    block_time: Duration,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
@@ -123,11 +124,13 @@ impl HostDenyList {
             time_window_millis,
             bucket_size_millis,
             failure_threshold,
+            block_time,
             failures: moka::sync::Cache::builder()
                 .time_to_idle(time_window)
                 .build(),
             blocked_hosts: moka::sync::Cache::builder()
                 .time_to_live(block_time)
+                .eviction_listener(|host, _, _| tracing::info!(%host, "Unblocking host"))
                 .build(),
         }
     }
@@ -150,7 +153,15 @@ impl HostDenyList {
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
     fn register_failure(&self, host: String) {
-        let current_ts = SystemTime::now()
+        let current_ts = SystemTime::now();
+
+        tracing::trace!(
+            host = %host,
+            time = %humantime::format_rfc3339(current_ts),
+            "Registering download failure"
+        );
+
+        let current_ts = current_ts
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default();
 
@@ -182,6 +193,11 @@ impl HostDenyList {
             .sum();
 
         if total_failures >= self.failure_threshold {
+            tracing::info!(
+                %host,
+                block_time = %humantime::format_duration(self.block_time),
+                "Blocking host due to too many download failures"
+            );
             self.blocked_hosts.insert(host, ());
         }
     }
@@ -308,7 +324,10 @@ impl DownloadService {
         // want to put such sources on the block list.
         let source_is_external = !host.starts_with("sentry:");
 
+        let source_metric_key = source.source_metric_key().to_string();
+
         if source_is_external && self.host_deny_list.is_blocked(&host) {
+            metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
             ));
@@ -335,6 +354,7 @@ impl DownloadService {
                 Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
             )
         {
+            metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
             self.host_deny_list.register_failure(host);
         }
 
