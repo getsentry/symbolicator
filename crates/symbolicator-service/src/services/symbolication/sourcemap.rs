@@ -178,7 +178,7 @@ fn fold_function_name(function_name: &str) -> String {
 fn trim_context_line(line: &str, column: Option<usize>) -> String {
     use std::cmp::{max, min};
 
-    let mut line = line.trim_end().to_string();
+    let mut line = line.trim_end_matches("\n").to_string();
     let len = line.len();
 
     if len <= 150 {
