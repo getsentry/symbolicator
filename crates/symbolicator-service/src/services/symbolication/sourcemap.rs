@@ -174,10 +174,8 @@ fn fold_function_name(function_name: &str) -> String {
 
 /// Trims a line down to a goal of 140 characters, with a little wiggle room to be sensible
 /// and tries to trim around the given `column`. So it tries to extract 60 characters
-/// before and after the provided `column` and yield a better context.
-fn trim_context_line(line: &str, column: Option<usize>) -> String {
-    use std::cmp::{max, min};
-
+/// before the provided `column` and fill the rest up to 140 characters to yield a better context.
+fn trim_context_line(line: &str, column: usize) -> String {
     let mut line = line.trim_end_matches('\n').to_string();
     let len = line.len();
 
@@ -185,15 +183,15 @@ fn trim_context_line(line: &str, column: Option<usize>) -> String {
         return line;
     }
 
-    let col = column.map(|c| min(c, len)).unwrap_or_default();
+    let col = std::cmp::min(column, len);
 
-    let mut start = max(col.saturating_sub(60), 0);
+    let mut start = col.saturating_sub(60);
     // Round down if it brings us close to the edge.
     if start < 5 {
         start = 0;
     }
 
-    let mut end = min(start + 140, len);
+    let mut end = std::cmp::min(start + 140, len);
     // Round up to the end if it's close.
     if end > len.saturating_sub(5) {
         end = len;
@@ -201,7 +199,7 @@ fn trim_context_line(line: &str, column: Option<usize>) -> String {
 
     // If we are bumped all the way to the end, make sure we still get a full 140 chars in the line.
     if end == len {
-        start = max(end.saturating_sub(140), 0);
+        start = end.saturating_sub(140);
     }
 
     line = line[start..end].to_string();
@@ -247,11 +245,11 @@ mod tests {
     #[test]
     fn test_trim_context_line() {
         let long_line = "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.";
-        assert_eq!(trim_context_line("foo", None), "foo".to_string());
-        assert_eq!(trim_context_line(long_line, None), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, Some(10)), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, Some(66)), "{snip} blic is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives wi {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, Some(190)), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
-        assert_eq!(trim_context_line(long_line, Some(9999)), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
+        assert_eq!(trim_context_line("foo", 0), "foo".to_string());
+        assert_eq!(trim_context_line(long_line, 0), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 10), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 66), "{snip} blic is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives wi {snip}".to_string());
+        assert_eq!(trim_context_line(long_line, 190), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
+        assert_eq!(trim_context_line(long_line, 9999), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
     }
 }
