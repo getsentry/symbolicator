@@ -65,7 +65,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             .weigher(|_k, v| {
                 let value_size =
                     v.1.as_ref()
-                        .map_or(0, |item| T::weight(item))
+                        .map_or(0, T::weight)
                         .max(std::mem::size_of::<CacheError>() as u32);
                 std::mem::size_of::<(CacheKey, Instant)>() as u32 + value_size
             })
