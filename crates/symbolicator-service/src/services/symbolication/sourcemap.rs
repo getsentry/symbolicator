@@ -101,24 +101,24 @@ fn js_processing_symbolicate_frame(
     };
 
     if let Some(file) = token.file() {
-        result.raw.filename = file.name().map(ToString::to_string);
+        result.raw.filename = file.name().map(|name| name.to_string());
 
         let current_line = token.line();
 
         result.raw.context_line = token
             .line_contents()
-            .map(|line| line.trim_end().to_string());
+            .map(|line| trim_context_line(line, token.column()));
 
         let pre_line = current_line.saturating_sub(5);
         result.raw.pre_context = (pre_line..current_line)
-            .filter_map(|line| file.line(line as usize))
-            .map(|v| v.trim_end().to_string())
+            .filter_map(|line_no| file.line(line_no as usize))
+            .map(|line| trim_context_line(line, token.column()))
             .collect();
 
         let post_line = current_line.saturating_add(5);
         result.raw.post_context = (current_line + 1..=post_line)
-            .filter_map(|line| file.line(line as usize))
-            .map(|v| v.trim_end().to_string())
+            .filter_map(|line_no| file.line(line_no as usize))
+            .map(|line| trim_context_line(line, token.column()))
             .collect();
     }
 
@@ -175,7 +175,7 @@ fn fold_function_name(function_name: &str) -> String {
 /// Trims a line down to a goal of 140 characters, with a little wiggle room to be sensible
 /// and tries to trim around the given `column`. So it tries to extract 60 characters
 /// before the provided `column` and fill the rest up to 140 characters to yield a better context.
-fn trim_context_line(line: &str, column: usize) -> String {
+fn trim_context_line(line: &str, column: u32) -> String {
     let mut line = line.trim_end_matches('\n').to_string();
     let len = line.len();
 
@@ -183,7 +183,10 @@ fn trim_context_line(line: &str, column: usize) -> String {
         return line;
     }
 
-    let col = std::cmp::min(column, len);
+    let col: usize = match column.try_into() {
+        Ok(c) => std::cmp::min(c, len),
+        Err(_) => return line,
+    };
 
     let mut start = col.saturating_sub(60);
     // Round down if it brings us close to the edge.
