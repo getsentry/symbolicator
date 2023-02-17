@@ -324,7 +324,10 @@ impl DownloadService {
         // want to put such sources on the block list.
         let source_is_external = !host.starts_with("sentry:");
 
+        let source_metric_key = source.source_metric_key().to_string();
+
         if source_is_external && self.host_deny_list.is_blocked(&host) {
+            metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
             ));
@@ -351,6 +354,7 @@ impl DownloadService {
                 Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
             )
         {
+            metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
             self.host_deny_list.register_failure(host);
         }
 
