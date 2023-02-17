@@ -10,6 +10,10 @@
 - Automatically block downloads from unreliable hosts. ([#1039](https://github.com/getsentry/symbolicator/pull/1039))
 - Fully migrate `CacheKey` usage and remove legacy markers. ([#1043](https://github.com/getsentry/symbolicator/pull/1043))
 
+### Fixes
+
+- Reject minidumps containing invalid file names. ([#1047](https://github.com/getsentry/symbolicator/pull/1047))
+
 ## 0.7.0
 
 ### Features
