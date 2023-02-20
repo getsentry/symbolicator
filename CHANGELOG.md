@@ -10,6 +10,12 @@
 - Automatically block downloads from unreliable hosts. ([#1039](https://github.com/getsentry/symbolicator/pull/1039))
 - Fully migrate `CacheKey` usage and remove legacy markers. ([#1043](https://github.com/getsentry/symbolicator/pull/1043))
 
+### Dependencies
+
+- Bump Native SDK from v0.5.4 to v0.6.0 ([#1048](https://github.com/getsentry/symbolicator/pull/1048))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#060)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.5.4...0.6.0)
+
 ## 0.7.0
 
 ### Features
