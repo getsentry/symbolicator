@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::io::BufRead;
 
-use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
+use reqwest::Url;
+use symbolic::common::ByteView;
+use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 
-use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap::OwnedSourceMapCache;
+use crate::caching::CacheError;
+use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
     CompleteJsStacktrace, JsProcessingCompletedSymbolicationResponse, JsProcessingFrameStatus,
     JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
@@ -19,27 +22,42 @@ impl SymbolicationActor {
         &self,
         request: JsProcessingSymbolicateStacktraces,
     ) -> Result<JsProcessingCompletedSymbolicationResponse, anyhow::Error> {
-        let artifacts = self.sourcemaps.collect_stacktrace_artifacts(&request).await;
+        let mut unique_abs_paths = HashSet::new();
+        for stacktrace in &request.stacktraces {
+            for frame in &stacktrace.frames {
+                unique_abs_paths.insert(frame.abs_path.clone());
+            }
+        }
+
+        let mut sourcemap_lookup = self
+            .sourcemaps
+            .create_sourcemap_lookup(request.source.clone());
+
+        sourcemap_lookup.fetch_caches(unique_abs_paths).await;
 
         let stacktraces: Vec<_> = request
             .stacktraces
             .into_iter()
-            .map(|trace| js_processing_symbolicate_stacktrace(trace, &artifacts))
+            .map(|trace| async {
+                js_processing_symbolicate_stacktrace(trace, &sourcemap_lookup).await
+            })
             .collect();
+
+        let stacktraces = futures::future::join_all(stacktraces).await;
 
         Ok(JsProcessingCompletedSymbolicationResponse { stacktraces })
     }
 }
 
-fn js_processing_symbolicate_stacktrace(
+async fn js_processing_symbolicate_stacktrace(
     stacktrace: JsProcessingRawStacktrace,
-    artifacts: &HashMap<String, CacheEntry<OwnedSourceMapCache>>,
+    sourcemap_lookup: &SourceMapLookup,
 ) -> CompleteJsStacktrace {
     let mut symbolicated_frames = vec![];
     let unsymbolicated_frames_iter = stacktrace.frames.into_iter();
 
     for mut frame in unsymbolicated_frames_iter {
-        match js_processing_symbolicate_frame(&mut frame, artifacts) {
+        match js_processing_symbolicate_frame(&mut frame, sourcemap_lookup).await {
             Ok(frame) => symbolicated_frames.push(frame),
             Err(status) => {
                 symbolicated_frames.push(JsProcessingSymbolicatedFrame { status, raw: frame });
@@ -52,20 +70,40 @@ fn js_processing_symbolicate_stacktrace(
     }
 }
 
-fn js_processing_symbolicate_frame(
+async fn js_processing_symbolicate_frame(
     frame: &mut JsProcessingRawFrame,
-    artifacts: &HashMap<String, CacheEntry<OwnedSourceMapCache>>,
+    sourcemap_lookup: &SourceMapLookup,
 ) -> Result<JsProcessingSymbolicatedFrame, JsProcessingFrameStatus> {
-    let smcache = artifacts
-        .get(&frame.abs_path)
-        .ok_or(JsProcessingFrameStatus::MissingSourcemap)?;
+    let smcache = sourcemap_lookup
+        .lookup_sourcemap_cache(&frame.abs_path)
+        .ok_or(JsProcessingFrameStatus::MissingSourcemap);
+
+    let mut result = JsProcessingSymbolicatedFrame {
+        status: JsProcessingFrameStatus::Symbolicated,
+        raw: JsProcessingRawFrame {
+            function: frame.function.clone(),
+            filename: frame.filename.clone(),
+            abs_path: frame.abs_path.clone(),
+            lineno: frame.lineno,
+            colno: frame.colno,
+            pre_context: vec![],
+            context_line: None,
+            post_context: vec![],
+        },
+    };
+
+    if smcache.is_err() || smcache.unwrap().is_err() {
+        apply_source_context_from_artifact(&mut result, sourcemap_lookup, &frame.abs_path).await;
+        return Ok(result);
+    }
+
     // TODO(sourcemap): Report invalid source location error
     let (line, col) = match (frame.lineno, frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
         _ => return Err(JsProcessingFrameStatus::InvalidSourceMapLocation),
     };
     let sp = SourcePosition::new(line - 1, col - 1);
-    let smcache = match smcache {
+    let smcache = match smcache? {
         Ok(smcache) => smcache,
         Err(CacheError::Malformed(_)) => return Err(JsProcessingFrameStatus::MalformedSourcemap),
         Err(_) => return Err(JsProcessingFrameStatus::MissingSourcemap),
@@ -85,44 +123,95 @@ fn js_processing_symbolicate_frame(
         }
     };
 
-    let mut result = JsProcessingSymbolicatedFrame {
-        status: JsProcessingFrameStatus::Symbolicated,
-        raw: JsProcessingRawFrame {
-            function: Some(fold_function_name(&function_name)),
-            filename: frame.filename.clone(),
-            abs_path: token.file_name().unwrap_or("<unknown>").to_string(),
-            // TODO: Decide where to do off-by-1 calculations
-            lineno: Some(token.line().saturating_add(1)),
-            colno: Some(token.column().saturating_add(1)),
-            pre_context: vec![],
-            context_line: None,
-            post_context: vec![],
-        },
-    };
+    result.raw.function = Some(fold_function_name(&function_name));
+    result.raw.abs_path = token.file_name().unwrap_or("<unknown>").to_string();
+    result.raw.lineno = Some(token.line().saturating_add(1));
+    result.raw.colno = Some(token.column().saturating_add(1));
 
     if let Some(file) = token.file() {
-        result.raw.filename = file.name().map(|name| name.to_string());
+        result.raw.filename = file.name().map(|f| f.to_string());
 
-        let current_line = token.line();
-
-        result.raw.context_line = token
-            .line_contents()
-            .map(|line| trim_context_line(line, token.column()));
-
-        let pre_line = current_line.saturating_sub(5);
-        result.raw.pre_context = (pre_line..current_line)
-            .filter_map(|line_no| file.line(line_no as usize))
-            .map(|line| trim_context_line(line, token.column()))
-            .collect();
-
-        let post_line = current_line.saturating_add(5);
-        result.raw.post_context = (current_line + 1..=post_line)
-            .filter_map(|line_no| file.line(line_no as usize))
-            .map(|line| trim_context_line(line, token.column()))
-            .collect();
+        if file.source().is_some() {
+            apply_source_context_from_sourcemap_cache(&mut result, file).await;
+        } else if let Some(filename) = file.name() {
+            if let Some(artifact_url) = Url::parse(&frame.abs_path)
+                .map(|base| base.join(filename).map(|url| url.to_string()).ok())
+                .ok()
+                .flatten()
+            {
+                apply_source_context_from_artifact(&mut result, sourcemap_lookup, &artifact_url)
+                    .await;
+            }
+        }
     }
 
     Ok(result)
+}
+
+async fn apply_source_context_from_sourcemap_cache(
+    result: &mut JsProcessingSymbolicatedFrame,
+    file: File<'_>,
+) {
+    if let Some(file_source) = file.source() {
+        let source = ByteView::from_slice(file_source.as_bytes());
+        apply_source_context(result, source).await
+    } else {
+        // report missing source?
+    }
+}
+
+async fn apply_source_context_from_artifact(
+    result: &mut JsProcessingSymbolicatedFrame,
+    sourcemap_lookup: &SourceMapLookup,
+    abs_path: &str,
+) {
+    let cached_artifact = sourcemap_lookup
+        .lookup_artifact_cache(abs_path)
+        .map(|s| s.to_owned());
+
+    // TODO: Ask cache to fetch file if it doesnt exist yet?
+    let artifact = if cached_artifact.is_some() {
+        cached_artifact.unwrap()
+    } else {
+        sourcemap_lookup.compute_artifact_cache(abs_path).await
+    };
+
+    if let Ok(artifact) = artifact {
+        apply_source_context(result, artifact).await
+    } else {
+        // report missing source?
+    }
+}
+
+async fn apply_source_context(result: &mut JsProcessingSymbolicatedFrame, source: ByteView<'_>) {
+    // At this stage we know we have _some_ line here, so it's safe to unwrap.
+    let frame_line = result.raw.lineno.unwrap();
+    let frame_column = result.raw.colno.unwrap_or_default();
+
+    let current_line = frame_line.saturating_sub(1);
+    let pre_line = current_line.saturating_sub(5);
+    let post_line = current_line.saturating_add(5);
+
+    let mut lines: Vec<_> = source.lines().map(|l| l.unwrap_or_default()).collect();
+
+    // `BufRead::lines` doesn't include trailing new-lines, but we do want one if it was there.
+    if source.ends_with("\n".as_bytes()) {
+        lines.push("\n".to_string());
+    }
+
+    result.raw.context_line = lines
+        .get(current_line as usize)
+        .map(|line| trim_context_line(line, frame_column));
+
+    result.raw.pre_context = (pre_line..current_line)
+        .filter_map(|line_no| lines.get(line_no as usize))
+        .map(|line| trim_context_line(line, frame_column))
+        .collect();
+
+    result.raw.post_context = (current_line + 1..=post_line)
+        .filter_map(|line_no| lines.get(line_no as usize))
+        .map(|line| trim_context_line(line, frame_column))
+        .collect();
 }
 
 /// Fold multiple consecutive occurences of the same property name into a single group, excluding the last component.

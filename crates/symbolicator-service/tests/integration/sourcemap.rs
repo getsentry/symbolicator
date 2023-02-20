@@ -96,8 +96,6 @@ async fn test_sourcemap_expansion() {
     assert_eq!(frames[3].raw.filename, Some("test.js".to_string()));
 }
 
-// TODO(kamil): Failing due to source context not resolving file content from non-sourceContents locations.
-#[ignore]
 #[tokio::test]
 async fn test_sourcemap_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
@@ -142,13 +140,14 @@ async fn test_sourcemap_source_expansion() {
 
     assert_eq!(
         frames[1].raw.pre_context,
-        &["function add(a, b) {", "\t\"use strict\";"]
+        &["function add(a, b) {", "  \"use strict\";"]
     );
     assert_eq!(
         frames[1].raw.context_line,
-        Some("\treturn a + b; // fôo".to_string())
+        Some("  return a + b; // fôo".to_string())
     );
-    assert_eq!(frames[1].raw.post_context, &["}", ""]);
+
+    assert_eq!(frames[1].raw.post_context, &["}"]);
 }
 
 #[tokio::test]
@@ -204,8 +203,6 @@ async fn test_sourcemap_embedded_source_expansion() {
     assert_eq!(frames[1].raw.post_context, &["}", ""]);
 }
 
-// TODO(kamil): Failing due to not using original source as source context fallback.
-#[ignore]
 #[tokio::test]
 async fn test_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());

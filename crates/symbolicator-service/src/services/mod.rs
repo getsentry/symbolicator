@@ -26,6 +26,7 @@ mod module_lookup;
 pub mod objects;
 pub mod ppdb_caches;
 pub mod sourcemap;
+mod sourcemap_lookup;
 pub mod symbolication;
 pub mod symcaches;
 
@@ -77,7 +78,12 @@ pub fn create_service(
     let ppdb_caches =
         PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache.clone(), objects.clone());
 
-    let sourcemaps = SourceMapService::new(caches.sourcemap_caches, shared_cache, downloader);
+    let sourcemaps = SourceMapService::new(
+        caches.artifact_caches,
+        caches.sourcemap_caches,
+        shared_cache,
+        downloader,
+    );
 
     let symbolication = SymbolicationActor::new(
         objects.clone(),
