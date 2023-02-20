@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, HashMap};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
+use anyhow::bail;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
@@ -271,13 +272,12 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 
 async fn stackwalk(
     cficaches: CfiCacheActor,
-    minidump_path: PathBuf,
+    minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
 ) -> anyhow::Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
-    let minidump = Minidump::read(ByteView::open(minidump_path)?)?;
     let system_info = minidump
         .get_stream::<MinidumpSystemInfo>()
         .map_err(|_| minidump_processor::ProcessError::MissingSystemInfo)?;
@@ -288,7 +288,7 @@ async fn stackwalk(
         _ => ObjectType::Unknown,
     };
     let provider = SymbolicatorSymbolProvider::new(scope, sources, cficaches, ty);
-    let process_state = minidump_processor::process_minidump(&minidump, &provider).await?;
+    let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
 
     let minidump_state = MinidumpState::from_process_state(&process_state);
@@ -422,14 +422,39 @@ impl SymbolicationActor {
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);
 
-        let future = stackwalk(
+        let minidump_path = minidump_file.to_path_buf();
+
+        let minidump = match read_minidump(&minidump_path) {
+            Ok(md) => md,
+            Err(err) => {
+                self.maybe_persist_minidump(minidump_file);
+                return Err(err);
+            }
+        };
+
+        for module in minidump.get_stream::<MinidumpModuleList>()?.iter() {
+            let code_file = module.code_file();
+            if file_name_is_invalid(&code_file) {
+                tracing::error!(%code_file, "Minidump module has an invalid code file name");
+                bail!("Minidump rejected due to invalid code file name")
+            }
+
+            if let Some(debug_file) = module.debug_file() {
+                if file_name_is_invalid(&debug_file) {
+                    tracing::error!(%debug_file, "Minidump module has an invalid debug file name");
+                    bail!("Minidump rejected due to invalid debug file name")
+                }
+            }
+        }
+
+        let stackwalk_future = stackwalk(
             self.cficaches.clone(),
-            minidump_file.to_path_buf(),
+            &minidump,
             scope.clone(),
             sources.clone(),
         );
 
-        let result = match future.await {
+        let result = match stackwalk_future.await {
             Ok(result) => result,
             Err(err) => {
                 self.maybe_persist_minidump(minidump_file);
@@ -446,7 +471,7 @@ impl SymbolicationActor {
 
         metric!(timer("minidump.stackwalk.duration") = duration);
 
-        match parse_stacktraces_from_minidump(&ByteView::open(&minidump_file)?) {
+        match parse_stacktraces_from_minidump(&minidump) {
             Ok(Some(client_stacktraces)) => {
                 merge_clientside_with_processed_stacktraces(&mut stacktraces, client_stacktraces)
             }
@@ -516,6 +541,47 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
         Os::Ps3 => "PS3",
         Os::NaCl => "NaCl",
         Os::Unknown(_) => "",
+    }
+}
+
+fn read_minidump(path: &Path) -> anyhow::Result<Minidump> {
+    let bv = ByteView::open(path)?;
+    let md = Minidump::read(bv)?;
+    Ok(md)
+}
+
+/// Checks whether a file name contains a control character or its last segment
+/// is longer than 255 bytes.
+fn file_name_is_invalid(file_name: &str) -> bool {
+    if file_name.contains(|c: char| c.is_control()) {
+        return true;
+    }
+
+    let last_segment = file_name
+        .rsplit_once(&['/', '\\'])
+        .map(|(_init, last)| last)
+        .unwrap_or(file_name);
+
+    last_segment.len() > 255
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_name_is_invalid;
+
+    #[test]
+    fn invalid_file_names() {
+        let too_long = "foobar".repeat(50);
+
+        assert!(file_name_is_invalid(&too_long));
+
+        let still_too_long = format!("a/few\\segments/{too_long}");
+
+        assert!(file_name_is_invalid(&still_too_long));
+
+        let not_too_long = format!("{too_long}/last");
+
+        assert!(!file_name_is_invalid(&not_too_long));
     }
 }
 
