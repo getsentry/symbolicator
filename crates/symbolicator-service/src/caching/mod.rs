@@ -160,6 +160,7 @@ pub struct Caches {
     /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
     pub ppdb_caches: Cache,
+    pub artifact_caches: Cache,
     pub sourcemap_caches: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
@@ -257,6 +258,17 @@ impl Caches {
                 let path = config.cache_dir("ppdb_caches");
                 Cache::from_config(
                     CacheName::PpdbCaches,
+                    path,
+                    tmp_dir.clone(),
+                    config.caches.derived.into(),
+                    max_lazy_recomputations.clone(),
+                    default_cap,
+                )?
+            },
+            artifact_caches: {
+                let path = config.cache_dir("artifact_caches");
+                Cache::from_config(
+                    CacheName::ArtifactCaches,
                     path,
                     tmp_dir.clone(),
                     config.caches.derived.into(),

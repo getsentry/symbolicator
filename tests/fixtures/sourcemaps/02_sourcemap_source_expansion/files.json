@@ -7,8 +7,8 @@
     "sha1": ""
   },
   {
-    "id": "file.sourcemap.js",
-    "name": "~/file.sourcemap.js",
+    "id": "file.min.js.map",
+    "name": "~/file.min.js.map",
     "dist": null,
     "headers": {},
     "sha1": ""

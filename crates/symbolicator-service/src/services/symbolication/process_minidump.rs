@@ -22,7 +22,7 @@ use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
 use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchedCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
-use crate::services::symbolication::module_lookup::object_file_status_from_cache_entry;
+use crate::services::module_lookup::object_file_status_from_cache_entry;
 use crate::types::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFileStatus, RawFrame, RawObjectInfo,
     RawStacktrace, Registers, Scope, SystemInfo,
