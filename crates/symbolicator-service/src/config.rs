@@ -293,15 +293,28 @@ pub struct InMemoryCacheConfig {
     ///
     /// Defaults to `100`.
     pub s3_client_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory `object_meta` Cache.
+    ///
+    /// Defaults to `100 MiB (= 104_857_600)`.
+    pub object_meta_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory `cficaches` Cache.
+    ///
+    /// Defaults to `400 MiB (= 419_430_400)`.
+    pub cficaches_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
     fn default() -> Self {
+        let meg = 1024 * 1024;
         Self {
             sentry_index_capacity: 100_000.try_into().unwrap(),
             sentry_index_ttl: Duration::from_secs(3600),
             gcs_token_capacity: 100.try_into().unwrap(),
             s3_client_capacity: 100,
+            object_meta_capacity: 100 * meg,
+            cficaches_capacity: 400 * meg,
         }
     }
 }

@@ -37,6 +37,7 @@ fn test_cache_dir_created() {
         None,
         CacheConfig::Downloaded(Default::default()),
         Default::default(),
+        1024,
     );
     let fsinfo = fs::metadata(cachedir).unwrap();
     assert!(fsinfo.is_dir());
@@ -96,6 +97,7 @@ fn test_max_unused_for() -> Result<()> {
             ..Default::default()
         }),
         Default::default(),
+        1024,
     )?;
 
     File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
@@ -130,6 +132,7 @@ fn test_retry_misses_after() -> Result<()> {
             ..Default::default()
         }),
         Default::default(),
+        1024,
     )?;
 
     File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
@@ -176,6 +179,7 @@ fn test_cleanup_malformed() -> Result<()> {
             ..Default::default()
         }),
         Default::default(),
+        1024,
     )?;
 
     cache.cleanup()?;
@@ -216,6 +220,7 @@ fn test_cleanup_cache_specific_error_derived() -> Result<()> {
             ..Default::default()
         }),
         Default::default(),
+        1024,
     )?;
 
     sleep(Duration::from_millis(30));
@@ -256,6 +261,7 @@ fn test_cleanup_cache_specific_error_download() -> Result<()> {
             ..Default::default()
         }),
         Default::default(),
+        1024,
     )?;
 
     sleep(Duration::from_millis(30));
@@ -465,6 +471,7 @@ fn test_open_cachefile() -> Result<()> {
         None,
         CacheConfig::Downloaded(Default::default()),
         Default::default(),
+        1024,
     )?;
 
     // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched
@@ -891,6 +898,7 @@ async fn test_cache_fallback() {
         None,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
+        1024,
     )
     .unwrap();
     let cacher = Cacher::new(cache, Default::default());
@@ -933,6 +941,7 @@ async fn test_cache_fallback_notfound() {
         None,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
+        1024,
     )
     .unwrap();
     let cacher = Cacher::new(cache, Default::default());
@@ -958,9 +967,10 @@ async fn test_lazy_computation_limit() {
         None,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
+        1024,
     )
     .unwrap();
-    let cacher = Cacher::new(cache, Default::default());
+    let cacher = Cacher::new(cache.clone(), Default::default());
 
     let request = TestCacheItem::new();
 

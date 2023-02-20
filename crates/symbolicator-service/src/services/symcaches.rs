@@ -352,7 +352,7 @@ mod tests {
     async fn test_symcache_refresh() {
         test::setup();
 
-        const TIMEOUT: Duration = Duration::from_secs(5);
+        const TIMEOUT: Duration = Duration::from_secs(2);
 
         let cache_dir = test::tempdir();
         let symbol_dir = test::tempdir();

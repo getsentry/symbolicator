@@ -508,21 +508,14 @@ async fn test_basic_windows() {
                     assert_eq!(metadata, expected_metadata);
                 }
 
-                if i > 0 && with_cache {
+                // our use of in-memory caching should make sure we only ever request each file once
+                if i > 0 {
                     assert_eq!(hitcounter.accesses(), 0);
                 } else {
                     let hits = hitcounter.all_hits();
-                    let (hit_count, miss_count) = if with_cache {
-                        (1, 1)
-                    } else {
-                        // we are downloading twice: once for the objects_meta request, and once
-                        // again for the objects/symcache request
-                        (2, 1)
-                    };
-
                     assert_eq!(&hits, &[
-                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_".into(), miss_count),
-                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb".into(), hit_count),
+                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_".into(), 1),
+                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb".into(), 1),
                     ]);
                 }
             }
