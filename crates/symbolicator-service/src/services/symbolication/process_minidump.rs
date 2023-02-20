@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
@@ -432,7 +432,11 @@ impl SymbolicationActor {
             }
         };
 
-        for module in minidump.get_stream::<MinidumpModuleList>()?.iter() {
+        let modules = minidump
+            .get_stream::<MinidumpModuleList>()
+            .context("Failed to read minidump module list")?;
+
+        for module in modules.iter() {
             let code_file = module.code_file();
             if file_name_is_invalid(&code_file) {
                 tracing::error!(%code_file, "Minidump module has an invalid code file name");
