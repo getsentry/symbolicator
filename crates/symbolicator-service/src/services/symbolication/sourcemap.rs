@@ -8,7 +8,7 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    JsProcessingCompletedSymbolicationResponse, JsFrame, JsFrameStatus,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus,
     JsProcessingStacktrace, SymbolicatedJsFrame, JsProcessingSymbolicatedStacktrace,
 };
 
@@ -21,7 +21,7 @@ impl SymbolicationActor {
     pub async fn js_processing_symbolicate(
         &self,
         request: SymbolicateJsStacktraces,
-    ) -> Result<JsProcessingCompletedSymbolicationResponse, anyhow::Error> {
+    ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
         let mut unique_abs_paths = HashSet::new();
         for stacktrace in &request.stacktraces {
             for frame in &stacktrace.frames {
@@ -48,7 +48,7 @@ impl SymbolicationActor {
             .into_iter()
             .unzip();
 
-        Ok(JsProcessingCompletedSymbolicationResponse {
+        Ok(CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
         })

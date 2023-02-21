@@ -42,7 +42,7 @@ pub use symbolicator_service::services::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::services::symbolication::{
-    SymbolicateJsStacktraces, StacktraceOrigin, SymbolicateStacktraces,
+    StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
 };
 pub use symbolicator_service::types::{
     JsProcessingStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
@@ -441,7 +441,7 @@ impl RequestService {
             let response = match result {
                 Ok(mut response) => {
                     if !options.dif_candidates {
-                        if let CompletedResponse::Symbolication(ref mut res) = response {
+                        if let CompletedResponse::NativeSymbolication(ref mut res) = response {
                             clear_dif_candidates(res)
                         }
                     }

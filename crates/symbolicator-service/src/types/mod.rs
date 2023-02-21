@@ -497,19 +497,19 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CompletedResponse {
-    Symbolication(CompletedSymbolicationResponse),
-    SourceMap(JsProcessingCompletedSymbolicationResponse),
+    NativeSymbolication(CompletedSymbolicationResponse),
+    JsSymbolication(CompletedJsSymbolicationResponse),
 }
 
 impl From<CompletedSymbolicationResponse> for CompletedResponse {
     fn from(response: CompletedSymbolicationResponse) -> Self {
-        Self::Symbolication(response)
+        Self::NativeSymbolication(response)
     }
 }
 
-impl From<JsProcessingCompletedSymbolicationResponse> for CompletedResponse {
-    fn from(response: JsProcessingCompletedSymbolicationResponse) -> Self {
-        Self::SourceMap(response)
+impl From<CompletedJsSymbolicationResponse> for CompletedResponse {
+    fn from(response: CompletedJsSymbolicationResponse) -> Self {
+        Self::JsSymbolication(response)
     }
 }
 
@@ -582,7 +582,7 @@ pub enum JsFrameStatus {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct JsProcessingCompletedSymbolicationResponse {
+pub struct CompletedJsSymbolicationResponse {
     pub stacktraces: Vec<JsProcessingSymbolicatedStacktrace>,
     pub raw_stacktraces: Vec<JsProcessingStacktrace>,
 }
