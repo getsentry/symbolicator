@@ -13,7 +13,7 @@ use crate::utils::sentry::ConfigureScope;
 use super::ResponseError;
 
 #[derive(Serialize, Deserialize)]
-pub struct SourcemapRequestBody {
+pub struct JsSymbolicationRequestBody {
     #[serde(default)]
     pub source: Option<SentrySourceConfig>,
     #[serde(default)]
@@ -22,16 +22,16 @@ pub struct SourcemapRequestBody {
     pub dist: Option<String>,
 }
 
-pub async fn handle_sourcemap_request(
+pub async fn handle_symbolication_request(
     extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
-    extract::Json(body): extract::Json<SourcemapRequestBody>,
+    extract::Json(body): extract::Json<JsSymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
     params.configure_scope();
 
-    let SourcemapRequestBody {
+    let JsSymbolicationRequestBody {
         source,
         stacktraces,
         dist,
