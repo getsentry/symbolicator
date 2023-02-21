@@ -58,9 +58,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             .max_capacity(config.in_memory_capacity)
             .name(config.name().as_ref())
             // NOTE: even though we have a per-item TTL, we still want to have a hard limit here
-            // FIXME: we have a rather conservative hard limit right now before we have properly
-            // immutable caches, and to slowly ramp this up
-            .time_to_live(Duration::from_secs(5 * 60))
+            .time_to_live(Duration::from_secs(60 * 60))
             // NOTE: we count all the bookkeeping structures to the weight as well
             .weigher(|_k, v| {
                 let value_size =

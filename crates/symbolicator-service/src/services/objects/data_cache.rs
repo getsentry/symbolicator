@@ -262,10 +262,16 @@ mod tests {
     use tempfile::TempDir;
 
     async fn make_objects_actor(tempdir: &TempDir) -> ObjectsActor {
+        let config = Config {
+            connect_to_reserved_ips: true,
+            max_download_timeout: Duration::from_millis(100),
+            cache_dir: Some(tempdir.path().to_path_buf()),
+            ..Default::default()
+        };
+
         let meta_cache = Cache::from_config(
             CacheName::ObjectMeta,
-            Some(tempdir.path().join("meta")),
-            None,
+            &config,
             CacheConfig::from(CacheConfigs::default().derived),
             Default::default(),
             1024,
@@ -274,19 +280,12 @@ mod tests {
 
         let data_cache = Cache::from_config(
             CacheName::Objects,
-            Some(tempdir.path().join("data")),
-            None,
+            &config,
             CacheConfig::from(CacheConfigs::default().downloaded),
             Default::default(),
             1024,
         )
         .unwrap();
-
-        let config = Config {
-            connect_to_reserved_ips: true,
-            max_download_timeout: Duration::from_millis(100),
-            ..Config::default()
-        };
 
         let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)
