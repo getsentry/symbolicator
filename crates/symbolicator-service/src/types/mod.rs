@@ -569,7 +569,7 @@ pub struct CompletedSymbolicationResponse {
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
-pub enum JsProcessingFrameStatus {
+pub enum JsFrameStatus {
     /// The frame was symbolicated successfully.
     #[default]
     Symbolicated,
@@ -608,7 +608,7 @@ pub struct SystemInfo {
 
 // TODO: Verify which are required fields
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct JsProcessingFrame {
+pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<String>,
 
@@ -634,18 +634,18 @@ pub struct JsProcessingFrame {
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct JsProcessingSymbolicatedFrame {
-    pub status: JsProcessingFrameStatus,
+pub struct SymbolicatedJsFrame {
+    pub status: JsFrameStatus,
     #[serde(flatten)]
-    pub raw: JsProcessingFrame,
+    pub raw: JsFrame,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct JsProcessingStacktrace {
-    pub frames: Vec<JsProcessingFrame>,
+    pub frames: Vec<JsFrame>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct JsProcessingSymbolicatedStacktrace {
-    pub frames: Vec<JsProcessingSymbolicatedFrame>,
+    pub frames: Vec<SymbolicatedJsFrame>,
 }

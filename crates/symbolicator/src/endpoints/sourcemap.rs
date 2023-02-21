@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
-use symbolicator_service::services::symbolication::JsProcessingSymbolicateStacktraces;
+use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -38,7 +38,7 @@ pub async fn handle_sourcemap_request(
     } = body;
 
     let request_id =
-        service.js_processing_symbolicate_stacktraces(JsProcessingSymbolicateStacktraces {
+        service.js_processing_symbolicate_stacktraces(SymbolicateJsStacktraces {
             source: Arc::new(source.unwrap()),
             stacktraces,
             dist,

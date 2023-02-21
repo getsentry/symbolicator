@@ -195,7 +195,7 @@ pub struct SymbolicateStacktraces {
 }
 
 #[derive(Debug, Clone)]
-pub struct JsProcessingSymbolicateStacktraces {
+pub struct SymbolicateJsStacktraces {
     pub source: Arc<SentrySourceConfig>,
     pub stacktraces: Vec<JsProcessingStacktrace>,
     pub dist: Option<String>,

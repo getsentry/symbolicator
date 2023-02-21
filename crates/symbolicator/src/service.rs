@@ -42,7 +42,7 @@ pub use symbolicator_service::services::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::services::symbolication::{
-    JsProcessingSymbolicateStacktraces, StacktraceOrigin, SymbolicateStacktraces,
+    SymbolicateJsStacktraces, StacktraceOrigin, SymbolicateStacktraces,
 };
 pub use symbolicator_service::types::{
     JsProcessingStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
@@ -268,7 +268,7 @@ impl RequestService {
 
     pub fn js_processing_symbolicate_stacktraces(
         &self,
-        request: JsProcessingSymbolicateStacktraces,
+        request: SymbolicateJsStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let span = sentry::configure_scope(|scope| scope.get_span());
