@@ -22,8 +22,8 @@ use crate::types::{
 use crate::utils::hex::HexValue;
 
 mod apple;
+mod js;
 mod process_minidump;
-pub mod sourcemap;
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

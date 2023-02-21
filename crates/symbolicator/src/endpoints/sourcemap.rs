@@ -38,7 +38,7 @@ pub async fn handle_sourcemap_request(
     } = body;
 
     let request_id =
-        service.js_processing_symbolicate_stacktraces(SymbolicateJsStacktraces {
+        service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
             source: Arc::new(source.unwrap()),
             stacktraces,
             dist,

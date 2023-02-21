@@ -266,24 +266,24 @@ impl RequestService {
         })
     }
 
-    pub fn js_processing_symbolicate_stacktraces(
+    pub fn symbolicate_js_stacktraces(
         &self,
         request: SymbolicateJsStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let span = sentry::configure_scope(|scope| scope.get_span());
         let ctx = sentry::TransactionContext::continue_from_span(
-            "js_processing_symbolicate_stacktraces",
-            "js_processing_symbolicate_stacktraces",
+            "symbolicate_js_stacktraces",
+            "symbolicate_js_stacktraces",
             span,
         );
         self.create_symbolication_request(
-            "js_processing_symbolicate",
+            "symbolicate_js",
             RequestOptions::default(),
             async move {
                 let transaction = sentry::start_transaction(ctx);
                 sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-                let res = slf.symbolication.js_processing_symbolicate(request).await;
+                let res = slf.symbolication.symbolicate_js(request).await;
                 transaction.finish();
                 res.map(Into::into)
             },

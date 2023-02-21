@@ -18,7 +18,7 @@ use super::{SymbolicateJsStacktraces, SymbolicationActor};
 // TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
-    pub async fn js_processing_symbolicate(
+    pub async fn symbolicate_js(
         &self,
         request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
@@ -38,9 +38,7 @@ impl SymbolicationActor {
         let stacktraces_symbolications: Vec<_> = request
             .stacktraces
             .into_iter()
-            .map(|trace| async {
-                js_processing_symbolicate_stacktrace(trace, &sourcemap_lookup).await
-            })
+            .map(|trace| async { symbolicate_js_stacktrace(trace, &sourcemap_lookup).await })
             .collect();
 
         let (stacktraces, raw_stacktraces) = futures::future::join_all(stacktraces_symbolications)
@@ -55,7 +53,7 @@ impl SymbolicationActor {
     }
 }
 
-async fn js_processing_symbolicate_stacktrace(
+async fn symbolicate_js_stacktrace(
     stacktrace: JsProcessingStacktrace,
     sourcemap_lookup: &SourceMapLookup,
 ) -> (JsProcessingSymbolicatedStacktrace, JsProcessingStacktrace) {
@@ -63,7 +61,7 @@ async fn js_processing_symbolicate_stacktrace(
     let mut symbolicated_frames = vec![];
 
     for frame in stacktrace.frames.iter() {
-        match js_processing_symbolicate_frame(frame, sourcemap_lookup).await {
+        match symbolicate_js_frame(frame, sourcemap_lookup).await {
             Ok(frame) => symbolicated_frames.push(frame),
             Err(status) => {
                 symbolicated_frames.push(SymbolicatedJsFrame { status, raw: frame.clone() });
@@ -85,7 +83,7 @@ async fn js_processing_symbolicate_stacktrace(
     )
 }
 
-async fn js_processing_symbolicate_frame(
+async fn symbolicate_js_frame(
     frame: &JsFrame,
     sourcemap_lookup: &SourceMapLookup,
 ) -> Result<SymbolicatedJsFrame, JsFrameStatus> {

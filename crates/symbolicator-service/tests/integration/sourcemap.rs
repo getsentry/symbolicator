@@ -71,7 +71,7 @@ async fn test_sourcemap_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -129,7 +129,7 @@ async fn test_sourcemap_source_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -192,7 +192,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -241,7 +241,7 @@ async fn test_source_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -293,7 +293,7 @@ async fn test_inlined_sources() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -335,7 +335,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
@@ -385,7 +385,7 @@ async fn test_indexed_sourcemap_source_expansion() {
         dist: None,
     };
     let response = symbolication
-        .js_processing_symbolicate(request)
+        .symbolicate_js(request)
         .await
         .unwrap();
 
