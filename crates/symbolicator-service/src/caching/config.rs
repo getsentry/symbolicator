@@ -26,7 +26,7 @@ impl AsRef<str> for CacheName {
             Self::Cficaches => "cficaches",
             Self::PpdbCaches => "ppdb_caches",
             Self::ArtifactCaches => "artifact_caches",
-            Self::SourceMapCaches => "sourcesmap_caches",
+            Self::SourceMapCaches => "sourcemap_caches",
             Self::Diagnostics => "diagnostics",
         }
     }

@@ -296,12 +296,16 @@ pub struct InMemoryCacheConfig {
 
     /// Capacity (in bytes) for the in-memory `object_meta` Cache.
     ///
+    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
+    ///
     /// Defaults to `100 MiB (= 104_857_600)`.
     pub object_meta_capacity: u64,
 
     /// Capacity (in bytes) for the in-memory `cficaches` Cache.
     ///
-    /// Defaults to `400 MiB (= 419_430_400)`.
+    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
+    ///
+    /// Defaults to `600 MiB (= 629_145_600)`.
     pub cficaches_capacity: u64,
 }
 

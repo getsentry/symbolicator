@@ -14,7 +14,8 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{
-    CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
+    CacheConfig, CacheConfigs, Config, DerivedCacheConfig, DiagnosticsCacheConfig,
+    DownloadedCacheConfig,
 };
 use crate::test;
 
@@ -31,10 +32,13 @@ fn tempdir() -> io::Result<tempfile::TempDir> {
 fn test_cache_dir_created() {
     let basedir = tempdir().unwrap();
     let cachedir = basedir.path().join("cache");
+    let config = Config {
+        cache_dir: Some(cachedir.clone()),
+        ..Default::default()
+    };
     let _cache = Cache::from_config(
         CacheName::Objects,
-        Some(cachedir.clone()),
-        None,
+        &config,
         CacheConfig::Downloaded(Default::default()),
         Default::default(),
         1024,
@@ -86,12 +90,15 @@ fn test_caches_tmp_cleared() {
 #[test]
 fn test_max_unused_for() -> Result<()> {
     let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("foo"))?;
+    let config = Config {
+        cache_dir: Some(tempdir.path().to_path_buf()),
+        ..Default::default()
+    };
+    fs::create_dir_all(tempdir.path().join("objects"))?;
 
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
+        &config,
         CacheConfig::Derived(DerivedCacheConfig {
             max_unused_for: Some(Duration::from_millis(50)),
             ..Default::default()
@@ -100,14 +107,14 @@ fn test_max_unused_for() -> Result<()> {
         1024,
     )?;
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"")?;
+    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"")?;
     sleep(Duration::from_millis(100));
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("foo"))?
+    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -121,12 +128,15 @@ fn test_max_unused_for() -> Result<()> {
 #[test]
 fn test_retry_misses_after() -> Result<()> {
     let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("foo"))?;
+    let config = Config {
+        cache_dir: Some(tempdir.path().to_path_buf()),
+        ..Default::default()
+    };
+    fs::create_dir_all(tempdir.path().join("objects"))?;
 
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
+        &config,
         CacheConfig::Derived(DerivedCacheConfig {
             retry_misses_after: Some(Duration::from_millis(50)),
             ..Default::default()
@@ -135,14 +145,14 @@ fn test_retry_misses_after() -> Result<()> {
         1024,
     )?;
 
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"")?;
+    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"")?;
     sleep(Duration::from_millis(100));
 
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"")?;
+    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"")?;
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("foo"))?
+    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -156,15 +166,19 @@ fn test_retry_misses_after() -> Result<()> {
 #[test]
 fn test_cleanup_malformed() -> Result<()> {
     let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("foo"))?;
+    let config = Config {
+        cache_dir: Some(tempdir.path().to_path_buf()),
+        ..Default::default()
+    };
+    fs::create_dir_all(tempdir.path().join("objects"))?;
 
     // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"addictive")?;
+    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"malformed")?;
-    File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"malformedhonk")?;
+    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"malformed")?;
+    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"malformedhonk")?;
 
     sleep(Duration::from_millis(10));
 
@@ -172,8 +186,7 @@ fn test_cleanup_malformed() -> Result<()> {
     // before startup are cleaned
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
+        &config,
         CacheConfig::Derived(DerivedCacheConfig {
             retry_misses_after: Some(Duration::from_millis(20)),
             ..Default::default()
@@ -184,7 +197,7 @@ fn test_cleanup_malformed() -> Result<()> {
 
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("foo"))?
+    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -196,66 +209,26 @@ fn test_cleanup_malformed() -> Result<()> {
 }
 
 #[test]
-fn test_cleanup_cache_specific_error_derived() -> Result<()> {
+fn test_cleanup_cache_download() -> Result<()> {
     let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("foo"))?;
+    let config = Config {
+        cache_dir: Some(tempdir.path().to_path_buf()),
+        ..Default::default()
+    };
+    fs::create_dir_all(tempdir.path().join("objects"))?;
 
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"beeep")?;
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"beeep")?;
+    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
+    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
 
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"downloaderrorhonk")?;
-    File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"downloaderrormalformed")?;
-    File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"malformeddownloaderror")?;
-
-    // Creation of this struct == "process startup", this tests that all cache-specific error files created
-    // before startup are cleaned
-    let cache = Cache::from_config(
-        CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
-        CacheConfig::Derived(DerivedCacheConfig {
-            retry_misses_after: Some(Duration::from_millis(20)),
-            ..Default::default()
-        }),
-        Default::default(),
-        1024,
-    )?;
-
-    sleep(Duration::from_millis(30));
-
-    cache.cleanup()?;
-
-    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("foo"))?
-        .map(|x| x.unwrap().file_name().into_string().unwrap())
-        .collect();
-
-    basenames.sort();
-
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
-
-    Ok(())
-}
-
-#[test]
-fn test_cleanup_cache_specific_error_download() -> Result<()> {
-    let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("foo"))?;
-
-    File::create(tempdir.path().join("foo/keepthis"))?.write_all(b"beeep")?;
-    File::create(tempdir.path().join("foo/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("foo/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
-
-    File::create(tempdir.path().join("foo/killthis"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("foo/killthis2"))?.write_all(b"downloaderrorhonk")?;
-    File::create(tempdir.path().join("foo/killthis3"))?.write_all(b"downloaderrormalformed")?;
-    File::create(tempdir.path().join("foo/killthis4"))?.write_all(b"malformeddownloaderror")?;
+    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"downloaderror")?;
+    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"downloaderrorhonk")?;
+    File::create(tempdir.path().join("objects/killthis3"))?.write_all(b"downloaderrormalformed")?;
+    File::create(tempdir.path().join("objects/killthis4"))?.write_all(b"malformeddownloaderror")?;
 
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
+        &config,
         CacheConfig::Downloaded(DownloadedCacheConfig {
             retry_misses_after: Some(Duration::from_millis(20)),
             ..Default::default()
@@ -268,7 +241,7 @@ fn test_cleanup_cache_specific_error_download() -> Result<()> {
 
     cache.cleanup()?;
 
-    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("foo"))?
+    let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
         .collect();
 
@@ -279,10 +252,10 @@ fn test_cleanup_cache_specific_error_download() -> Result<()> {
     Ok(())
 }
 
-fn expiration_strategy(config: &CacheConfig, path: &Path) -> io::Result<ExpirationStrategy> {
+fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
     let bv = ByteView::open(path)?;
     let cache_entry = cache_entry_from_bytes(bv);
-    Ok(super::fs::expiration_strategy(config, &cache_entry))
+    Ok(super::fs::expiration_strategy(&cache_entry))
 }
 
 #[test]
@@ -296,34 +269,26 @@ fn test_expiration_strategy_positive() -> Result<()> {
     File::create(tempdir.path().join("honk/keepbeep4"))?.write_all(b"malform")?;
     File::create(tempdir.path().join("honk/keepbeep5"))?.write_all(b"dler")?;
 
-    let cache_configs = vec![
-        CacheConfig::Downloaded(Default::default()),
-        CacheConfig::Derived(Default::default()),
-        CacheConfig::Diagnostics(Default::default()),
-    ];
-
-    for config in cache_configs {
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/keepbeep").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/keepbeep2").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/keepbeep3").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/keepbeep4").as_path())?,
-            ExpirationStrategy::None,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/keepbeep5").as_path())?,
-            ExpirationStrategy::None,
-        );
-    }
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/keepbeep").as_path())?,
+        ExpirationStrategy::None,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/keepbeep2").as_path())?,
+        ExpirationStrategy::None,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/keepbeep3").as_path())?,
+        ExpirationStrategy::None,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/keepbeep4").as_path())?,
+        ExpirationStrategy::None,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/keepbeep5").as_path())?,
+        ExpirationStrategy::None,
+    );
 
     Ok(())
 }
@@ -335,18 +300,10 @@ fn test_expiration_strategy_negative() -> Result<()> {
 
     File::create(tempdir.path().join("honk/retrybeep"))?.write_all(b"")?;
 
-    let cache_configs = vec![
-        CacheConfig::Downloaded(Default::default()),
-        CacheConfig::Derived(Default::default()),
-        CacheConfig::Diagnostics(Default::default()),
-    ];
-
-    for config in cache_configs {
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/retrybeep").as_path())?,
-            ExpirationStrategy::Negative,
-        );
-    }
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/retrybeep").as_path())?,
+        ExpirationStrategy::Negative,
+    );
 
     Ok(())
 }
@@ -360,31 +317,24 @@ fn test_expiration_strategy_malformed() -> Result<()> {
     File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"malformedhonkbeep")?;
     File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"malformeddownloaderror")?;
 
-    let cache_configs = vec![
-        CacheConfig::Downloaded(Default::default()),
-        CacheConfig::Derived(Default::default()),
-        CacheConfig::Diagnostics(Default::default()),
-    ];
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/badbeep").as_path())?,
+        ExpirationStrategy::Malformed,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/badbeep2").as_path())?,
+        ExpirationStrategy::Malformed,
+    );
+    assert_eq!(
+        expiration_strategy(tempdir.path().join("honk/badbeep3").as_path())?,
+        ExpirationStrategy::Malformed,
+    );
 
-    for config in cache_configs {
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-        assert_eq!(
-            expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
-            ExpirationStrategy::Malformed,
-        );
-    }
     Ok(())
 }
 
 #[test]
-fn test_expiration_strategy_cache_specific_err_derived() -> Result<()> {
+fn test_expiration_strategy_downloaderror() -> Result<()> {
     let tempdir = tempdir()?;
     fs::create_dir_all(tempdir.path().join("honk"))?;
 
@@ -392,70 +342,16 @@ fn test_expiration_strategy_cache_specific_err_derived() -> Result<()> {
     File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"downloaderrorhonkbeep")?;
     File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"downloaderrormalformed")?;
 
-    let config = CacheConfig::Derived(Default::default());
-
     assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
-        ExpirationStrategy::Malformed,
-    );
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
-        ExpirationStrategy::Malformed,
-    );
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
-        ExpirationStrategy::Malformed,
-    );
-    Ok(())
-}
-
-#[test]
-fn test_expiration_strategy_cache_specific_err_diagnostics() -> Result<()> {
-    let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("honk"))?;
-
-    File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"downloaderrorhonkbeep")?;
-    File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"downloaderrormalformed")?;
-
-    let config = CacheConfig::Diagnostics(Default::default());
-
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
-        ExpirationStrategy::None,
-    );
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
-        ExpirationStrategy::None,
-    );
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
-        ExpirationStrategy::None,
-    );
-    Ok(())
-}
-
-#[test]
-fn test_expiration_strategy_cache_specific_err_downloaded() -> Result<()> {
-    let tempdir = tempdir()?;
-    fs::create_dir_all(tempdir.path().join("honk"))?;
-
-    File::create(tempdir.path().join("honk/badbeep"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("honk/badbeep2"))?.write_all(b"downloaderrorhonkbeep")?;
-    File::create(tempdir.path().join("honk/badbeep3"))?.write_all(b"downloaderrormalformed")?;
-
-    let config = CacheConfig::Downloaded(Default::default());
-
-    assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep").as_path())?,
+        expiration_strategy(tempdir.path().join("honk/badbeep").as_path())?,
         ExpirationStrategy::Negative,
     );
     assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep2").as_path())?,
+        expiration_strategy(tempdir.path().join("honk/badbeep2").as_path())?,
         ExpirationStrategy::Negative,
     );
     assert_eq!(
-        expiration_strategy(&config, tempdir.path().join("honk/badbeep3").as_path())?,
+        expiration_strategy(tempdir.path().join("honk/badbeep3").as_path())?,
         ExpirationStrategy::Negative,
     );
     Ok(())
@@ -465,10 +361,13 @@ fn test_expiration_strategy_cache_specific_err_downloaded() -> Result<()> {
 fn test_open_cachefile() -> Result<()> {
     // Assert that opening a cache touches the mtime but does not invalidate it.
     let tempdir = tempdir()?;
+    let config = Config {
+        cache_dir: Some(tempdir.path().to_path_buf()),
+        ..Default::default()
+    };
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(tempdir.path().to_path_buf()),
-        None,
+        &config,
         CacheConfig::Downloaded(Default::default()),
         Default::default(),
         1024,
@@ -476,7 +375,7 @@ fn test_open_cachefile() -> Result<()> {
 
     // Create a file in the cache, with mtime of 1h 15s ago since it only gets touched
     // if more than an hour old.
-    let path = tempdir.path().join("hello");
+    let path = tempdir.path().join("objects/hello");
     File::create(&path)?.write_all(b"world")?;
     let now_unix = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
@@ -883,19 +782,25 @@ impl CacheItemRequest for TestCacheItem {
 #[tokio::test]
 async fn test_cache_fallback() {
     test::setup();
-    let cache_dir = test::tempdir().path().join("test");
+    let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing("global/some_cache_key");
 
-    let cache_file = cache_dir.join(key.cache_path(0));
-    fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
-    fs::write(cache_file, "some old cached contents").unwrap();
+    {
+        let cache_dir = cache_dir.path().join("objects");
+        let cache_file = cache_dir.join(key.cache_path(0));
+        fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        fs::write(cache_file, "some old cached contents").unwrap();
+    }
 
+    let config = Config {
+        cache_dir: Some(cache_dir.path().to_path_buf()),
+        ..Default::default()
+    };
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(cache_dir),
-        None,
+        &config,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
         1024,
@@ -922,23 +827,29 @@ async fn test_cache_fallback() {
 #[tokio::test]
 async fn test_cache_fallback_notfound() {
     test::setup();
-    let cache_dir = test::tempdir().path().join("test");
+    let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing("global/some_cache_key");
 
-    let cache_file = cache_dir.join(key.cache_path(0));
-    fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
-    fs::write(cache_file, "some old cached contents").unwrap();
+    {
+        let cache_dir = cache_dir.path().join("objects");
+        let cache_file = cache_dir.join(key.cache_path(0));
+        fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        fs::write(cache_file, "some old cached contents").unwrap();
 
-    let cache_file = cache_dir.join(key.cache_path(1));
-    fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
-    fs::write(cache_file, "").unwrap();
+        let cache_file = cache_dir.join(key.cache_path(1));
+        fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
+        fs::write(cache_file, "").unwrap();
+    }
 
+    let config = Config {
+        cache_dir: Some(cache_dir.path().to_path_buf()),
+        ..Default::default()
+    };
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(cache_dir),
-        None,
+        &config,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
         1024,
@@ -957,21 +868,23 @@ async fn test_cache_fallback_notfound() {
 #[tokio::test]
 async fn test_lazy_computation_limit() {
     test::setup();
-    let cache_dir = test::tempdir().path().join("test");
 
-    let keys = &["global/1", "global/2", "global/3"];
-
+    let config = Config {
+        cache_dir: Some(test::tempdir().path().to_path_buf()),
+        ..Default::default()
+    };
     let cache = Cache::from_config(
         CacheName::Objects,
-        Some(cache_dir.clone()),
-        None,
+        &config,
         CacheConfig::from(CacheConfigs::default().derived),
         Arc::new(AtomicIsize::new(1)),
         1024,
     )
     .unwrap();
-    let cacher = Cacher::new(cache.clone(), Default::default());
+    let cache_dir = cache.cache_dir.clone().unwrap();
+    let cacher = Cacher::new(cache, Default::default());
 
+    let keys = &["global/1", "global/2", "global/3"];
     let request = TestCacheItem::new();
 
     for key in keys {
