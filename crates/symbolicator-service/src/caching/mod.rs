@@ -141,7 +141,7 @@
 //!
 //! A [`CacheItemRequest`] also needs to specify [`CacheVersions`] which are used for cache fallback
 //! as explained in detail above. Newly added caches should start with version `1`, and all the
-//! cache versions and their versioning history should be recorded in [`caches::versions`](crate::caches::versions).
+//! cache versions and their versioning history should be recorded in [`caches::versions`](crate::services::caches::versions).
 //!
 //! A new cache item also needs a new [`CacheName`] and [`Cache`] configuration. This should be added
 //! to [`Caches`] down below as well, and to [`Caches::cleanup`] to properly clean up cache files.
