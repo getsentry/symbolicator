@@ -124,7 +124,9 @@ async fn js_processing_symbolicate_frame(
     };
 
     result.raw.function = Some(fold_function_name(&function_name));
-    result.raw.abs_path = token.file_name().unwrap_or("<unknown>").to_string();
+    if let Some(filename) = token.file_name() {
+        result.raw.abs_path = filename.to_string();
+    }
     result.raw.lineno = Some(token.line().saturating_add(1));
     result.raw.colno = Some(token.column().saturating_add(1));
 
