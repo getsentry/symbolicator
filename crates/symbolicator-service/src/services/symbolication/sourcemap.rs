@@ -8,8 +8,8 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    CompleteJsStacktrace, JsProcessingCompletedSymbolicationResponse, JsProcessingFrameStatus,
-    JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
+    JsProcessingCompletedSymbolicationResponse, JsProcessingFrame, JsProcessingFrameStatus,
+    JsProcessingStacktrace, JsProcessingSymbolicatedFrame, JsProcessingSymbolicatedStacktrace,
 };
 
 use super::{JsProcessingSymbolicateStacktraces, SymbolicationActor};
@@ -35,7 +35,7 @@ impl SymbolicationActor {
 
         sourcemap_lookup.fetch_caches(unique_abs_paths).await;
 
-        let stacktraces: Vec<_> = request
+        let stacktraces_symbolications: Vec<_> = request
             .stacktraces
             .into_iter()
             .map(|trace| async {
@@ -43,35 +43,53 @@ impl SymbolicationActor {
             })
             .collect();
 
-        let stacktraces = futures::future::join_all(stacktraces).await;
+        let (stacktraces, raw_stacktraces) = futures::future::join_all(stacktraces_symbolications)
+            .await
+            .into_iter()
+            .unzip();
 
-        Ok(JsProcessingCompletedSymbolicationResponse { stacktraces })
+        Ok(JsProcessingCompletedSymbolicationResponse {
+            stacktraces,
+            raw_stacktraces,
+        })
     }
 }
 
 async fn js_processing_symbolicate_stacktrace(
-    stacktrace: JsProcessingRawStacktrace,
+    stacktrace: JsProcessingStacktrace,
     sourcemap_lookup: &SourceMapLookup,
-) -> CompleteJsStacktrace {
+) -> (JsProcessingSymbolicatedStacktrace, JsProcessingStacktrace) {
+    let mut raw_frames = vec![];
     let mut symbolicated_frames = vec![];
-    let unsymbolicated_frames_iter = stacktrace.frames.into_iter();
 
-    for mut frame in unsymbolicated_frames_iter {
-        match js_processing_symbolicate_frame(&mut frame, sourcemap_lookup).await {
+    for frame in stacktrace.frames.iter() {
+        match js_processing_symbolicate_frame(frame, sourcemap_lookup).await {
             Ok(frame) => symbolicated_frames.push(frame),
             Err(status) => {
-                symbolicated_frames.push(JsProcessingSymbolicatedFrame { status, raw: frame });
+                symbolicated_frames.push(JsProcessingSymbolicatedFrame {
+                    status,
+                    raw: frame.clone(),
+                });
             }
         }
     }
 
-    CompleteJsStacktrace {
-        frames: symbolicated_frames,
+    for mut frame in stacktrace.frames.into_iter() {
+        let abs_path = frame.abs_path.clone();
+        apply_source_context_from_artifact(&mut frame, sourcemap_lookup, &abs_path).await;
+        raw_frames.push(frame);
     }
+
+    (
+        JsProcessingSymbolicatedStacktrace {
+            frames: symbolicated_frames,
+        },
+        JsProcessingStacktrace { frames: raw_frames },
+    )
 }
 
 async fn js_processing_symbolicate_frame(
-    frame: &mut JsProcessingRawFrame,
+    frame: &JsProcessingFrame,
     sourcemap_lookup: &SourceMapLookup,
 ) -> Result<JsProcessingSymbolicatedFrame, JsProcessingFrameStatus> {
     let smcache = sourcemap_lookup
@@ -80,20 +98,12 @@ async fn js_processing_symbolicate_frame(
 
     let mut result = JsProcessingSymbolicatedFrame {
         status: JsProcessingFrameStatus::Symbolicated,
-        raw: JsProcessingRawFrame {
-            function: frame.function.clone(),
-            filename: frame.filename.clone(),
-            abs_path: frame.abs_path.clone(),
-            lineno: frame.lineno,
-            colno: frame.colno,
-            pre_context: vec![],
-            context_line: None,
-            post_context: vec![],
-        },
+        raw: frame.clone(),
     };
 
     if smcache.is_err() || smcache.unwrap().is_err() {
-        apply_source_context_from_artifact(&mut result, sourcemap_lookup, &frame.abs_path).await;
+        apply_source_context_from_artifact(&mut result.raw, sourcemap_lookup, &frame.abs_path)
+            .await;
         return Ok(result);
     }
 
@@ -134,15 +144,19 @@ async fn js_processing_symbolicate_frame(
         result.raw.filename = file.name().map(|f| f.to_string());
 
         if file.source().is_some() {
-            apply_source_context_from_sourcemap_cache(&mut result, file).await;
+            apply_source_context_from_sourcemap_cache(&mut result.raw, file).await;
         } else if let Some(filename) = file.name() {
             if let Some(artifact_url) = Url::parse(&frame.abs_path)
                 .map(|base| base.join(filename).map(|url| url.to_string()).ok())
                 .ok()
                 .flatten()
             {
-                apply_source_context_from_artifact(&mut result, sourcemap_lookup, &artifact_url)
-                    .await;
+                apply_source_context_from_artifact(
+                    &mut result.raw,
+                    sourcemap_lookup,
+                    &artifact_url,
+                )
+                .await;
             }
         }
     }
@@ -150,20 +164,17 @@ async fn js_processing_symbolicate_frame(
     Ok(result)
 }
 
-async fn apply_source_context_from_sourcemap_cache(
-    result: &mut JsProcessingSymbolicatedFrame,
-    file: File<'_>,
-) {
+async fn apply_source_context_from_sourcemap_cache(frame: &mut JsProcessingFrame, file: File<'_>) {
     if let Some(file_source) = file.source() {
         let source = ByteView::from_slice(file_source.as_bytes());
-        apply_source_context(result, source).await
+        apply_source_context(frame, source).await
     } else {
         // report missing source?
     }
 }
 
 async fn apply_source_context_from_artifact(
-    result: &mut JsProcessingSymbolicatedFrame,
+    frame: &mut JsProcessingFrame,
     sourcemap_lookup: &SourceMapLookup,
     abs_path: &str,
 ) {
@@ -179,16 +190,16 @@ async fn apply_source_context_from_artifact(
     };
 
     if let Ok(artifact) = artifact {
-        apply_source_context(result, artifact).await
+        apply_source_context(frame, artifact).await
     } else {
         // report missing source?
     }
 }
 
-async fn apply_source_context(result: &mut JsProcessingSymbolicatedFrame, source: ByteView<'_>) {
+async fn apply_source_context(frame: &mut JsProcessingFrame, source: ByteView<'_>) {
     // At this stage we know we have _some_ line here, so it's safe to unwrap.
-    let frame_line = result.raw.lineno.unwrap();
-    let frame_column = result.raw.colno.unwrap_or_default();
+    let frame_line = frame.lineno.unwrap();
+    let frame_column = frame.colno.unwrap_or_default();
 
     let current_line = frame_line.saturating_sub(1);
     let pre_line = current_line.saturating_sub(5);
@@ -201,16 +212,16 @@ async fn apply_source_context(result: &mut JsProcessingSymbolicatedFrame, source
         lines.push("\n".to_string());
     }
 
-    result.raw.context_line = lines
+    frame.context_line = lines
         .get(current_line as usize)
         .map(|line| trim_context_line(line, frame_column));
 
-    result.raw.pre_context = (pre_line..current_line)
+    frame.pre_context = (pre_line..current_line)
         .filter_map(|line_no| lines.get(line_no as usize))
         .map(|line| trim_context_line(line, frame_column))
         .collect();
 
-    result.raw.post_context = (current_line + 1..=post_line)
+    frame.post_context = (current_line + 1..=post_line)
         .filter_map(|line_no| lines.get(line_no as usize))
         .map(|line| trim_context_line(line, frame_column))
         .collect();

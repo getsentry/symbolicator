@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use symbolicator_service::{
-    services::symbolication::JsProcessingSymbolicateStacktraces, types::JsProcessingRawStacktrace,
+    services::symbolication::JsProcessingSymbolicateStacktraces, types::JsProcessingStacktrace,
 };
 use symbolicator_sources::{SentrySourceConfig, SourceId};
 
@@ -59,7 +59,7 @@ async fn test_sourcemap_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("01_sourcemap_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -70,9 +70,12 @@ async fn test_sourcemap_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 4);
 
     assert_eq!(frames[0].raw.function, Some("produceStack".to_string()));
@@ -114,7 +117,7 @@ async fn test_sourcemap_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("02_sourcemap_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -125,11 +128,26 @@ async fn test_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
+    let raw_frames = &response.raw_stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
+    // Raw frames
+    let pre_context: &[String] = &[];
+    let context_line = Some("function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}".to_string());
+    let post_context = &["//@ sourceMappingURL=file.min.js.map", ""];
+    assert_eq!(raw_frames[1].pre_context, pre_context);
+    assert_eq!(raw_frames[1].context_line, context_line);
+    assert_eq!(raw_frames[1].post_context, post_context);
+    assert_eq!(raw_frames[1].lineno, Some(1));
+    assert_eq!(raw_frames[1].colno, Some(39));
+
+    // Processed frames
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
@@ -138,17 +156,6 @@ async fn test_sourcemap_source_expansion() {
     assert_eq!(frames[1].raw.post_context, post_context);
     assert_eq!(frames[1].raw.lineno, Some(3));
     assert_eq!(frames[1].raw.colno, Some(9));
-
-    // TODO: Applying source context to original frames is currently not implemented.
-
-    // let pre_context: &[String] = &[];
-    // let context_line = Some("function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}".to_string());
-    // let post_context = &["//@ sourceMappingURL=file.sourcemap.js", ""];
-    // assert_eq!(frames[1].very_raw.pre_context, pre_context);
-    // assert_eq!(frames[1].very_raw.context_line, context_line);
-    // assert_eq!(frames[1].very_raw.post_context, post_context);
-    // assert_eq!(frames[1].very_raw.lineno, Some(1));
-    // assert_eq!(frames[1].very_raw.colno, Some(39));
 }
 
 #[tokio::test]
@@ -173,7 +180,7 @@ async fn test_sourcemap_embedded_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("03_sourcemap_embedded_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -184,9 +191,12 @@ async fn test_sourcemap_embedded_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
@@ -219,7 +229,7 @@ async fn test_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("04_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -230,9 +240,12 @@ async fn test_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     let pre_context: &[String] = &[];
@@ -268,7 +281,7 @@ async fn test_inlined_sources() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("05_inlined_sources");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -279,9 +292,12 @@ async fn test_inlined_sources() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
 
     let pre_context: &[String] = &[];
@@ -307,7 +323,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("06_sourcemap_nofiles_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -318,9 +334,12 @@ async fn test_sourcemap_nofiles_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
 
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
@@ -354,7 +373,7 @@ async fn test_indexed_sourcemap_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("07_indexed_sourcemap_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -365,11 +384,40 @@ async fn test_indexed_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
+    let raw_frames = &response.raw_stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
+    // Raw frames
+    let pre_context: &[String] = &[];
+    let context_line = Some("function add(a,b){\"use strict\";return a+b}".to_string());
+    let post_context = &[
+        "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}",
+        "//# sourceMappingURL=indexed.min.js.map",
+        "",
+    ];
+
+    assert_eq!(raw_frames[0].pre_context, pre_context);
+    assert_eq!(raw_frames[0].context_line, context_line);
+    assert_eq!(raw_frames[0].post_context, post_context);
+    assert_eq!(raw_frames[0].lineno, Some(1));
+    assert_eq!(raw_frames[0].colno, Some(39));
+
+    let pre_context = &["function add(a,b){\"use strict\";return a+b}"];
+    let context_line = Some("function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}".to_string());
+    let post_context = &["//# sourceMappingURL=indexed.min.js.map", ""];
+    assert_eq!(raw_frames[1].pre_context, pre_context);
+    assert_eq!(raw_frames[1].context_line, context_line);
+    assert_eq!(raw_frames[1].post_context, post_context);
+    assert_eq!(raw_frames[1].lineno, Some(2));
+    assert_eq!(raw_frames[1].colno, Some(44));
+
+    // Processed frames
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
@@ -393,24 +441,4 @@ async fn test_indexed_sourcemap_source_expansion() {
     assert_eq!(frames[1].raw.post_context, post_context);
     assert_eq!(frames[1].raw.lineno, Some(3));
     assert_eq!(frames[1].raw.colno, Some(9));
-
-    // TODO: Applying source context to original frames is currently not implemented.
-
-    // let pre_context: &[String] = &[];
-    // let context_line = Some("function add(a,b){\"use strict\";return a+b}".to_string());
-    // let post_context = &["//# sourceMappingURL=indexed.sourcemap.js", ""];
-    // assert_eq!(frames[0].very_raw.pre_context, pre_context);
-    // assert_eq!(frames[0].very_raw.context_line, context_line);
-    // assert_eq!(frames[0].very_raw.post_context, post_context);
-    // assert_eq!(frames[0].very_raw.lineno, Some(1));
-    // assert_eq!(frames[0].very_raw.colno, Some(39));
-
-    // let pre_context = &["function add(a,b){\"use strict\";return a+b}"];
-    // let context_line = Some("function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}".to_string());
-    // let post_context = &["}", ""];
-    // assert_eq!(frames[1].very_raw.pre_context, pre_context);
-    // assert_eq!(frames[1].very_raw.context_line, context_line);
-    // assert_eq!(frames[1].very_raw.post_context, post_context);
-    // assert_eq!(frames[1].very_raw.lineno, Some(2));
-    // assert_eq!(frames[1].very_raw.colno, Some(44));
 }
