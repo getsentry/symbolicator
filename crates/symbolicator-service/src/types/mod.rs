@@ -584,6 +584,7 @@ pub enum JsProcessingFrameStatus {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingCompletedSymbolicationResponse {
     pub stacktraces: Vec<JsProcessingSymbolicatedStacktrace>,
+    pub raw_stacktraces: Vec<JsProcessingStacktrace>,
 }
 
 /// Information about the operating system.
@@ -635,8 +636,8 @@ pub struct JsProcessingFrame {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingSymbolicatedFrame {
     pub status: JsProcessingFrameStatus,
+    #[serde(flatten)]
     pub raw: JsProcessingFrame,
-    pub processed: JsProcessingFrame,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

@@ -70,29 +70,29 @@ async fn test_sourcemap_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 4);
 
-    assert_eq!(
-        frames[0].processed.function,
-        Some("produceStack".to_string())
-    );
-    assert_eq!(frames[0].processed.lineno, Some(6));
-    assert_eq!(frames[0].processed.filename, Some("index.html".to_string()));
+    assert_eq!(frames[0].raw.function, Some("produceStack".to_string()));
+    assert_eq!(frames[0].raw.lineno, Some(6));
+    assert_eq!(frames[0].raw.filename, Some("index.html".to_string()));
 
-    assert_eq!(frames[1].processed.function, Some("test".to_string()));
-    assert_eq!(frames[1].processed.lineno, Some(20));
-    assert_eq!(frames[1].processed.filename, Some("test.js".to_string()));
+    assert_eq!(frames[1].raw.function, Some("test".to_string()));
+    assert_eq!(frames[1].raw.lineno, Some(20));
+    assert_eq!(frames[1].raw.filename, Some("test.js".to_string()));
 
-    assert_eq!(frames[2].processed.function, Some("invoke".to_string()));
-    assert_eq!(frames[2].processed.lineno, Some(15));
-    assert_eq!(frames[2].processed.filename, Some("test.js".to_string()));
+    assert_eq!(frames[2].raw.function, Some("invoke".to_string()));
+    assert_eq!(frames[2].raw.lineno, Some(15));
+    assert_eq!(frames[2].raw.filename, Some("test.js".to_string()));
 
-    assert_eq!(frames[3].processed.function, Some("onFailure".to_string()));
-    assert_eq!(frames[3].processed.lineno, Some(5));
-    assert_eq!(frames[3].processed.filename, Some("test.js".to_string()));
+    assert_eq!(frames[3].raw.function, Some("onFailure".to_string()));
+    assert_eq!(frames[3].raw.lineno, Some(5));
+    assert_eq!(frames[3].raw.filename, Some("test.js".to_string()));
 }
 
 #[tokio::test]
@@ -128,30 +128,34 @@ async fn test_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
+    let raw_frames = &response.raw_stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     // Raw frames
     let pre_context: &[String] = &[];
     let context_line = Some("function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}".to_string());
     let post_context = &["//@ sourceMappingURL=file.min.js.map", ""];
-    assert_eq!(frames[1].raw.pre_context, pre_context);
-    assert_eq!(frames[1].raw.context_line, context_line);
-    assert_eq!(frames[1].raw.post_context, post_context);
-    assert_eq!(frames[1].raw.lineno, Some(1));
-    assert_eq!(frames[1].raw.colno, Some(39));
+    assert_eq!(raw_frames[1].pre_context, pre_context);
+    assert_eq!(raw_frames[1].context_line, context_line);
+    assert_eq!(raw_frames[1].post_context, post_context);
+    assert_eq!(raw_frames[1].lineno, Some(1));
+    assert_eq!(raw_frames[1].colno, Some(39));
 
     // Processed frames
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
-    assert_eq!(frames[1].processed.pre_context, pre_context);
-    assert_eq!(frames[1].processed.context_line, context_line);
-    assert_eq!(frames[1].processed.post_context, post_context);
-    assert_eq!(frames[1].processed.lineno, Some(3));
-    assert_eq!(frames[1].processed.colno, Some(9));
+    assert_eq!(frames[1].raw.pre_context, pre_context);
+    assert_eq!(frames[1].raw.context_line, context_line);
+    assert_eq!(frames[1].raw.post_context, post_context);
+    assert_eq!(frames[1].raw.lineno, Some(3));
+    assert_eq!(frames[1].raw.colno, Some(9));
 }
 
 #[tokio::test]
@@ -187,19 +191,22 @@ async fn test_sourcemap_embedded_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
-    assert_eq!(frames[1].processed.pre_context, pre_context);
-    assert_eq!(frames[1].processed.context_line, context_line);
-    assert_eq!(frames[1].processed.post_context, post_context);
-    assert_eq!(frames[1].processed.lineno, Some(3));
-    assert_eq!(frames[1].processed.colno, Some(9));
+    assert_eq!(frames[1].raw.pre_context, pre_context);
+    assert_eq!(frames[1].raw.context_line, context_line);
+    assert_eq!(frames[1].raw.post_context, post_context);
+    assert_eq!(frames[1].raw.lineno, Some(3));
+    assert_eq!(frames[1].raw.colno, Some(9));
 }
 
 #[tokio::test]
@@ -233,28 +240,31 @@ async fn test_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     let pre_context: &[String] = &[];
     let context_line = Some("h".to_string());
     let post_context = &["e", "l", "l", "o", " "];
-    assert_eq!(frames[0].processed.pre_context, pre_context);
-    assert_eq!(frames[0].processed.context_line, context_line);
-    assert_eq!(frames[0].processed.post_context, post_context);
-    assert_eq!(frames[0].processed.lineno, Some(1));
-    assert_eq!(frames[0].processed.colno, Some(0));
+    assert_eq!(frames[0].raw.pre_context, pre_context);
+    assert_eq!(frames[0].raw.context_line, context_line);
+    assert_eq!(frames[0].raw.post_context, post_context);
+    assert_eq!(frames[0].raw.lineno, Some(1));
+    assert_eq!(frames[0].raw.colno, Some(0));
 
     let pre_context = &["h", "e", "l"];
     let context_line = Some("l".to_string());
     let post_context = &["o", " ", "w", "o", "r"];
-    assert_eq!(frames[1].processed.pre_context, pre_context);
-    assert_eq!(frames[1].processed.context_line, context_line);
-    assert_eq!(frames[1].processed.post_context, post_context);
-    assert_eq!(frames[1].processed.lineno, Some(4));
-    assert_eq!(frames[1].processed.colno, Some(0));
+    assert_eq!(frames[1].raw.pre_context, pre_context);
+    assert_eq!(frames[1].raw.context_line, context_line);
+    assert_eq!(frames[1].raw.post_context, post_context);
+    assert_eq!(frames[1].raw.lineno, Some(4));
+    assert_eq!(frames[1].raw.colno, Some(0));
 }
 
 #[tokio::test]
@@ -282,19 +292,22 @@ async fn test_inlined_sources() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
 
     let pre_context: &[String] = &[];
     let context_line = Some("console.log('hello, World!')".to_string());
     let post_context: &[String] = &[];
-    assert_eq!(frames[0].processed.pre_context, pre_context);
-    assert_eq!(frames[0].processed.context_line, context_line);
-    assert_eq!(frames[0].processed.post_context, post_context);
-    assert_eq!(frames[0].processed.lineno, Some(1));
-    assert_eq!(frames[0].processed.colno, Some(1));
+    assert_eq!(frames[0].raw.pre_context, pre_context);
+    assert_eq!(frames[0].raw.context_line, context_line);
+    assert_eq!(frames[0].raw.post_context, post_context);
+    assert_eq!(frames[0].raw.lineno, Some(1));
+    assert_eq!(frames[0].raw.colno, Some(1));
 }
 
 #[tokio::test]
@@ -321,20 +334,23 @@ async fn test_sourcemap_nofiles_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
 
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
-    assert_eq!(frames[0].processed.pre_context, pre_context);
-    assert_eq!(frames[0].processed.context_line, context_line);
-    assert_eq!(frames[0].processed.post_context, post_context);
-    assert_eq!(frames[0].processed.lineno, Some(3));
-    assert_eq!(frames[0].processed.colno, Some(9));
-    assert_eq!(frames[0].processed.abs_path, "app:///nofiles.js");
+    assert_eq!(frames[0].raw.pre_context, pre_context);
+    assert_eq!(frames[0].raw.context_line, context_line);
+    assert_eq!(frames[0].raw.post_context, post_context);
+    assert_eq!(frames[0].raw.lineno, Some(3));
+    assert_eq!(frames[0].raw.colno, Some(9));
+    assert_eq!(frames[0].raw.abs_path, "app:///nofiles.js");
 }
 
 #[tokio::test]
@@ -368,9 +384,13 @@ async fn test_indexed_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication.js_processing_symbolicate(request).await;
+    let response = symbolication
+        .js_processing_symbolicate(request)
+        .await
+        .unwrap();
 
-    let frames = &mut response.unwrap().stacktraces[0].frames;
+    let frames = &response.stacktraces[0].frames;
+    let raw_frames = &response.raw_stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
 
     // Raw frames
@@ -382,30 +402,30 @@ async fn test_indexed_sourcemap_source_expansion() {
         "",
     ];
 
-    assert_eq!(frames[0].raw.pre_context, pre_context);
-    assert_eq!(frames[0].raw.context_line, context_line);
-    assert_eq!(frames[0].raw.post_context, post_context);
-    assert_eq!(frames[0].raw.lineno, Some(1));
-    assert_eq!(frames[0].raw.colno, Some(39));
+    assert_eq!(raw_frames[0].pre_context, pre_context);
+    assert_eq!(raw_frames[0].context_line, context_line);
+    assert_eq!(raw_frames[0].post_context, post_context);
+    assert_eq!(raw_frames[0].lineno, Some(1));
+    assert_eq!(raw_frames[0].colno, Some(39));
 
     let pre_context = &["function add(a,b){\"use strict\";return a+b}"];
     let context_line = Some("function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}".to_string());
     let post_context = &["//# sourceMappingURL=indexed.min.js.map", ""];
-    assert_eq!(frames[1].raw.pre_context, pre_context);
-    assert_eq!(frames[1].raw.context_line, context_line);
-    assert_eq!(frames[1].raw.post_context, post_context);
-    assert_eq!(frames[1].raw.lineno, Some(2));
-    assert_eq!(frames[1].raw.colno, Some(44));
+    assert_eq!(raw_frames[1].pre_context, pre_context);
+    assert_eq!(raw_frames[1].context_line, context_line);
+    assert_eq!(raw_frames[1].post_context, post_context);
+    assert_eq!(raw_frames[1].lineno, Some(2));
+    assert_eq!(raw_frames[1].colno, Some(44));
 
     // Processed frames
     let pre_context = &["function add(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a + b; // fôo".to_string());
     let post_context = &["}", ""];
-    assert_eq!(frames[0].processed.pre_context, pre_context);
-    assert_eq!(frames[0].processed.context_line, context_line);
-    assert_eq!(frames[0].processed.post_context, post_context);
-    assert_eq!(frames[0].processed.lineno, Some(3));
-    assert_eq!(frames[0].processed.colno, Some(9));
+    assert_eq!(frames[0].raw.pre_context, pre_context);
+    assert_eq!(frames[0].raw.context_line, context_line);
+    assert_eq!(frames[0].raw.post_context, post_context);
+    assert_eq!(frames[0].raw.lineno, Some(3));
+    assert_eq!(frames[0].raw.colno, Some(9));
 
     let pre_context = &["function multiply(a, b) {", "\t\"use strict\";"];
     let context_line = Some("\treturn a * b;".to_string());
@@ -416,9 +436,9 @@ async fn test_indexed_sourcemap_source_expansion() {
         "\ttry {",
         "\t\treturn multiply(add(a, b), a, b) / c;",
     ];
-    assert_eq!(frames[1].processed.pre_context, pre_context);
-    assert_eq!(frames[1].processed.context_line, context_line);
-    assert_eq!(frames[1].processed.post_context, post_context);
-    assert_eq!(frames[1].processed.lineno, Some(3));
-    assert_eq!(frames[1].processed.colno, Some(9));
+    assert_eq!(frames[1].raw.pre_context, pre_context);
+    assert_eq!(frames[1].raw.context_line, context_line);
+    assert_eq!(frames[1].raw.post_context, post_context);
+    assert_eq!(frames[1].raw.lineno, Some(3));
+    assert_eq!(frames[1].raw.colno, Some(9));
 }
