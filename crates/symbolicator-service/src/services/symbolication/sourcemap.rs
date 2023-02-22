@@ -63,7 +63,7 @@ async fn js_processing_symbolicate_stacktrace(
     let mut symbolicated_frames = vec![];
 
     for frame in stacktrace.frames.iter() {
-        match js_processing_symbolicate_frame(&frame, sourcemap_lookup).await {
+        match js_processing_symbolicate_frame(frame, sourcemap_lookup).await {
             Ok(frame) => symbolicated_frames.push(frame),
             Err(status) => {
                 symbolicated_frames.push(JsProcessingSymbolicatedFrame {
