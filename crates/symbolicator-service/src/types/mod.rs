@@ -635,9 +635,8 @@ pub struct JsProcessingFrame {
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct JsProcessingSymbolicatedFrame {
     pub status: JsProcessingFrameStatus,
-
-    #[serde(flatten)]
     pub raw: JsProcessingFrame,
+    pub processed: JsProcessingFrame,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
