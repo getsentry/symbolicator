@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use symbolicator_service::{
-    services::symbolication::JsProcessingSymbolicateStacktraces, types::JsProcessingRawStacktrace,
+    services::symbolication::JsProcessingSymbolicateStacktraces, types::JsProcessingStacktrace,
 };
 use symbolicator_sources::{SentrySourceConfig, SourceId};
 
@@ -59,7 +59,7 @@ async fn test_sourcemap_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("01_sourcemap_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -114,7 +114,7 @@ async fn test_sourcemap_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("02_sourcemap_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -173,7 +173,7 @@ async fn test_sourcemap_embedded_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("03_sourcemap_embedded_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -219,7 +219,7 @@ async fn test_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("04_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -268,7 +268,7 @@ async fn test_inlined_sources() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("05_inlined_sources");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -307,7 +307,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("06_sourcemap_nofiles_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {
@@ -354,7 +354,7 @@ async fn test_indexed_sourcemap_source_expansion() {
     let (symbolication, _) = setup_service(|_| ());
     let srv = symbolicator_test::sourcemap_server("07_indexed_sourcemap_source_expansion");
 
-    let stacktraces: Vec<JsProcessingRawStacktrace> =
+    let stacktraces: Vec<JsProcessingStacktrace> =
         serde_json::from_str(&format!(r#"[{{ "frames": {input_frames} }}]"#)).unwrap();
     let request = JsProcessingSymbolicateStacktraces {
         source: Arc::new(SentrySourceConfig {

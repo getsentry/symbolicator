@@ -16,7 +16,7 @@ use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsProcessingRawStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers,
+    FrameTrust, JsProcessingStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers,
     Scope, Signal, SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
@@ -197,7 +197,7 @@ pub struct SymbolicateStacktraces {
 #[derive(Debug, Clone)]
 pub struct JsProcessingSymbolicateStacktraces {
     pub source: Arc<SentrySourceConfig>,
-    pub stacktraces: Vec<JsProcessingRawStacktrace>,
+    pub stacktraces: Vec<JsProcessingStacktrace>,
     pub dist: Option<String>,
 }
 

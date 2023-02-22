@@ -8,8 +8,8 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    CompleteJsStacktrace, JsProcessingCompletedSymbolicationResponse, JsProcessingFrameStatus,
-    JsProcessingRawFrame, JsProcessingRawStacktrace, JsProcessingSymbolicatedFrame,
+    JsProcessingCompletedSymbolicationResponse, JsProcessingFrame, JsProcessingFrameStatus,
+    JsProcessingStacktrace, JsProcessingSymbolicatedFrame, JsProcessingSymbolicatedStacktrace,
 };
 
 use super::{JsProcessingSymbolicateStacktraces, SymbolicationActor};
@@ -50,9 +50,9 @@ impl SymbolicationActor {
 }
 
 async fn js_processing_symbolicate_stacktrace(
-    stacktrace: JsProcessingRawStacktrace,
+    stacktrace: JsProcessingStacktrace,
     sourcemap_lookup: &SourceMapLookup,
-) -> CompleteJsStacktrace {
+) -> JsProcessingSymbolicatedStacktrace {
     let mut symbolicated_frames = vec![];
     let unsymbolicated_frames_iter = stacktrace.frames.into_iter();
 
@@ -65,13 +65,13 @@ async fn js_processing_symbolicate_stacktrace(
         }
     }
 
-    CompleteJsStacktrace {
+    JsProcessingSymbolicatedStacktrace {
         frames: symbolicated_frames,
     }
 }
 
 async fn js_processing_symbolicate_frame(
-    frame: &mut JsProcessingRawFrame,
+    frame: &mut JsProcessingFrame,
     sourcemap_lookup: &SourceMapLookup,
 ) -> Result<JsProcessingSymbolicatedFrame, JsProcessingFrameStatus> {
     let smcache = sourcemap_lookup
@@ -80,7 +80,7 @@ async fn js_processing_symbolicate_frame(
 
     let mut result = JsProcessingSymbolicatedFrame {
         status: JsProcessingFrameStatus::Symbolicated,
-        raw: JsProcessingRawFrame {
+        raw: JsProcessingFrame {
             function: frame.function.clone(),
             filename: frame.filename.clone(),
             abs_path: frame.abs_path.clone(),
