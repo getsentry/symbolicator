@@ -393,7 +393,9 @@ impl ModuleLookup {
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
-        let source = session.source_by_path(abs_path).ok()??;
+        let source_descriptor = session.source_by_path(abs_path).ok()??;
+        // TODO: add support for source links via `source_descriptor.url()`
+        let source = source_descriptor.contents()?;
 
         let start_line = lineno.saturating_sub(num_lines);
         let line_diff = lineno - start_line;
