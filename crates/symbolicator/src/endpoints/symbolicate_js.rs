@@ -7,7 +7,7 @@ use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::service::{JsProcessingStacktrace, RequestService, SymbolicationResponse};
+use crate::service::{JsStacktrace, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
@@ -17,7 +17,7 @@ pub struct JsSymbolicationRequestBody {
     #[serde(default)]
     pub source: Option<SentrySourceConfig>,
     #[serde(default)]
-    pub stacktraces: Vec<JsProcessingStacktrace>,
+    pub stacktraces: Vec<JsStacktrace>,
     #[serde(default)]
     pub dist: Option<String>,
 }

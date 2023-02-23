@@ -45,7 +45,7 @@ pub use symbolicator_service::services::symbolication::{
     StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
 };
 pub use symbolicator_service::types::{
-    JsProcessingStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
+    JsStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
 };
 
 /// Symbolication task identifier.

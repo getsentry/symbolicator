@@ -583,8 +583,8 @@ pub enum JsFrameStatus {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedJsSymbolicationResponse {
-    pub stacktraces: Vec<JsProcessingSymbolicatedStacktrace>,
-    pub raw_stacktraces: Vec<JsProcessingStacktrace>,
+    pub stacktraces: Vec<SymbolicatedJsStacktrace>,
+    pub raw_stacktraces: Vec<JsStacktrace>,
 }
 
 /// Information about the operating system.
@@ -641,11 +641,11 @@ pub struct SymbolicatedJsFrame {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct JsProcessingStacktrace {
+pub struct JsStacktrace {
     pub frames: Vec<JsFrame>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct JsProcessingSymbolicatedStacktrace {
+pub struct SymbolicatedJsStacktrace {
     pub frames: Vec<SymbolicatedJsFrame>,
 }

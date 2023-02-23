@@ -8,8 +8,8 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsProcessingStacktrace,
-    JsProcessingSymbolicatedStacktrace, SymbolicatedJsFrame,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace,
+    SymbolicatedJsStacktrace, SymbolicatedJsFrame,
 };
 
 use super::{SymbolicateJsStacktraces, SymbolicationActor};
@@ -53,9 +53,9 @@ impl SymbolicationActor {
 }
 
 async fn symbolicate_js_stacktrace(
-    stacktrace: JsProcessingStacktrace,
+    stacktrace: JsStacktrace,
     sourcemap_lookup: &SourceMapLookup,
-) -> (JsProcessingSymbolicatedStacktrace, JsProcessingStacktrace) {
+) -> (SymbolicatedJsStacktrace, JsStacktrace) {
     let mut raw_frames = vec![];
     let mut symbolicated_frames = vec![];
 
@@ -78,10 +78,10 @@ async fn symbolicate_js_stacktrace(
     }
 
     (
-        JsProcessingSymbolicatedStacktrace {
+        SymbolicatedJsStacktrace {
             frames: symbolicated_frames,
         },
-        JsProcessingStacktrace { frames: raw_frames },
+        JsStacktrace { frames: raw_frames },
     )
 }
 
