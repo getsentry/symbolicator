@@ -13,8 +13,8 @@ mod minidump;
 mod multipart;
 mod proxy;
 mod requests;
-mod sourcemap;
 mod symbolicate;
+mod symbolicate_js;
 
 pub use error::ResponseError;
 use metrics::MetricsLayer;
@@ -23,8 +23,8 @@ use self::minidump::handle_minidump_request as minidump;
 use applecrashreport::handle_apple_crash_report_request as applecrashreport;
 use proxy::proxy_symstore_request as proxy;
 use requests::poll_request as requests;
-use sourcemap::handle_sourcemap_request as sourcemap;
 use symbolicate::symbolicate_frames as symbolicate;
+use symbolicate_js::handle_symbolication_request as symbolicate_js;
 
 pub async fn healthcheck() -> &'static str {
     crate::metric!(counter("healthcheck") += 1);
@@ -46,7 +46,7 @@ pub fn create_app(service: RequestService) -> Router {
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
         // TODO(sourcemap): Verify whether this is the endpoint name we actually want to use.
-        .route("/sourcemap", post(sourcemap))
+        .route("/symbolicate-js", post(symbolicate_js))
         .route("/symbolicate", symbolicate_route)
         .with_state(service)
         .layer(layer)

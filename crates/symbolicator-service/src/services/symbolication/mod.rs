@@ -16,14 +16,14 @@ use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsProcessingStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers,
-    Scope, Signal, SymbolicatedFrame,
+    FrameTrust, JsStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
+    SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
 mod apple;
+mod js;
 mod process_minidump;
-pub mod sourcemap;
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,9 +195,9 @@ pub struct SymbolicateStacktraces {
 }
 
 #[derive(Debug, Clone)]
-pub struct JsProcessingSymbolicateStacktraces {
+pub struct SymbolicateJsStacktraces {
     pub source: Arc<SentrySourceConfig>,
-    pub stacktraces: Vec<JsProcessingStacktrace>,
+    pub stacktraces: Vec<JsStacktrace>,
     pub dist: Option<String>,
 }
 
