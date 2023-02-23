@@ -44,9 +44,7 @@ pub use symbolicator_service::services::objects::{
 pub use symbolicator_service::services::symbolication::{
     StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
 };
-pub use symbolicator_service::types::{
-    JsStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
-};
+pub use symbolicator_service::types::{JsStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -277,17 +275,13 @@ impl RequestService {
             "symbolicate_js_stacktraces",
             span,
         );
-        self.create_symbolication_request(
-            "symbolicate_js",
-            RequestOptions::default(),
-            async move {
-                let transaction = sentry::start_transaction(ctx);
-                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-                let res = slf.symbolication.symbolicate_js(request).await;
-                transaction.finish();
-                res.map(Into::into)
-            },
-        )
+        self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf.symbolication.symbolicate_js(request).await;
+            transaction.finish();
+            res.map(Into::into)
+        })
     }
 
     /// Creates a new request to process a minidump.

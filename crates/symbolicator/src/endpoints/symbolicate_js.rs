@@ -37,12 +37,11 @@ pub async fn handle_symbolication_request(
         dist,
     } = body;
 
-    let request_id =
-        service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
-            source: Arc::new(source.unwrap()),
-            stacktraces,
-            dist,
-        })?;
+    let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
+        source: Arc::new(source.unwrap()),
+        stacktraces,
+        dist,
+    })?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

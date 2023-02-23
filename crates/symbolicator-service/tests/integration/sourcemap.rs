@@ -70,10 +70,7 @@ async fn test_sourcemap_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 4);
@@ -128,10 +125,7 @@ async fn test_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     let raw_frames = &response.raw_stacktraces[0].frames;
@@ -191,10 +185,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
@@ -240,10 +231,7 @@ async fn test_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 2);
@@ -292,10 +280,7 @@ async fn test_inlined_sources() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
@@ -334,10 +319,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     assert_eq!(frames.len(), 1);
@@ -384,10 +366,7 @@ async fn test_indexed_sourcemap_source_expansion() {
         stacktraces,
         dist: None,
     };
-    let response = symbolication
-        .symbolicate_js(request)
-        .await
-        .unwrap();
+    let response = symbolication.symbolicate_js(request).await.unwrap();
 
     let frames = &response.stacktraces[0].frames;
     let raw_frames = &response.raw_stacktraces[0].frames;

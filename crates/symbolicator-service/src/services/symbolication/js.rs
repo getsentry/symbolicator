@@ -8,8 +8,8 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace,
-    SymbolicatedJsStacktrace, SymbolicatedJsFrame,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, SymbolicatedJsFrame,
+    SymbolicatedJsStacktrace,
 };
 
 use super::{SymbolicateJsStacktraces, SymbolicationActor};

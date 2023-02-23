@@ -16,8 +16,8 @@ use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers,
-    Scope, Signal, SymbolicatedFrame,
+    FrameTrust, JsStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
+    SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
