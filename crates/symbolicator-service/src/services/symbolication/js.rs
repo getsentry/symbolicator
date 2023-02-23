@@ -8,8 +8,8 @@ use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
 use crate::caching::CacheError;
 use crate::services::sourcemap_lookup::SourceMapLookup;
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus,
-    JsProcessingStacktrace, SymbolicatedJsFrame, JsProcessingSymbolicatedStacktrace,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsProcessingStacktrace,
+    JsProcessingSymbolicatedStacktrace, SymbolicatedJsFrame,
 };
 
 use super::{SymbolicateJsStacktraces, SymbolicationActor};
@@ -35,11 +35,10 @@ impl SymbolicationActor {
 
         sourcemap_lookup.fetch_caches(unique_abs_paths).await;
 
-        let stacktraces_symbolications: Vec<_> = request
+        let stacktraces_symbolications = request
             .stacktraces
             .into_iter()
-            .map(|trace| async { symbolicate_js_stacktrace(trace, &sourcemap_lookup).await })
-            .collect();
+            .map(|trace| async { symbolicate_js_stacktrace(trace, &sourcemap_lookup).await });
 
         let (stacktraces, raw_stacktraces) = futures::future::join_all(stacktraces_symbolications)
             .await
@@ -64,7 +63,10 @@ async fn symbolicate_js_stacktrace(
         match symbolicate_js_frame(frame, sourcemap_lookup).await {
             Ok(frame) => symbolicated_frames.push(frame),
             Err(status) => {
-                symbolicated_frames.push(SymbolicatedJsFrame { status, raw: frame.clone() });
+                symbolicated_frames.push(SymbolicatedJsFrame {
+                    status,
+                    raw: frame.clone(),
+                });
             }
         }
     }
