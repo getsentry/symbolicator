@@ -128,3 +128,11 @@ pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
     fallbacks: &[],
 };
+
+/// Generic Downloads Cache, with the following versions:
+///
+/// - `1`: Initial version.
+pub const DOWNLOADS_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 1,
+    fallbacks: &[],
+};
