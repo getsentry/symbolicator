@@ -63,7 +63,7 @@ type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleWrapper<'static>>;
 // FIXME: `SourceBundleDebugSession` should implement `AsSelf` itself :-)
 struct SourceBundleWrapper<'a>(SourceBundleDebugSession<'a>);
 
-impl<'slf> AsSelf<'slf> for SourceBundleWrapper<'_> {
+impl<'data, 'slf: 'data> AsSelf<'slf> for SourceBundleWrapper<'data> {
     type Ref = SourceBundleDebugSession<'slf>;
 
     fn as_self(&'slf self) -> &Self::Ref {
