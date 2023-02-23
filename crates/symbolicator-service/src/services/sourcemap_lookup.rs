@@ -7,7 +7,10 @@ use data_encoding::BASE64;
 use futures::future::BoxFuture;
 use reqwest::Url;
 use sourcemap::locate_sourcemap_reference;
-use symbolic::common::{ByteView, SelfCell};
+use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
+use symbolic::debuginfo::sourcebundle::{
+    SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
+};
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
 use tempfile::NamedTempFile;
@@ -55,6 +58,19 @@ impl SourceMapUrl {
     }
 }
 
+type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleWrapper<'static>>;
+
+// FIXME: `SourceBundleDebugSession` should implement `AsSelf` itself :-)
+struct SourceBundleWrapper<'a>(SourceBundleDebugSession<'a>);
+
+impl<'slf> AsSelf<'slf> for SourceBundleWrapper<'_> {
+    type Ref = SourceBundleDebugSession<'slf>;
+
+    fn as_self(&'slf self) -> &Self::Ref {
+        &self.0
+    }
+}
+
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
@@ -65,6 +81,11 @@ pub struct SourceMapLookup {
 
     artifacts: HashMap<String, CacheEntry<ByteView<'static>>>,
     sourcemaps: HashMap<String, CacheEntry<OwnedSourceMapCache>>,
+
+    /// Arbitrary files keyed by their `abs_path`.
+    files_by_path: HashMap<String, CacheEntry<ByteView<'static>>>,
+    /// The set of all the artifact bundles that we have downloaded so far.
+    artifact_bundles: Vec<ArtifactBundle>,
 }
 
 impl SourceMapLookup {
@@ -84,6 +105,9 @@ impl SourceMapLookup {
 
             artifacts: HashMap::new(),
             sourcemaps: HashMap::new(),
+
+            files_by_path: HashMap::new(),
+            artifact_bundles: Vec::new(),
         }
     }
 
@@ -254,6 +278,105 @@ impl SourceMapLookup {
         abs_path: &str,
     ) -> Option<&CacheEntry<OwnedSourceMapCache>> {
         self.sourcemaps.get(abs_path)
+    }
+
+    /// Fetches an arbitrary file using its `abs_path`,
+    /// or optionally its [`DebugId`] and [`SourceFileType`]
+    /// (because multiple files can share one [`DebugId`]).
+    pub async fn get_file(
+        &mut self,
+        abs_path: &str,
+        id: Option<(DebugId, SourceFileType)>,
+        // TODO: do we really want this to be `CacheEntry` / `ByteView`?
+        // Or rather an `Option<SourceFileDescriptor>`?
+    ) -> CacheEntry<ByteView<'static>> {
+        // First, we do a trivial lookup in case we already have this file.
+        // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
+        // lookup key throughout.
+        if let Some(file) = self.files_by_path.get(abs_path) {
+            return file.clone();
+        }
+
+        // Otherwise, try looking it up in one of the artifact bundles that we already have.
+        if let Some(descriptor) = self.try_get_file_from_bundles(abs_path, id) {
+            // FIXME: well, we are pretty fucked, as our `descriptor` has a `'self` lifetime,
+            // and we can't have self-referential lifetimes to put into `self.files_by_path` :-(
+
+            if let Some(content) = descriptor.contents() {
+                let bv = ByteView::from_vec(content.as_bytes().to_vec());
+
+                self.files_by_path
+                    .insert(abs_path.to_owned(), Ok(bv.clone()));
+                return Ok(bv);
+            }
+        }
+
+        // Otherwise, we try to get the file from the already fetched existing individual files.
+
+        // TODO:
+        // look up every candidate `abs_path` in `self.artifacts`
+
+        // TODO:
+        // Otherwise, do a (cached) API request to Sentry and get the artifacts
+        //
+        //
+        // NOTE: We have `self.remote_artifacts` for the API requests already.
+
+        // TODO:
+        // Otherwise, fall back to scraping from the Web.
+
+        Err(CacheError::NotFound)
+    }
+
+    /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
+    /// or optionally its [`DebugId`].
+    pub async fn get_sourcemapcache(
+        &mut self,
+        abs_path: &str,
+        id: Option<DebugId>,
+    ) -> CacheEntry<OwnedSourceMapCache> {
+        // First, check if we have already cached / created the `SourceMapCache`.
+        if let Some(smcache) = self.sourcemaps.get(abs_path) {
+            return smcache.clone();
+        }
+
+        // Fetch the minified file first
+        let minified_id = id.map(|id| (id, SourceFileType::MinifiedSource));
+        let minified_source = self.get_file(abs_path, minified_id).await?;
+
+        // Then fetch the corresponding sourcemap
+
+        let sourcemap_id = id.map(|id| (id, SourceFileType::SourceMap));
+        // TODO: the `abs_path` should be the sourcemap reference from the minified file!
+        // It would be really handy if we could use `SourceFileDescriptor` directly here.
+        let sourcemap = self.get_file(abs_path, sourcemap_id).await?;
+
+        // TODO: now that we have both files, we can create a `SourceMapCache` for it
+        drop((minified_source, sourcemap));
+
+        Err(CacheError::NotFound)
+    }
+
+    fn try_get_file_from_bundles(
+        &self,
+        abs_path: &str,
+        id: Option<(DebugId, SourceFileType)>,
+    ) -> Option<SourceFileDescriptor<'_>> {
+        // If we have an `id`, we first try a lookup based on that.
+        if let Some((debug_id, ty)) = id {
+            for bundle in &self.artifact_bundles {
+                let bundle = bundle.get();
+                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
+                    return Some(descriptor);
+                }
+            }
+        }
+
+        // TODO:
+        // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
+        drop(abs_path);
+
+        None
     }
 }
 
