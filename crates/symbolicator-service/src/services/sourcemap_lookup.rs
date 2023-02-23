@@ -332,14 +332,41 @@ impl SourceMapLookup {
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
         let sourcemap_id = key.debug_id.map(|id| (id.0, SourceFileType::SourceMap));
-        let sourcemap_key = match minified_source.source_mapping_url.as_deref() {
-            Some(sourcemap_url) => FileKey::new(sourcemap_url, sourcemap_id)?,
-            None => FileKey {
-                abs_path: None,
-                debug_id: sourcemap_id,
-            },
+        let sourcemap_url = match minified_source.source_mapping_url.as_deref() {
+            Some(sourcemap_url) => {
+                // FIXME: if we have a data URL, we don’t need the base at all
+                let base_url = key.abs_path.ok_or_else(|| {
+                    CacheError::DownloadError("expected minified file to have an abs_path".into())
+                })?;
+                Some(SourceMapUrl::parse_with_prefix(&base_url, sourcemap_url)?)
+            }
+            None => None,
         };
-        let sourcemap = self.get_file(sourcemap_key).await?;
+
+        // We have three cases here:
+        let sourcemap = match sourcemap_url {
+            // We have an embedded SourceMap via data URL
+            Some(SourceMapUrl::Data(data)) => CachedFile {
+                contents: ByteView::from_vec(data),
+                source_mapping_url: None,
+            },
+            // We do have a valid `sourceMappingURL`
+            Some(SourceMapUrl::Remote(url)) => {
+                let sourcemap_key = FileKey {
+                    abs_path: Some(url),
+                    debug_id: sourcemap_id,
+                };
+                self.get_file(sourcemap_key).await?
+            }
+            // We *might* have a valid `DebugId`, in which case we don’t need no URL
+            None => {
+                let sourcemap_key = FileKey {
+                    abs_path: None,
+                    debug_id: sourcemap_id,
+                };
+                self.get_file(sourcemap_key).await?
+            }
+        };
 
         // TODO: now that we have both files, we can create a `SourceMapCache` for it
         // We should track the information where these files came from, and use that as the
