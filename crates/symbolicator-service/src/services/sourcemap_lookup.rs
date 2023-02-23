@@ -61,13 +61,12 @@ impl SourceMapUrl {
 type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleWrapper<'static>>;
 
 // FIXME: `SourceBundleDebugSession` should implement `AsSelf` itself :-)
-struct SourceBundleWrapper<'a>(SourceBundleDebugSession<'a>);
-
-impl<'data, 'slf: 'data> AsSelf<'slf> for SourceBundleWrapper<'data> {
+struct SourceBundleWrapper<'data>(SourceBundleDebugSession<'data>);
+impl<'slf> AsSelf<'slf> for SourceBundleWrapper<'_> {
     type Ref = SourceBundleDebugSession<'slf>;
 
     fn as_self(&'slf self) -> &Self::Ref {
-        &self.0
+        unsafe { std::mem::transmute(&self.0) }
     }
 }
 
@@ -83,7 +82,7 @@ pub struct SourceMapLookup {
     sourcemaps: HashMap<String, CacheEntry<OwnedSourceMapCache>>,
 
     /// Arbitrary files keyed by their `abs_path`.
-    files_by_path: HashMap<String, CacheEntry<ByteView<'static>>>,
+    files_by_path: HashMap<String, CacheEntry<CachedFile>>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
 }
@@ -289,7 +288,7 @@ impl SourceMapLookup {
         id: Option<(DebugId, SourceFileType)>,
         // TODO: do we really want this to be `CacheEntry` / `ByteView`?
         // Or rather an `Option<SourceFileDescriptor>`?
-    ) -> CacheEntry<ByteView<'static>> {
+    ) -> CacheEntry<CachedFile> {
         // First, we do a trivial lookup in case we already have this file.
         // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
         // lookup key throughout.
@@ -298,17 +297,9 @@ impl SourceMapLookup {
         }
 
         // Otherwise, try looking it up in one of the artifact bundles that we already have.
-        if let Some(descriptor) = self.try_get_file_from_bundles(abs_path, id) {
-            // FIXME: well, we are pretty fucked, as our `descriptor` has a `'self` lifetime,
-            // and we can't have self-referential lifetimes to put into `self.files_by_path` :-(
-
-            if let Some(content) = descriptor.contents() {
-                let bv = ByteView::from_vec(content.as_bytes().to_vec());
-
-                self.files_by_path
-                    .insert(abs_path.to_owned(), Ok(bv.clone()));
-                return Ok(bv);
-            }
+        if let Some(file) = self.try_get_file_from_bundles(abs_path, id) {
+            self.files_by_path.insert(abs_path.to_owned(), Ok(file));
+            return self.files_by_path.get(abs_path).unwrap().clone();
         }
 
         // Otherwise, we try to get the file from the already fetched existing individual files.
@@ -346,10 +337,12 @@ impl SourceMapLookup {
 
         // Then fetch the corresponding sourcemap
 
+        // FIXME: what should we do if we have no sourcemap reference?
+        // We can still use the `DebugId` all on its own probably?
+        // But what should we use as the `HashMap` key in that case?
+        let sourcemap_ref = minified_source.source_mapping_url.as_deref().unwrap_or("");
         let sourcemap_id = id.map(|id| (id, SourceFileType::SourceMap));
-        // TODO: the `abs_path` should be the sourcemap reference from the minified file!
-        // It would be really handy if we could use `SourceFileDescriptor` directly here.
-        let sourcemap = self.get_file(abs_path, sourcemap_id).await?;
+        let sourcemap = self.get_file(sourcemap_ref, sourcemap_id).await?;
 
         // TODO: now that we have both files, we can create a `SourceMapCache` for it
         drop((minified_source, sourcemap));
@@ -361,22 +354,45 @@ impl SourceMapLookup {
         &self,
         abs_path: &str,
         id: Option<(DebugId, SourceFileType)>,
-    ) -> Option<SourceFileDescriptor<'_>> {
+    ) -> Option<CachedFile> {
         // If we have an `id`, we first try a lookup based on that.
         if let Some((debug_id, ty)) = id {
             for bundle in &self.artifact_bundles {
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
-                    return Some(descriptor);
+                    if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                        return Some(file);
+                    }
                 }
             }
         }
 
         // TODO:
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
-        drop(abs_path);
+        let _ = abs_path;
 
         None
+    }
+}
+
+/// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
+/// the parts that we care about.
+#[derive(Debug, Clone)]
+#[allow(unused)]
+pub struct CachedFile {
+    contents: ByteView<'static>,
+    source_mapping_url: Option<Arc<str>>,
+}
+
+impl CachedFile {
+    fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
+        let contents = descriptor.contents()?.as_bytes().to_vec();
+        let contents = ByteView::from_vec(contents);
+        let source_mapping_url = descriptor.source_mapping_url().map(Into::into);
+        Some(Self {
+            contents,
+            source_mapping_url,
+        })
     }
 }
 
