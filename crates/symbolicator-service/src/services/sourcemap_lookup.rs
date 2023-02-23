@@ -70,6 +70,9 @@ impl<'slf> AsSelf<'slf> for SourceBundleWrapper<'_> {
     }
 }
 
+// FIXME: The usage of `LazyCell` inside of `SourceBundleDebugSession` makes it `!Sync`, oh well
+unsafe impl Sync for SourceBundleWrapper<'_> {}
+
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
