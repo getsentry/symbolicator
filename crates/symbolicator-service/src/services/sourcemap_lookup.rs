@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
@@ -60,6 +60,7 @@ impl SourceMapUrl {
 
 type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
 
+#[allow(unused)]
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
@@ -104,7 +105,7 @@ impl SourceMapLookup {
         }
     }
 
-    pub async fn list_artifacts(&mut self) -> HashMap<String, SearchArtifactResult> {
+    async fn list_artifacts(&mut self) -> HashMap<String, SearchArtifactResult> {
         self.download_svc
             .list_artifacts(self.source.clone())
             .await
@@ -113,7 +114,7 @@ impl SourceMapLookup {
             .collect()
     }
 
-    pub async fn fetch_artifact(
+    async fn fetch_artifact(
         &self,
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
@@ -129,7 +130,8 @@ impl SourceMapLookup {
         Ok(ByteView::map_file(temp_file.into_file()).unwrap())
     }
 
-    pub async fn fetch_artifact_cache(
+    #[allow(unused)]
+    async fn fetch_artifact_cache(
         &self,
         artifact: ByteView<'static>,
     ) -> CacheEntry<ByteView<'static>> {
@@ -146,7 +148,7 @@ impl SourceMapLookup {
         req.load(temp_bv)
     }
 
-    pub async fn fetch_sourcemap_cache(
+    async fn fetch_sourcemap_cache(
         &self,
         source_artifact: ByteView<'static>,
         sourcemap_artifact: ByteView<'static>,
@@ -167,109 +169,9 @@ impl SourceMapLookup {
         req.load(temp_bv)
     }
 
-    // TODO(sourcemap): Handle 3rd party servers fetching (payload should decide about it, as it's user-configurable in the UI)
-    pub async fn fetch_caches(&mut self, abs_paths: HashSet<String>) {
-        self.remote_artifacts = self.list_artifacts().await;
-
-        let compute_artifacts = abs_paths.clone().into_iter().map(|abs_path| async {
-            let artifact = self.compute_artifact_cache(&abs_path).await;
-            (abs_path, artifact)
-        });
-
-        self.artifacts = futures::future::join_all(compute_artifacts)
-            .await
-            .into_iter()
-            .collect();
-
-        let compute_sourcemaps = abs_paths.into_iter().map(|abs_path| async {
-            let sourcemap = self.compute_sourcemap_cache(&abs_path).await;
-            (abs_path, sourcemap)
-        });
-
-        self.sourcemaps = futures::future::join_all(compute_sourcemaps)
-            .await
-            .into_iter()
-            .collect();
-    }
-
-    pub async fn compute_artifact_cache(&self, abs_path: &str) -> CacheEntry<ByteView<'static>> {
-        let abs_path_url = Url::parse(abs_path)
-            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
-
-        let remote_artifact = self.find_remote_artifact(&abs_path_url).ok_or_else(|| {
-            CacheError::DownloadError("Could not download source file".to_string())
-        })?;
-
-        let artifact = self
-            .fetch_artifact(self.source.clone(), remote_artifact.id.clone())
-            .await
-            .map_err(|_| CacheError::DownloadError("Could not download source file".to_string()))?;
-
-        self.fetch_artifact_cache(artifact).await
-    }
-
-    pub async fn compute_sourcemap_cache(&self, abs_path: &str) -> CacheEntry<OwnedSourceMapCache> {
-        let abs_path_url = Url::parse(abs_path)
-            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
-
-        // TODO(sourcemap): Clean up this mess
-
-        let source_remote_artifact = self
-            .find_remote_artifact(&abs_path_url)
-            .ok_or_else(|| CacheError::DownloadError("Could not download source file".to_string()));
-
-        let source_artifact = self.lookup_artifact_cache(abs_path);
-
-        if source_remote_artifact.is_err() || source_artifact.is_none() {
-            return Err(CacheError::DownloadError("Sourcemap not found".into()));
-        }
-
-        let source_remote_artifact = source_remote_artifact.unwrap();
-        let Ok(source_artifact) = source_artifact.unwrap() else {
-            return Err(CacheError::DownloadError("Sourcemap not found".into()));
-        };
-
-        let sourcemap_url = resolve_sourcemap_url(
-            &abs_path_url,
-            source_remote_artifact,
-            source_artifact.as_slice(),
-        )
-        .ok_or_else(|| CacheError::DownloadError("Sourcemap not found".into()))?;
-
-        let sourcemap_artifact = match sourcemap_url {
-            SourceMapUrl::Data(decoded) => ByteView::from_vec(decoded),
-            SourceMapUrl::Remote(url) => {
-                let sourcemap_remote_artifact =
-                    self.find_remote_artifact(&url).ok_or_else(|| {
-                        CacheError::DownloadError("Could not download sourcemap file".to_string())
-                    })?;
-
-                self.fetch_artifact(self.source.clone(), sourcemap_remote_artifact.id.clone())
-                    .await
-                    .map_err(|_| {
-                        CacheError::DownloadError("Could not download sourcemap file".to_string())
-                    })?
-            }
-        };
-
-        self.fetch_sourcemap_cache(source_artifact.to_owned(), sourcemap_artifact)
-            .await
-    }
-
     pub fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
         get_release_file_candidate_urls(url)
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
-    }
-
-    pub fn lookup_artifact_cache(&self, abs_path: &str) -> Option<&CacheEntry<ByteView<'static>>> {
-        self.artifacts.get(abs_path)
-    }
-
-    pub fn lookup_sourcemap_cache(
-        &self,
-        abs_path: &str,
-    ) -> Option<&CacheEntry<OwnedSourceMapCache>> {
-        self.sourcemaps.get(abs_path)
     }
 
     /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
@@ -346,11 +248,7 @@ impl SourceMapLookup {
             return file.clone();
         }
 
-        // TODO: Do a (cached) API lookup for the `abs_path` + `DebugId`
-
-        // At this point, *one* of our known artifacts includes the file we are looking for.
-
-        // Try looking it up in one of the artifact bundles that we know about.
+        // Try looking up the file in one of the artifact bundles that we know about.
         if let Some(file) = self.try_get_file_from_bundles(&key) {
             return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
         }
@@ -359,6 +257,24 @@ impl SourceMapLookup {
         // This is mutually exclusive with having a `DebugId`, and we only care about `abs_path` here.
         // If we have a `DebugId`, we are guaranteed to use artifact bundles, and to have found the
         // file in the check up above already.
+        if let Some(file) = self.try_fetch_file_from_artifacts(&key).await {
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        }
+
+        // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
+        if self.remote_artifacts.is_empty() {
+            // TODO: the endpoint should really support filtering files,
+            // and ideally only giving us a single file that matches, but right now it just gives
+            // us the whole list of artifacts
+            self.remote_artifacts = self.list_artifacts().await;
+        }
+
+        // At this point, *one* of our known artifacts includes the file we are looking for.
+        // So we do the whole dance yet again.
+        // TODO: figure out a way to avoid that?
+        if let Some(file) = self.try_get_file_from_bundles(&key) {
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        }
         if let Some(file) = self.try_fetch_file_from_artifacts(&key).await {
             return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
         }
@@ -401,8 +317,7 @@ impl SourceMapLookup {
     }
 
     async fn try_fetch_file_from_artifacts(&self, key: &FileKey) -> Option<CachedFile> {
-        let abs_path = key.abs_path.as_ref()?;
-        let found_artifact = self.find_remote_artifact(abs_path)?;
+        let found_artifact = self.find_remote_artifact(key.abs_path()?)?;
 
         let artifact = self
             .fetch_artifact(self.source.clone(), found_artifact.id.clone())
@@ -442,6 +357,18 @@ pub enum FileKey {
 }
 
 impl FileKey {
+    /// Creates a new [`FileKey`] for a minified file with `abs_path` and `debug_id`.
+    pub fn new_minified(abs_path: &str, debug_id: Option<DebugId>) -> CacheEntry<Self> {
+        let abs_path = Url::parse(abs_path)
+            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
+        Ok(Self::MinifiedSource { abs_path, debug_id })
+    }
+
+    /// Creates a new [`FileKey`] for a minified file with `abs_path` and `debug_id`.
+    pub fn new_source(abs_path: Url) -> Self {
+        Self::Source { abs_path }
+    }
+
     /// Returns this key's debug id, if any.
     fn debug_id(&self) -> Option<DebugId> {
         match self {
@@ -452,7 +379,7 @@ impl FileKey {
     }
 
     /// Returns this key's abs_path, if any.
-    fn abs_path(&self) -> Option<&Url> {
+    pub fn abs_path(&self) -> Option<&Url> {
         match self {
             FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
             FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
@@ -475,7 +402,7 @@ impl FileKey {
 #[derive(Debug, Clone)]
 #[allow(unused)]
 pub struct CachedFile {
-    contents: ByteView<'static>,
+    pub contents: ByteView<'static>,
     source_mapping_url: Option<Arc<str>>,
     // TODO: maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
@@ -525,6 +452,7 @@ fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
 }
 
 // Joins together frames `abs_path` and discovered sourcemap reference.
+#[allow(unused)]
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_remote_artifact: &SearchArtifactResult,
