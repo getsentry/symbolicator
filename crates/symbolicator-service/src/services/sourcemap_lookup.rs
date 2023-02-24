@@ -7,7 +7,7 @@ use data_encoding::BASE64;
 use futures::future::BoxFuture;
 use reqwest::Url;
 use sourcemap::locate_sourcemap_reference;
-use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
+use symbolic::common::{ByteView, DebugId, SelfCell};
 use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
@@ -58,20 +58,7 @@ impl SourceMapUrl {
     }
 }
 
-type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleWrapper<'static>>;
-
-// FIXME: `SourceBundleDebugSession` should implement `AsSelf` itself :-)
-struct SourceBundleWrapper<'data>(SourceBundleDebugSession<'data>);
-impl<'slf> AsSelf<'slf> for SourceBundleWrapper<'_> {
-    type Ref = SourceBundleDebugSession<'slf>;
-
-    fn as_self(&'slf self) -> &Self::Ref {
-        unsafe { std::mem::transmute(&self.0) }
-    }
-}
-
-// FIXME: The usage of `LazyCell` inside of `SourceBundleDebugSession` makes it `!Sync`, oh well
-unsafe impl Sync for SourceBundleWrapper<'_> {}
+type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
 
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
