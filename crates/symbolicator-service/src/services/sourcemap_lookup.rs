@@ -408,7 +408,6 @@ impl SourceMapLookup {
             for url in get_release_file_candidate_urls(abs_path) {
                 for bundle in &self.artifact_bundles {
                     let bundle = bundle.get();
-                    // FIXME: is this `by_url` or `by_path`?
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         if let Some(file) = CachedFile::from_descriptor(&descriptor) {
                             return Some(file);
@@ -472,36 +471,32 @@ impl CachedFile {
 /// Transforms a full absolute url into 2 or 4 generalized options.
 // Based on `ReleaseFile.normalize`, see:
 // https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
-fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
-    let mut urls = vec![];
-
-    // TODO: should we maybe order these most likely to least likely?
-    // right now the "relative without query" is the last, whereas its the most likely to appear
-    // in artifact bundles? (I’m just guessing, is that true?)
-
-    // Absolute without fragment
-    urls.push(url[..Position::AfterQuery].to_string());
-
-    // Absolute without query
-    if url.query().is_some() {
-        urls.push(url[..Position::AfterPath].to_string())
-    }
-
-    // Relative without fragment
-    urls.push(format!(
-        "~{}",
-        &url[Position::BeforePath..Position::AfterQuery]
-    ));
+fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
+    let mut urls = [None, None, None, None];
 
     // Relative without query
     if url.query().is_some() {
-        urls.push(format!(
+        urls[0] = Some(format!(
             "~{}",
             &url[Position::BeforePath..Position::AfterPath]
         ));
     }
 
-    urls
+    // Relative without fragment
+    urls[1] = Some(format!(
+        "~{}",
+        &url[Position::BeforePath..Position::AfterQuery]
+    ));
+
+    // Absolute without query
+    if url.query().is_some() {
+        urls[2] = Some(url[..Position::AfterPath].to_string());
+    }
+
+    // Absolute without fragment
+    urls[3] = Some(url[..Position::AfterQuery].to_string());
+
+    urls.into_iter().flatten()
 }
 
 // Joins together frames `abs_path` and discovered sourcemap reference.
@@ -617,41 +612,45 @@ mod tests {
     #[test]
     fn test_get_release_file_candidate_urls() {
         let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js#wat"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
     }
 }
