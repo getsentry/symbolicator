@@ -258,7 +258,6 @@ impl SourceMapLookup {
 
     pub fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
         get_release_file_candidate_urls(url)
-            .into_iter()
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
     }
 
@@ -271,39 +270,6 @@ impl SourceMapLookup {
         abs_path: &str,
     ) -> Option<&CacheEntry<OwnedSourceMapCache>> {
         self.sourcemaps.get(abs_path)
-    }
-
-    /// Fetches an arbitrary file using its `abs_path`,
-    /// or optionally its [`DebugId`] and [`SourceFileType`]
-    /// (because multiple files can share one [`DebugId`]).
-    pub async fn get_file(&mut self, key: FileKey) -> CacheEntry<CachedFile> {
-        // First, we do a trivial lookup in case we already have this file.
-        // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
-        // lookup key throughout.
-        if let Some(file) = self.files_by_key.get(&key) {
-            return file.clone();
-        }
-
-        // Otherwise, try looking it up in one of the artifact bundles that we already have.
-        if let Some(file) = self.try_get_file_from_bundles(&key) {
-            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
-        }
-
-        // Otherwise, we try to get the file from the already fetched existing individual files.
-
-        // TODO:
-        // look up every candidate `abs_path` in `self.artifacts`
-
-        // TODO:
-        // Otherwise, do a (cached) API request to Sentry and get the artifacts
-        //
-        //
-        // NOTE: We have `self.remote_artifacts` for the API requests already.
-
-        // TODO:
-        // Otherwise, fall back to scraping from the Web.
-
-        Err(CacheError::NotFound)
     }
 
     /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
@@ -369,6 +335,40 @@ impl SourceMapLookup {
         cached_sourcesmap
     }
 
+    /// Fetches an arbitrary file using its `abs_path`,
+    /// or optionally its [`DebugId`] and [`SourceFileType`]
+    /// (because multiple files can share one [`DebugId`]).
+    pub async fn get_file(&mut self, key: FileKey) -> CacheEntry<CachedFile> {
+        // First, we do a trivial lookup in case we already have this file.
+        // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
+        // lookup key throughout.
+        if let Some(file) = self.files_by_key.get(&key) {
+            return file.clone();
+        }
+
+        // TODO: Do a (cached) API lookup for the `abs_path` + `DebugId`
+
+        // At this point, *one* of our known artifacts includes the file we are looking for.
+
+        // Try looking it up in one of the artifact bundles that we know about.
+        if let Some(file) = self.try_get_file_from_bundles(&key) {
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        }
+
+        // Otherwise, try to get the file from an individual artifact.
+        // This is mutually exclusive with having a `DebugId`, and we only care about `abs_path` here.
+        // If we have a `DebugId`, we are guaranteed to use artifact bundles, and to have found the
+        // file in the check up above already.
+        if let Some(file) = self.try_fetch_file_from_artifacts(&key).await {
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        }
+
+        // TODO:
+        // Otherwise, fall back to scraping from the Web.
+
+        Err(CacheError::NotFound)
+    }
+
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFile> {
         // If we have an `id`, we first try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
@@ -398,6 +398,29 @@ impl SourceMapLookup {
         }
 
         None
+    }
+
+    async fn try_fetch_file_from_artifacts(&self, key: &FileKey) -> Option<CachedFile> {
+        let abs_path = key.abs_path.as_ref()?;
+        let found_artifact = self.find_remote_artifact(abs_path)?;
+
+        let artifact = self
+            .fetch_artifact(self.source.clone(), found_artifact.id.clone())
+            .await;
+
+        // TODO: figure out error handling:
+        let contents = artifact.ok()?;
+
+        // TODO: we should normalize these things to lower-case
+        let source_mapping_url = found_artifact
+            .headers
+            .get("SourceMap")
+            .map(|sm| Arc::from(sm.as_str()));
+
+        Some(CachedFile {
+            contents,
+            source_mapping_url,
+        })
     }
 }
 
@@ -454,7 +477,7 @@ impl FileKey {
 pub struct CachedFile {
     contents: ByteView<'static>,
     source_mapping_url: Option<Arc<str>>,
-    // TODO: maybe we should add a `FileSource` here, as in:
+    // TODO: maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
 
