@@ -84,8 +84,11 @@ pub struct SourceMapLookup {
     artifacts: HashMap<String, CacheEntry<ByteView<'static>>>,
     sourcemaps: HashMap<String, CacheEntry<OwnedSourceMapCache>>,
 
-    /// Arbitrary files keyed by their `abs_path`.
-    files_by_path: HashMap<FileKey, CacheEntry<CachedFile>>,
+    /// Arbitrary files keyed by their [`FileKey`],
+    /// which is a combination of `abs_path` and `DebugId`.
+    files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
+    /// SourceMaps by [`FileKey`].
+    sourcemaps_by_key: HashMap<FileKey, CacheEntry<OwnedSourceMapCache>>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
 }
@@ -108,7 +111,8 @@ impl SourceMapLookup {
             artifacts: HashMap::new(),
             sourcemaps: HashMap::new(),
 
-            files_by_path: HashMap::new(),
+            files_by_key: HashMap::new(),
+            sourcemaps_by_key: HashMap::new(),
             artifact_bundles: Vec::new(),
         }
     }
@@ -289,13 +293,13 @@ impl SourceMapLookup {
         // First, we do a trivial lookup in case we already have this file.
         // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
         // lookup key throughout.
-        if let Some(file) = self.files_by_path.get(&key) {
+        if let Some(file) = self.files_by_key.get(&key) {
             return file.clone();
         }
 
         // Otherwise, try looking it up in one of the artifact bundles that we already have.
         if let Some(file) = self.try_get_file_from_bundles(&key) {
-            return self.files_by_path.entry(key).or_insert(Ok(file)).clone();
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
         }
 
         // Otherwise, we try to get the file from the already fetched existing individual files.
@@ -319,9 +323,9 @@ impl SourceMapLookup {
     /// or optionally its [`DebugId`].
     pub async fn get_sourcemapcache(&mut self, key: FileKey) -> CacheEntry<OwnedSourceMapCache> {
         // First, check if we have already cached / created the `SourceMapCache`.
-        // if let Some(smcache) = self.sourcemaps.get(abs_path) {
-        //     return smcache.clone();
-        // }
+        if let Some(smcache) = self.sourcemaps_by_key.get(&key) {
+            return smcache.clone();
+        }
 
         // Fetch the minified file first
         let minified_id = key
@@ -374,9 +378,13 @@ impl SourceMapLookup {
         // TODO: now that we have both files, we can create a `SourceMapCache` for it
         // We should track the information where these files came from, and use that as the
         // `CacheKey` for the `sourcemap_caches`.
-        drop((minified_source, sourcemap));
+        let cached_sourcesmap = self
+            .fetch_sourcemap_cache(minified_source.contents, sourcemap.contents)
+            .await;
+        self.sourcemaps_by_key
+            .insert(key, cached_sourcesmap.clone());
 
-        Err(CacheError::NotFound)
+        cached_sourcesmap
     }
 
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFile> {
@@ -392,13 +400,30 @@ impl SourceMapLookup {
             }
         }
 
-        // TODO:
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
+        if let Some(abs_path) = &key.abs_path {
+            for url in get_release_file_candidate_urls(abs_path) {
+                for bundle in &self.artifact_bundles {
+                    let bundle = bundle.get();
+                    // FIXME: is this `by_url` or `by_path`?
+                    if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
+                        if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                            return Some(file);
+                        }
+                    }
+                }
+            }
+        }
 
         None
     }
 }
 
+/// This represents the lookup key of an arbitrary file.
+///
+/// A [`SourceFileType::MinifiedSource`] always has an `abs_path`, and optionally a `debug_id`.
+/// A [`SourceFileType::SourceMap`] can have an `abs_path`, a `debug_id`, or both.
+/// A [`SourceFileType::Source`] only has an `abs_path`.
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct FileKey {
     abs_path: Option<Url>,
@@ -406,6 +431,7 @@ pub struct FileKey {
 }
 
 impl FileKey {
+    /// Creates a new [`FileKey`] from an `abs_path` and optional `debug_id`.
     pub fn new(abs_path: &str, debug_id: Option<(DebugId, SourceFileType)>) -> CacheEntry<Self> {
         let abs_path = Url::parse(abs_path)
             .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
@@ -424,6 +450,8 @@ impl FileKey {
 pub struct CachedFile {
     contents: ByteView<'static>,
     source_mapping_url: Option<Arc<str>>,
+    // TODO: maybe we should add a `FileSource` here, as in:
+    // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
 
 impl CachedFile {
@@ -438,10 +466,15 @@ impl CachedFile {
     }
 }
 
-// Transforms a full absolute url into 2 or 4 generalized options. Based on `ReleaseFile.normalize`.
+/// Transforms a full absolute url into 2 or 4 generalized options.
+// Based on `ReleaseFile.normalize`, see:
 // https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
 fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
     let mut urls = vec![];
+
+    // TODO: should we maybe order these most likely to least likely?
+    // right now the "relative without query" is the last, whereas its the most likely to appear
+    // in artifact bundles? (I’m just guessing, is that true?)
 
     // Absolute without fragment
     urls.push(url[..Position::AfterQuery].to_string());
