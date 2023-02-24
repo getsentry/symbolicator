@@ -7,7 +7,10 @@ use data_encoding::BASE64;
 use futures::future::BoxFuture;
 use reqwest::Url;
 use sourcemap::locate_sourcemap_reference;
-use symbolic::common::{ByteView, SelfCell};
+use symbolic::common::{ByteView, DebugId, SelfCell};
+use symbolic::debuginfo::sourcebundle::{
+    SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
+};
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
 use tempfile::NamedTempFile;
@@ -55,6 +58,8 @@ impl SourceMapUrl {
     }
 }
 
+type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
+
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
@@ -65,6 +70,14 @@ pub struct SourceMapLookup {
 
     artifacts: HashMap<String, CacheEntry<ByteView<'static>>>,
     sourcemaps: HashMap<String, CacheEntry<OwnedSourceMapCache>>,
+
+    /// Arbitrary files keyed by their [`FileKey`],
+    /// which is a combination of `abs_path` and `DebugId`.
+    files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
+    /// SourceMaps by [`FileKey`].
+    sourcemaps_by_key: HashMap<FileKey, CacheEntry<OwnedSourceMapCache>>,
+    /// The set of all the artifact bundles that we have downloaded so far.
+    artifact_bundles: Vec<ArtifactBundle>,
 }
 
 impl SourceMapLookup {
@@ -84,6 +97,10 @@ impl SourceMapLookup {
 
             artifacts: HashMap::new(),
             sourcemaps: HashMap::new(),
+
+            files_by_key: HashMap::new(),
+            sourcemaps_by_key: HashMap::new(),
+            artifact_bundles: Vec::new(),
         }
     }
 
@@ -255,36 +272,218 @@ impl SourceMapLookup {
     ) -> Option<&CacheEntry<OwnedSourceMapCache>> {
         self.sourcemaps.get(abs_path)
     }
-}
 
-// Transforms a full absolute url into 2 or 4 generalized options. Based on `ReleaseFile.normalize`.
-// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
-fn get_release_file_candidate_urls(url: &Url) -> Vec<String> {
-    let mut urls = vec![];
+    /// Fetches an arbitrary file using its `abs_path`,
+    /// or optionally its [`DebugId`] and [`SourceFileType`]
+    /// (because multiple files can share one [`DebugId`]).
+    pub async fn get_file(&mut self, key: FileKey) -> CacheEntry<CachedFile> {
+        // First, we do a trivial lookup in case we already have this file.
+        // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
+        // lookup key throughout.
+        if let Some(file) = self.files_by_key.get(&key) {
+            return file.clone();
+        }
 
-    // Absolute without fragment
-    urls.push(url[..Position::AfterQuery].to_string());
+        // Otherwise, try looking it up in one of the artifact bundles that we already have.
+        if let Some(file) = self.try_get_file_from_bundles(&key) {
+            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        }
 
-    // Absolute without query
-    if url.query().is_some() {
-        urls.push(url[..Position::AfterPath].to_string())
+        // Otherwise, we try to get the file from the already fetched existing individual files.
+
+        // TODO:
+        // look up every candidate `abs_path` in `self.artifacts`
+
+        // TODO:
+        // Otherwise, do a (cached) API request to Sentry and get the artifacts
+        //
+        //
+        // NOTE: We have `self.remote_artifacts` for the API requests already.
+
+        // TODO:
+        // Otherwise, fall back to scraping from the Web.
+
+        Err(CacheError::NotFound)
     }
 
-    // Relative without fragment
-    urls.push(format!(
-        "~{}",
-        &url[Position::BeforePath..Position::AfterQuery]
-    ));
+    /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
+    /// or optionally its [`DebugId`].
+    pub async fn get_sourcemapcache(&mut self, key: FileKey) -> CacheEntry<OwnedSourceMapCache> {
+        // First, check if we have already cached / created the `SourceMapCache`.
+        if let Some(smcache) = self.sourcemaps_by_key.get(&key) {
+            return smcache.clone();
+        }
+
+        // Fetch the minified file first
+        let minified_id = key
+            .debug_id
+            .map(|id| (id.0, SourceFileType::MinifiedSource));
+        let minified_key = FileKey {
+            abs_path: key.abs_path.clone(),
+            debug_id: minified_id,
+        };
+        let minified_source = self.get_file(minified_key).await?;
+
+        // Then fetch the corresponding sourcemap if we have a sourcemap reference
+        let sourcemap_id = key
+            .debug_id
+            .as_ref()
+            .map(|id| (id.0, SourceFileType::SourceMap));
+        let sourcemap_url = match minified_source.source_mapping_url.as_deref() {
+            Some(sourcemap_url) => {
+                // FIXME: if we have a data URL, we don’t need the base at all
+                let base_url = key.abs_path.clone().ok_or_else(|| {
+                    CacheError::DownloadError("expected minified file to have an abs_path".into())
+                })?;
+                Some(SourceMapUrl::parse_with_prefix(&base_url, sourcemap_url)?)
+            }
+            None => None,
+        };
+
+        // We have three cases here:
+        let sourcemap = match sourcemap_url {
+            // We have an embedded SourceMap via data URL
+            Some(SourceMapUrl::Data(data)) => CachedFile {
+                contents: ByteView::from_vec(data),
+                source_mapping_url: None,
+            },
+            // We do have a valid `sourceMappingURL`
+            Some(SourceMapUrl::Remote(url)) => {
+                let sourcemap_key = FileKey {
+                    abs_path: Some(url),
+                    debug_id: sourcemap_id,
+                };
+                self.get_file(sourcemap_key).await?
+            }
+            // We *might* have a valid `DebugId`, in which case we don’t need no URL
+            None => {
+                let sourcemap_key = FileKey {
+                    abs_path: None,
+                    debug_id: sourcemap_id,
+                };
+                self.get_file(sourcemap_key).await?
+            }
+        };
+
+        // TODO: now that we have both files, we can create a `SourceMapCache` for it
+        // We should track the information where these files came from, and use that as the
+        // `CacheKey` for the `sourcemap_caches`.
+        let cached_sourcesmap = self
+            .fetch_sourcemap_cache(minified_source.contents, sourcemap.contents)
+            .await;
+        self.sourcemaps_by_key
+            .insert(key, cached_sourcesmap.clone());
+
+        cached_sourcesmap
+    }
+
+    fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFile> {
+        // If we have an `id`, we first try a lookup based on that.
+        if let Some((debug_id, ty)) = key.debug_id {
+            for bundle in &self.artifact_bundles {
+                let bundle = bundle.get();
+                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
+                    if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                        return Some(file);
+                    }
+                }
+            }
+        }
+
+        // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
+        if let Some(abs_path) = &key.abs_path {
+            for url in get_release_file_candidate_urls(abs_path) {
+                for bundle in &self.artifact_bundles {
+                    let bundle = bundle.get();
+                    if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
+                        if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                            return Some(file);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+}
+
+/// This represents the lookup key of an arbitrary file.
+///
+/// A [`SourceFileType::MinifiedSource`] always has an `abs_path`, and optionally a `debug_id`.
+/// A [`SourceFileType::SourceMap`] can have an `abs_path`, a `debug_id`, or both.
+/// A [`SourceFileType::Source`] only has an `abs_path`.
+#[derive(Debug, Hash, PartialEq, Eq)]
+pub struct FileKey {
+    abs_path: Option<Url>,
+    debug_id: Option<(DebugId, SourceFileType)>,
+}
+
+impl FileKey {
+    /// Creates a new [`FileKey`] from an `abs_path` and optional `debug_id`.
+    pub fn new(abs_path: &str, debug_id: Option<(DebugId, SourceFileType)>) -> CacheEntry<Self> {
+        let abs_path = Url::parse(abs_path)
+            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
+
+        Ok(Self {
+            abs_path: Some(abs_path),
+            debug_id,
+        })
+    }
+}
+
+/// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
+/// the parts that we care about.
+#[derive(Debug, Clone)]
+#[allow(unused)]
+pub struct CachedFile {
+    contents: ByteView<'static>,
+    source_mapping_url: Option<Arc<str>>,
+    // TODO: maybe we should add a `FileSource` here, as in:
+    // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
+}
+
+impl CachedFile {
+    fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
+        let contents = descriptor.contents()?.as_bytes().to_vec();
+        let contents = ByteView::from_vec(contents);
+        let source_mapping_url = descriptor.source_mapping_url().map(Into::into);
+        Some(Self {
+            contents,
+            source_mapping_url,
+        })
+    }
+}
+
+/// Transforms a full absolute url into 2 or 4 generalized options.
+// Based on `ReleaseFile.normalize`, see:
+// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
+fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
+    let mut urls = [None, None, None, None];
 
     // Relative without query
     if url.query().is_some() {
-        urls.push(format!(
+        urls[0] = Some(format!(
             "~{}",
             &url[Position::BeforePath..Position::AfterPath]
         ));
     }
 
-    urls
+    // Relative without fragment
+    urls[1] = Some(format!(
+        "~{}",
+        &url[Position::BeforePath..Position::AfterQuery]
+    ));
+
+    // Absolute without query
+    if url.query().is_some() {
+        urls[2] = Some(url[..Position::AfterPath].to_string());
+    }
+
+    // Absolute without fragment
+    urls[3] = Some(url[..Position::AfterQuery].to_string());
+
+    urls.into_iter().flatten()
 }
 
 // Joins together frames `abs_path` and discovered sourcemap reference.
@@ -400,41 +599,45 @@ mod tests {
     #[test]
     fn test_get_release_file_candidate_urls() {
         let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js#wat"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
 
         let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
             .parse()
             .unwrap();
-        let expected = vec![
-            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
+        let expected = &[
             "~/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
         ];
-        assert_eq!(get_release_file_candidate_urls(&url), expected);
+        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        assert_eq!(&actual, expected);
     }
 }
