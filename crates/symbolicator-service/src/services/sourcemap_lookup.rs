@@ -308,35 +308,27 @@ impl SourceMapLookup {
 
     /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
     /// or optionally its [`DebugId`].
-    pub async fn get_sourcemapcache(&mut self, key: FileKey) -> CacheEntry<OwnedSourceMapCache> {
+    pub async fn get_sourcemapcache(
+        &mut self,
+        abs_path: &Url,
+        debug_id: Option<DebugId>,
+    ) -> CacheEntry<OwnedSourceMapCache> {
         // First, check if we have already cached / created the `SourceMapCache`.
+        let key = FileKey::MinifiedSource {
+            abs_path: abs_path.clone(),
+            debug_id,
+        };
         if let Some(smcache) = self.sourcemaps_by_key.get(&key) {
             return smcache.clone();
         }
 
         // Fetch the minified file first
-        let minified_id = key
-            .debug_id
-            .map(|id| (id.0, SourceFileType::MinifiedSource));
-        let minified_key = FileKey {
-            abs_path: key.abs_path.clone(),
-            debug_id: minified_id,
-        };
-        let minified_source = self.get_file(minified_key).await?;
+        let minified_source = self.get_file(key.clone()).await?;
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_id = key
-            .debug_id
-            .as_ref()
-            .map(|id| (id.0, SourceFileType::SourceMap));
+        let sourcemap_id = key.debug_id();
         let sourcemap_url = match minified_source.source_mapping_url.as_deref() {
-            Some(sourcemap_url) => {
-                // FIXME: if we have a data URL, we don’t need the base at all
-                let base_url = key.abs_path.clone().ok_or_else(|| {
-                    CacheError::DownloadError("expected minified file to have an abs_path".into())
-                })?;
-                Some(SourceMapUrl::parse_with_prefix(&base_url, sourcemap_url)?)
-            }
+            Some(sourcemap_url) => Some(SourceMapUrl::parse_with_prefix(abs_path, sourcemap_url)?),
             None => None,
         };
 
@@ -349,7 +341,7 @@ impl SourceMapLookup {
             },
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
-                let sourcemap_key = FileKey {
+                let sourcemap_key = FileKey::SourceMap {
                     abs_path: Some(url),
                     debug_id: sourcemap_id,
                 };
@@ -357,7 +349,7 @@ impl SourceMapLookup {
             }
             // We *might* have a valid `DebugId`, in which case we don’t need no URL
             None => {
-                let sourcemap_key = FileKey {
+                let sourcemap_key = FileKey::SourceMap {
                     abs_path: None,
                     debug_id: sourcemap_id,
                 };
@@ -379,7 +371,8 @@ impl SourceMapLookup {
 
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFile> {
         // If we have an `id`, we first try a lookup based on that.
-        if let Some((debug_id, ty)) = key.debug_id {
+        if let Some(debug_id) = key.debug_id() {
+            let ty = key.as_type();
             for bundle in &self.artifact_bundles {
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
@@ -391,7 +384,7 @@ impl SourceMapLookup {
         }
 
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
-        if let Some(abs_path) = &key.abs_path {
+        if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
                 for bundle in &self.artifact_bundles {
                     let bundle = bundle.get();
@@ -408,27 +401,49 @@ impl SourceMapLookup {
     }
 }
 
-/// This represents the lookup key of an arbitrary file.
-///
-/// A [`SourceFileType::MinifiedSource`] always has an `abs_path`, and optionally a `debug_id`.
-/// A [`SourceFileType::SourceMap`] can have an `abs_path`, a `debug_id`, or both.
-/// A [`SourceFileType::Source`] only has an `abs_path`.
-#[derive(Debug, Hash, PartialEq, Eq)]
-pub struct FileKey {
-    abs_path: Option<Url>,
-    debug_id: Option<(DebugId, SourceFileType)>,
+/// The lookup key of an arbitrary file.
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum FileKey {
+    /// This key represents a [`SourceFileType::MinifiedSource`].
+    MinifiedSource {
+        abs_path: Url,
+        debug_id: Option<DebugId>,
+    },
+    /// This key represents a [`SourceFileType::SourceMap`].
+    SourceMap {
+        abs_path: Option<Url>,
+        debug_id: Option<DebugId>,
+    },
+    /// This key represents a [`SourceFileType::Source`].
+    Source { abs_path: Url },
 }
 
 impl FileKey {
-    /// Creates a new [`FileKey`] from an `abs_path` and optional `debug_id`.
-    pub fn new(abs_path: &str, debug_id: Option<(DebugId, SourceFileType)>) -> CacheEntry<Self> {
-        let abs_path = Url::parse(abs_path)
-            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
+    /// Returns this key's debug id, if any.
+    fn debug_id(&self) -> Option<DebugId> {
+        match self {
+            FileKey::MinifiedSource { debug_id, .. } => *debug_id,
+            FileKey::SourceMap { debug_id, .. } => *debug_id,
+            FileKey::Source { .. } => None,
+        }
+    }
 
-        Ok(Self {
-            abs_path: Some(abs_path),
-            debug_id,
-        })
+    /// Returns this key's abs_path, if any.
+    fn abs_path(&self) -> Option<&Url> {
+        match self {
+            FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
+            FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
+            FileKey::Source { abs_path } => Some(abs_path),
+        }
+    }
+
+    /// Returns the type of the file this key represents.
+    fn as_type(&self) -> SourceFileType {
+        match self {
+            FileKey::MinifiedSource { .. } => SourceFileType::MinifiedSource,
+            FileKey::SourceMap { .. } => SourceFileType::SourceMap,
+            FileKey::Source { .. } => SourceFileType::Source,
+        }
     }
 }
 
