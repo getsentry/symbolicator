@@ -338,11 +338,14 @@ impl SourceMapLookup {
         let minified_source = self.get_file(minified_key).await?;
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_id = key.debug_id.map(|id| (id.0, SourceFileType::SourceMap));
+        let sourcemap_id = key
+            .debug_id
+            .as_ref()
+            .map(|id| (id.0, SourceFileType::SourceMap));
         let sourcemap_url = match minified_source.source_mapping_url.as_deref() {
             Some(sourcemap_url) => {
                 // FIXME: if we have a data URL, we don’t need the base at all
-                let base_url = key.abs_path.ok_or_else(|| {
+                let base_url = key.abs_path.clone().ok_or_else(|| {
                     CacheError::DownloadError("expected minified file to have an abs_path".into())
                 })?;
                 Some(SourceMapUrl::parse_with_prefix(&base_url, sourcemap_url)?)
