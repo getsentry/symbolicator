@@ -1,0 +1,61 @@
+---
+source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 205
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0x1"
+        function_id: "0x7"
+        lang: csharp
+        filename: ThrowHelper.cs
+        abs_path: /_/src/libraries/Common/src/System/ThrowHelper.cs
+        lineno: 24
+        pre_context:
+          - "#endif"
+          - "            object? argument,"
+          - "            [CallerArgumentExpression(\"argument\")] string? paramName = null)"
+          - "        {"
+        context_line: "            if (argument is null)"
+        post_context:
+          - "            {"
+          - "                Throw(paramName);"
+          - "            }"
+          - "        }"
+          - ""
+modules:
+  - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: true
+    arch: unknown
+    type: pe_dotnet
+    debug_id: 37e9e8a6-1a8e-404e-b93c-6902e277ff55-a09672e1
+    debug_file: source-links.pdb
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55a09672e1/source-links.src.zip"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55ffffffff/source-links.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: false
+            has_symbols: false
+            has_sources: true
+        debug:
+          status: ok
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55ffffffff/source-links.src.zip"
+        download:
+          status: notfound
+

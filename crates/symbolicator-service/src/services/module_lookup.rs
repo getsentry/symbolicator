@@ -105,7 +105,15 @@ struct ModuleEntry {
 pub struct ModuleLookup {
     modules: Vec<ModuleEntry>,
     scope: Scope,
+    // TODO rename variable and type so it wouldn't get confused with source code. Maybe "Provider"?
     sources: Arc<[SourceConfig]>,
+    // TODO this replace with a cache & download handler, like SourceMapCache.
+    source_links_cache: HashMap<url::Url, String>,
+}
+
+pub(crate) enum SetContextLinesResult {
+    Ok,
+    SourceMissing(url::Url),
 }
 
 impl ModuleLookup {
@@ -154,6 +162,7 @@ impl ModuleLookup {
             modules,
             scope,
             sources,
+            source_links_cache: HashMap::new(),
         }
     }
 
@@ -343,7 +352,22 @@ impl ModuleLookup {
         }
     }
 
-    /// Look up the corresponding SymCache based on the instruction `addr`.
+    /// Fetches all remote source URLs.
+    #[tracing::instrument(skip_all)]
+    pub async fn fetch_source_links(&mut self, links: HashSet<url::Url>) {
+        // TODO implement properly
+        let client = reqwest::Client::new();
+        for url in links {
+            let builder = client.get(url.clone());
+            if let Ok(response) = builder.send().await {
+                if let Ok(text) = response.text().await {
+                    self.source_links_cache.insert(url, text);
+                }
+            }
+        }
+    }
+
+    /// Look up the corresponding SymCache based on the instruxction `addr`.
     pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
             let relative_addr = match addr_mode {
@@ -381,22 +405,59 @@ impl ModuleLookup {
             .collect()
     }
 
-    /// This looks up the source of the given line, plus `n` lines above/below.
-    pub fn get_context_lines(
+    /// Update the frame with source context, if available. In case the source code references an
+    /// URL that's not yet loaded, returns `SetContextLinesResult::SourceMissing(url)`.
+    pub(crate) fn set_context_lines(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
-        frame: &RawFrame,
+        frame: &mut RawFrame,
         num_lines: usize,
-    ) -> Option<(Vec<String>, String, Vec<String>)> {
+    ) -> Option<SetContextLinesResult> {
         let abs_path = frame.abs_path.as_ref()?;
-        let lineno = frame.lineno? as usize;
+
+        // short-circuit here if we don't have the mandatory line number - no reason to load the source.
+        frame.lineno?;
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
-        let source_descriptor = session.source_by_path(abs_path).ok()??;
-        // TODO: add support for source links via `source_descriptor.url()`
-        let source = source_descriptor.contents()?;
 
+        let source = session.source_by_path(abs_path).ok()??;
+
+        if let Some(text) = source.contents() {
+            return Self::set_context_lines_from_source(text, frame, num_lines);
+        }
+
+        if let Some(url) = source.url() {
+            // Only allow http:// and https:// URLs to prevent file-system reads.
+            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
+            if url.starts_with("https://") || url.starts_with("http://") {
+                let url = url::Url::parse(url).ok()?;
+                return self.set_context_lines_from_url(url, frame, num_lines);
+            }
+        }
+
+        None
+    }
+
+    /// Update the frame with source context for the given URL.
+    pub(crate) fn set_context_lines_from_url(
+        &self,
+        url: url::Url,
+        frame: &mut RawFrame,
+        num_lines: usize,
+    ) -> Option<SetContextLinesResult> {
+        match self.source_links_cache.get(&url) {
+            Some(text) => Self::set_context_lines_from_source(text, frame, num_lines),
+            None => Some(SetContextLinesResult::SourceMissing(url)),
+        }
+    }
+
+    fn set_context_lines_from_source(
+        source: &str,
+        frame: &mut RawFrame,
+        num_lines: usize,
+    ) -> Option<SetContextLinesResult> {
+        let lineno = frame.lineno? as usize;
         let start_line = lineno.saturating_sub(num_lines);
         let line_diff = lineno - start_line;
 
@@ -405,10 +466,15 @@ impl ModuleLookup {
             .take(line_diff.saturating_sub(1))
             .map(|x| x.to_string())
             .collect();
-        let context = lines.next()?.to_string();
+        let context_line = lines.next()?.to_string();
         let post_context = lines.take(num_lines).map(|x| x.to_string()).collect();
 
-        Some((pre_context, context, post_context))
+        // Only set after we've collected all three, so we don't set the context partially
+        frame.pre_context = pre_context;
+        frame.context_line = Some(context_line);
+        frame.post_context = post_context;
+
+        Some(SetContextLinesResult::Ok)
     }
 
     /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.

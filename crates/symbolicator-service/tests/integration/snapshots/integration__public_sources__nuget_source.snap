@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/public_sources.rs
-assertion_line: 45
+assertion_line: 48
 expression: response.unwrap()
 ---
 stacktraces:
@@ -15,6 +15,18 @@ stacktraces:
         filename: TZConvert.cs
         abs_path: /_/src/TimeZoneConverter/TZConvert.cs
         lineno: 115
+        pre_context:
+          - "        {"
+          - "            return windowsTimeZoneId;"
+          - "        }"
+          - ""
+        context_line: "        throw new InvalidTimeZoneException("
+        post_context:
+          - "            $\"\\\"{ianaTimeZoneName}\\\" was not recognized as a valid IANA time zone name, or has no equivalent Windows time zone.\");"
+          - "    }"
+          - ""
+          - "    /// <summary>"
+          - "    /// Attempts to convert an IANA time zone name to the equivalent Windows time zone ID."
 modules:
   - debug_status: found
     features:

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
@@ -9,7 +10,9 @@ use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
-use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
+use crate::services::module_lookup::{
+    CacheFileEntry, CacheLookupResult, ModuleLookup, SetContextLinesResult,
+};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
 use crate::services::sourcemap::SourceMapService;
@@ -138,19 +141,30 @@ impl SymbolicationActor {
 
         let debug_sessions = module_lookup.prepare_debug_sessions();
 
+        // Map collected source contexts to frames.
+        const NUM_LINES: usize = 5;
+        let mut remote_source_frames = Vec::new();
         for trace in &mut stacktraces {
             for frame in &mut trace.frames {
-                if let Some((pre_context, context_line, post_context)) =
-                    module_lookup.get_context_lines(&debug_sessions, &frame.raw, 5)
+                if let Some(SetContextLinesResult::SourceMissing(url)) =
+                    module_lookup.set_context_lines(&debug_sessions, &mut frame.raw, NUM_LINES)
                 {
-                    frame.raw.pre_context = pre_context;
-                    frame.raw.context_line = Some(context_line);
-                    frame.raw.post_context = post_context;
+                    remote_source_frames.push((&mut frame.raw, url));
                 }
             }
         }
+
         // explicitly drop this, so it does not borrow `module_lookup` anymore.
         drop(debug_sessions);
+
+        if !remote_source_frames.is_empty() {
+            let urls = HashSet::from_iter(remote_source_frames.iter().map(|v| v.1.clone()));
+            module_lookup.fetch_source_links(urls).await;
+
+            for pair in remote_source_frames {
+                module_lookup.set_context_lines_from_url(pair.1, pair.0, NUM_LINES);
+            }
+        }
 
         // bring modules back into the original order
         let modules = module_lookup.into_inner();
