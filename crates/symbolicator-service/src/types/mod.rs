@@ -152,6 +152,10 @@ pub struct RawFrame {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_context: Vec<String>,
 
+    /// URL to fetch the source code from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_link: Option<String>,
+
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,

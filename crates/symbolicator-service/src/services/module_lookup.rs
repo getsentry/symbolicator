@@ -423,17 +423,27 @@ impl ModuleLookup {
 
         let source = session.source_by_path(abs_path).ok()??;
 
+        // Always set the source link URL, if available (and it passes a simple validation).
+        frame.source_link = source.url().and_then(|url| {
+            // Only allow http:// and https:// URLs to prevent file-system reads.
+            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
+            if url.starts_with("https://") || url.starts_with("http://") {
+                match url::Url::parse(url) {
+                    Ok(url) => Some(url.to_string()),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        });
+
+        // Set the actual source code, if embedded in the file.
         if let Some(text) = source.contents() {
             return Self::set_context_lines_from_source(text, frame, num_lines);
         }
 
-        if let Some(url) = source.url() {
-            // Only allow http:// and https:// URLs to prevent file-system reads.
-            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
-            if url.starts_with("https://") || url.starts_with("http://") {
-                let url = url::Url::parse(url).ok()?;
-                return self.set_context_lines_from_url(url, frame, num_lines);
-            }
+        if let Some(Ok(url)) = frame.source_link.as_ref().map(|v| url::Url::parse(v)) {
+            return self.set_context_lines_from_url(url, frame, num_lines);
         }
 
         None

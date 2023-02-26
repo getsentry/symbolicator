@@ -409,6 +409,7 @@ fn symbolicate_native_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
+                source_link: None,
                 sym_addr: None,
                 lang: match func.language() {
                     Language::Unknown => None,

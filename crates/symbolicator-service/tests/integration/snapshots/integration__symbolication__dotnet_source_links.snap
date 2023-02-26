@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 205
 expression: response.unwrap()
 ---
 stacktraces:
@@ -26,6 +25,7 @@ stacktraces:
           - "            }"
           - "        }"
           - ""
+        source_link: "https://raw.githubusercontent.com/dotnet/runtime/d099f075e45d2aa6007a22b71b45a08758559f80/src/libraries/Common/src/System/ThrowHelper.cs"
 modules:
   - debug_status: found
     features:
