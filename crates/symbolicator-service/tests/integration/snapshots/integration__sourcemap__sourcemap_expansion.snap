@@ -1,0 +1,100 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        function: produceStack
+        filename: index.html
+        abs_path: "http://example.com/index.html"
+        lineno: 6
+        colno: 7
+      - status: symbolicated
+        function: test
+        filename: test.js
+        abs_path: test.js
+        lineno: 20
+        colno: 5
+        pre_context:
+          - "    cb(data);"
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+        context_line: "    invoke(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  return test;"
+          - "})();"
+          - ""
+      - status: symbolicated
+        function: invoke
+        filename: test.js
+        abs_path: test.js
+        lineno: 15
+        colno: 5
+        pre_context:
+          - "    if (data.failed) {"
+          - "      cb = onFailure;"
+          - "    } else {"
+          - "      cb = onSuccess;"
+          - "    }"
+        context_line: "    cb(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+          - "    invoke(data);"
+      - status: symbolicated
+        function: onFailure
+        filename: test.js
+        abs_path: test.js
+        lineno: 5
+        colno: 11
+        pre_context:
+          - "var makeAFailure = (function() {"
+          - "  function onSuccess(data) {}"
+          - ""
+          - "  function onFailure(data) {"
+        context_line: "    throw new Error('failed!');"
+        post_context:
+          - "  }"
+          - ""
+          - "  function invoke(data) {"
+          - "    var cb = null;"
+          - "    if (data.failed) {"
+raw_stacktraces:
+  - frames:
+      - function: produceStack
+        filename: index.html
+        abs_path: "http://example.com/index.html"
+        lineno: 6
+        colno: 7
+      - function: i
+        filename: test.min.js
+        abs_path: "http://example.com/test.min.js"
+        lineno: 1
+        colno: 183
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+      - function: r
+        filename: test.min.js
+        abs_path: "http://example.com/test.min.js"
+        lineno: 1
+        colno: 136
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+      - function: e
+        filename: test.min.js
+        abs_path: "http://example.com/test.min.js"
+        lineno: 1
+        colno: 64
+        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+

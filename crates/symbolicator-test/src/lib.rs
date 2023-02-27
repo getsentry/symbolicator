@@ -32,7 +32,7 @@ use tracing_subscriber::fmt::fmt;
 
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
-    GcsSourceKey, HttpSourceConfig, SourceConfig, SourceFilters, SourceId,
+    GcsSourceKey, HttpSourceConfig, SentrySourceConfig, SourceConfig, SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -371,8 +371,16 @@ pub fn symbol_server() -> (Server, SourceConfig) {
     (server, source)
 }
 
-pub fn sourcemap_server(fixtures_dir: &str) -> Server {
-    Server::with_router(Server::sourcemap_router(fixtures_dir))
+pub fn sourcemap_server(fixtures_dir: &str) -> (Server, SentrySourceConfig) {
+    let server = Server::with_router(Server::sourcemap_router(fixtures_dir));
+
+    let source = SentrySourceConfig {
+        id: SourceId::new("sentry:project"),
+        url: server.url("/files/"),
+        token: String::new(),
+    };
+
+    (server, source)
 }
 
 /// Returns the legacy read-only GCS credentials for testing GCS support.
