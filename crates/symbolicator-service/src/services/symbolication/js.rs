@@ -1,14 +1,12 @@
-use std::collections::HashSet;
 use std::io::BufRead;
 
 use reqwest::Url;
-use symbolic::common::ByteView;
-use symbolic::sourcemapcache::{File, ScopeLookupResult, SourcePosition};
+use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 
-use crate::caching::CacheError;
-use crate::services::sourcemap_lookup::SourceMapLookup;
+use crate::caching::{CacheEntry, CacheError};
+use crate::services::sourcemap_lookup::{CachedFile, FileKey, OwnedSourceMapCache};
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, SymbolicatedJsFrame,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, SymbolicatedJsFrame,
     SymbolicatedJsStacktrace,
 };
 
@@ -22,28 +20,89 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
-        let mut unique_abs_paths = HashSet::new();
-        for stacktrace in &request.stacktraces {
-            for frame in &stacktrace.frames {
-                unique_abs_paths.insert(frame.abs_path.clone());
-            }
-        }
-
-        let mut sourcemap_lookup = self
+        let mut lookup = self
             .sourcemaps
             .create_sourcemap_lookup(request.source.clone());
+        lookup.prefetch_artifacts(&request.stacktraces).await;
 
-        sourcemap_lookup.fetch_caches(unique_abs_paths).await;
+        let mut raw_stacktraces = request.stacktraces;
 
-        let stacktraces_symbolications = request
-            .stacktraces
-            .into_iter()
-            .map(|trace| async { symbolicate_js_stacktrace(trace, &sourcemap_lookup).await });
+        let num_stacktraces = raw_stacktraces.len();
+        let mut stacktraces = Vec::with_capacity(num_stacktraces);
 
-        let (stacktraces, raw_stacktraces) = futures::future::join_all(stacktraces_symbolications)
-            .await
-            .into_iter()
-            .unzip();
+        for raw_stacktrace in &mut raw_stacktraces {
+            let num_frames = raw_stacktrace.frames.len();
+            let mut symbolicated_frames = Vec::with_capacity(num_frames);
+
+            for raw_frame in &mut raw_stacktrace.frames {
+                // First, we fetch the minified file:
+                // TODO: hook up DebugId
+                // TODO: handle errors
+                let key = match FileKey::new_minified(&raw_frame.abs_path, None) {
+                    Ok(key) => key,
+                    Err(_) => {
+                        symbolicated_frames.push(SymbolicatedJsFrame {
+                            // FIXME: this really means the `abs_path` is invalid!
+                            status: JsFrameStatus::MissingSourcemap,
+                            raw: raw_frame.clone(),
+                        });
+                        continue;
+                    }
+                };
+                let minified_file = lookup.get_file(key.clone()).await;
+
+                // Apply source context to the raw frame
+                apply_source_context_from_artifact(raw_frame, &minified_file);
+
+                // Then, get the `SourceMapCache`:
+                // TODO: maybe get the `SourceMapCache` and the `CachedFile` at the same time?
+                let smcache = lookup
+                    .get_sourcemapcache(
+                        key.abs_path().expect("minified file has an `abs_path`"),
+                        None,
+                    )
+                    .await;
+
+                // And symbolicate
+                match symbolicate_js_frame(raw_frame, smcache) {
+                    Ok((mut frame, did_apply_source)) => {
+                        // If we have no source context from within the `SourceMapCache`,
+                        // fall back to applying the source context from a raw artifact file
+                        // TODO: we should only do this fallback if there is *no* `DebugId`.
+                        if !did_apply_source {
+                            // TODO: create a convenience method that creates a new `FileKey::Source`
+                            // from an existing `abs_path`.
+                            let abs_path = Url::parse(&raw_frame.abs_path).ok();
+                            let filename = frame.raw.filename.as_ref();
+                            let file_url = abs_path
+                                .zip(filename)
+                                .and_then(|(base, filename)| base.join(filename).ok());
+                            let file_key = file_url
+                                .ok_or(CacheError::NotFound)
+                                .map(FileKey::new_source);
+
+                            let source_file = match file_key {
+                                Ok(key) => lookup.get_file(key).await,
+                                Err(err) => Err(err),
+                            };
+
+                            apply_source_context_from_artifact(&mut frame.raw, &source_file);
+                        }
+                        symbolicated_frames.push(frame)
+                    }
+                    Err(status) => {
+                        symbolicated_frames.push(SymbolicatedJsFrame {
+                            status,
+                            raw: raw_frame.clone(),
+                        });
+                    }
+                }
+            }
+
+            stacktraces.push(SymbolicatedJsStacktrace {
+                frames: symbolicated_frames,
+            });
+        }
 
         Ok(CompletedJsSymbolicationResponse {
             stacktraces,
@@ -52,57 +111,20 @@ impl SymbolicationActor {
     }
 }
 
-async fn symbolicate_js_stacktrace(
-    stacktrace: JsStacktrace,
-    sourcemap_lookup: &SourceMapLookup,
-) -> (SymbolicatedJsStacktrace, JsStacktrace) {
-    let mut raw_frames = vec![];
-    let mut symbolicated_frames = vec![];
-
-    for frame in stacktrace.frames.iter() {
-        match symbolicate_js_frame(frame, sourcemap_lookup).await {
-            Ok(frame) => symbolicated_frames.push(frame),
-            Err(status) => {
-                symbolicated_frames.push(SymbolicatedJsFrame {
-                    status,
-                    raw: frame.clone(),
-                });
-            }
-        }
-    }
-
-    for mut frame in stacktrace.frames.into_iter() {
-        let abs_path = frame.abs_path.clone();
-        apply_source_context_from_artifact(&mut frame, sourcemap_lookup, &abs_path).await;
-        raw_frames.push(frame);
-    }
-
-    (
-        SymbolicatedJsStacktrace {
-            frames: symbolicated_frames,
-        },
-        JsStacktrace { frames: raw_frames },
-    )
-}
-
-async fn symbolicate_js_frame(
+fn symbolicate_js_frame(
     frame: &JsFrame,
-    sourcemap_lookup: &SourceMapLookup,
-) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
-    let smcache = sourcemap_lookup
-        .lookup_sourcemap_cache(&frame.abs_path)
-        .ok_or(JsFrameStatus::MissingSourcemap);
+    smcache: CacheEntry<OwnedSourceMapCache>,
+) -> Result<(SymbolicatedJsFrame, bool), JsFrameStatus> {
+    let smcache = match smcache {
+        Ok(smcache) => smcache,
+        Err(CacheError::Malformed(_)) => return Err(JsFrameStatus::MalformedSourcemap),
+        Err(_) => return Err(JsFrameStatus::MissingSourcemap),
+    };
 
     let mut result = SymbolicatedJsFrame {
         status: JsFrameStatus::Symbolicated,
         raw: frame.clone(),
     };
-
-    if smcache.is_err() || smcache.unwrap().is_err() {
-        apply_source_context_from_artifact(&mut result.raw, sourcemap_lookup, &frame.abs_path)
-            .await;
-        return Ok(result);
-    }
 
     // TODO(sourcemap): Report invalid source location error
     let (line, col) = match (frame.lineno, frame.colno) {
@@ -110,11 +132,6 @@ async fn symbolicate_js_frame(
         _ => return Err(JsFrameStatus::InvalidSourceMapLocation),
     };
     let sp = SourcePosition::new(line - 1, col - 1);
-    let smcache = match smcache? {
-        Ok(smcache) => smcache,
-        Err(CacheError::Malformed(_)) => return Err(JsFrameStatus::MalformedSourcemap),
-        Err(_) => return Err(JsFrameStatus::MissingSourcemap),
-    };
 
     let token = smcache
         .get()
@@ -137,63 +154,29 @@ async fn symbolicate_js_frame(
     result.raw.lineno = Some(token.line().saturating_add(1));
     result.raw.colno = Some(token.column().saturating_add(1));
 
+    let mut did_apply_source = false;
     if let Some(file) = token.file() {
         result.raw.filename = file.name().map(|f| f.to_string());
-
-        if file.source().is_some() {
-            apply_source_context_from_sourcemap_cache(&mut result.raw, file).await;
-        } else if let Some(filename) = file.name() {
-            if let Some(artifact_url) = Url::parse(&frame.abs_path)
-                .map(|base| base.join(filename).map(|url| url.to_string()).ok())
-                .ok()
-                .flatten()
-            {
-                apply_source_context_from_artifact(
-                    &mut result.raw,
-                    sourcemap_lookup,
-                    &artifact_url,
-                )
-                .await;
-            }
+        if let Some(file_source) = file.source() {
+            apply_source_context(&mut result.raw, file_source.as_bytes());
+            did_apply_source = true;
+        } else {
+            // TODO: report missing source?
         }
     }
 
-    Ok(result)
+    Ok((result, did_apply_source))
 }
 
-async fn apply_source_context_from_sourcemap_cache(frame: &mut JsFrame, file: File<'_>) {
-    if let Some(file_source) = file.source() {
-        let source = ByteView::from_slice(file_source.as_bytes());
-        apply_source_context(frame, source).await
+fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {
+    if let Ok(file) = file {
+        apply_source_context(frame, &file.contents)
     } else {
-        // report missing source?
+        // TODO: report missing source?
     }
 }
 
-async fn apply_source_context_from_artifact(
-    frame: &mut JsFrame,
-    sourcemap_lookup: &SourceMapLookup,
-    abs_path: &str,
-) {
-    let cached_artifact = sourcemap_lookup
-        .lookup_artifact_cache(abs_path)
-        .map(|s| s.to_owned());
-
-    // TODO: Ask cache to fetch file if it doesnt exist yet?
-    let artifact = if cached_artifact.is_some() {
-        cached_artifact.unwrap()
-    } else {
-        sourcemap_lookup.compute_artifact_cache(abs_path).await
-    };
-
-    if let Ok(artifact) = artifact {
-        apply_source_context(frame, artifact).await
-    } else {
-        // report missing source?
-    }
-}
-
-async fn apply_source_context(frame: &mut JsFrame, source: ByteView<'_>) {
+fn apply_source_context(frame: &mut JsFrame, source: &[u8]) {
     // At this stage we know we have _some_ line here, so it's safe to unwrap.
     let frame_line = frame.lineno.unwrap();
     let frame_column = frame.colno.unwrap_or_default();
