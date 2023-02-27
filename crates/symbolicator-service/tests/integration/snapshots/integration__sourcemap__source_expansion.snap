@@ -4,7 +4,7 @@ expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: symbolicated
+      - status: missing_sourcemap
         filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 1
@@ -16,7 +16,7 @@ stacktraces:
           - l
           - o
           - " "
-      - status: symbolicated
+      - status: missing_sourcemap
         filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4

@@ -4,7 +4,7 @@ expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: symbolicated
+      - status: missing_sourcemap
         function: produceStack
         filename: index.html
         abs_path: "http://example.com/index.html"
