@@ -23,8 +23,7 @@ impl SymbolicationActor {
         let mut lookup = self
             .sourcemaps
             .create_sourcemap_lookup(request.source.clone());
-        // TODO: while batching too much is probably premature optimization and hurts maintainability,
-        // doing a single "prefetch" pass might be the best of both worlds!
+        lookup.prefetch_artifacts(&request.stacktraces).await;
 
         let mut raw_stacktraces = request.stacktraces;
 

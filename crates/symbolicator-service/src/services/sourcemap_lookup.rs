@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
@@ -19,6 +19,7 @@ use url::Position;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
+use crate::types::JsStacktrace;
 
 use super::caches::versions::{ARTIFACT_CACHE_VERSIONS, SOURCEMAP_CACHE_VERSIONS};
 use super::fetch_file;
@@ -61,17 +62,14 @@ impl SourceMapUrl {
 
 type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
 
-#[allow(unused)]
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
     remote_artifacts: HashMap<String, SearchArtifactResult>,
 
+    #[allow(unused)]
     artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
-
-    artifacts: HashMap<String, CacheEntry<ByteView<'static>>>,
-    sourcemaps: HashMap<String, CacheEntry<OwnedSourceMapCache>>,
 
     /// Arbitrary files keyed by their [`FileKey`],
     /// which is a combination of `abs_path` and `DebugId`.
@@ -97,16 +95,28 @@ impl SourceMapLookup {
             artifact_caches,
             sourcemap_caches,
 
-            artifacts: HashMap::new(),
-            sourcemaps: HashMap::new(),
-
             files_by_key: HashMap::new(),
             sourcemaps_by_key: HashMap::new(),
             artifact_bundles: Vec::new(),
         }
     }
 
-    async fn list_artifacts(&mut self) -> HashMap<String, SearchArtifactResult> {
+    /// Tries to pre-fetch some of the artifacts needed for symbolication.
+    pub async fn prefetch_artifacts(&mut self, stacktraces: &[JsStacktrace]) {
+        let mut abs_paths = HashSet::new();
+
+        for stacktrace in stacktraces {
+            for frame in &stacktrace.frames {
+                abs_paths.insert(&frame.abs_path);
+            }
+        }
+
+        self.remote_artifacts = self.list_artifacts().await;
+
+        // TODO: actually fetch the needed artifacts :-)
+    }
+
+    async fn list_artifacts(&self) -> HashMap<String, SearchArtifactResult> {
         self.download_svc
             .list_artifacts(self.source.clone())
             .await
@@ -170,7 +180,7 @@ impl SourceMapLookup {
         req.load(temp_bv)
     }
 
-    pub fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
+    fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
         get_release_file_candidate_urls(url)
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
     }
@@ -396,7 +406,6 @@ impl FileKey {
 /// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
 /// the parts that we care about.
 #[derive(Debug, Clone)]
-#[allow(unused)]
 pub struct CachedFile {
     pub contents: ByteView<'static>,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
