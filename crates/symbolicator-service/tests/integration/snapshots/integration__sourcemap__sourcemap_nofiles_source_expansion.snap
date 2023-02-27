@@ -1,0 +1,31 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        function: add
+        abs_path: "app:///nofiles.js"
+        lineno: 3
+        colno: 9
+        pre_context:
+          - "function add(a, b) {"
+          - "\t\"use strict\";"
+        context_line: "\treturn a + b; // fôo"
+        post_context:
+          - "}"
+          - ""
+raw_stacktraces:
+  - frames:
+      - abs_path: "app:///nofiles.js"
+        lineno: 1
+        colno: 39
+        context_line: "function add(a, b) {"
+        post_context:
+          - "  'use strict';"
+          - "  return a + b;"
+          - "}"
+          - "function multiply(a, b) {"
+          - "  'use strict';"
+

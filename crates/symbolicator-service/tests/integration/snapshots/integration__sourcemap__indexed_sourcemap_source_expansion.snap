@@ -1,0 +1,57 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        function: add
+        filename: file1.js
+        abs_path: file1.js
+        lineno: 3
+        colno: 9
+        pre_context:
+          - "function add(a, b) {"
+          - "\t\"use strict\";"
+        context_line: "\treturn a + b; // fôo"
+        post_context:
+          - "}"
+          - ""
+      - status: symbolicated
+        function: multiply
+        filename: file2.js
+        abs_path: file2.js
+        lineno: 3
+        colno: 9
+        pre_context:
+          - "function multiply(a, b) {"
+          - "\t\"use strict\";"
+        context_line: "\treturn a * b;"
+        post_context:
+          - "}"
+          - "function divide(a, b) {"
+          - "\t\"use strict\";"
+          - "\ttry {"
+          - "\t\treturn multiply(add(a, b), a, b) / c;"
+raw_stacktraces:
+  - frames:
+      - filename: indexed.min.js
+        abs_path: "http://example.com/indexed.min.js"
+        lineno: 1
+        colno: 39
+        context_line: "function add(a,b){\"use strict\";return a+b}"
+        post_context:
+          - "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
+          - "//# sourceMappingURL=indexed.min.js.map"
+          - ""
+      - filename: indexed.min.js
+        abs_path: "http://example.com/indexed.min.js"
+        lineno: 2
+        colno: 44
+        pre_context:
+          - "function add(a,b){\"use strict\";return a+b}"
+        context_line: "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
+        post_context:
+          - "//# sourceMappingURL=indexed.min.js.map"
+          - ""
+
