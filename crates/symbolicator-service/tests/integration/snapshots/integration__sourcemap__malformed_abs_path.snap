@@ -5,7 +5,7 @@ expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: missing_source
+      - status: invalid_abs_path
         filename: test.js
         abs_path: http//example.com/test.min.js
         lineno: 1
