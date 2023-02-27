@@ -23,6 +23,8 @@ impl SymbolicationActor {
         let mut lookup = self
             .sourcemaps
             .create_sourcemap_lookup(request.source.clone());
+        // TODO: while batching too much is probably premature optimization and hurts maintainability,
+        // doing a single "prefetch" pass might be the best of both worlds!
 
         let mut raw_stacktraces = request.stacktraces;
 
@@ -37,7 +39,17 @@ impl SymbolicationActor {
                 // First, we fetch the minified file:
                 // TODO: hook up DebugId
                 // TODO: handle errors
-                let key = FileKey::new_minified(&raw_frame.abs_path, None).unwrap();
+                let key = match FileKey::new_minified(&raw_frame.abs_path, None) {
+                    Ok(key) => key,
+                    Err(_) => {
+                        symbolicated_frames.push(SymbolicatedJsFrame {
+                            // FIXME: this really means the `abs_path` is invalid!
+                            status: JsFrameStatus::MissingSourcemap,
+                            raw: raw_frame.clone(),
+                        });
+                        continue;
+                    }
+                };
                 let minified_file = lookup.get_file(key.clone()).await;
 
                 // Apply source context to the raw frame
@@ -54,11 +66,13 @@ impl SymbolicationActor {
 
                 // And symbolicate
                 match symbolicate_js_frame(raw_frame, smcache) {
-                    Ok(frame) => {
+                    Ok((mut frame, did_apply_source)) => {
                         // If we have no source context from within the `SourceMapCache`,
                         // fall back to applying the source context from a raw artifact file
                         // TODO: we should only do this fallback if there is *no* `DebugId`.
-                        if frame.raw.context_line.is_none() {
+                        if !did_apply_source {
+                            // TODO: create a convenience method that creates a new `FileKey::Source`
+                            // from an existing `abs_path`.
                             let abs_path = Url::parse(&raw_frame.abs_path).ok();
                             let filename = frame.raw.filename.as_ref();
                             let file_url = abs_path
@@ -73,7 +87,7 @@ impl SymbolicationActor {
                                 Err(err) => Err(err),
                             };
 
-                            apply_source_context_from_artifact(raw_frame, &source_file);
+                            apply_source_context_from_artifact(&mut frame.raw, &source_file);
                         }
                         symbolicated_frames.push(frame)
                     }
@@ -101,7 +115,7 @@ impl SymbolicationActor {
 fn symbolicate_js_frame(
     frame: &JsFrame,
     smcache: CacheEntry<OwnedSourceMapCache>,
-) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
+) -> Result<(SymbolicatedJsFrame, bool), JsFrameStatus> {
     let smcache = match smcache {
         Ok(smcache) => smcache,
         Err(CacheError::Malformed(_)) => return Err(JsFrameStatus::MalformedSourcemap),
@@ -141,16 +155,18 @@ fn symbolicate_js_frame(
     result.raw.lineno = Some(token.line().saturating_add(1));
     result.raw.colno = Some(token.column().saturating_add(1));
 
+    let mut did_apply_source = false;
     if let Some(file) = token.file() {
         result.raw.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
-            apply_source_context(&mut result.raw, file_source.as_bytes())
+            apply_source_context(&mut result.raw, file_source.as_bytes());
+            did_apply_source = true;
         } else {
             // TODO: report missing source?
         }
     }
 
-    Ok(result)
+    Ok((result, did_apply_source))
 }
 
 fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {

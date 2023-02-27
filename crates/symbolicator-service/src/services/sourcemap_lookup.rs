@@ -29,9 +29,9 @@ pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'stati
 ///
 /// May either be a conventional URL or a data URL containing the sourcemap
 /// encoded as BASE64.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum SourceMapUrl {
-    Data(Vec<u8>),
+    Data(ByteView<'static>),
     Remote(url::Url),
 }
 
@@ -48,7 +48,8 @@ impl SourceMapUrl {
             let decoded = BASE64
                 .decode(encoded.as_bytes())
                 .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
-            Ok(Self::Data(decoded))
+            let bv = ByteView::from_vec(decoded);
+            Ok(Self::Data(bv))
         } else {
             let url = base
                 .join(url_string)
@@ -195,22 +196,18 @@ impl SourceMapLookup {
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
         let sourcemap_id = key.debug_id();
-        let sourcemap_url = match minified_source.source_mapping_url.as_deref() {
-            Some(sourcemap_url) => Some(SourceMapUrl::parse_with_prefix(abs_path, sourcemap_url)?),
-            None => None,
-        };
 
         // We have three cases here:
-        let sourcemap = match sourcemap_url {
+        let sourcemap = match minified_source.sourcemap_url.as_deref() {
             // We have an embedded SourceMap via data URL
             Some(SourceMapUrl::Data(data)) => CachedFile {
-                contents: ByteView::from_vec(data),
-                source_mapping_url: None,
+                contents: data.clone(),
+                sourcemap_url: None,
             },
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
                 let sourcemap_key = FileKey::SourceMap {
-                    abs_path: Some(url),
+                    abs_path: Some(url.clone()),
                     debug_id: sourcemap_id,
                 };
                 self.get_file(sourcemap_key).await?
@@ -317,7 +314,8 @@ impl SourceMapLookup {
     }
 
     async fn try_fetch_file_from_artifacts(&self, key: &FileKey) -> Option<CachedFile> {
-        let found_artifact = self.find_remote_artifact(key.abs_path()?)?;
+        let abs_path = key.abs_path()?;
+        let found_artifact = self.find_remote_artifact(abs_path)?;
 
         let artifact = self
             .fetch_artifact(self.source.clone(), found_artifact.id.clone())
@@ -326,15 +324,12 @@ impl SourceMapLookup {
         // TODO: figure out error handling:
         let contents = artifact.ok()?;
 
-        // TODO: we should normalize these things to lower-case
-        let source_mapping_url = found_artifact
-            .headers
-            .get("SourceMap")
-            .map(|sm| Arc::from(sm.as_str()));
+        // Get the sourcemap reference from the artifact, either from metadata, or file contents
+        let sourcemap_url = resolve_sourcemap_url(abs_path, found_artifact, &contents);
 
         Some(CachedFile {
             contents,
-            source_mapping_url,
+            sourcemap_url: sourcemap_url.map(Arc::new),
         })
     }
 }
@@ -359,8 +354,9 @@ pub enum FileKey {
 impl FileKey {
     /// Creates a new [`FileKey`] for a minified file with `abs_path` and `debug_id`.
     pub fn new_minified(abs_path: &str, debug_id: Option<DebugId>) -> CacheEntry<Self> {
-        let abs_path = Url::parse(abs_path)
-            .map_err(|_| CacheError::DownloadError(format!("Invalid url: {abs_path}")))?;
+        let abs_path = Url::parse(abs_path).map_err(|err| {
+            CacheError::DownloadError(format!("Invalid url: `{abs_path}`: {err}"))
+        })?;
         Ok(Self::MinifiedSource { abs_path, debug_id })
     }
 
@@ -403,7 +399,7 @@ impl FileKey {
 #[allow(unused)]
 pub struct CachedFile {
     pub contents: ByteView<'static>,
-    source_mapping_url: Option<Arc<str>>,
+    sourcemap_url: Option<Arc<SourceMapUrl>>,
     // TODO: maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
@@ -412,10 +408,21 @@ impl CachedFile {
     fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
         let contents = descriptor.contents()?.as_bytes().to_vec();
         let contents = ByteView::from_vec(contents);
-        let source_mapping_url = descriptor.source_mapping_url().map(Into::into);
+        let sourcemap_url = match descriptor.source_mapping_url() {
+            Some(url) => {
+                // TODO: error handling?
+                let abs_path = descriptor
+                    .url()
+                    .expect("descriptor should have an `abs_path`");
+                let abs_path = Url::parse(abs_path).ok()?;
+
+                SourceMapUrl::parse_with_prefix(&abs_path, url).ok()
+            }
+            None => None,
+        };
         Some(Self {
             contents,
-            source_mapping_url,
+            sourcemap_url: sourcemap_url.map(Arc::new),
         })
     }
 }
@@ -452,7 +459,6 @@ fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
 }
 
 // Joins together frames `abs_path` and discovered sourcemap reference.
-#[allow(unused)]
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_remote_artifact: &SearchArtifactResult,
