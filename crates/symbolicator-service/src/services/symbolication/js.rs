@@ -42,8 +42,7 @@ impl SymbolicationActor {
                     Ok(key) => key,
                     Err(_) => {
                         symbolicated_frames.push(SymbolicatedJsFrame {
-                            // FIXME: this really means the `abs_path` is invalid!
-                            status: JsFrameStatus::MissingSourcemap,
+                            status: JsFrameStatus::MissingSource,
                             raw: raw_frame.clone(),
                         });
                         continue;

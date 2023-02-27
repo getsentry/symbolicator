@@ -577,6 +577,8 @@ pub enum JsFrameStatus {
     InvalidSourceMapLocation,
     /// No sourcemap was found for the frame.
     MissingSourcemap,
+    /// No source file was found for the frame.
+    MissingSource,
     /// The retrieved sourcemap could not be processed.
     MalformedSourcemap,
 }
