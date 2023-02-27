@@ -1,0 +1,18 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: missing_sourcemap
+        filename: test.js
+        abs_path: http//example.com/test.min.js
+        lineno: 1
+        colno: 1
+raw_stacktraces:
+  - frames:
+      - filename: test.js
+        abs_path: http//example.com/test.min.js
+        lineno: 1
+        colno: 1
+
