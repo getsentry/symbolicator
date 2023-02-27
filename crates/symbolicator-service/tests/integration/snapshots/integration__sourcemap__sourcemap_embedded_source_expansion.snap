@@ -7,7 +7,7 @@ stacktraces:
       - status: missing_sourcemap
         function: "function: \"HTMLDocument.<anonymous>\""
         filename: index.html
-        abs_path: http//example.com/index.html
+        abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
       - status: symbolicated
@@ -27,7 +27,7 @@ raw_stacktraces:
   - frames:
       - function: "function: \"HTMLDocument.<anonymous>\""
         filename: index.html
-        abs_path: http//example.com/index.html
+        abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
       - filename: embedded.js

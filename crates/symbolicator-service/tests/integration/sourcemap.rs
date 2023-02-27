@@ -82,7 +82,7 @@ async fn test_sourcemap_source_expansion() {
 
     let frames = r#"[{
         "function": "function: \"HTMLDocument.<anonymous>\"",
-        "abs_path": "http//example.com/index.html",
+        "abs_path": "http://example.com/index.html",
         "filename": "index.html",
         "lineno": 283,
         "colno": 17,
@@ -108,7 +108,7 @@ async fn test_sourcemap_embedded_source_expansion() {
 
     let frames = r#"[{
         "function": "function: \"HTMLDocument.<anonymous>\"",
-        "abs_path": "http//example.com/index.html",
+        "abs_path": "http://example.com/index.html",
         "filename": "index.html",
         "lineno": 283,
         "colno": 17,
@@ -201,6 +201,25 @@ async fn test_indexed_sourcemap_source_expansion() {
         "filename": "indexed.min.js",
         "lineno": 2,
         "colno": 44
+    }]"#;
+
+    let request = make_js_request(source, frames, None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
+#[tokio::test]
+async fn test_malformed_abs_path() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = symbolicator_test::sourcemap_server("08_malformed_abs_path");
+
+    // Missing colon was removed on purpose.
+    let frames = r#"[{
+        "abs_path": "http//example.com/test.min.js",
+        "filename": "test.js",
+        "lineno": 1,
+        "colno": 1
     }]"#;
 
     let request = make_js_request(source, frames, None);
