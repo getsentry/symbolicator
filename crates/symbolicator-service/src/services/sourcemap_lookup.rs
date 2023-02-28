@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
@@ -12,14 +12,16 @@ use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
-use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
+use symbolicator_sources::{
+    ObjectType, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
+};
 use tempfile::NamedTempFile;
 use url::Position;
 
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
-use crate::types::JsStacktrace;
+use crate::types::{JsStacktrace, RawObjectInfo};
 
 use super::caches::versions::{ARTIFACT_CACHE_VERSIONS, SOURCEMAP_CACHE_VERSIONS};
 use super::fetch_file;
@@ -62,6 +64,57 @@ impl SourceMapUrl {
 
 type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
 
+/// A JS-processing "Module".
+///
+/// This is basically a single file (identified by its `abs_path`), with some additional metadata
+/// about it.
+#[derive(Clone, Debug)]
+pub struct CachedModule {
+    /// The parsed [`Url`] or the original `abs_path` along with a [`url::ParseError`] if it is invalid.
+    abs_path: Result<Url, (String, url::ParseError)>,
+    /// The optional [`DebugId`] of this module.
+    debug_id: Option<DebugId>,
+    // TODO: errors that happened when processing this file
+    /// A flag if have already resolved the minified and sourcemap files.
+    was_fetched: bool,
+    /// The fetched minified JS file.
+    // TODO: this should not be public?
+    pub minified_source: CacheEntry<CachedFile>,
+    /// The converted SourceMap.
+    // TODO: this should not be public?
+    pub smcache: CacheEntry<OwnedSourceMapCache>,
+}
+
+impl CachedModule {
+    fn new(abs_path: &str, debug_id: Option<DebugId>) -> Self {
+        let abs_path = Url::parse(abs_path).map_err(|err| {
+            let error: &dyn std::error::Error = &err;
+            tracing::warn!(error, abs_path, "Invalid Url in JS processing");
+            (abs_path.to_owned(), err)
+        });
+        Self {
+            abs_path,
+            debug_id,
+            was_fetched: false,
+            minified_source: Err(CacheError::NotFound),
+            smcache: Err(CacheError::NotFound),
+        }
+    }
+
+    /// TODO: we should really maintain a list of all the errors that happened for this image?
+    pub fn is_valid(&self) -> bool {
+        self.abs_path.is_ok()
+    }
+
+    /// Creates a new [`FileKey`] for the `file_path` relative to this module
+    pub fn file_key(&self, file_path: &str) -> Option<FileKey> {
+        // FIXME: are the source paths that we symbolicate relative to the minified source or the sourcemap?
+        let base_url = self.abs_path.as_ref().ok()?;
+        let url = base_url.join(file_path).ok()?;
+        Some(FileKey::new_source(url))
+    }
+}
+
 pub struct SourceMapLookup {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
@@ -71,11 +124,12 @@ pub struct SourceMapLookup {
     artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
 
+    /// This is a map from the raw `abs_path` as it appears in the event to a [`CachedModule`].
+    modules_by_abs_path: HashMap<String, CachedModule>,
+
     /// Arbitrary files keyed by their [`FileKey`],
     /// which is a combination of `abs_path` and `DebugId`.
     files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
-    /// SourceMaps by [`FileKey`].
-    sourcemaps_by_key: HashMap<FileKey, CacheEntry<OwnedSourceMapCache>>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
 }
@@ -86,7 +140,33 @@ impl SourceMapLookup {
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
         source: Arc<SentrySourceConfig>,
+        modules: &[RawObjectInfo],
     ) -> Self {
+        let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
+        for module in modules {
+            if module.ty != ObjectType::SourceMap {
+                // TODO: raise an error?
+                continue;
+            }
+            let Some(code_file) = module.code_file.as_ref() else {
+                // TODO: raise an error?
+                continue;
+            };
+
+            let debug_id = match &module.debug_id {
+                Some(id) => {
+                    use std::str::FromStr;
+                    // TODO: raise an error?
+                    DebugId::from_str(id).ok()
+                }
+                None => None,
+            };
+
+            let cached_module = CachedModule::new(code_file, debug_id);
+
+            modules_by_abs_path.insert(code_file.to_owned(), cached_module);
+        }
+
         Self {
             source,
             download_svc,
@@ -95,25 +175,68 @@ impl SourceMapLookup {
             artifact_caches,
             sourcemap_caches,
 
+            modules_by_abs_path,
+
             files_by_key: HashMap::new(),
-            sourcemaps_by_key: HashMap::new(),
             artifact_bundles: Vec::new(),
         }
     }
 
     /// Tries to pre-fetch some of the artifacts needed for symbolication.
     pub async fn prefetch_artifacts(&mut self, stacktraces: &[JsStacktrace]) {
-        let mut abs_paths = HashSet::new();
-
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
-                abs_paths.insert(&frame.abs_path);
+                let abs_path = &frame.abs_path;
+                if self.modules_by_abs_path.contains_key(abs_path) {
+                    continue;
+                }
+                let cached_module = CachedModule::new(abs_path, None);
+                self.modules_by_abs_path
+                    .insert(abs_path.to_owned(), cached_module);
             }
         }
+
+        // TODO: filter the API call down to only look for the files we want
 
         self.remote_artifacts = self.list_artifacts().await;
 
         // TODO: actually fetch the needed artifacts :-)
+    }
+
+    /// Get the [`CachedModule`], which gives access to the `minified_source` and `smcache`.
+    // FIXME: This should ideally give us a `&CachedModule`, but that is currently not
+    // really possible because the borrow checker does not like it :-(
+    // Maybe splitting this up into two different structs would solve this problem?
+    pub async fn get_module(&mut self, abs_path: &str) -> CachedModule {
+        let (url, debug_id) = {
+            // An `entry_by_ref` would be so nice
+            let module = self
+                .modules_by_abs_path
+                .entry(abs_path.to_owned())
+                .or_insert_with(|| CachedModule::new(abs_path, None));
+
+            if module.was_fetched {
+                return module.clone();
+            }
+            module.was_fetched = true;
+
+            let Ok(url) = module.abs_path.clone() else {
+                return module.clone();
+            };
+            (url, module.debug_id)
+        };
+
+        // we can’t have a mutable `module` while calling `fetch_module` :-(
+        let (minified_source, smcache) = self.fetch_module(url, debug_id).await;
+
+        let module = self
+            .modules_by_abs_path
+            .get_mut(abs_path)
+            .expect("we should have a module");
+        module.minified_source = minified_source;
+        module.smcache = smcache;
+
+        module.clone()
     }
 
     async fn list_artifacts(&self) -> HashMap<String, SearchArtifactResult> {
@@ -185,63 +308,67 @@ impl SourceMapLookup {
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
     }
 
-    /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
-    /// or optionally its [`DebugId`].
-    pub async fn get_sourcemapcache(
+    /// Fetches the minified file, and the corresponding [`OwnedSourceMapCache`] for the file
+    /// identified by its `abs_path`, or optionally its [`DebugId`].
+    async fn fetch_module(
         &mut self,
-        abs_path: &Url,
+        abs_path: Url,
         debug_id: Option<DebugId>,
-    ) -> CacheEntry<OwnedSourceMapCache> {
+    ) -> (CacheEntry<CachedFile>, CacheEntry<OwnedSourceMapCache>) {
         // First, check if we have already cached / created the `SourceMapCache`.
         let key = FileKey::MinifiedSource {
             abs_path: abs_path.clone(),
             debug_id,
         };
-        if let Some(smcache) = self.sourcemaps_by_key.get(&key) {
-            return smcache.clone();
-        }
 
         // Fetch the minified file first
-        let minified_source = self.get_file(key.clone()).await?;
+        let minified_source = self.get_file(key).await;
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_id = key.debug_id();
-
+        let sourcemap_url = match &minified_source {
+            Ok(minified_source) => minified_source.sourcemap_url.as_deref(),
+            Err(_) => None,
+        };
         // We have three cases here:
-        let sourcemap = match minified_source.sourcemap_url.as_deref() {
+        let sourcemap = match sourcemap_url {
             // We have an embedded SourceMap via data URL
-            Some(SourceMapUrl::Data(data)) => CachedFile {
+            Some(SourceMapUrl::Data(data)) => Ok(CachedFile {
                 contents: data.clone(),
                 sourcemap_url: None,
-            },
+            }),
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: Some(url.clone()),
-                    debug_id: sourcemap_id,
+                    debug_id,
                 };
-                self.get_file(sourcemap_key).await?
+                self.get_file(sourcemap_key).await
             }
             // We *might* have a valid `DebugId`, in which case we don’t need no URL
             None => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: None,
-                    debug_id: sourcemap_id,
+                    debug_id,
                 };
-                self.get_file(sourcemap_key).await?
+                self.get_file(sourcemap_key).await
             }
         };
 
-        // TODO: now that we have both files, we can create a `SourceMapCache` for it
-        // We should track the information where these files came from, and use that as the
-        // `CacheKey` for the `sourcemap_caches`.
-        let cached_sourcesmap = self
-            .fetch_sourcemap_cache(minified_source.contents, sourcemap.contents)
-            .await;
-        self.sourcemaps_by_key
-            .insert(key, cached_sourcesmap.clone());
+        // Now that we (may) have both files, we can create a `SourceMapCache` for it
+        let smcache = match &minified_source {
+            Ok(minified_source) => match sourcemap {
+                Ok(sourcemap) => {
+                    // TODO: We should track the information where these files came from,
+                    // and use that as the `CacheKey` for the `sourcemap_caches`.
+                    self.fetch_sourcemap_cache(minified_source.contents.clone(), sourcemap.contents)
+                        .await
+                }
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err.clone()),
+        };
 
-        cached_sourcesmap
+        (minified_source, smcache)
     }
 
     /// Fetches an arbitrary file using its `abs_path`,
