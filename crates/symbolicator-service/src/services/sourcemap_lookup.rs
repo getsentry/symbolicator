@@ -370,7 +370,7 @@ impl FileKey {
         Ok(Self::MinifiedSource { abs_path, debug_id })
     }
 
-    /// Creates a new [`FileKey`] for a minified file with `abs_path` and `debug_id`.
+    /// Creates a new [`FileKey`] for a source file.
     pub fn new_source(abs_path: Url) -> Self {
         Self::Source { abs_path }
     }

@@ -40,10 +40,10 @@ impl SymbolicationActor {
                 // TODO: handle errors
                 let key = match FileKey::new_minified(&raw_frame.abs_path, None) {
                     Ok(key) => key,
-                    Err(_) => {
+                    Err(e) => {
+                        tracing::warn!("{e}");
                         symbolicated_frames.push(SymbolicatedJsFrame {
-                            // FIXME: this really means the `abs_path` is invalid!
-                            status: JsFrameStatus::MissingSourcemap,
+                            status: JsFrameStatus::InvalidAbsPath,
                             raw: raw_frame.clone(),
                         });
                         continue;
