@@ -38,16 +38,20 @@ impl SymbolicationActor {
                 // First, we fetch the minified file:
                 // TODO: hook up DebugId
                 // TODO: handle errors
-                let key = match FileKey::new_minified(&raw_frame.abs_path, None) {
-                    Ok(key) => key,
+                let abs_path = match Url::parse(&raw_frame.abs_path) {
+                    Ok(url) => url,
                     Err(e) => {
-                        tracing::warn!("{e}");
+                        tracing::warn!(error = %e, abs_path = &raw_frame.abs_path, "Invalid url");
                         symbolicated_frames.push(SymbolicatedJsFrame {
                             status: JsFrameStatus::InvalidAbsPath,
                             raw: raw_frame.clone(),
                         });
                         continue;
                     }
+                };
+                let key = FileKey::MinifiedSource {
+                    abs_path: abs_path.clone(),
+                    debug_id: None,
                 };
                 let minified_file = lookup.get_file(key.clone()).await;
 
@@ -56,12 +60,7 @@ impl SymbolicationActor {
 
                 // Then, get the `SourceMapCache`:
                 // TODO: maybe get the `SourceMapCache` and the `CachedFile` at the same time?
-                let smcache = lookup
-                    .get_sourcemapcache(
-                        key.abs_path().expect("minified file has an `abs_path`"),
-                        None,
-                    )
-                    .await;
+                let smcache = lookup.get_sourcemapcache(&abs_path, None).await;
 
                 // And symbolicate
                 match symbolicate_js_frame(raw_frame, smcache) {
@@ -72,11 +71,9 @@ impl SymbolicationActor {
                         if !did_apply_source {
                             // TODO: create a convenience method that creates a new `FileKey::Source`
                             // from an existing `abs_path`.
-                            let abs_path = Url::parse(&raw_frame.abs_path).ok();
                             let filename = frame.raw.filename.as_ref();
-                            let file_url = abs_path
-                                .zip(filename)
-                                .and_then(|(base, filename)| base.join(filename).ok());
+                            let file_url =
+                                filename.and_then(|filename| abs_path.join(filename).ok());
                             let file_key = file_url
                                 .ok_or(CacheError::NotFound)
                                 .map(FileKey::new_source);
