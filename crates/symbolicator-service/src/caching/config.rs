@@ -12,6 +12,7 @@ pub enum CacheName {
     PpdbCaches,
     ArtifactCaches,
     SourceMapCaches,
+    SourceFiles,
     Diagnostics,
 }
 
@@ -27,6 +28,7 @@ impl AsRef<str> for CacheName {
             Self::PpdbCaches => "ppdb_caches",
             Self::ArtifactCaches => "artifact_caches",
             Self::SourceMapCaches => "sourcemap_caches",
+            Self::SourceFiles => "sourcefiles",
             Self::Diagnostics => "diagnostics",
         }
     }

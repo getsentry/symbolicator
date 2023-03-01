@@ -24,7 +24,6 @@ type InMemoryCache<T> = moka::future::Cache<CacheKey, InMemoryItem<T>>;
 /// trait and associated types.
 ///
 /// Internally deduplicates concurrent cache lookups (in-memory).
-#[derive(Debug)]
 pub struct Cacher<T: CacheItemRequest> {
     config: Cache,
 
@@ -36,6 +35,22 @@ pub struct Cacher<T: CacheItemRequest> {
 
     /// A service used to communicate with the shared cache.
     shared_cache: SharedCacheRef,
+}
+
+impl<T: CacheItemRequest> std::fmt::Debug for Cacher<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let refreshes = self
+            .refreshes
+            .try_lock()
+            .map(|r| r.len())
+            .unwrap_or_default();
+        f.debug_struct("Cacher")
+            .field("config", &self.config)
+            .field("in-memory items", &self.cache.entry_count())
+            .field("running refreshes", &refreshes)
+            .field("shared_cache", &self.shared_cache)
+            .finish()
+    }
 }
 
 // FIXME(swatinem): This is currently ~216 bytes that we copy around when spawning computations.

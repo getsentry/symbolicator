@@ -188,9 +188,13 @@ pub struct Caches {
     pub symcaches: Cache,
     /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
+    /// PortablePDB files.
     pub ppdb_caches: Cache,
     pub artifact_caches: Cache,
+    /// `SourceMapCache` files.
     pub sourcemap_caches: Cache,
+    /// Source files.
+    pub sourcefiles: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
     pub diagnostics: Cache,
@@ -241,7 +245,7 @@ impl Caches {
                 CacheName::Il2cpp,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads,
+                max_lazy_redownloads.clone(),
                 default_cap,
             )?,
             symcaches: Cache::from_config(
@@ -277,6 +281,13 @@ impl Caches {
                 config,
                 config.caches.derived.into(),
                 max_lazy_recomputations,
+                default_cap,
+            )?,
+            sourcefiles: Cache::from_config(
+                CacheName::SourceFiles,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads,
                 default_cap,
             )?,
             diagnostics: Cache::from_config(

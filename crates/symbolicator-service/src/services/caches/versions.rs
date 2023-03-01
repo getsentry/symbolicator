@@ -128,3 +128,11 @@ pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
     fallbacks: &[],
 };
+
+/// Source Files Cache, with the following versions:
+///
+/// - `1`: Initial version.
+pub const SOURCEFILES_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 1,
+    fallbacks: &[],
+};
