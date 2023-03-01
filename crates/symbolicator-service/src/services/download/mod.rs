@@ -323,6 +323,10 @@ impl DownloadService {
         // Check whether `source` is an internal Sentry source. We don't ever
         // want to put such sources on the block list.
         let source_metric_key = source.source_metric_key().to_string();
+        // NOTE: This allow-lists *all* the builtin symbol servers, even external ones that might
+        // misbehave. If we want to tighten that up to only allow-list the sentry internal source,
+        // this should be `"sentry:project"` instead, as defined here:
+        // <https://github.com/getsentry/sentry/blob/b27ef04df6ecbaa0a34a472f787a163ca8400cc0/src/sentry/lang/native/sources.py#L17>
         let source_is_external = !source_metric_key.starts_with("sentry:");
 
         if source_is_external && self.host_deny_list.is_blocked(&host) {
