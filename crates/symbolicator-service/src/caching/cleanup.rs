@@ -43,6 +43,7 @@ impl Caches {
             ppdb_caches,
             artifact_caches,
             sourcemap_caches,
+            sourcefiles,
             diagnostics,
         } = &self;
 
@@ -59,6 +60,7 @@ impl Caches {
             ppdb_caches.cleanup(),
             artifact_caches.cleanup(),
             sourcemap_caches.cleanup(),
+            sourcefiles.cleanup(),
         ];
 
         let mut first_error = None;
