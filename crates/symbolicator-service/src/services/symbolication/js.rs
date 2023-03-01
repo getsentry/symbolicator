@@ -59,11 +59,11 @@ impl SymbolicationActor {
                                 .and_then(|filename| cached_module.source_file_key(filename));
 
                             let source_file = match file_key {
-                                Some(key) => lookup.get_file(key).await,
-                                None => Err(CacheError::NotFound),
+                                Some(key) => lookup.get_source_file(key).await,
+                                None => &Err(CacheError::NotFound),
                             };
 
-                            apply_source_context_from_artifact(&mut frame.raw, &source_file);
+                            apply_source_context_from_artifact(&mut frame.raw, source_file);
                         }
                         symbolicated_frames.push(frame)
                     }
