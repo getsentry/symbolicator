@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::sync::Arc;
@@ -12,19 +12,194 @@ use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
-use symbolicator_sources::{SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig};
+use symbolicator_sources::{
+    ObjectType, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
+};
 use tempfile::NamedTempFile;
 use url::Position;
 
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
-use crate::types::JsStacktrace;
+use crate::types::{JsStacktrace, RawObjectInfo};
 
 use super::caches::versions::{ARTIFACT_CACHE_VERSIONS, SOURCEMAP_CACHE_VERSIONS};
 use super::fetch_file;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
+
+/// A JS-processing "Module".
+///
+/// This is basically a single file (identified by its `abs_path`), with some additional metadata
+/// about it.
+#[derive(Clone, Debug)]
+pub struct SourceMapModule {
+    /// The parsed [`Url`] or the original `abs_path` along with a [`url::ParseError`] if it is invalid.
+    abs_path: Result<Url, (String, url::ParseError)>,
+    /// The optional [`DebugId`] of this module.
+    debug_id: Option<DebugId>,
+    // TODO: errors that happened when processing this file
+    /// A flag showing if we have already resolved the minified and sourcemap files.
+    was_fetched: bool,
+    /// The base url for fetching source files.
+    source_file_base: Option<Url>,
+    /// The fetched minified JS file.
+    // TODO: maybe this should not be public?
+    pub minified_source: CacheEntry<CachedFile>,
+    /// The converted SourceMap.
+    // TODO: maybe this should not be public?
+    pub smcache: CacheEntry<OwnedSourceMapCache>,
+}
+
+impl SourceMapModule {
+    fn new(abs_path: &str, debug_id: Option<DebugId>) -> Self {
+        let abs_path = Url::parse(abs_path).map_err(|err| {
+            let error: &dyn std::error::Error = &err;
+            tracing::warn!(error, abs_path, "Invalid Url in JS processing");
+            (abs_path.to_owned(), err)
+        });
+        Self {
+            abs_path,
+            debug_id,
+            was_fetched: false,
+            source_file_base: None,
+            minified_source: Err(CacheError::NotFound),
+            smcache: Err(CacheError::NotFound),
+        }
+    }
+
+    /// TODO: we should really maintain a list of all the errors that happened for this image?
+    pub fn is_valid(&self) -> bool {
+        self.abs_path.is_ok()
+    }
+
+    /// Creates a new [`FileKey`] for the `file_path` relative to this module
+    pub fn source_file_key(&self, file_path: &str) -> Option<FileKey> {
+        let base_url = self.source_file_base.as_ref()?;
+        let url = base_url.join(file_path).ok()?;
+        Some(FileKey::new_source(url))
+    }
+}
+
+pub struct SourceMapLookup {
+    /// This is a map from the raw `abs_path` as it appears in the event to a [`SourceMapModule`].
+    modules_by_abs_path: HashMap<String, SourceMapModule>,
+
+    /// Arbitrary source files keyed by their [`FileKey`].
+    files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
+
+    /// The [`ArtifactFetcher`] responsible for fetching artifacts, from bundles or as individual files.
+    fetcher: ArtifactFetcher,
+}
+
+impl SourceMapLookup {
+    pub fn new(
+        artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
+        sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
+        download_svc: Arc<DownloadService>,
+        source: Arc<SentrySourceConfig>,
+        modules: &[RawObjectInfo],
+    ) -> Self {
+        let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
+        for module in modules {
+            if module.ty != ObjectType::SourceMap {
+                // TODO: raise an error?
+                continue;
+            }
+            let Some(code_file) = module.code_file.as_ref() else {
+                // TODO: raise an error?
+                continue;
+            };
+
+            let debug_id = match &module.debug_id {
+                Some(id) => {
+                    // TODO: raise an error?
+                    id.parse().ok()
+                }
+                None => None,
+            };
+
+            let cached_module = SourceMapModule::new(code_file, debug_id);
+
+            modules_by_abs_path.insert(code_file.to_owned(), cached_module);
+        }
+
+        let fetcher = ArtifactFetcher::new(artifact_caches, sourcemap_caches, download_svc, source);
+
+        Self {
+            modules_by_abs_path,
+            files_by_key: Default::default(),
+            fetcher,
+        }
+    }
+
+    /// Tries to pre-fetch some of the artifacts needed for symbolication.
+    pub async fn prefetch_artifacts(&mut self, stacktraces: &[JsStacktrace]) {
+        for stacktrace in stacktraces {
+            for frame in &stacktrace.frames {
+                let abs_path = &frame.abs_path;
+                if self.modules_by_abs_path.contains_key(abs_path) {
+                    continue;
+                }
+                let cached_module = SourceMapModule::new(abs_path, None);
+                self.modules_by_abs_path
+                    .insert(abs_path.to_owned(), cached_module);
+            }
+        }
+
+        self.fetcher.prefetch_artifacts().await;
+    }
+
+    /// Get the [`SourceMapModule`], which gives access to the `minified_source` and `smcache`.
+    pub async fn get_module(&mut self, abs_path: &str) -> &SourceMapModule {
+        // An `entry_by_ref` would be so nice
+        let module = self
+            .modules_by_abs_path
+            .entry(abs_path.to_owned())
+            .or_insert_with(|| SourceMapModule::new(abs_path, None));
+
+        if module.was_fetched {
+            return module;
+        }
+        module.was_fetched = true;
+
+        let Ok(url) = module.abs_path.clone() else {
+            return module;
+        };
+
+        // we can’t have a mutable `module` while calling `fetch_module` :-(
+        let (minified_source, smcache) = self
+            .fetcher
+            .fetch_minified_and_sourcemap(url.clone(), module.debug_id)
+            .await;
+
+        // We use the sourcemap url as the base. If that is not available because there is no
+        // sourcemap url, or it is an for embedded sourcemap, we fall back to the minified file.
+        let sourcemap_url = match &minified_source {
+            Ok(minified_source) => match minified_source.sourcemap_url.as_deref() {
+                Some(SourceMapUrl::Remote(url)) => Some(url.clone()),
+                _ => None,
+            },
+            Err(_) => None,
+        };
+        let source_file_base = sourcemap_url.unwrap_or(url);
+
+        module.source_file_base = Some(source_file_base);
+        module.minified_source = minified_source;
+        module.smcache = smcache;
+
+        module
+    }
+
+    /// Gets the source file based on its [`FileKey`].
+    pub async fn get_source_file(&mut self, key: FileKey) -> &CacheEntry<CachedFile> {
+        if !self.files_by_key.contains_key(&key) {
+            let file = self.fetcher.get_file(&key).await;
+            self.files_by_key.insert(key.clone(), file);
+        }
+        self.files_by_key.get(&key).expect("we should have a file")
+    }
+}
 
 /// A URL to a sourcemap file.
 ///
@@ -62,7 +237,91 @@ impl SourceMapUrl {
 
 type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
 
-pub struct SourceMapLookup {
+/// The lookup key of an arbitrary file.
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+pub enum FileKey {
+    /// This key represents a [`SourceFileType::MinifiedSource`].
+    MinifiedSource {
+        abs_path: Url,
+        debug_id: Option<DebugId>,
+    },
+    /// This key represents a [`SourceFileType::SourceMap`].
+    SourceMap {
+        abs_path: Option<Url>,
+        debug_id: Option<DebugId>,
+    },
+    /// This key represents a [`SourceFileType::Source`].
+    Source { abs_path: Url },
+}
+
+impl FileKey {
+    /// Creates a new [`FileKey`] for a source file.
+    fn new_source(abs_path: Url) -> Self {
+        Self::Source { abs_path }
+    }
+
+    /// Returns this key's debug id, if any.
+    fn debug_id(&self) -> Option<DebugId> {
+        match self {
+            FileKey::MinifiedSource { debug_id, .. } => *debug_id,
+            FileKey::SourceMap { debug_id, .. } => *debug_id,
+            FileKey::Source { .. } => None,
+        }
+    }
+
+    /// Returns this key's abs_path, if any.
+    fn abs_path(&self) -> Option<&Url> {
+        match self {
+            FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
+            FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
+            FileKey::Source { abs_path } => Some(abs_path),
+        }
+    }
+
+    /// Returns the type of the file this key represents.
+    fn as_type(&self) -> SourceFileType {
+        match self {
+            FileKey::MinifiedSource { .. } => SourceFileType::MinifiedSource,
+            FileKey::SourceMap { .. } => SourceFileType::SourceMap,
+            FileKey::Source { .. } => SourceFileType::Source,
+        }
+    }
+}
+
+/// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
+/// the parts that we care about.
+#[derive(Debug, Clone)]
+pub struct CachedFile {
+    pub contents: ByteView<'static>,
+    sourcemap_url: Option<Arc<SourceMapUrl>>,
+    // TODO: maybe we should add a `FileOrigin` here, as in:
+    // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
+}
+
+impl CachedFile {
+    fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
+        let contents = descriptor.contents()?.as_bytes().to_vec();
+        let contents = ByteView::from_vec(contents);
+        let sourcemap_url = match descriptor.source_mapping_url() {
+            Some(url) => {
+                // TODO: error handling?
+                let abs_path = descriptor
+                    .url()
+                    .expect("descriptor should have an `abs_path`");
+                let abs_path = Url::parse(abs_path).ok()?;
+
+                SourceMapUrl::parse_with_prefix(&abs_path, url).ok()
+            }
+            None => None,
+        };
+        Some(Self {
+            contents,
+            sourcemap_url: sourcemap_url.map(Arc::new),
+        })
+    }
+}
+
+struct ArtifactFetcher {
     source: Arc<SentrySourceConfig>,
     download_svc: Arc<DownloadService>,
     remote_artifacts: HashMap<String, SearchArtifactResult>,
@@ -71,46 +330,30 @@ pub struct SourceMapLookup {
     artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
 
-    /// Arbitrary files keyed by their [`FileKey`],
-    /// which is a combination of `abs_path` and `DebugId`.
-    files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
-    /// SourceMaps by [`FileKey`].
-    sourcemaps_by_key: HashMap<FileKey, CacheEntry<OwnedSourceMapCache>>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
 }
 
-impl SourceMapLookup {
-    pub fn new(
+impl ArtifactFetcher {
+    fn new(
         artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
         source: Arc<SentrySourceConfig>,
     ) -> Self {
         Self {
-            source,
-            download_svc,
-            remote_artifacts: HashMap::new(),
-
             artifact_caches,
             sourcemap_caches,
+            download_svc,
 
-            files_by_key: HashMap::new(),
-            sourcemaps_by_key: HashMap::new(),
-            artifact_bundles: Vec::new(),
+            source,
+            remote_artifacts: Default::default(),
+            artifact_bundles: Default::default(),
         }
     }
 
-    /// Tries to pre-fetch some of the artifacts needed for symbolication.
-    pub async fn prefetch_artifacts(&mut self, stacktraces: &[JsStacktrace]) {
-        let mut abs_paths = HashSet::new();
-
-        for stacktrace in stacktraces {
-            for frame in &stacktrace.frames {
-                abs_paths.insert(&frame.abs_path);
-            }
-        }
-
+    async fn prefetch_artifacts(&mut self) {
+        // TODO: filter the API call down to only look for the files we want
         self.remote_artifacts = self.list_artifacts().await;
 
         // TODO: actually fetch the needed artifacts :-)
@@ -185,87 +428,84 @@ impl SourceMapLookup {
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
     }
 
-    /// Gets the [`OwnedSourceMapCache`] for the file identified by its `abs_path`,
-    /// or optionally its [`DebugId`].
-    pub async fn get_sourcemapcache(
+    /// Fetches the minified file, and the corresponding [`OwnedSourceMapCache`] for the file
+    /// identified by its `abs_path`, or optionally its [`DebugId`].
+    async fn fetch_minified_and_sourcemap(
         &mut self,
-        abs_path: &Url,
+        abs_path: Url,
         debug_id: Option<DebugId>,
-    ) -> CacheEntry<OwnedSourceMapCache> {
+    ) -> (CacheEntry<CachedFile>, CacheEntry<OwnedSourceMapCache>) {
         // First, check if we have already cached / created the `SourceMapCache`.
         let key = FileKey::MinifiedSource {
             abs_path: abs_path.clone(),
             debug_id,
         };
-        if let Some(smcache) = self.sourcemaps_by_key.get(&key) {
-            return smcache.clone();
-        }
 
         // Fetch the minified file first
-        let minified_source = self.get_file(key.clone()).await?;
+        let minified_source = self.get_file(&key).await;
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_id = key.debug_id();
-
+        let sourcemap_url = match &minified_source {
+            Ok(minified_source) => minified_source.sourcemap_url.as_deref(),
+            Err(_) => None,
+        };
         // We have three cases here:
-        let sourcemap = match minified_source.sourcemap_url.as_deref() {
+        let sourcemap = match sourcemap_url {
             // We have an embedded SourceMap via data URL
-            Some(SourceMapUrl::Data(data)) => CachedFile {
+            Some(SourceMapUrl::Data(data)) => Ok(CachedFile {
                 contents: data.clone(),
                 sourcemap_url: None,
-            },
+            }),
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: Some(url.clone()),
-                    debug_id: sourcemap_id,
+                    debug_id,
                 };
-                self.get_file(sourcemap_key).await?
+                self.get_file(&sourcemap_key).await
             }
             // We *might* have a valid `DebugId`, in which case we don’t need no URL
             None => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: None,
-                    debug_id: sourcemap_id,
+                    debug_id,
                 };
-                self.get_file(sourcemap_key).await?
+                self.get_file(&sourcemap_key).await
             }
         };
 
-        // TODO: now that we have both files, we can create a `SourceMapCache` for it
-        // We should track the information where these files came from, and use that as the
-        // `CacheKey` for the `sourcemap_caches`.
-        let cached_sourcesmap = self
-            .fetch_sourcemap_cache(minified_source.contents, sourcemap.contents)
-            .await;
-        self.sourcemaps_by_key
-            .insert(key, cached_sourcesmap.clone());
+        // Now that we (may) have both files, we can create a `SourceMapCache` for it
+        let smcache = match &minified_source {
+            Ok(minified_source) => match sourcemap {
+                Ok(sourcemap) => {
+                    // TODO: We should track the information where these files came from,
+                    // and use that as the `CacheKey` for the `sourcemap_caches`.
+                    self.fetch_sourcemap_cache(minified_source.contents.clone(), sourcemap.contents)
+                        .await
+                }
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err.clone()),
+        };
 
-        cached_sourcesmap
+        (minified_source, smcache)
     }
 
     /// Fetches an arbitrary file using its `abs_path`,
     /// or optionally its [`DebugId`] and [`SourceFileType`]
     /// (because multiple files can share one [`DebugId`]).
-    pub async fn get_file(&mut self, key: FileKey) -> CacheEntry<CachedFile> {
-        // First, we do a trivial lookup in case we already have this file.
-        // The `abs_path` uniquely identifies a file in a JS stack trace, so we use that as the
-        // lookup key throughout.
-        if let Some(file) = self.files_by_key.get(&key) {
-            return file.clone();
-        }
-
+    pub async fn get_file(&mut self, key: &FileKey) -> CacheEntry<CachedFile> {
         // Try looking up the file in one of the artifact bundles that we know about.
-        if let Some(file) = self.try_get_file_from_bundles(&key) {
-            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        if let Some(file) = self.try_get_file_from_bundles(key) {
+            return Ok(file);
         }
 
         // Otherwise, try to get the file from an individual artifact.
         // This is mutually exclusive with having a `DebugId`, and we only care about `abs_path` here.
         // If we have a `DebugId`, we are guaranteed to use artifact bundles, and to have found the
         // file in the check up above already.
-        if let Some(file) = self.try_fetch_file_from_artifacts(&key).await {
-            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
+            return Ok(file);
         }
 
         // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
@@ -279,11 +519,11 @@ impl SourceMapLookup {
         // At this point, *one* of our known artifacts includes the file we are looking for.
         // So we do the whole dance yet again.
         // TODO: figure out a way to avoid that?
-        if let Some(file) = self.try_get_file_from_bundles(&key) {
-            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        if let Some(file) = self.try_get_file_from_bundles(key) {
+            return Ok(file);
         }
-        if let Some(file) = self.try_fetch_file_from_artifacts(&key).await {
-            return self.files_by_key.entry(key).or_insert(Ok(file)).clone();
+        if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
+            return Ok(file);
         }
 
         // TODO:
@@ -338,98 +578,6 @@ impl SourceMapLookup {
         let sourcemap_url = resolve_sourcemap_url(abs_path, found_artifact, &contents);
 
         Some(CachedFile {
-            contents,
-            sourcemap_url: sourcemap_url.map(Arc::new),
-        })
-    }
-}
-
-/// The lookup key of an arbitrary file.
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
-pub enum FileKey {
-    /// This key represents a [`SourceFileType::MinifiedSource`].
-    MinifiedSource {
-        abs_path: Url,
-        debug_id: Option<DebugId>,
-    },
-    /// This key represents a [`SourceFileType::SourceMap`].
-    SourceMap {
-        abs_path: Option<Url>,
-        debug_id: Option<DebugId>,
-    },
-    /// This key represents a [`SourceFileType::Source`].
-    Source { abs_path: Url },
-}
-
-impl FileKey {
-    /// Creates a new [`FileKey`] for a minified file with `abs_path` and `debug_id`.
-    pub fn new_minified(abs_path: &str, debug_id: Option<DebugId>) -> CacheEntry<Self> {
-        let abs_path = Url::parse(abs_path).map_err(|err| {
-            CacheError::DownloadError(format!("Invalid url: `{abs_path}`: {err}"))
-        })?;
-        Ok(Self::MinifiedSource { abs_path, debug_id })
-    }
-
-    /// Creates a new [`FileKey`] for a source file.
-    pub fn new_source(abs_path: Url) -> Self {
-        Self::Source { abs_path }
-    }
-
-    /// Returns this key's debug id, if any.
-    fn debug_id(&self) -> Option<DebugId> {
-        match self {
-            FileKey::MinifiedSource { debug_id, .. } => *debug_id,
-            FileKey::SourceMap { debug_id, .. } => *debug_id,
-            FileKey::Source { .. } => None,
-        }
-    }
-
-    /// Returns this key's abs_path, if any.
-    pub fn abs_path(&self) -> Option<&Url> {
-        match self {
-            FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
-            FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
-            FileKey::Source { abs_path } => Some(abs_path),
-        }
-    }
-
-    /// Returns the type of the file this key represents.
-    fn as_type(&self) -> SourceFileType {
-        match self {
-            FileKey::MinifiedSource { .. } => SourceFileType::MinifiedSource,
-            FileKey::SourceMap { .. } => SourceFileType::SourceMap,
-            FileKey::Source { .. } => SourceFileType::Source,
-        }
-    }
-}
-
-/// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
-/// the parts that we care about.
-#[derive(Debug, Clone)]
-pub struct CachedFile {
-    pub contents: ByteView<'static>,
-    sourcemap_url: Option<Arc<SourceMapUrl>>,
-    // TODO: maybe we should add a `FileOrigin` here, as in:
-    // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
-}
-
-impl CachedFile {
-    fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
-        let contents = descriptor.contents()?.as_bytes().to_vec();
-        let contents = ByteView::from_vec(contents);
-        let sourcemap_url = match descriptor.source_mapping_url() {
-            Some(url) => {
-                // TODO: error handling?
-                let abs_path = descriptor
-                    .url()
-                    .expect("descriptor should have an `abs_path`");
-                let abs_path = Url::parse(abs_path).ok()?;
-
-                SourceMapUrl::parse_with_prefix(&abs_path, url).ok()
-            }
-            None => None,
-        };
-        Some(Self {
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
         })

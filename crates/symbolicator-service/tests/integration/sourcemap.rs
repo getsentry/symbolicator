@@ -34,6 +34,7 @@ fn make_js_request(
     SymbolicateJsStacktraces {
         source: Arc::new(source),
         stacktraces,
+        modules: vec![],
         dist: dist.into(),
     }
 }

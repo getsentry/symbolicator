@@ -1,10 +1,9 @@
 use std::io::BufRead;
 
-use reqwest::Url;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 
 use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap_lookup::{CachedFile, FileKey, OwnedSourceMapCache};
+use crate::services::sourcemap_lookup::{CachedFile, OwnedSourceMapCache};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, SymbolicatedJsFrame,
     SymbolicatedJsStacktrace,
@@ -22,7 +21,7 @@ impl SymbolicationActor {
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
         let mut lookup = self
             .sourcemaps
-            .create_sourcemap_lookup(request.source.clone());
+            .create_sourcemap_lookup(request.source.clone(), &request.modules);
         lookup.prefetch_artifacts(&request.stacktraces).await;
 
         let mut raw_stacktraces = request.stacktraces;
@@ -35,55 +34,36 @@ impl SymbolicationActor {
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
 
             for raw_frame in &mut raw_stacktrace.frames {
-                // First, we fetch the minified file:
-                // TODO: hook up DebugId
-                // TODO: handle errors
-                let abs_path = match Url::parse(&raw_frame.abs_path) {
-                    Ok(url) => url,
-                    Err(e) => {
-                        tracing::warn!(error = %e, abs_path = &raw_frame.abs_path, "Invalid url");
-                        symbolicated_frames.push(SymbolicatedJsFrame {
-                            status: JsFrameStatus::InvalidAbsPath,
-                            raw: raw_frame.clone(),
-                        });
-                        continue;
-                    }
-                };
-                let key = FileKey::MinifiedSource {
-                    abs_path: abs_path.clone(),
-                    debug_id: None,
-                };
-                let minified_file = lookup.get_file(key.clone()).await;
+                let cached_module = lookup.get_module(&raw_frame.abs_path).await;
+
+                if !cached_module.is_valid() {
+                    symbolicated_frames.push(SymbolicatedJsFrame {
+                        status: JsFrameStatus::InvalidAbsPath,
+                        raw: raw_frame.clone(),
+                    });
+                    continue;
+                }
 
                 // Apply source context to the raw frame
-                apply_source_context_from_artifact(raw_frame, &minified_file);
-
-                // Then, get the `SourceMapCache`:
-                // TODO: maybe get the `SourceMapCache` and the `CachedFile` at the same time?
-                let smcache = lookup.get_sourcemapcache(&abs_path, None).await;
+                apply_source_context_from_artifact(raw_frame, &cached_module.minified_source);
 
                 // And symbolicate
-                match symbolicate_js_frame(raw_frame, smcache) {
+                match symbolicate_js_frame(raw_frame, &cached_module.smcache) {
                     Ok((mut frame, did_apply_source)) => {
                         // If we have no source context from within the `SourceMapCache`,
                         // fall back to applying the source context from a raw artifact file
                         // TODO: we should only do this fallback if there is *no* `DebugId`.
                         if !did_apply_source {
-                            // TODO: create a convenience method that creates a new `FileKey::Source`
-                            // from an existing `abs_path`.
                             let filename = frame.raw.filename.as_ref();
-                            let file_url =
-                                filename.and_then(|filename| abs_path.join(filename).ok());
-                            let file_key = file_url
-                                .ok_or(CacheError::NotFound)
-                                .map(FileKey::new_source);
+                            let file_key = filename
+                                .and_then(|filename| cached_module.source_file_key(filename));
 
                             let source_file = match file_key {
-                                Ok(key) => lookup.get_file(key).await,
-                                Err(err) => Err(err),
+                                Some(key) => lookup.get_source_file(key).await,
+                                None => &Err(CacheError::NotFound),
                             };
 
-                            apply_source_context_from_artifact(&mut frame.raw, &source_file);
+                            apply_source_context_from_artifact(&mut frame.raw, source_file);
                         }
                         symbolicated_frames.push(frame)
                     }
@@ -110,7 +90,7 @@ impl SymbolicationActor {
 
 fn symbolicate_js_frame(
     frame: &JsFrame,
-    smcache: CacheEntry<OwnedSourceMapCache>,
+    smcache: &CacheEntry<OwnedSourceMapCache>,
 ) -> Result<(SymbolicatedJsFrame, bool), JsFrameStatus> {
     let smcache = match smcache {
         Ok(smcache) => smcache,
