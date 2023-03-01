@@ -47,6 +47,9 @@ steps:
     args:
       - '-c'
       - |-
+        gsutil -m cp \
+        /opt/symbolicator-debug.zip /opt/symbolicator.src.zip \
+        gs://dicd-team-devinfra-cd--symbolicator/difs/$COMMIT_SHA/
 
   - name: "gcr.io/cloud-builders/docker"
     args:
