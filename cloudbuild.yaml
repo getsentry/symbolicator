@@ -42,7 +42,7 @@ steps:
   # Uploads DIFs to the deployment pipeline group's private bucket.
   # These are used for sentry releases.
   - name: "gcr.io/cloud-builders/gsutil"
-    waitFor: builder-run
+    waitFor: ["builder-run"]
     entrypoint: "bash"
     args:
       - '-c'
