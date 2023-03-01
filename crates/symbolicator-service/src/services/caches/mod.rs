@@ -1,6 +1,6 @@
 //! The various caches used by the core Symbolication Service are placed here.
 
-mod downloads;
+mod sourcefiles;
 pub mod versions;
 
-pub use downloads::CachedDownloads;
+pub use sourcefiles::SourceFilesCache;
