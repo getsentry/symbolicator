@@ -55,8 +55,8 @@ impl SymbolicationActor {
                         // TODO: we should only do this fallback if there is *no* `DebugId`.
                         if !did_apply_source {
                             let filename = frame.raw.filename.as_ref();
-                            let file_key =
-                                filename.and_then(|filename| cached_module.file_key(filename));
+                            let file_key = filename
+                                .and_then(|filename| cached_module.source_file_key(filename));
 
                             let source_file = match file_key {
                                 Some(key) => lookup.get_file(key).await,

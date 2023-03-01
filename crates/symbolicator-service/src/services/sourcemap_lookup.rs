@@ -77,6 +77,8 @@ pub struct CachedModule {
     // TODO: errors that happened when processing this file
     /// A flag if have already resolved the minified and sourcemap files.
     was_fetched: bool,
+    /// The base url for fetching source files.
+    source_file_base: Option<Url>,
     /// The fetched minified JS file.
     // TODO: this should not be public?
     pub minified_source: CacheEntry<CachedFile>,
@@ -96,6 +98,7 @@ impl CachedModule {
             abs_path,
             debug_id,
             was_fetched: false,
+            source_file_base: None,
             minified_source: Err(CacheError::NotFound),
             smcache: Err(CacheError::NotFound),
         }
@@ -107,9 +110,8 @@ impl CachedModule {
     }
 
     /// Creates a new [`FileKey`] for the `file_path` relative to this module
-    pub fn file_key(&self, file_path: &str) -> Option<FileKey> {
-        // FIXME: are the source paths that we symbolicate relative to the minified source or the sourcemap?
-        let base_url = self.abs_path.as_ref().ok()?;
+    pub fn source_file_key(&self, file_path: &str) -> Option<FileKey> {
+        let base_url = self.source_file_base.as_ref()?;
         let url = base_url.join(file_path).ok()?;
         Some(FileKey::new_source(url))
     }
@@ -227,12 +229,24 @@ impl SourceMapLookup {
         };
 
         // we can’t have a mutable `module` while calling `fetch_module` :-(
-        let (minified_source, smcache) = self.fetch_module(url, debug_id).await;
+        let (minified_source, smcache) = self.fetch_module(url.clone(), debug_id).await;
+
+        // We use the sourcemap url as the base. If that is not available because there is no
+        // sourcemap url, or it is an for embedded sourcemap, we fall back to the minified file.
+        let sourcemap_url = match &minified_source {
+            Ok(minified_source) => match minified_source.sourcemap_url.as_deref() {
+                Some(SourceMapUrl::Remote(url)) => Some(url.clone()),
+                _ => None,
+            },
+            Err(_) => None,
+        };
+        let source_file_base = sourcemap_url.unwrap_or(url);
 
         let module = self
             .modules_by_abs_path
             .get_mut(abs_path)
             .expect("we should have a module");
+        module.source_file_base = Some(source_file_base);
         module.minified_source = minified_source;
         module.smcache = smcache;
 
