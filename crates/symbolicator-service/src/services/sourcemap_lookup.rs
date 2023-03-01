@@ -82,7 +82,7 @@ impl SourceMapModule {
 }
 
 pub struct SourceMapLookup {
-    /// This is a map from the raw `abs_path` as it appears in the event to a [`CachedModule`].
+    /// This is a map from the raw `abs_path` as it appears in the event to a [`SourceMapModule`].
     modules_by_abs_path: HashMap<String, SourceMapModule>,
 
     /// Arbitrary source files keyed by their [`FileKey`].
@@ -151,10 +151,7 @@ impl SourceMapLookup {
         self.fetcher.prefetch_artifacts().await;
     }
 
-    /// Get the [`CachedModule`], which gives access to the `minified_source` and `smcache`.
-    // FIXME: This should ideally give us a `&CachedModule`, but that is currently not
-    // really possible because the borrow checker does not like it :-(
-    // Maybe splitting this up into two different structs would solve this problem?
+    /// Get the [`SourceMapModule`], which gives access to the `minified_source` and `smcache`.
     pub async fn get_module(&mut self, abs_path: &str) -> &SourceMapModule {
         // An `entry_by_ref` would be so nice
         let module = self
