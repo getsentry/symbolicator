@@ -33,7 +33,7 @@
 //! the cache item type. Here is a list of metrics that are collected:
 //!
 //! - `caches.access`: All accesses.
-//! - `caches.memory.hit`: Accesses served by the in-memory layer. (FIXME: currently only used for request coalescing)
+//! - `caches.memory.hit`: Accesses served by the in-memory layer.
 //! - `caches.file.hit`: Accesses served by the file-system layer.
 //! - `services.shared_cache.fetch(hit:true)`: Accesses served by the shared-cache layer.
 //! - `caches.computation`: Actual computations being run, and not served by any of the caching layers.
@@ -43,8 +43,6 @@
 //!
 //! Various other metrics are being collected as well, including:
 //! - `caches.file.size`: A histogram for the size (in bytes) of the successfully loaded / written cache files.
-//! - FIXME: `caches.file.discarded` and `shared_cache.file.discarded` is still being used in the
-//!   edge-case of mutable cache files. This will go away once cache files are truly immutable.
 //! - `caches.file.write`: The number of caches being written to disk.
 //!   This should match `caches.computation` if the file-system layer is enabled.
 //! - TODO: list all the other metrics that are missing here :-)
@@ -75,9 +73,6 @@
 //!
 //! A "successful" entry is considered immutable and it will be reused indefinitely as long as it
 //! is being actively used.
-//! FIXME: One current exception to this is the `should_load` functionality that is used in combination
-//! with SymCache entries that are "mutable" depending on availability of secondary mapping files.
-//! This is subject to change: <https://github.com/getsentry/symbolicator/issues/983>
 //!
 //! The [`SharedCacheConfig`] is optional, and no shared cache will be used when it is absent. The
 //! configuration is done by providing a GCS bucket and `service_account_path`. A file-system based
@@ -102,7 +97,18 @@
 //!
 //! ## [`CacheKey`]
 //!
-//! TODO
+//! The [`CacheKey`] is used both as the key for the in-memory cache, as well as the path of the
+//! file-system cache. It contains some human-readable (but not necessarily machine-readable)
+//! metadata. This metadata encodes the information what this cache contains, and where it came from.
+//! For cache artifacts that contain data from more than one source, it should contain all the
+//! information from all the sources that contributed to the cached file.
+//!
+//! The [`CacheKeyBuilder`] provides a [`std::fmt::Write`] interface with other helper methods to
+//! construct the human-readable metadata. This metadata is then SHA256-hashed to form the filename
+//! for the file-system cache.
+//!
+//! **NOTE**: Care must be taken to make sure that this metadata is stable, as it would otherwise
+//! lead to bad cache reuse.
 //!
 //! ## Cache Fallback and [`CacheVersions`]
 //!
@@ -123,8 +129,26 @@
 //!
 //! ## Using the Cache / Creating a cached item
 //!
-//! TODO
+//! Creating a new Cache involves quite some moving parts.
+//! The primary entry point is the [`CacheItemRequest`] trait. The [`CacheItemRequest::compute`]
+//! function is used to asynchronously compute / write the item into a [`NamedTempFile`](tempfile::NamedTempFile).
+//! This file is a `&mut` reference, and one might use [`std::mem::swap`] to replace it with a
+//! newly created temporary file.
+//! Once the file is written, it is considered to be immutable, and loadable synchronously via the
+//! [`CacheItemRequest::load`] method. This function returns a [`CacheEntry`] and is theoretically
+//! fallible. However, failing to load a previously written cache file in most cases should be
+//! considered a [`CacheError::InternalError`], and is unexpected to occur.
 //!
+//! A [`CacheItemRequest`] also needs to specify [`CacheVersions`] which are used for cache fallback
+//! as explained in detail above. Newly added caches should start with version `1`, and all the
+//! cache versions and their versioning history should be recorded in [`caches::versions`](crate::services::caches::versions).
+//!
+//! A new cache item also needs a new [`CacheName`] and [`Cache`] configuration. This should be added
+//! to [`Caches`] down below as well, and to [`Caches::cleanup`] to properly clean up cache files.
+//!
+//! Last but not least, it might be worth adding a simplified wrapper function around
+//! [`Cacher::compute_memoized`] to hide all the details of the [`CacheItemRequest`] struct and how
+//! the cache item itself is being computed / loaded.
 
 use std::io;
 use std::sync::atomic::AtomicIsize;
@@ -143,7 +167,7 @@ mod shared_cache;
 mod tests;
 
 pub use cache_error::{CacheEntry, CacheError};
-pub use cache_key::CacheKey;
+pub use cache_key::{CacheKey, CacheKeyBuilder};
 pub use cleanup::cleanup;
 pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
@@ -165,6 +189,7 @@ pub struct Caches {
     /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
     pub cficaches: Cache,
     pub ppdb_caches: Cache,
+    pub artifact_caches: Cache,
     pub sourcemap_caches: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
@@ -183,98 +208,84 @@ impl Caches {
             config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
-        let tmp_dir = config.cache_dir("tmp");
+        // NOTE: We default all the caches to ~200 KiB.
+        // A cache item with all its structures is at least ~100 bytes, so this gives us an
+        // estimate of the number of items in memory around ~2_000.
+        // Most items are a lot larger in reality, but giving concrete numbers here is hard to do.
+        let default_cap = 200 * 1024;
+        let in_memory = &config.caches.in_memory;
+
         Ok(Self {
-            objects: {
-                let path = config.cache_dir("objects");
-                Cache::from_config(
-                    CacheName::Objects,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.downloaded.into(),
-                    max_lazy_redownloads.clone(),
-                )?
-            },
-            object_meta: {
-                let path = config.cache_dir("object_meta");
-                Cache::from_config(
-                    CacheName::ObjectMeta,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.derived.into(),
-                    max_lazy_recomputations.clone(),
-                )?
-            },
-            auxdifs: {
-                let path = config.cache_dir("auxdifs");
-                Cache::from_config(
-                    CacheName::Auxdifs,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.downloaded.into(),
-                    max_lazy_redownloads.clone(),
-                )?
-            },
-            il2cpp: {
-                let path = config.cache_dir("il2cpp");
-                Cache::from_config(
-                    CacheName::Il2cpp,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.downloaded.into(),
-                    max_lazy_redownloads,
-                )?
-            },
-            symcaches: {
-                let path = config.cache_dir("symcaches");
-                Cache::from_config(
-                    CacheName::Symcaches,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.derived.into(),
-                    max_lazy_recomputations.clone(),
-                )?
-            },
-            cficaches: {
-                let path = config.cache_dir("cficaches");
-                Cache::from_config(
-                    CacheName::Cficaches,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.derived.into(),
-                    max_lazy_recomputations.clone(),
-                )?
-            },
-            ppdb_caches: {
-                let path = config.cache_dir("ppdb_caches");
-                Cache::from_config(
-                    CacheName::PpdbCaches,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.derived.into(),
-                    max_lazy_recomputations.clone(),
-                )?
-            },
-            sourcemap_caches: {
-                let path = config.cache_dir("sourcemap_caches");
-                Cache::from_config(
-                    CacheName::SourceMapCaches,
-                    path,
-                    tmp_dir.clone(),
-                    config.caches.derived.into(),
-                    max_lazy_recomputations,
-                )?
-            },
-            diagnostics: {
-                let path = config.cache_dir("diagnostics");
-                Cache::from_config(
-                    CacheName::Diagnostics,
-                    path,
-                    tmp_dir,
-                    config.caches.diagnostics.into(),
-                    Default::default(),
-                )?
-            },
+            objects: Cache::from_config(
+                CacheName::Objects,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads.clone(),
+                default_cap,
+            )?,
+            object_meta: Cache::from_config(
+                CacheName::ObjectMeta,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations.clone(),
+                in_memory.object_meta_capacity,
+            )?,
+            auxdifs: Cache::from_config(
+                CacheName::Auxdifs,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads.clone(),
+                default_cap,
+            )?,
+            il2cpp: Cache::from_config(
+                CacheName::Il2cpp,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads,
+                default_cap,
+            )?,
+            symcaches: Cache::from_config(
+                CacheName::Symcaches,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations.clone(),
+                default_cap,
+            )?,
+            cficaches: Cache::from_config(
+                CacheName::Cficaches,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations.clone(),
+                in_memory.cficaches_capacity,
+            )?,
+            ppdb_caches: Cache::from_config(
+                CacheName::PpdbCaches,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations.clone(),
+                default_cap,
+            )?,
+            artifact_caches: Cache::from_config(
+                CacheName::ArtifactCaches,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations.clone(),
+                default_cap,
+            )?,
+            sourcemap_caches: Cache::from_config(
+                CacheName::SourceMapCaches,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations,
+                default_cap,
+            )?,
+            diagnostics: Cache::from_config(
+                CacheName::Diagnostics,
+                config,
+                config.caches.diagnostics.into(),
+                Default::default(),
+                default_cap,
+            )?,
         })
     }
 }

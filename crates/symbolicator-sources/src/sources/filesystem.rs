@@ -51,4 +51,8 @@ impl FilesystemRemoteFile {
     pub(crate) fn uri(&self) -> RemoteFileUri {
         format!("file:///{}", self.path().display()).into()
     }
+
+    pub(crate) fn host(&self) -> String {
+        "local file".into()
+    }
 }

@@ -167,10 +167,8 @@ impl ObjectsActor {
                 download_svc: self.download_svc.clone(),
             };
 
-            let meta_cache = self.meta_cache.clone();
-
             async move {
-                let handle = meta_cache.compute_memoized(request, cache_key).await;
+                let handle = self.meta_cache.compute_memoized(request, cache_key).await;
                 FoundMeta {
                     file_source,
                     handle,

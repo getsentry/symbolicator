@@ -21,7 +21,9 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
+use crate::caching::CacheVersions;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey};
+use crate::services::caches::versions::OBJECTS_CACHE_VERSIONS;
 use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
@@ -203,6 +205,8 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 impl CacheItemRequest for FetchFileDataRequest {
     type Item = Arc<ObjectHandle>;
 
+    const VERSIONS: CacheVersions = OBJECTS_CACHE_VERSIONS;
+
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let cache_key = CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source);
         tracing::trace!("Fetching file data for {}", cache_key);
@@ -258,29 +262,30 @@ mod tests {
     use tempfile::TempDir;
 
     async fn make_objects_actor(tempdir: &TempDir) -> ObjectsActor {
+        let config = Config {
+            connect_to_reserved_ips: true,
+            max_download_timeout: Duration::from_millis(100),
+            cache_dir: Some(tempdir.path().to_path_buf()),
+            ..Default::default()
+        };
+
         let meta_cache = Cache::from_config(
             CacheName::ObjectMeta,
-            Some(tempdir.path().join("meta")),
-            None,
+            &config,
             CacheConfig::from(CacheConfigs::default().derived),
             Default::default(),
+            1024,
         )
         .unwrap();
 
         let data_cache = Cache::from_config(
             CacheName::Objects,
-            Some(tempdir.path().join("data")),
-            None,
+            &config,
             CacheConfig::from(CacheConfigs::default().downloaded),
             Default::default(),
+            1024,
         )
         .unwrap();
-
-        let config = Config {
-            connect_to_reserved_ips: true,
-            max_download_timeout: Duration::from_millis(100),
-            ..Config::default()
-        };
 
         let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)

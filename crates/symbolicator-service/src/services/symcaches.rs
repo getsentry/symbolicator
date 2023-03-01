@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
@@ -21,53 +22,10 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
-use self::markers::{SecondarySymCacheSources, SymCacheMarkers};
-
+use super::bitcode::BcSymbolMapHandle;
+use super::caches::versions::SYMCACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::il2cpp::Il2cppService;
-
-mod markers;
-
-/// The supported symcache versions.
-///
-/// # How to version
-///
-/// The initial "unversioned" version is `0`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// symcaches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken symcaches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// symcache file version as described above, and update the static assertion.
-///
-/// # Version History
-///
-/// - `5`: Proactive bump, as a bug in shared cache could have potentially
-///   uploaded `v2` cache files as `v3` (and later `v4`) erroneously.
-///
-/// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
-///
-/// - `3`: Another round of fixes in symcache generation:
-///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
-///        - undecorate Windows C-decorated symbols in symcaches
-///
-/// - `2`: Tons of fixes/improvements in symcache generation:
-///        - fixed problems with DWARF functions that have the
-///          same line records for different inline hierarchy
-///        - fixed problems with PDB where functions have line records that don't belong to them
-///        - fixed problems with PDB/DWARF when parent functions don't have matching line records
-///        - using a new TypeFormatter for PDB that can pretty-print function arguments
-///
-/// - `1`: New binary format based on instruction addr lookup.
-const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 5,
-    fallbacks: &[4],
-};
-static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
+use super::il2cpp::{Il2cppHandle, Il2cppService};
 
 pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 
@@ -157,18 +115,6 @@ impl CacheItemRequest for FetchSymCacheInternal {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn should_load(&self, data: &[u8]) -> bool {
-        SymCache::parse(data)
-            .map(|_symcache| {
-                // NOTE: we do *not* check for the `is_latest` version here.
-                // If the symcache is parsable, we want to use even outdated versions.
-
-                let symcache_markers = SymCacheMarkers::parse(data);
-                SymCacheMarkers::from_sources(&self.secondary_sources) == symcache_markers
-            })
-            .unwrap_or(false)
-    }
-
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_symcache_owned(data)
     }
@@ -234,12 +180,23 @@ impl SymCacheActor {
             let (bcsymbolmap_handle, il2cpp_handle) =
                 futures::future::join(fetch_bcsymbolmap, fetch_il2cpp).await;
 
+            let mut builder = handle.cache_key_builder();
+            if let Some(handle) = &bcsymbolmap_handle {
+                builder.write_str("\nbcsymbolmap:\n").unwrap();
+                builder.write_file_meta(&handle.file).unwrap();
+            }
+            if let Some(handle) = &il2cpp_handle {
+                builder.write_str("\nil2cpp:\n").unwrap();
+                builder.write_file_meta(&handle.file).unwrap();
+            }
+
+            let cache_key = builder.build();
+
             let secondary_sources = SecondarySymCacheSources {
                 bcsymbolmap_handle,
                 il2cpp_handle,
             };
 
-            let cache_key = handle.cache_key();
             let request = FetchSymCacheInternal {
                 objects_actor: self.objects.clone(),
                 secondary_sources,
@@ -249,6 +206,13 @@ impl SymCacheActor {
         })
         .await
     }
+}
+
+/// Encapsulation of all the source artifacts that are being used to create SymCaches.
+#[derive(Clone, Debug, Default)]
+struct SecondarySymCacheSources {
+    bcsymbolmap_handle: Option<BcSymbolMapHandle>,
+    il2cpp_handle: Option<Il2cppHandle>,
 }
 
 /// Computes and writes the symcache.
@@ -264,8 +228,6 @@ fn write_symcache(
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();
-
-    let markers = SymCacheMarkers::from_sources(&secondary_sources);
 
     let bcsymbolmap_transformer = match secondary_sources.bcsymbolmap_handle {
         Some(ref handle) => {
@@ -318,8 +280,7 @@ fn write_symcache(
 
     let mut writer = BufWriter::new(file);
     converter.serialize(&mut writer)?;
-    let mut file = writer.into_inner().map_err(io::Error::from)?;
-    markers.write_to(&mut file)?;
+    let file = writer.into_inner().map_err(io::Error::from)?;
     file.sync_all()?;
 
     Ok(())
@@ -391,7 +352,7 @@ mod tests {
     async fn test_symcache_refresh() {
         test::setup();
 
-        const TIMEOUT: Duration = Duration::from_secs(5);
+        const TIMEOUT: Duration = Duration::from_secs(2);
 
         let cache_dir = test::tempdir();
         let symbol_dir = test::tempdir();

@@ -96,6 +96,7 @@
 use std::convert::TryFrom;
 use std::fmt;
 
+use symbolic::common::ByteView;
 use thiserror::Error;
 
 use crate::types::{self, FrameTrust};
@@ -104,11 +105,12 @@ use crate::utils::hex;
 const MINIDUMP_EXTENSION_TYPE: u32 = u32::from_be_bytes([b'S', b'y', 0, 1]);
 const MINIDUMP_FORMAT_VERSION: u32 = 1;
 
+type Minidump = minidump::Minidump<'static, ByteView<'static>>;
+
 /// Extract client-side stacktraces from a minidump file.
 pub fn parse_stacktraces_from_minidump(
-    buf: &[u8],
+    dump: &Minidump,
 ) -> Result<Option<Vec<types::RawStacktrace>>, ExtractStacktraceError> {
-    let dump = minidump::Minidump::read(buf)?;
     let extension_buf = match dump.get_raw_stream(MINIDUMP_EXTENSION_TYPE) {
         Ok(stream) => stream,
         Err(minidump::Error::StreamNotFound) => return Ok(None),

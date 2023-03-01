@@ -12,10 +12,13 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
-use symbolicator_sources::{ObjectId, RemoteFile, RemoteFileUri, SourceId};
+use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
-use crate::caching::{CacheEntry, CacheItemRequest, CacheKey, Cacher};
+use crate::caching::{
+    CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
+};
+use crate::services::caches::versions::META_CACHE_VERSIONS;
 use crate::types::{ObjectFeatures, Scope};
 
 use super::FetchFileDataRequest;
@@ -39,7 +42,7 @@ pub(super) struct FetchFileMetaRequest {
 /// Handle to local metadata file of an object.
 ///
 /// Having an instance of this type does not mean there is a downloaded object file behind
-/// it. We cache metadata separately (ObjectFeatures) because every symcache lookup requires
+/// it. We cache metadata separately ([`ObjectFeatures`]) because every SymCache lookup requires
 /// reading this metadata.
 #[derive(Clone, Debug)]
 pub struct ObjectMetaHandle {
@@ -54,16 +57,14 @@ impl ObjectMetaHandle {
         CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }
 
+    pub fn cache_key_builder(&self) -> CacheKeyBuilder {
+        let mut builder = CacheKey::scoped_builder(&self.scope);
+        builder.write_file_meta(&self.file_source).unwrap();
+        builder
+    }
+
     pub fn features(&self) -> ObjectFeatures {
         self.features
-    }
-
-    pub fn source_id(&self) -> &SourceId {
-        self.file_source.source_id()
-    }
-
-    pub fn uri(&self) -> RemoteFileUri {
-        self.file_source.uri()
     }
 
     pub fn scope(&self) -> &Scope {
@@ -79,7 +80,7 @@ impl FetchFileMetaRequest {
     /// Fetches object file and derives metadata from it, storing this in the cache.
     ///
     /// This uses the data cache to fetch the requested file before parsing it and writing
-    /// the object metadata into the cache at `path`.  Technically the data cache could
+    /// the object metadata into `temp_file`.  Technically the data cache could
     /// contain the object file already but this is unlikely as normally the data cache
     /// expires before the metadata cache, so if the metadata needs to be re-computed then
     /// the data cache has probably also expired.
@@ -115,18 +116,14 @@ impl FetchFileMetaRequest {
 impl CacheItemRequest for FetchFileMetaRequest {
     type Item = Arc<ObjectMetaHandle>;
 
+    const VERSIONS: CacheVersions = META_CACHE_VERSIONS;
+
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         Box::pin(self.compute_file_meta(temp_file))
     }
 
-    fn should_load(&self, data: &[u8]) -> bool {
-        serde_json::from_slice::<ObjectFeatures>(data).is_ok()
-    }
-
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        // When CacheStatus::Negative we get called with an empty ByteView, for Malformed we
-        // get the malformed marker.
         let features = serde_json::from_slice(&data)?;
         Ok(Arc::new(ObjectMetaHandle {
             scope: self.scope.clone(),

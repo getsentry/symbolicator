@@ -5,7 +5,7 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
 use symbolic::debuginfo::ObjectDebugSession;
-use symbolicator_sources::{FileType, ObjectType, SourceConfig};
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::services::derived::DerivedCache;
@@ -16,11 +16,26 @@ use crate::services::ppdb_caches::{
 use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::types::{
     AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
-    RawStacktrace, Scope,
+    RawFrame, RawObjectInfo, RawStacktrace, Scope,
 };
 use crate::utils::addr::AddrMode;
 
-use super::object_id_from_object_info;
+fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
+    ObjectId {
+        debug_id: match object_info.debug_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
+        code_id: match object_info.code_id.as_deref() {
+            None | Some("") => None,
+            Some(string) => string.parse().ok(),
+        },
+        debug_file: object_info.debug_file.clone(),
+        code_file: object_info.code_file.clone(),
+        debug_checksum: object_info.debug_checksum.clone(),
+        object_type: object_info.ty,
+    }
+}
 
 pub fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
     match cache_entry {
@@ -370,18 +385,19 @@ impl ModuleLookup {
     pub fn get_context_lines(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
-        addr: u64,
-        addr_mode: AddrMode,
-        abs_path: &str,
-        lineno: u32,
-        n: usize,
+        frame: &RawFrame,
+        num_lines: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
-        let entry = self.get_module_by_addr(addr, addr_mode)?;
-        let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
-        let source = session.source_by_path(abs_path).ok()??;
+        let abs_path = frame.abs_path.as_ref()?;
+        let lineno = frame.lineno? as usize;
 
-        let lineno = lineno as usize;
-        let start_line = lineno.saturating_sub(n);
+        let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
+        let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
+        let source_descriptor = session.source_by_path(abs_path).ok()??;
+        // TODO: add support for source links via `source_descriptor.url()`
+        let source = source_descriptor.contents()?;
+
+        let start_line = lineno.saturating_sub(num_lines);
         let line_diff = lineno - start_line;
 
         let mut lines = source.lines().skip(start_line);
@@ -390,7 +406,7 @@ impl ModuleLookup {
             .map(|x| x.to_string())
             .collect();
         let context = lines.next()?.to_string();
-        let post_context = lines.take(n).map(|x| x.to_string()).collect();
+        let post_context = lines.take(num_lines).map(|x| x.to_string()).collect();
 
         Some((pre_context, context, post_context))
     }

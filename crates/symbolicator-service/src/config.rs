@@ -293,15 +293,32 @@ pub struct InMemoryCacheConfig {
     ///
     /// Defaults to `100`.
     pub s3_client_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory `object_meta` Cache.
+    ///
+    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
+    ///
+    /// Defaults to `100 MiB (= 104_857_600)`.
+    pub object_meta_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory `cficaches` Cache.
+    ///
+    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
+    ///
+    /// Defaults to `600 MiB (= 629_145_600)`.
+    pub cficaches_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
     fn default() -> Self {
+        let meg = 1024 * 1024;
         Self {
             sentry_index_capacity: 100_000.try_into().unwrap(),
             sentry_index_ttl: Duration::from_secs(3600),
             gcs_token_capacity: 100.try_into().unwrap(),
             s3_client_capacity: 100,
+            object_meta_capacity: 100 * meg,
+            cficaches_capacity: 400 * meg,
         }
     }
 }
@@ -374,6 +391,25 @@ pub struct Config {
     /// connection with a symbol source if retries take place.
     #[serde(with = "humantime_serde")]
     pub connect_timeout: Duration,
+
+    /// The time window for the host deny list.
+    ///
+    /// Hosts will be put on the deny list if a certain number of downloads
+    /// fail within this time window.
+    #[serde(with = "humantime_serde")]
+    pub deny_list_time_window: Duration,
+
+    /// The granularity at which download failures are tracked in the host deny list.
+    #[serde(with = "humantime_serde")]
+    pub deny_list_bucket_size: Duration,
+
+    /// The number of failures that must occur in the configured time window for a
+    /// server to be put on the deny list.
+    pub deny_list_threshold: usize,
+
+    /// The duration for which a host will remain on the deny list.
+    #[serde(with = "humantime_serde")]
+    pub deny_list_block_time: Duration,
 
     /// The timeout per GB for streaming downloads.
     ///
@@ -475,6 +511,10 @@ impl Default for Config {
             connect_timeout: Duration::from_secs(15),
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
+            deny_list_time_window: Duration::from_secs(60),
+            deny_list_bucket_size: Duration::from_secs(5),
+            deny_list_threshold: 20,
+            deny_list_block_time: Duration::from_secs(24 * 60 * 60),
             max_concurrent_requests: Some(120),
             shared_cache: None,
             _crash_db: None,

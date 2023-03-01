@@ -42,11 +42,9 @@ pub use symbolicator_service::services::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::services::symbolication::{
-    JsProcessingSymbolicateStacktraces, StacktraceOrigin, SymbolicateStacktraces,
+    StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
 };
-pub use symbolicator_service::types::{
-    JsProcessingRawStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal,
-};
+pub use symbolicator_service::types::{JsStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -266,28 +264,24 @@ impl RequestService {
         })
     }
 
-    pub fn js_processing_symbolicate_stacktraces(
+    pub fn symbolicate_js_stacktraces(
         &self,
-        request: JsProcessingSymbolicateStacktraces,
+        request: SymbolicateJsStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let span = sentry::configure_scope(|scope| scope.get_span());
         let ctx = sentry::TransactionContext::continue_from_span(
-            "js_processing_symbolicate_stacktraces",
-            "js_processing_symbolicate_stacktraces",
+            "symbolicate_js_stacktraces",
+            "symbolicate_js_stacktraces",
             span,
         );
-        self.create_symbolication_request(
-            "js_processing_symbolicate",
-            RequestOptions::default(),
-            async move {
-                let transaction = sentry::start_transaction(ctx);
-                sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-                let res = slf.symbolication.js_processing_symbolicate(request).await;
-                transaction.finish();
-                res.map(Into::into)
-            },
-        )
+        self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let res = slf.symbolication.symbolicate_js(request).await;
+            transaction.finish();
+            res.map(Into::into)
+        })
     }
 
     /// Creates a new request to process a minidump.
@@ -441,7 +435,7 @@ impl RequestService {
             let response = match result {
                 Ok(mut response) => {
                     if !options.dif_candidates {
-                        if let CompletedResponse::Symbolication(ref mut res) = response {
+                        if let CompletedResponse::NativeSymbolication(ref mut res) = response {
                             clear_dif_candidates(res)
                         }
                     }

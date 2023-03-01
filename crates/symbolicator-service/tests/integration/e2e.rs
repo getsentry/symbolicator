@@ -409,15 +409,31 @@ async fn test_lookup_deduplication() {
     }
 }
 
-fn get_files(path: impl AsRef<Path>) -> Vec<(String, u64)> {
-    let mut files = vec![];
+fn get_files_recursive(files: &mut Vec<(String, u64)>, root: &Path, path: &Path) {
     for entry in std::fs::read_dir(path).unwrap() {
         let entry = entry.unwrap();
-        let name = entry.file_name().to_string_lossy().to_string();
-        let size = entry.metadata().unwrap().len();
-
-        files.push((name, size));
+        let path = entry.path();
+        let ty = entry.file_type().unwrap();
+        if ty.is_dir() {
+            get_files_recursive(files, root, &path);
+        } else if ty.is_file() {
+            let name = path
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let size = entry.metadata().unwrap().len();
+            files.push((name, size));
+        }
+        // we ignore symlinks
     }
+}
+
+fn get_cache_files(root: &Path) -> Vec<(String, u64)> {
+    let mut files = vec![];
+
+    get_files_recursive(&mut files, root, root);
+
     files.sort();
     files
 }
@@ -451,41 +467,55 @@ async fn test_basic_windows() {
                 );
 
                 if with_cache {
+                    let objects_dir = cache_dir.path().join("objects");
+                    let mut cached_objects = get_cache_files(&objects_dir);
+
+                    // NOTE: the cache key depends on the exact location of the file, which is
+                    // random because it includes the [`Server`]s random port.
+                    cached_objects.sort_by_key(|(_, size)| *size);
+                    assert_eq!(cached_objects.len(), 4); // 2 filename patterns, 2 metadata files
+                    assert_eq!(cached_objects[0].1, 0);
+                    assert_eq!(cached_objects[3].1, 846_848);
+
+                    let metadata_file = &cached_objects[1].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
+                    let mut expected_metadata = format!(
+                        "scope: {cached_scope}\n\nsource: microsoft\nlocation: {}",
+                        hitcounter.url(
+                            "/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd"
+                        )
+                    );
+                    let metadata =
+                        std::fs::read_to_string(objects_dir.join(metadata_file)).unwrap();
+                    // NOTE: due to random sort order, we have either `.pdb` or `.pd_`,
+                    // thus we only check for the substring
+                    assert!(
+                        metadata.starts_with(&expected_metadata),
+                        "{metadata:?} == {expected_metadata:?}"
+                    );
 
-                    let cached_objects = cache_dir.path().join("objects").join(cached_scope);
-                    let cached_objects = get_files(cached_objects);
-                    assert_eq!(&cached_objects, &[
-                        ("microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pd_".into(), 0),
-                        ("microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb".into(), 846_848)
-                    ]);
+                    let symcaches_dir = cache_dir.path().join("symcaches");
+                    let mut cached_symcaches = get_cache_files(&symcaches_dir);
 
-                    let cached_symcaches = cache_dir
-                        .path()
-                        .join("symcaches")
-                        .join("5") // NOTE: this needs to be updated when bumping symcaches
-                        .join(cached_scope);
-                    let cached_symcaches = get_files(cached_symcaches);
-                    assert_eq!(&cached_symcaches, &[
-                        ("microsoft_wkernel32_pdb_FF9F9F7841DB88F0CDEDA9E1E9BFF3B51_wkernel32_pdb".into(), 142_365)
-                    ]);
+                    cached_symcaches.sort_by_key(|(_, size)| *size);
+                    assert_eq!(cached_symcaches.len(), 2); // 1 symcache, 1 metadata file
+                    assert_eq!(cached_symcaches[1].1, 142_365);
+
+                    let metadata_file = &cached_symcaches[0].0;
+                    let metadata =
+                        std::fs::read_to_string(symcaches_dir.join(metadata_file)).unwrap();
+                    expected_metadata.push_str("b\n"); // this truely ends in `.pdb` now
+                    assert_eq!(metadata, expected_metadata);
                 }
 
-                if i > 0 && with_cache {
+                // our use of in-memory caching should make sure we only ever request each file once
+                if i > 0 {
                     assert_eq!(hitcounter.accesses(), 0);
                 } else {
                     let hits = hitcounter.all_hits();
-                    let (hit_count, miss_count) = if with_cache {
-                        (1, 1)
-                    } else {
-                        // we are downloading twice: once for the objects_meta request, and once
-                        // again for the objects/symcache request
-                        (2, 1)
-                    };
-
                     assert_eq!(&hits, &[
-                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_".into(), miss_count),
-                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb".into(), hit_count),
+                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pd_".into(), 1),
+                        ("/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb".into(), 1),
                     ]);
                 }
             }

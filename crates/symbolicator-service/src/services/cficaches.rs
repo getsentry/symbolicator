@@ -21,50 +21,27 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
+use super::caches::versions::CFICACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 
-/// The supported cficache versions.
-///
-/// # How to version
-///
-/// The initial "unversioned" version is `0`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// cficaches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken cficaches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// cficache file version as described above, and update the static assertion.
-///
-/// # Version History
-///
-/// - `3`: Proactive bump, as a bug in shared cache could have potentially
-///   uploaded `v1` cache files as `v2` erroneously.
-///
-/// - `2`: Allow underflow in Win-x64 CFI which allows loading registers from outside the stack frame.
-///
-/// - `1`: Generate higher fidelity CFI for Win-x64 binaries.
-const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[2],
-};
-static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
+type CfiItem = (u32, Option<Arc<SymbolFile>>);
 
 #[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<Option<Arc<SymbolFile>>> {
+fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<CfiItem> {
+    let weight = bytes.len().try_into().unwrap_or(u32::MAX);
+    // NOTE: we estimate the in-memory structures to be ~8x as heavy in memory as on disk
+    let weight = weight.saturating_mul(8);
+
     let cfi_cache = CfiCache::from_bytes(bytes).map_err(CacheError::from_std_error)?;
 
     if cfi_cache.as_slice().is_empty() {
-        return Ok(None);
+        return Ok((weight, None));
     }
 
     let symbol_file =
         SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
 
-    Ok(Some(Arc::new(symbol_file)))
+    Ok((weight, Some(Arc::new(symbol_file))))
 }
 
 #[derive(Clone, Debug)]
@@ -104,7 +81,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = Option<Arc<SymbolFile>>;
+    type Item = CfiItem;
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -117,14 +94,12 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
     }
 
-    fn should_load(&self, data: &[u8]) -> bool {
-        // NOTE: we do *not* check for the `is_latest` version here.
-        // If the cficache is parsable, we want to use even outdated versions.
-        CfiCache::from_bytes(ByteView::from_slice(data)).is_ok()
-    }
-
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         parse_cfi_cache(data)
+    }
+
+    fn weight(item: &Self::Item) -> u32 {
+        item.0.max(std::mem::size_of::<Self::Item>() as u32)
     }
 }
 
@@ -164,7 +139,11 @@ impl CfiCacheActor {
                 objects_actor: self.objects.clone(),
                 meta_handle,
             };
-            self.cficaches.compute_memoized(request, cache_key)
+            async {
+                let entry = self.cficaches.compute_memoized(request, cache_key).await;
+
+                entry.map(|item| item.1)
+            }
         })
         .await
     }

@@ -127,23 +127,19 @@ async fn test_dotnet_integration() {
             "instruction_addr": 10,
             "function_id": 6,
             "addr_mode":"rel:0"
-          },
-          {
+          }, {
             "instruction_addr": 6,
             "function_id": 5,
             "addr_mode": "rel:0"
-          },
-          {
+          }, {
             "instruction_addr": 0,
             "function_id": 3,
             "addr_mode": "rel:0"
-          },
-          {
+          }, {
             "instruction_addr": 0,
             "function_id": 2,
             "addr_mode": "rel:0"
-          },
-          {
+          }, {
             "instruction_addr": 45,
             "function_id": 1,
             "addr_mode": "rel:0"

@@ -3,46 +3,45 @@ use std::sync::Arc;
 use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
-use symbolicator_service::services::symbolication::JsProcessingSymbolicateStacktraces;
+use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::service::{JsProcessingRawStacktrace, RequestService, SymbolicationResponse};
+use crate::service::{JsStacktrace, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
 
 #[derive(Serialize, Deserialize)]
-pub struct SourcemapRequestBody {
+pub struct JsSymbolicationRequestBody {
     #[serde(default)]
     pub source: Option<SentrySourceConfig>,
     #[serde(default)]
-    pub stacktraces: Vec<JsProcessingRawStacktrace>,
+    pub stacktraces: Vec<JsStacktrace>,
     #[serde(default)]
     pub dist: Option<String>,
 }
 
-pub async fn handle_sourcemap_request(
+pub async fn handle_symbolication_request(
     extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
-    extract::Json(body): extract::Json<SourcemapRequestBody>,
+    extract::Json(body): extract::Json<JsSymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
     params.configure_scope();
 
-    let SourcemapRequestBody {
+    let JsSymbolicationRequestBody {
         source,
         stacktraces,
         dist,
     } = body;
 
-    let request_id =
-        service.js_processing_symbolicate_stacktraces(JsProcessingSymbolicateStacktraces {
-            source: Arc::new(source.unwrap()),
-            stacktraces,
-            dist,
-        })?;
+    let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
+        source: Arc::new(source.unwrap()),
+        stacktraces,
+        dist,
+    })?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

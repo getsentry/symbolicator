@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Introduce a `CacheKeyBuilder` and human-readable `CacheKey` metadata. ([#1033](https://github.com/getsentry/symbolicator/pull/1033), [#1036](https://github.com/getsentry/symbolicator/pull/1036))
+- Use new `CacheKey` for writes and shared-cache. ([#1038](https://github.com/getsentry/symbolicator/pull/1038))
+- Consolidate `CacheVersions` and bump to refresh `CacheKey` usage. ([#1041](https://github.com/getsentry/symbolicator/pull/1041), [#1042](https://github.com/getsentry/symbolicator/pull/1042))
+- Automatically block downloads from unreliable hosts. ([#1039](https://github.com/getsentry/symbolicator/pull/1039))
+- Fully migrate `CacheKey` usage and remove legacy markers. ([#1043](https://github.com/getsentry/symbolicator/pull/1043))
+- Add support for in-memory caching. ([#1028](https://github.com/getsentry/symbolicator/pull/1028))
+
+### Fixes
+
+- Reject minidumps containing invalid file names. ([#1047](https://github.com/getsentry/symbolicator/pull/1047))
+
+### Dependencies
+
+- Bump Native SDK from v0.5.4 to v0.6.0 ([#1048](https://github.com/getsentry/symbolicator/pull/1048))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#060)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.5.4...0.6.0)
+
 ## 0.7.0
 
 ### Features

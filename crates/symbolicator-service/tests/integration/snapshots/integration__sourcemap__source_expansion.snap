@@ -1,0 +1,63 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: missing_sourcemap
+        filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 1
+        colno: 0
+        context_line: h
+        post_context:
+          - e
+          - l
+          - l
+          - o
+          - " "
+      - status: missing_sourcemap
+        filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 4
+        colno: 0
+        pre_context:
+          - h
+          - e
+          - l
+        context_line: l
+        post_context:
+          - o
+          - " "
+          - w
+          - o
+          - r
+raw_stacktraces:
+  - frames:
+      - filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 1
+        colno: 0
+        context_line: h
+        post_context:
+          - e
+          - l
+          - l
+          - o
+          - " "
+      - filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 4
+        colno: 0
+        pre_context:
+          - h
+          - e
+          - l
+        context_line: l
+        post_context:
+          - o
+          - " "
+          - w
+          - o
+          - r
+

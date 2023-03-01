@@ -15,12 +15,14 @@ use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    SharedCacheRef,
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
+use super::caches::versions::IL2CPP_CACHE_VERSIONS;
 use super::fetch_file;
 
 /// Handle to a valid [`LineMapping`].
@@ -32,6 +34,7 @@ use super::fetch_file;
 // to a symcache, so we need to actually parse the `LineMapping` at the very end when applying it.
 #[derive(Debug, Clone)]
 pub struct Il2cppHandle {
+    pub file: RemoteFile,
     pub data: ByteView<'static>,
 }
 
@@ -73,6 +76,8 @@ impl FetchFileRequest {
 impl CacheItemRequest for FetchFileRequest {
     type Item = Il2cppHandle;
 
+    const VERSIONS: CacheVersions = IL2CPP_CACHE_VERSIONS;
+
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
@@ -86,7 +91,10 @@ impl CacheItemRequest for FetchFileRequest {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(Il2cppHandle { data })
+        Ok(Il2cppHandle {
+            file: self.file_source.clone(),
+            data,
+        })
     }
 }
 

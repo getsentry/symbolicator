@@ -18,28 +18,9 @@ use crate::types::{CandidateStatus, Scope};
 use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
+use super::caches::versions::PPDB_CACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
-
-/// The supported ppdb_cache versions.
-///
-/// # How to version
-///
-/// The initial version is `1`.
-/// Whenever we want to increase the version in order to re-generate stale/broken
-/// ppdb_caches, we need to:
-///
-/// * increase the `current` version.
-/// * prepend the `current` version to the `fallbacks`.
-/// * it is also possible to skip a version, in case a broken deploy needed to
-///   be reverted which left behind broken ppdb_caches.
-///
-/// In case a symbolic update increased its own internal format version, bump the
-/// ppdb_cache file version as described above, and update the static assertion.
-const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
-};
 
 pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
 
@@ -142,10 +123,6 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         let future = tokio::time::timeout(timeout, future);
         let future = measure("ppdb_caches", m::timed_result, future);
         Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
-    }
-
-    fn should_load(&self, _data: &[u8]) -> bool {
-        true
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {

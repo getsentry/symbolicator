@@ -4,45 +4,26 @@ use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
-use symbolicator_sources::{ObjectId, SentrySourceConfig};
+use symbolicator_sources::SentrySourceConfig;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
 use crate::services::cficaches::CfiCacheActor;
+use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
 use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsProcessingRawStacktrace, ObjectFileStatus, RawFrame, RawObjectInfo,
-    RawStacktrace, Registers, Scope, Signal, SymbolicatedFrame,
+    FrameTrust, JsStacktrace, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
+    SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
-use module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
-
 mod apple;
-mod module_lookup;
+mod js;
 mod process_minidump;
-pub mod sourcemap;
-
-fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
-    ObjectId {
-        debug_id: match object_info.debug_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
-        code_id: match object_info.code_id.as_deref() {
-            None | Some("") => None,
-            Some(string) => string.parse().ok(),
-        },
-        debug_file: object_info.debug_file.clone(),
-        code_file: object_info.code_file.clone(),
-        debug_checksum: object_info.debug_checksum.clone(),
-        object_type: object_info.ty,
-    }
-}
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,21 +140,9 @@ impl SymbolicationActor {
 
         for trace in &mut stacktraces {
             for frame in &mut trace.frames {
-                let (abs_path, lineno) = match (&frame.raw.abs_path, frame.raw.lineno) {
-                    (Some(abs_path), Some(lineno)) => (abs_path, lineno),
-                    _ => continue,
-                };
-
-                let result = module_lookup.get_context_lines(
-                    &debug_sessions,
-                    frame.raw.instruction_addr.0,
-                    frame.raw.addr_mode,
-                    abs_path,
-                    lineno,
-                    5,
-                );
-
-                if let Some((pre_context, context_line, post_context)) = result {
+                if let Some((pre_context, context_line, post_context)) =
+                    module_lookup.get_context_lines(&debug_sessions, &frame.raw, 5)
+                {
                     frame.raw.pre_context = pre_context;
                     frame.raw.context_line = Some(context_line);
                     frame.raw.post_context = post_context;
@@ -226,9 +195,9 @@ pub struct SymbolicateStacktraces {
 }
 
 #[derive(Debug, Clone)]
-pub struct JsProcessingSymbolicateStacktraces {
+pub struct SymbolicateJsStacktraces {
     pub source: Arc<SentrySourceConfig>,
-    pub stacktraces: Vec<JsProcessingRawStacktrace>,
+    pub stacktraces: Vec<JsStacktrace>,
     pub dist: Option<String>,
 }
 

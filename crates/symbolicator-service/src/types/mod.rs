@@ -497,19 +497,19 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum CompletedResponse {
-    Symbolication(CompletedSymbolicationResponse),
-    SourceMap(JsProcessingCompletedSymbolicationResponse),
+    NativeSymbolication(CompletedSymbolicationResponse),
+    JsSymbolication(CompletedJsSymbolicationResponse),
 }
 
 impl From<CompletedSymbolicationResponse> for CompletedResponse {
     fn from(response: CompletedSymbolicationResponse) -> Self {
-        Self::Symbolication(response)
+        Self::NativeSymbolication(response)
     }
 }
 
-impl From<JsProcessingCompletedSymbolicationResponse> for CompletedResponse {
-    fn from(response: JsProcessingCompletedSymbolicationResponse) -> Self {
-        Self::SourceMap(response)
+impl From<CompletedJsSymbolicationResponse> for CompletedResponse {
+    fn from(response: CompletedJsSymbolicationResponse) -> Self {
+        Self::JsSymbolication(response)
     }
 }
 
@@ -565,9 +565,28 @@ pub struct CompletedSymbolicationResponse {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+/// Information on the symbolication status of this JavaScript frame.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[derive(Default)]
+pub enum JsFrameStatus {
+    /// The frame was symbolicated successfully.
+    #[default]
+    Symbolicated,
+    /// The frame's line and column could not be found in the sourcemap.
+    InvalidSourceMapLocation,
+    /// No sourcemap was found for the frame.
+    MissingSourcemap,
+    /// The frame's absolute path is invalid.
+    InvalidAbsPath,
+    /// The retrieved sourcemap could not be processed.
+    MalformedSourcemap,
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct JsProcessingCompletedSymbolicationResponse {
-    pub stacktraces: Vec<CompleteJsStacktrace>,
+pub struct CompletedJsSymbolicationResponse {
+    pub stacktraces: Vec<SymbolicatedJsStacktrace>,
+    pub raw_stacktraces: Vec<JsStacktrace>,
 }
 
 /// Information about the operating system.
@@ -591,7 +610,7 @@ pub struct SystemInfo {
 
 // TODO: Verify which are required fields
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub struct JsProcessingRawFrame {
+pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<String>,
 
@@ -616,20 +635,19 @@ pub struct JsProcessingRawFrame {
     pub post_context: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
-pub struct JsProcessingRawStacktrace {
-    pub frames: Vec<JsProcessingRawFrame>,
-}
-
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct JsProcessingSymbolicatedFrame {
-    pub status: FrameStatus,
-
+pub struct SymbolicatedJsFrame {
+    pub status: JsFrameStatus,
     #[serde(flatten)]
-    pub raw: JsProcessingRawFrame,
+    pub raw: JsFrame,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct CompleteJsStacktrace {
-    pub frames: Vec<JsProcessingSymbolicatedFrame>,
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct JsStacktrace {
+    pub frames: Vec<JsFrame>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+pub struct SymbolicatedJsStacktrace {
+    pub frames: Vec<SymbolicatedJsFrame>,
 }

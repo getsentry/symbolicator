@@ -17,12 +17,14 @@ use symbolicator_sources::{FileType, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
+    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    SharedCacheRef,
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure};
 
+use super::caches::versions::BITCODE_CACHE_VERSIONS;
 use super::fetch_file;
 
 /// Handle to a valid BCSymbolMap.
@@ -31,6 +33,7 @@ use super::fetch_file;
 /// only have this handle if a positive cache existed.
 #[derive(Debug, Clone)]
 pub struct BcSymbolMapHandle {
+    pub file: RemoteFile,
     pub uuid: DebugId,
     pub data: ByteView<'static>,
 }
@@ -49,6 +52,7 @@ impl BcSymbolMapHandle {
 /// [`BcSymbolMapHandle`] for that.
 #[derive(Debug, Clone)]
 struct CacheHandle {
+    file: RemoteFile,
     uuid: DebugId,
     data: ByteView<'static>,
 }
@@ -119,6 +123,8 @@ impl FetchFileRequest {
 impl CacheItemRequest for FetchFileRequest {
     type Item = Arc<CacheHandle>;
 
+    const VERSIONS: CacheVersions = BITCODE_CACHE_VERSIONS;
+
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
@@ -133,6 +139,7 @@ impl CacheItemRequest for FetchFileRequest {
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
         Ok(Arc::new(CacheHandle {
+            file: self.file_source.clone(),
             uuid: self.uuid,
             data,
         }))
@@ -189,6 +196,7 @@ impl BitcodeService {
             .await?;
 
         Some(BcSymbolMapHandle {
+            file: symbolmap_handle.file.clone(),
             uuid: symbolmap_handle.uuid,
             data: symbolmap_handle.data.clone(),
         })

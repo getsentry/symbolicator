@@ -2,13 +2,13 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use filetime::FileTime;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use crate::config::CacheConfig;
+use crate::config::{CacheConfig, Config};
 
 use super::cache_error::cache_entry_from_bytes;
 use super::{CacheEntry, CacheError, CacheName};
@@ -52,19 +52,26 @@ pub struct Cache {
 
     /// The maximum number of lazy refreshes of this cache.
     max_lazy_refreshes: Arc<AtomicIsize>,
+
+    /// The capacity (in bytes) of the in-memory cache.
+    pub(super) in_memory_capacity: u64,
 }
 
 impl Cache {
     pub fn from_config(
         name: CacheName,
-        cache_dir: Option<PathBuf>,
-        tmp_dir: Option<PathBuf>,
+        config: &Config,
         cache_config: CacheConfig,
         max_lazy_refreshes: Arc<AtomicIsize>,
+        in_memory_capacity: u64,
     ) -> io::Result<Self> {
+        let tmp_dir = config.cache_dir("tmp");
+        let cache_dir = config.cache_dir(name.as_ref());
+
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;
         }
+
         Ok(Cache {
             name,
             cache_dir,
@@ -72,6 +79,7 @@ impl Cache {
             start_time: SystemTime::now(),
             cache_config,
             max_lazy_refreshes,
+            in_memory_capacity,
         })
     }
 
@@ -118,9 +126,7 @@ impl Cache {
         let mtime_elapsed = mtime.elapsed().unwrap_or_default();
 
         let cache_entry = cache_entry_from_bytes(bv);
-        let expiration_strategy = expiration_strategy(&self.cache_config, &cache_entry);
-
-        let expiration_time = match expiration_strategy {
+        let expiration_time = match expiration_strategy(&cache_entry) {
             ExpirationStrategy::None => {
                 let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
 
@@ -251,7 +257,7 @@ pub enum ExpirationStrategy {
 }
 
 /// This gives the time at which different cache items need to be refreshed or touched.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ExpirationTime {
     /// The [`Duration`] after which [`Negative`](ExpirationStrategy::Negative) or
     /// [`Malformed`](ExpirationStrategy::Malformed) cache entries expire and need
@@ -265,9 +271,9 @@ pub enum ExpirationTime {
 
 impl ExpirationTime {
     /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheEntry`].
-    pub fn for_fresh_status(cache: &Cache, entry: &CacheEntry<ByteView<'static>>) -> Self {
+    pub fn for_fresh_status<T>(cache: &Cache, entry: &CacheEntry<T>) -> Self {
         let config = &cache.cache_config;
-        let strategy = expiration_strategy(config, entry);
+        let strategy = expiration_strategy(entry);
         match strategy {
             ExpirationStrategy::None => {
                 // we want to touch good caches once every hour
@@ -290,27 +296,25 @@ impl ExpirationTime {
     pub fn was_touched(&self) -> bool {
         matches!(self, ExpirationTime::TouchIn(TOUCH_EVERY))
     }
+
+    /// Gives the [`Instant`] at which the item expires.
+    pub fn as_instant(&self) -> Instant {
+        let duration = match self {
+            ExpirationTime::RefreshIn(d) => d,
+            ExpirationTime::TouchIn(d) => d,
+        };
+        Instant::now() + *duration
+    }
 }
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-pub(super) fn expiration_strategy(
-    cache_config: &CacheConfig,
-    status: &CacheEntry<ByteView<'static>>,
-) -> ExpirationStrategy {
+pub(super) fn expiration_strategy<T>(status: &CacheEntry<T>) -> ExpirationStrategy {
     match status {
         Ok(_) => ExpirationStrategy::None,
-        Err(CacheError::NotFound) => ExpirationStrategy::Negative,
         Err(CacheError::Malformed(_)) => ExpirationStrategy::Malformed,
-        // The nature of cache-specific errors depends on the cache type so different
-        // strategies are used based on which cache's file is being assessed here.
-        // This won't kick in until `CacheStatus::from_content` stops classifying
-        // files with CacheSpecificError contents as Malformed.
-        _ => match cache_config {
-            CacheConfig::Downloaded(_) => ExpirationStrategy::Negative,
-            CacheConfig::Derived(_) => ExpirationStrategy::Malformed,
-            CacheConfig::Diagnostics(_) => ExpirationStrategy::None,
-        },
+        // All other errors should be treated as "negative" in terms of the expiration.
+        Err(_) => ExpirationStrategy::Negative,
     }
 }
 
