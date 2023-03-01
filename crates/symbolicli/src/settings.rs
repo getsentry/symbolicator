@@ -8,6 +8,7 @@ use anyhow::{anyhow, bail, Context};
 use clap::{Parser, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
+use tracing::level_filters::LevelFilter;
 
 /// The default API URL
 pub const DEFAULT_URL: &str = "https://sentry.io/";
@@ -82,6 +83,13 @@ struct Cli {
     /// In offline mode symbolicli will still access manually configured symbol sources.
     #[arg(long)]
     offline: bool,
+
+    /// The severity level of logging output.
+    ///
+    /// Possible values:
+    /// off, error, warn, info, debug, trace
+    #[arg(long, value_enum, default_value = "info")]
+    log_level: LevelFilter,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -116,6 +124,7 @@ pub struct Settings {
     pub event_id: String,
     pub symbolicator_config: Config,
     pub output_format: OutputFormat,
+    pub log_level: LevelFilter,
     pub mode: Mode,
 }
 
@@ -193,6 +202,7 @@ impl Settings {
             event_id: cli.event,
             symbolicator_config,
             output_format: cli.format,
+            log_level: cli.log_level,
             mode,
         };
 

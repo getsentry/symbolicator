@@ -40,8 +40,5 @@ The available options are:
   files.
 
 # Logging
-You can enable logging by setting the `RUST_LOG` environment variable to the desired log level. Available levels
-are `error`, `warn`, `info`, `debug`, `trace`.
-```
-RUST_LOG=debug symbolicli […]
-```
+You can control the level of logging output by passing the desired log level to the `--log-level` option.
+Available levels are `off`, `error`, `warn`, `info`, `debug`, `trace`. The default is `info`.
