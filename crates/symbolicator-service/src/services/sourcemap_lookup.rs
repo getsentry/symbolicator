@@ -39,7 +39,7 @@ pub struct SourceMapModule {
     /// The optional [`DebugId`] of this module.
     debug_id: Option<DebugId>,
     // TODO: errors that happened when processing this file
-    /// A flag if have already resolved the minified and sourcemap files.
+    /// A flag showing if we have already resolved the minified and sourcemap files.
     was_fetched: bool,
     /// The base url for fetching source files.
     source_file_base: Option<Url>,
@@ -113,9 +113,8 @@ impl SourceMapLookup {
 
             let debug_id = match &module.debug_id {
                 Some(id) => {
-                    use std::str::FromStr;
                     // TODO: raise an error?
-                    DebugId::from_str(id).ok()
+                    id.parse().ok()
                 }
                 None => None,
             };
@@ -165,8 +164,8 @@ impl SourceMapLookup {
         module.was_fetched = true;
 
         let Ok(url) = module.abs_path.clone() else {
-                return module;
-            };
+            return module;
+        };
 
         // we can’t have a mutable `module` while calling `fetch_module` :-(
         let (minified_source, smcache) = self
