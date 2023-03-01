@@ -68,7 +68,6 @@ RUN mkdir -p /etc/symbolicator /data && \
 EXPOSE 3021
 
 COPY --from=symbolicator-build /usr/local/bin/symbolicator /bin
-COPY --from=symbolicator-build /opt/symbolicator-debug.zip /opt/symbolicator.src.zip /opt/
 
 COPY ./docker-entrypoint.sh /
 ENTRYPOINT ["/bin/bash", "/docker-entrypoint.sh"]

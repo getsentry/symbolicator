@@ -26,6 +26,7 @@ steps:
       ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"]
 
   - name: "gcr.io/cloud-builders/docker"
+    id: builder
     args:
       [
         "build",
@@ -37,6 +38,28 @@ steps:
         "us.gcr.io/$PROJECT_ID/symbolicator:builder",
         ".",
       ]
+
+  - name: "us.gcr.io/$PROJECT_ID/symbolicator:builder"
+    id: builder-extract-difs
+    waitFor: ["builder"]
+    entrypoint: "bash"
+    args:
+      - '-c'
+      - |-
+        cp /opt/symbolicator-debug.zip /opt/symbolicator.src.zip .
+
+  # Uploads DIFs to the deployment pipeline group's private bucket.
+  # These are used for sentry releases.
+  - name: "gcr.io/cloud-builders/gsutil"
+    id: upload-difs-to-deployment-assets-bucket
+    waitFor: ["builder-extract-difs"]
+    entrypoint: "bash"
+    args:
+      - '-c'
+      - |-
+        gsutil -m cp \
+        ./symbolicator-debug.zip ./symbolicator.src.zip \
+        gs://dicd-team-devinfra-cd--symbolicator/difs/$COMMIT_SHA/
 
   - name: "gcr.io/cloud-builders/docker"
     args:

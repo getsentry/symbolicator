@@ -6,7 +6,6 @@ set -eu
 VERSION="${1:-}"
 ENVIRONMENT="${2:-}"
 GITHUB_PROJECT="getsentry/symbolicator"
-DOCKER_IMAGE="us.gcr.io/sentryio/symbolicator:${VERSION}"
 export SENTRY_ORG="sentry"
 export SENTRY_PROJECT="symbolicator"
 
@@ -21,11 +20,11 @@ fi
 
 sentry-cli --version
 
-echo 'Pulling debug information from symbolicator image...'
-docker pull "${DOCKER_IMAGE}"
-
-docker run --rm --entrypoint cat "${DOCKER_IMAGE}" /opt/symbolicator-debug.zip > symbolicator-debug.zip
-docker run --rm --entrypoint cat "${DOCKER_IMAGE}" /opt/symbolicator.src.zip > symbolicator.src.zip
+echo 'Pulling debug information...'
+gsutil cp \
+  "gs://dicd-team-devinfra-cd--symbolicator/difs/${VERSION}/symbolicator-debug.zip" \
+  "gs://dicd-team-devinfra-cd--symbolicator/difs/${VERSION}/symbolicator.src.zip" \
+  .
 
 echo 'Uploading debug information and source bundle...'
 sentry-cli upload-dif ./symbolicator-debug.zip ./symbolicator.src.zip
