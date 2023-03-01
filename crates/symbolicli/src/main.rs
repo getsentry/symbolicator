@@ -14,6 +14,8 @@ use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 use anyhow::Context;
 use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
+use tracing_subscriber::filter;
+use tracing_subscriber::prelude::*;
 
 mod settings;
 
@@ -23,10 +25,19 @@ async fn main() -> anyhow::Result<()> {
         event_id,
         symbolicator_config,
         output_format,
+        log_level,
         mode,
     } = settings::Settings::get()?;
 
-    tracing_subscriber::fmt::init();
+    let filter = filter::Targets::new().with_targets(vec![
+        ("symbolicator_service", log_level),
+        ("symbolicli", log_level),
+    ]);
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer())
+        .with(filter)
+        .init();
 
     let runtime = tokio::runtime::Handle::current();
     let (symbolication, _objects) =
