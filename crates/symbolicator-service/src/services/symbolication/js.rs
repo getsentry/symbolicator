@@ -147,7 +147,7 @@ fn symbolicate_js_frame(
 
 fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {
     if let Ok(file) = file {
-        apply_source_context(frame, &file.contents)
+        apply_source_context(frame, file.contents.as_bytes())
     } else {
         // TODO: report missing source?
     }

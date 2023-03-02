@@ -41,7 +41,6 @@ impl Caches {
             symcaches,
             cficaches,
             ppdb_caches,
-            artifact_caches,
             sourcemap_caches,
             sourcefiles,
             diagnostics,
@@ -58,7 +57,6 @@ impl Caches {
             auxdifs.cleanup(),
             il2cpp.cleanup(),
             ppdb_caches.cleanup(),
-            artifact_caches.cleanup(),
             sourcemap_caches.cleanup(),
             sourcefiles.cleanup(),
         ];

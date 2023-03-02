@@ -3,4 +3,4 @@
 mod sourcefiles;
 pub mod versions;
 
-pub use sourcefiles::SourceFilesCache;
+pub use sourcefiles::{ByteViewString, SourceFilesCache};

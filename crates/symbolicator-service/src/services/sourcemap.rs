@@ -7,26 +7,25 @@ use crate::services::download::DownloadService;
 use crate::types::RawObjectInfo;
 use std::sync::Arc;
 
-use super::sourcemap_lookup::{
-    FetchArtifactCacheInternal, FetchSourceMapCacheInternal, SourceMapLookup,
-};
+use super::caches::SourceFilesCache;
+use super::sourcemap_lookup::{FetchSourceMapCacheInternal, SourceMapLookup};
 
 #[derive(Debug, Clone)]
 pub struct SourceMapService {
-    artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
+    sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     download_svc: Arc<DownloadService>,
 }
 
 impl SourceMapService {
     pub fn new(
-        artifact_cache: Cache,
+        sourcefiles_cache: Arc<SourceFilesCache>,
         sourcemap_cache: Cache,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
     ) -> Self {
         Self {
-            artifact_caches: Arc::new(Cacher::new(artifact_cache, shared_cache.clone())),
+            sourcefiles_cache,
             sourcemap_caches: Arc::new(Cacher::new(sourcemap_cache, shared_cache)),
             download_svc,
         }
@@ -38,7 +37,7 @@ impl SourceMapService {
         modules: &[RawObjectInfo],
     ) -> SourceMapLookup {
         SourceMapLookup::new(
-            self.artifact_caches.clone(),
+            self.sourcefiles_cache.clone(),
             self.sourcemap_caches.clone(),
             self.download_svc.clone(),
             source,

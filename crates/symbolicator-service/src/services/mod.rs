@@ -9,6 +9,8 @@
 //! The internal services require a separate asynchronous runtimes dedicated for I/O-intensive work,
 //! such as downloads and access to the shared cache.
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 
 use crate::caching::{Caches, SharedCacheService};
@@ -31,6 +33,7 @@ pub mod symbolication;
 pub mod symcaches;
 
 use self::bitcode::BitcodeService;
+use self::caches::SourceFilesCache;
 use self::cficaches::CfiCacheActor;
 use self::download::DownloadService;
 use self::il2cpp::Il2cppService;
@@ -53,6 +56,12 @@ pub fn create_service(
     let downloader = DownloadService::new(config, io_pool.clone());
 
     let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool);
+
+    let sourcefiles_cache = Arc::new(SourceFilesCache::new(
+        caches.sourcefiles,
+        shared_cache.clone(),
+        downloader.clone(),
+    ));
 
     let objects = ObjectsActor::new(
         caches.object_meta,
@@ -79,7 +88,7 @@ pub fn create_service(
         PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache.clone(), objects.clone());
 
     let sourcemaps = SourceMapService::new(
-        caches.artifact_caches,
+        sourcefiles_cache,
         caches.sourcemap_caches,
         shared_cache,
         downloader,
