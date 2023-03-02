@@ -1,13 +1,14 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 77
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: missing_sourcemap
+      - status: invalid_abs_path
         function: produceStack
         filename: index.html
-        abs_path: "http://example.com/index.html"
+        abs_path: http//example.com/index.html
         lineno: 6
         colno: 7
       - status: symbolicated
@@ -70,7 +71,7 @@ raw_stacktraces:
   - frames:
       - function: produceStack
         filename: index.html
-        abs_path: "http://example.com/index.html"
+        abs_path: http//example.com/index.html
         lineno: 6
         colno: 7
       - function: i
