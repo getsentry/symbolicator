@@ -518,6 +518,7 @@ impl ArtifactFetcher {
         // Otherwise, fall back to scraping from the Web.
         if self.allow_scraping {
             if let Some(url) = key.abs_path() {
+                // TODO: Do we want to scope this to the project/org?
                 let scraped_file = self
                     .sourcefiles_cache
                     .fetch_public_url(url.to_owned())
