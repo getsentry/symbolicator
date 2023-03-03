@@ -99,6 +99,7 @@ impl SourceMapLookup {
         download_svc: Arc<DownloadService>,
         source: Arc<SentrySourceConfig>,
         modules: &[RawObjectInfo],
+        allow_scraping: bool,
     ) -> Self {
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
@@ -124,8 +125,13 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(code_file.to_owned(), cached_module);
         }
 
-        let fetcher =
-            ArtifactFetcher::new(sourcefiles_cache, sourcemap_caches, download_svc, source);
+        let fetcher = ArtifactFetcher::new(
+            sourcefiles_cache,
+            sourcemap_caches,
+            download_svc,
+            source,
+            allow_scraping,
+        );
 
         Self {
             modules_by_abs_path,
@@ -336,6 +342,8 @@ struct ArtifactFetcher {
 
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
+
+    allow_scraping: bool,
 }
 
 impl ArtifactFetcher {
@@ -344,6 +352,7 @@ impl ArtifactFetcher {
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
         source: Arc<SentrySourceConfig>,
+        allow_scraping: bool,
     ) -> Self {
         Self {
             sourcefiles_cache,
@@ -351,6 +360,7 @@ impl ArtifactFetcher {
             download_svc,
 
             source,
+            allow_scraping,
             remote_artifacts: Default::default(),
             artifact_bundles: Default::default(),
         }
@@ -506,17 +516,18 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, fall back to scraping from the Web.
-        if let Some(url) = key.abs_path() {
-            // TODO: Do we want to scope this to the project/org?
-            let scraped_file = self
-                .sourcefiles_cache
-                .fetch_public_url(url.to_owned())
-                .await;
+        if self.allow_scraping {
+            if let Some(url) = key.abs_path() {
+                let scraped_file = self
+                    .sourcefiles_cache
+                    .fetch_public_url(url.to_owned())
+                    .await;
 
-            return scraped_file.map(|contents| CachedFile {
-                contents,
-                sourcemap_url: None,
-            });
+                return scraped_file.map(|contents| CachedFile {
+                    contents,
+                    sourcemap_url: None,
+                });
+            }
         }
 
         Err(CacheError::NotFound)

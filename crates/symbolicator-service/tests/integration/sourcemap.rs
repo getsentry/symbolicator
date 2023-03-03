@@ -36,6 +36,7 @@ fn make_js_request(
         stacktraces,
         modules: vec![],
         dist: dist.into(),
+        allow_scraping: true,
     }
 }
 

@@ -13,6 +13,10 @@ use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
 
+fn default_allow_scraping() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct JsSymbolicationRequestBody {
     #[serde(default)]
@@ -23,6 +27,8 @@ pub struct JsSymbolicationRequestBody {
     pub modules: Vec<RawObjectInfo>,
     #[serde(default)]
     pub dist: Option<String>,
+    #[serde(default = "default_allow_scraping")]
+    pub allow_scraping: bool,
 }
 
 pub async fn handle_symbolication_request(
@@ -39,6 +45,7 @@ pub async fn handle_symbolication_request(
         stacktraces,
         modules,
         dist,
+        allow_scraping,
     } = body;
 
     let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
@@ -46,6 +53,7 @@ pub async fn handle_symbolication_request(
         stacktraces,
         modules,
         dist,
+        allow_scraping,
     })?;
 
     match service.get_response(request_id, params.timeout).await {

@@ -35,6 +35,7 @@ impl SourceMapService {
         &self,
         source: Arc<SentrySourceConfig>,
         modules: &[RawObjectInfo],
+        allow_scraping: bool,
     ) -> SourceMapLookup {
         SourceMapLookup::new(
             self.sourcefiles_cache.clone(),
@@ -42,6 +43,7 @@ impl SourceMapService {
             self.download_svc.clone(),
             source,
             modules,
+            allow_scraping,
         )
     }
 }
