@@ -2,18 +2,17 @@ use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::Router;
 use oauth2::basic::BasicClient;
-use oauth2::reqwest::{async_http_client, http_client};
+use oauth2::reqwest::async_http_client;
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, CsrfToken, DeviceAuthorizationUrl, PkceCodeChallenge,
-    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    AccessToken, AuthUrl, AuthorizationCode, ClientId, CsrfToken, DeviceAuthorizationUrl,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
 
+use keyring::Entry;
+
 use reqwest::StatusCode;
-use url::Url;
 
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -161,6 +160,18 @@ pub async fn authenticate() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn store_token_in_keyring(access_token: &AccessToken) -> keyring::Result<()> {
+    let entry = Entry::new("symbolicli", "my_user")?;
+    println!("Storing token in system secure keyring...");
+    entry.set_password(access_token.secret())?;
+
+    println!("Getting token from keyring...");
+    let secret_token = entry.get_password()?;
+    println!("Secret token is '{}'", secret_token);
+
+    Ok(())
+}
+
 #[derive(Debug)]
 struct ServerState {
     expected_csrf_token: CsrfToken,
@@ -197,6 +208,8 @@ async fn handle_token_request(
         .await;
 
     println!("Okta returned the following token:\n{token_res:?}\n");
+
+    store_token_in_keyring(token_res.unwrap().access_token()).unwrap();
 
     Ok("Go back to your terminal :)".to_string())
 }
