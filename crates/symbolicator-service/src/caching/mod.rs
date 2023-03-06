@@ -190,7 +190,6 @@ pub struct Caches {
     pub cficaches: Cache,
     /// PortablePDB files.
     pub ppdb_caches: Cache,
-    pub artifact_caches: Cache,
     /// `SourceMapCache` files.
     pub sourcemap_caches: Cache,
     /// Source files.
@@ -264,13 +263,6 @@ impl Caches {
             )?,
             ppdb_caches: Cache::from_config(
                 CacheName::PpdbCaches,
-                config,
-                config.caches.derived.into(),
-                max_lazy_recomputations.clone(),
-                default_cap,
-            )?,
-            artifact_caches: Cache::from_config(
-                CacheName::ArtifactCaches,
                 config,
                 config.caches.derived.into(),
                 max_lazy_recomputations.clone(),

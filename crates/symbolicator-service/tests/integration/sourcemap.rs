@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use symbolicator_service::types::JsFrame;
+use symbolicator_service::types::{JsFrame, Scope};
 use symbolicator_service::{
     services::symbolication::SymbolicateJsStacktraces, types::JsStacktrace,
 };
@@ -32,10 +32,12 @@ fn make_js_request(
     let stacktraces = vec![JsStacktrace { frames }];
 
     SymbolicateJsStacktraces {
+        scope: Scope::Global,
         source: Arc::new(source),
         stacktraces,
         modules: vec![],
         dist: dist.into(),
+        allow_scraping: false,
     }
 }
 

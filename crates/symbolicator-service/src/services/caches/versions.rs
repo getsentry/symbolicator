@@ -93,14 +93,6 @@ pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
     fallbacks: &[],
 };
 
-/// Artifact, with the following versions:
-///
-/// - `1`: Initial version.
-pub const ARTIFACT_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
-};
-
 /// SourceMapCache, with the following versions:
 ///
 /// - `1`: Initial version.

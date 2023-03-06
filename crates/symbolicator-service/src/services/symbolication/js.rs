@@ -1,15 +1,27 @@
 use std::io::BufRead;
+use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
+use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::services::sourcemap_lookup::{CachedFile, OwnedSourceMapCache};
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, SymbolicatedJsFrame,
-    SymbolicatedJsStacktrace,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, RawObjectInfo, Scope,
+    SymbolicatedJsFrame, SymbolicatedJsStacktrace,
 };
 
-use super::{SymbolicateJsStacktraces, SymbolicationActor};
+use super::SymbolicationActor;
+
+#[derive(Debug, Clone)]
+pub struct SymbolicateJsStacktraces {
+    pub scope: Scope,
+    pub source: Arc<SentrySourceConfig>,
+    pub dist: Option<String>,
+    pub stacktraces: Vec<JsStacktrace>,
+    pub modules: Vec<RawObjectInfo>,
+    pub allow_scraping: bool,
+}
 
 // TODO(sourcemap): Use our generic caching solution for all Artifacts.
 // TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
@@ -19,9 +31,12 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
-        let mut lookup = self
-            .sourcemaps
-            .create_sourcemap_lookup(request.source.clone(), &request.modules);
+        let mut lookup = self.sourcemaps.create_sourcemap_lookup(
+            request.scope.clone(),
+            request.source.clone(),
+            &request.modules,
+            request.allow_scraping,
+        );
         lookup.prefetch_artifacts(&request.stacktraces).await;
 
         let mut raw_stacktraces = request.stacktraces;
@@ -147,7 +162,7 @@ fn symbolicate_js_frame(
 
 fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {
     if let Ok(file) = file {
-        apply_source_context(frame, &file.contents)
+        apply_source_context(frame, file.contents.as_bytes())
     } else {
         // TODO: report missing source?
     }

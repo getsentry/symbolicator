@@ -4,7 +4,6 @@ use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
-use symbolicator_sources::SentrySourceConfig;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
@@ -16,14 +15,16 @@ use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, JsStacktrace, ObjectFileStatus, RawFrame, RawObjectInfo, RawStacktrace, Registers,
-    Scope, Signal, SymbolicatedFrame,
+    FrameTrust, ObjectFileStatus, RawFrame, RawStacktrace, Registers, Scope, Signal,
+    SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
 
 mod apple;
 mod js;
 mod process_minidump;
+
+pub use js::SymbolicateJsStacktraces;
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,14 +193,6 @@ pub struct SymbolicateStacktraces {
     /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
     /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
-}
-
-#[derive(Debug, Clone)]
-pub struct SymbolicateJsStacktraces {
-    pub source: Arc<SentrySourceConfig>,
-    pub dist: Option<String>,
-    pub stacktraces: Vec<JsStacktrace>,
-    pub modules: Vec<RawObjectInfo>,
 }
 
 fn symbolicate_frame(

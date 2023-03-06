@@ -21,10 +21,10 @@ use url::Position;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
-use crate::types::{JsStacktrace, RawObjectInfo};
+use crate::types::{JsStacktrace, RawObjectInfo, Scope};
 
-use super::caches::versions::{ARTIFACT_CACHE_VERSIONS, SOURCEMAP_CACHE_VERSIONS};
-use super::fetch_file;
+use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
+use super::caches::{ByteViewString, SourceFilesCache};
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
 
@@ -94,11 +94,13 @@ pub struct SourceMapLookup {
 
 impl SourceMapLookup {
     pub fn new(
-        artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
+        sourcefiles_cache: Arc<SourceFilesCache>,
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
+        scope: Scope,
         source: Arc<SentrySourceConfig>,
         modules: &[RawObjectInfo],
+        allow_scraping: bool,
     ) -> Self {
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
@@ -124,7 +126,14 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(code_file.to_owned(), cached_module);
         }
 
-        let fetcher = ArtifactFetcher::new(artifact_caches, sourcemap_caches, download_svc, source);
+        let fetcher = ArtifactFetcher::new(
+            sourcefiles_cache,
+            sourcemap_caches,
+            download_svc,
+            scope,
+            source,
+            allow_scraping,
+        );
 
         Self {
             modules_by_abs_path,
@@ -207,7 +216,7 @@ impl SourceMapLookup {
 /// encoded as BASE64.
 #[derive(Debug, Clone)]
 enum SourceMapUrl {
-    Data(ByteView<'static>),
+    Data(ByteViewString),
     Remote(url::Url),
 }
 
@@ -224,8 +233,9 @@ impl SourceMapUrl {
             let decoded = BASE64
                 .decode(encoded.as_bytes())
                 .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
-            let bv = ByteView::from_vec(decoded);
-            Ok(Self::Data(bv))
+            let decoded = String::from_utf8(decoded)
+                .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
+            Ok(Self::Data(decoded.into()))
         } else {
             let url = base
                 .join(url_string)
@@ -292,16 +302,14 @@ impl FileKey {
 /// the parts that we care about.
 #[derive(Debug, Clone)]
 pub struct CachedFile {
-    pub contents: ByteView<'static>,
+    pub contents: ByteViewString,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
     // TODO: maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
 
 impl CachedFile {
-    fn from_descriptor(descriptor: &SourceFileDescriptor) -> Option<Self> {
-        let contents = descriptor.contents()?.as_bytes().to_vec();
-        let contents = ByteView::from_vec(contents);
+    fn from_descriptor(descriptor: SourceFileDescriptor) -> Option<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
             Some(url) => {
                 // TODO: error handling?
@@ -314,6 +322,11 @@ impl CachedFile {
             }
             None => None,
         };
+
+        // TODO: a `into_contents` would be nice, as we are creating a new copy right now
+        let contents = descriptor.contents()?.to_owned();
+        let contents = ByteViewString::from(contents);
+
         Some(Self {
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
@@ -322,31 +335,38 @@ impl CachedFile {
 }
 
 struct ArtifactFetcher {
-    source: Arc<SentrySourceConfig>,
-    download_svc: Arc<DownloadService>,
-    remote_artifacts: HashMap<String, SearchArtifactResult>,
-
-    #[allow(unused)]
-    artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
+    sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
+    download_svc: Arc<DownloadService>,
+
+    scope: Scope,
+
+    source: Arc<SentrySourceConfig>,
+    remote_artifacts: HashMap<String, SearchArtifactResult>,
 
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: Vec<ArtifactBundle>,
+
+    allow_scraping: bool,
 }
 
 impl ArtifactFetcher {
     fn new(
-        artifact_caches: Arc<Cacher<FetchArtifactCacheInternal>>,
+        sourcefiles_cache: Arc<SourceFilesCache>,
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
+        scope: Scope,
         source: Arc<SentrySourceConfig>,
+        allow_scraping: bool,
     ) -> Self {
         Self {
-            artifact_caches,
+            sourcefiles_cache,
             sourcemap_caches,
             download_svc,
 
+            scope,
             source,
+            allow_scraping,
             remote_artifacts: Default::default(),
             artifact_bundles: Default::default(),
         }
@@ -372,49 +392,21 @@ impl ArtifactFetcher {
         &self,
         source: Arc<SentrySourceConfig>,
         file_id: SentryFileId,
-    ) -> CacheEntry<ByteView<'static>> {
-        let mut temp_file = NamedTempFile::new().unwrap();
-        fetch_file(
-            self.download_svc.clone(),
-            SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into(),
-            &mut temp_file,
-        )
-        .await?;
-
-        Ok(ByteView::map_file(temp_file.into_file()).unwrap())
-    }
-
-    #[allow(unused)]
-    async fn fetch_artifact_cache(
-        &self,
-        artifact: ByteView<'static>,
-    ) -> CacheEntry<ByteView<'static>> {
-        // TODO: really hook this up to the `Cacher`.
-        // this is currently blocked on figuring out combined cache keys that depend on both
-        // `source` and `sourcemap`.
-        // For the time being, this all happens in a temp file that we throw away afterwards.
-        let req = FetchArtifactCacheInternal { artifact };
-
-        let mut temp_file = self.artifact_caches.tempfile()?;
-        req.compute(&mut temp_file).await?;
-
-        let temp_bv = ByteView::map_file_ref(temp_file.as_file())?;
-        req.load(temp_bv)
+    ) -> CacheEntry<ByteViewString> {
+        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
+        self.sourcefiles_cache.fetch_file(&self.scope, file).await
     }
 
     async fn fetch_sourcemap_cache(
         &self,
-        source_artifact: ByteView<'static>,
-        sourcemap_artifact: ByteView<'static>,
+        source: ByteViewString,
+        sourcemap: ByteViewString,
     ) -> CacheEntry<OwnedSourceMapCache> {
         // TODO: really hook this up to the `Cacher`.
         // this is currently blocked on figuring out combined cache keys that depend on both
         // `source` and `sourcemap`.
         // For the time being, this all happens in a temp file that we throw away afterwards.
-        let req = FetchSourceMapCacheInternal {
-            source_artifact,
-            sourcemap_artifact,
-        };
+        let req = FetchSourceMapCacheInternal { source, sourcemap };
 
         let mut temp_file = self.sourcemap_caches.tempfile()?;
         req.compute(&mut temp_file).await?;
@@ -526,8 +518,20 @@ impl ArtifactFetcher {
             return Ok(file);
         }
 
-        // TODO:
         // Otherwise, fall back to scraping from the Web.
+        if self.allow_scraping {
+            if let Some(url) = key.abs_path() {
+                let scraped_file = self
+                    .sourcefiles_cache
+                    .fetch_scoped_url(&self.scope, url.to_owned())
+                    .await;
+
+                return scraped_file.map(|contents| CachedFile {
+                    contents,
+                    sourcemap_url: None,
+                });
+            }
+        }
 
         Err(CacheError::NotFound)
     }
@@ -539,7 +543,7 @@ impl ArtifactFetcher {
             for bundle in &self.artifact_bundles {
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
-                    if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                    if let Some(file) = CachedFile::from_descriptor(descriptor) {
                         return Some(file);
                     }
                 }
@@ -552,7 +556,7 @@ impl ArtifactFetcher {
                 for bundle in &self.artifact_bundles {
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
-                        if let Some(file) = CachedFile::from_descriptor(&descriptor) {
+                        if let Some(file) = CachedFile::from_descriptor(descriptor) {
                             return Some(file);
                         }
                     }
@@ -575,7 +579,7 @@ impl ArtifactFetcher {
         let contents = artifact.ok()?;
 
         // Get the sourcemap reference from the artifact, either from metadata, or file contents
-        let sourcemap_url = resolve_sourcemap_url(abs_path, found_artifact, &contents);
+        let sourcemap_url = resolve_sourcemap_url(abs_path, found_artifact, contents.as_bytes());
 
         Some(CachedFile {
             contents,
@@ -632,32 +636,9 @@ fn resolve_sourcemap_url(
 }
 
 #[derive(Clone, Debug)]
-pub struct FetchArtifactCacheInternal {
-    artifact: ByteView<'static>,
-}
-
-impl CacheItemRequest for FetchArtifactCacheInternal {
-    type Item = ByteView<'static>;
-
-    const VERSIONS: CacheVersions = ARTIFACT_CACHE_VERSIONS;
-
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        Box::pin(async move {
-            let artifact_buf = std::str::from_utf8(&self.artifact)
-                .map_err(|e| CacheError::Malformed(e.to_string()))?;
-            write_artifact_cache(temp_file.as_file_mut(), artifact_buf)
-        })
-    }
-
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(data)
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct FetchSourceMapCacheInternal {
-    source_artifact: ByteView<'static>,
-    sourcemap_artifact: ByteView<'static>,
+    source: ByteViewString,
+    sourcemap: ByteViewString,
 }
 
 impl CacheItemRequest for FetchSourceMapCacheInternal {
@@ -667,15 +648,7 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         Box::pin(async move {
-            let source_artifact_buf = std::str::from_utf8(&self.source_artifact)
-                .map_err(|e| CacheError::Malformed(e.to_string()))?;
-            let sourcemap_artifact_buf = std::str::from_utf8(&self.sourcemap_artifact)
-                .map_err(|e| CacheError::Malformed(e.to_string()))?;
-            write_sourcemap_cache(
-                temp_file.as_file_mut(),
-                source_artifact_buf,
-                sourcemap_artifact_buf,
-            )
+            write_sourcemap_cache(temp_file.as_file_mut(), &self.source, &self.sourcemap)
         })
     }
 
@@ -702,16 +675,11 @@ fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedS
 
 /// Computes and writes the SourceMapCache.
 #[tracing::instrument(skip_all)]
-fn write_sourcemap_cache(
-    file: &mut File,
-    source_artifact_buf: &str,
-    sourcemap_artifact_buf: &str,
-) -> CacheEntry {
+fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheEntry {
     // TODO: maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
-    let smcache_writer =
-        SourceMapCacheWriter::new(source_artifact_buf, sourcemap_artifact_buf).unwrap();
+    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap).unwrap();
 
     let mut writer = BufWriter::new(file);
     smcache_writer.serialize(&mut writer)?;
