@@ -13,6 +13,7 @@ use keyring::Entry;
 use reqwest::StatusCode;
 
 use std::collections::HashMap;
+use std::env;
 use std::process::Command;
 use std::sync::Arc;
 
@@ -68,8 +69,7 @@ pub async fn authenticate() -> anyhow::Result<()> {
 
     axum::Server::bind(&"127.0.0.1:8085".parse().unwrap())
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
 
     // pulled from https://github.com/ramosbugs/oauth2-rs/blob/main/examples/github.rs, but we should
     // separate this out into its own function and use something more robust
@@ -161,7 +161,10 @@ pub async fn authenticate() -> anyhow::Result<()> {
 }
 
 fn store_token_in_keyring(access_token: &AccessToken) -> keyring::Result<()> {
-    let entry = Entry::new("symbolicli", "my_user")?;
+    let entry = Entry::new(
+        "symbolicli",
+        env!("USER", "Unable to read USER environment variable"),
+    )?;
     println!("Storing token in system secure keyring...");
     entry.set_password(access_token.secret())?;
 
