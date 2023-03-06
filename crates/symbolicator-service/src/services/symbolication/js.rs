@@ -19,9 +19,11 @@ impl SymbolicationActor {
         &self,
         request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
-        let mut lookup = self
-            .sourcemaps
-            .create_sourcemap_lookup(request.source.clone(), &request.modules);
+        let mut lookup = self.sourcemaps.create_sourcemap_lookup(
+            request.source.clone(),
+            &request.modules,
+            request.allow_scraping,
+        );
         lookup.prefetch_artifacts(&request.stacktraces).await;
 
         let mut raw_stacktraces = request.stacktraces;

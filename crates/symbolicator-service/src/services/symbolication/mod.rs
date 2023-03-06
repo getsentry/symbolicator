@@ -200,6 +200,7 @@ pub struct SymbolicateJsStacktraces {
     pub dist: Option<String>,
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
+    pub allow_scraping: bool,
 }
 
 fn symbolicate_frame(
