@@ -407,14 +407,10 @@ impl ArtifactFetcher {
         let cache_key = {
             let mut cache_key = CacheKey::scoped_builder(&self.scope);
             let source_hash = Sha256::digest(&source);
-            let source_hash = BASE64.encode(&source_hash);
             let sourcemap_hash = Sha256::digest(&sourcemap);
-            let sourcemap_hash = BASE64.encode(&sourcemap_hash);
 
-            cache_key.write_str("source:\n").unwrap();
-            cache_key.write_str(&source_hash).unwrap();
-            cache_key.write_str("\nsourcemap:\n").unwrap();
-            cache_key.write_str(&sourcemap_hash).unwrap();
+            write!(cache_key, "source:\n{source_hash:x}\n").unwrap();
+            write!(cache_key, "sourcemap:\n{sourcemap_hash:x}").unwrap();
 
             cache_key.build()
         };
