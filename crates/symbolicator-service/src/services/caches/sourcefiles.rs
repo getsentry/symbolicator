@@ -40,6 +40,12 @@ impl std::ops::Deref for ByteViewString {
     }
 }
 
+impl AsRef<[u8]> for ByteViewString {
+    fn as_ref(&self) -> &[u8] {
+        self.0.get().as_ref()
+    }
+}
+
 /// Provides cached access to source files, with UTF-8 validating contents.
 #[derive(Debug, Clone)]
 pub struct SourceFilesCache {

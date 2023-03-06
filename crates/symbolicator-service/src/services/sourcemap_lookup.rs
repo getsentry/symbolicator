@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter};
 use std::sync::Arc;
 
 use data_encoding::BASE64;
 use futures::future::BoxFuture;
 use reqwest::Url;
+use sha2::{Digest, Sha256};
 use sourcemap::locate_sourcemap_reference;
 use symbolic::common::{ByteView, DebugId, SelfCell};
 use symbolic::debuginfo::sourcebundle::{
@@ -18,7 +20,7 @@ use symbolicator_sources::{
 use tempfile::NamedTempFile;
 use url::Position;
 
-use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher};
+use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
 use crate::types::{JsStacktrace, RawObjectInfo, Scope};
@@ -402,17 +404,19 @@ impl ArtifactFetcher {
         source: ByteViewString,
         sourcemap: ByteViewString,
     ) -> CacheEntry<OwnedSourceMapCache> {
-        // TODO: really hook this up to the `Cacher`.
-        // this is currently blocked on figuring out combined cache keys that depend on both
-        // `source` and `sourcemap`.
-        // For the time being, this all happens in a temp file that we throw away afterwards.
+        let cache_key = {
+            let mut cache_key = CacheKey::scoped_builder(&self.scope);
+            let source_hash = Sha256::digest(&source);
+            let sourcemap_hash = Sha256::digest(&sourcemap);
+
+            write!(cache_key, "source:\n{source_hash:x}\n").unwrap();
+            write!(cache_key, "sourcemap:\n{sourcemap_hash:x}").unwrap();
+
+            cache_key.build()
+        };
+
         let req = FetchSourceMapCacheInternal { source, sourcemap };
-
-        let mut temp_file = self.sourcemap_caches.tempfile()?;
-        req.compute(&mut temp_file).await?;
-
-        let temp_bv = ByteView::map_file_ref(temp_file.as_file())?;
-        req.load(temp_bv)
+        self.sourcemap_caches.compute_memoized(req, cache_key).await
     }
 
     fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
@@ -659,6 +663,8 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
 
 #[tracing::instrument(skip_all)]
 fn write_artifact_cache(file: &mut File, source_artifact_buf: &str) -> CacheEntry {
+    use std::io::Write;
+
     let mut writer = BufWriter::new(file);
     writer.write_all(source_artifact_buf.as_bytes())?;
     let file = writer.into_inner().map_err(io::Error::from)?;
