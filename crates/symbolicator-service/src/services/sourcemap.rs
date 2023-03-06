@@ -4,7 +4,7 @@ use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{Cache, Cacher, SharedCacheRef};
 use crate::services::download::DownloadService;
-use crate::types::RawObjectInfo;
+use crate::types::{RawObjectInfo, Scope};
 use std::sync::Arc;
 
 use super::caches::SourceFilesCache;
@@ -33,6 +33,7 @@ impl SourceMapService {
 
     pub fn create_sourcemap_lookup(
         &self,
+        scope: Scope,
         source: Arc<SentrySourceConfig>,
         modules: &[RawObjectInfo],
         allow_scraping: bool,
@@ -41,6 +42,7 @@ impl SourceMapService {
             self.sourcefiles_cache.clone(),
             self.sourcemap_caches.clone(),
             self.download_svc.clone(),
+            scope,
             source,
             modules,
             allow_scraping,

@@ -49,6 +49,7 @@ pub async fn handle_symbolication_request(
     } = body;
 
     let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
+        scope: params.scope,
         source: Arc::new(source.unwrap()),
         stacktraces,
         modules,

@@ -1,15 +1,27 @@
 use std::io::BufRead;
+use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
+use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::services::sourcemap_lookup::{CachedFile, OwnedSourceMapCache};
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, SymbolicatedJsFrame,
-    SymbolicatedJsStacktrace,
+    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, RawObjectInfo, Scope,
+    SymbolicatedJsFrame, SymbolicatedJsStacktrace,
 };
 
-use super::{SymbolicateJsStacktraces, SymbolicationActor};
+use super::SymbolicationActor;
+
+#[derive(Debug, Clone)]
+pub struct SymbolicateJsStacktraces {
+    pub scope: Scope,
+    pub source: Arc<SentrySourceConfig>,
+    pub dist: Option<String>,
+    pub stacktraces: Vec<JsStacktrace>,
+    pub modules: Vec<RawObjectInfo>,
+    pub allow_scraping: bool,
+}
 
 // TODO(sourcemap): Use our generic caching solution for all Artifacts.
 // TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
@@ -20,6 +32,7 @@ impl SymbolicationActor {
         request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
         let mut lookup = self.sourcemaps.create_sourcemap_lookup(
+            request.scope.clone(),
             request.source.clone(),
             &request.modules,
             request.allow_scraping,

@@ -97,6 +97,7 @@ impl SourceMapLookup {
         sourcefiles_cache: Arc<SourceFilesCache>,
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
+        scope: Scope,
         source: Arc<SentrySourceConfig>,
         modules: &[RawObjectInfo],
         allow_scraping: bool,
@@ -129,6 +130,7 @@ impl SourceMapLookup {
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
+            scope,
             source,
             allow_scraping,
         );
@@ -337,6 +339,8 @@ struct ArtifactFetcher {
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     download_svc: Arc<DownloadService>,
 
+    scope: Scope,
+
     source: Arc<SentrySourceConfig>,
     remote_artifacts: HashMap<String, SearchArtifactResult>,
 
@@ -351,6 +355,7 @@ impl ArtifactFetcher {
         sourcefiles_cache: Arc<SourceFilesCache>,
         sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
         download_svc: Arc<DownloadService>,
+        scope: Scope,
         source: Arc<SentrySourceConfig>,
         allow_scraping: bool,
     ) -> Self {
@@ -359,6 +364,7 @@ impl ArtifactFetcher {
             sourcemap_caches,
             download_svc,
 
+            scope,
             source,
             allow_scraping,
             remote_artifacts: Default::default(),
@@ -388,10 +394,7 @@ impl ArtifactFetcher {
         file_id: SentryFileId,
     ) -> CacheEntry<ByteViewString> {
         let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
-        // TODO: do we really want to cache these things globally?
-        // probably not, as these are per-project/org?
-        let scope = Scope::Global;
-        self.sourcefiles_cache.fetch_file(&scope, file).await
+        self.sourcefiles_cache.fetch_file(&self.scope, file).await
     }
 
     async fn fetch_sourcemap_cache(
@@ -518,10 +521,9 @@ impl ArtifactFetcher {
         // Otherwise, fall back to scraping from the Web.
         if self.allow_scraping {
             if let Some(url) = key.abs_path() {
-                // TODO: Do we want to scope this to the project/org?
                 let scraped_file = self
                     .sourcefiles_cache
-                    .fetch_public_url(url.to_owned())
+                    .fetch_scoped_url(&self.scope, url.to_owned())
                     .await;
 
                 return scraped_file.map(|contents| CachedFile {
