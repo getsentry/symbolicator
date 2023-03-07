@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 198
 expression: response.unwrap()
 ---
 stacktraces:
@@ -17,6 +16,7 @@ stacktraces:
         abs_path: /Users/swatinem/Coding/sentry-native/examples/example.c
         lineno: 60
         pre_context:
+          - "#endif"
           - ""
           - static void
           - trigger_crash()
