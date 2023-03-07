@@ -4,7 +4,7 @@ use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap_lookup::{CachedFile, OwnedSourceMapCache};
+use crate::services::sourcemap_lookup::{CachedFile, OwnedSourceMapCache, SourceMapLookup};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, RawObjectInfo, Scope,
     SymbolicatedJsFrame, SymbolicatedJsStacktrace,
@@ -29,17 +29,11 @@ impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     pub async fn symbolicate_js(
         &self,
-        request: SymbolicateJsStacktraces,
+        mut request: SymbolicateJsStacktraces,
     ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
-        let mut lookup = self.sourcemaps.create_sourcemap_lookup(
-            request.scope.clone(),
-            request.source.clone(),
-            &request.modules,
-            request.allow_scraping,
-        );
-        lookup.prefetch_artifacts(&request.stacktraces).await;
-
-        let mut raw_stacktraces = request.stacktraces;
+        let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
+        let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
+        lookup.prefetch_artifacts(&raw_stacktraces).await;
 
         let num_stacktraces = raw_stacktraces.len();
         let mut stacktraces = Vec::with_capacity(num_stacktraces);
