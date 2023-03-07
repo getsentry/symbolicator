@@ -3,7 +3,7 @@
 # - https://www.notion.so/sentry/GoCD-New-Service-Quickstart-6d8db7a6964049b3b0e78b8a4b52e25d
 format_version: 10
 pipelines:
-    deploy-symbolicator-canary:
+    deploy-symbolicator-lpq:
         environment_variables:
             GCP_PROJECT: internal-sentry
             GKE_CLUSTER: zdpwkxst
