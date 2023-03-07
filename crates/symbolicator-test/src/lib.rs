@@ -210,8 +210,7 @@ impl Server {
 
     /// Creates a new [`Router`] with the configuration as described in the main [`Server`] docs.
     pub fn test_router() -> Router {
-        let serve_dir = get_service(ServeDir::new(fixture("symbols")))
-            .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR });
+        let serve_dir = get_service(ServeDir::new(fixture("symbols")));
 
         Router::new()
             .route(
@@ -263,8 +262,7 @@ impl Server {
                     "/",
                     get_service(ServeFile::new(fixture(format!(
                         "sourcemaps/{fixtures_dir}/files.json"
-                    ))))
-                    .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+                    )))),
                 )
                 /*
                  * NOTE: We change the `id` of the artifact in the `files.json` to be the path
@@ -277,8 +275,7 @@ impl Server {
                  */
                 .route(
                     "/*id",
-                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))))
-                        .handle_error(|_| async move { StatusCode::INTERNAL_SERVER_ERROR }),
+                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}")))),
                 ),
         )
     }

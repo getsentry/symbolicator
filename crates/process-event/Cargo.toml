@@ -12,4 +12,4 @@ reqwest = { version = "0.11.0", features = ["blocking", "json", "multipart", "tr
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
 structopt = "0.3.21"
-symbolic-common = "12.1.0"
+symbolic-common = "12.1.1"

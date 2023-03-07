@@ -10,4 +10,4 @@ anyhow = "1.0.57"
 hex = "0.4.2"
 structopt = "0.3.21"
 uuid = { version = "1.0.0", features = ["v4"] }
-wasmbin = "0.3.1"
+wasmbin = "0.5.0"
