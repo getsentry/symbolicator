@@ -23,10 +23,12 @@ use url::Position;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
-use crate::types::{JsStacktrace, RawObjectInfo, Scope};
+use crate::types::{JsStacktrace, Scope};
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
+use super::sourcemap::SourceMapService;
+use super::symbolication::SymbolicateJsStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
 
@@ -95,15 +97,21 @@ pub struct SourceMapLookup {
 }
 
 impl SourceMapLookup {
-    pub fn new(
-        sourcefiles_cache: Arc<SourceFilesCache>,
-        sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
-        download_svc: Arc<DownloadService>,
-        scope: Scope,
-        source: Arc<SentrySourceConfig>,
-        modules: &[RawObjectInfo],
-        allow_scraping: bool,
-    ) -> Self {
+    pub fn new(service: SourceMapService, request: SymbolicateJsStacktraces) -> Self {
+        let SourceMapService {
+            sourcefiles_cache,
+            sourcemap_caches,
+            download_svc,
+        } = service;
+
+        let SymbolicateJsStacktraces {
+            scope,
+            source,
+            modules,
+            allow_scraping,
+            ..
+        } = request;
+
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
             if module.ty != ObjectType::SourceMap {
@@ -128,14 +136,16 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(code_file.to_owned(), cached_module);
         }
 
-        let fetcher = ArtifactFetcher::new(
+        let fetcher = ArtifactFetcher {
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
             scope,
             source,
             allow_scraping,
-        );
+            remote_artifacts: Default::default(),
+            artifact_bundles: Default::default(),
+        };
 
         Self {
             modules_by_abs_path,
@@ -353,27 +363,6 @@ struct ArtifactFetcher {
 }
 
 impl ArtifactFetcher {
-    fn new(
-        sourcefiles_cache: Arc<SourceFilesCache>,
-        sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
-        download_svc: Arc<DownloadService>,
-        scope: Scope,
-        source: Arc<SentrySourceConfig>,
-        allow_scraping: bool,
-    ) -> Self {
-        Self {
-            sourcefiles_cache,
-            sourcemap_caches,
-            download_svc,
-
-            scope,
-            source,
-            allow_scraping,
-            remote_artifacts: Default::default(),
-            artifact_bundles: Default::default(),
-        }
-    }
-
     async fn prefetch_artifacts(&mut self) {
         // TODO: filter the API call down to only look for the files we want
         self.remote_artifacts = self.list_artifacts().await;

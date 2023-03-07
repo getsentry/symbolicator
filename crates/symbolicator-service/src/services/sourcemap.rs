@@ -1,20 +1,17 @@
 //! Service for retrieving Artifacts and SourceMap.
 
-use symbolicator_sources::SentrySourceConfig;
-
 use crate::caching::{Cache, Cacher, SharedCacheRef};
 use crate::services::download::DownloadService;
-use crate::types::{RawObjectInfo, Scope};
 use std::sync::Arc;
 
 use super::caches::SourceFilesCache;
-use super::sourcemap_lookup::{FetchSourceMapCacheInternal, SourceMapLookup};
+use super::sourcemap_lookup::FetchSourceMapCacheInternal;
 
 #[derive(Debug, Clone)]
 pub struct SourceMapService {
-    sourcefiles_cache: Arc<SourceFilesCache>,
-    sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
-    download_svc: Arc<DownloadService>,
+    pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
+    pub(crate) sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
+    pub(crate) download_svc: Arc<DownloadService>,
 }
 
 impl SourceMapService {
@@ -29,23 +26,5 @@ impl SourceMapService {
             sourcemap_caches: Arc::new(Cacher::new(sourcemap_cache, shared_cache)),
             download_svc,
         }
-    }
-
-    pub fn create_sourcemap_lookup(
-        &self,
-        scope: Scope,
-        source: Arc<SentrySourceConfig>,
-        modules: &[RawObjectInfo],
-        allow_scraping: bool,
-    ) -> SourceMapLookup {
-        SourceMapLookup::new(
-            self.sourcefiles_cache.clone(),
-            self.sourcemap_caches.clone(),
-            self.download_svc.clone(),
-            scope,
-            source,
-            modules,
-            allow_scraping,
-        )
     }
 }
