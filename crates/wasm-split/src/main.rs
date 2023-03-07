@@ -71,11 +71,13 @@ fn load_custom_section(section: &Section) -> Option<(&str, &[u8])> {
 /// Returns `true` if this section should be stripped.
 fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
     fn custom_section_name(section: &Section) -> Option<&str> {
-        Some(match section.try_as()?.try_contents().ok()? {
-            CustomSection::Name(_) => "name",
-            CustomSection::Producers(_) => "producers",
-            CustomSection::Other(s) => &s.name,
-        })
+        Some(
+            section
+                .try_as::<CustomSection>()?
+                .try_contents()
+                .ok()?
+                .name(),
+        )
     }
 
     match custom_section_name(section) {

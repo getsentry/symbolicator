@@ -85,12 +85,14 @@ pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Portable PDB cache, with the following versions:
 ///
+/// - `3`: Skips hidden SequencePoints, and thus avoids outputting `lineno: 0`.
+///
 /// - `2`: Recomputation to use new `CacheKey` format.
 ///
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[],
+    current: 3,
+    fallbacks: &[2],
 };
 
 /// SourceMapCache, with the following versions:
