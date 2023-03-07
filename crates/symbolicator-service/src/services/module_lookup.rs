@@ -20,6 +20,8 @@ use crate::types::{
 };
 use crate::utils::addr::AddrMode;
 
+use super::symbolication::source_context::get_context_lines;
+
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
         debug_id: match object_info.debug_id.as_deref() {
@@ -386,7 +388,6 @@ impl ModuleLookup {
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
         frame: &RawFrame,
-        num_lines: usize,
     ) -> Option<(Vec<String>, String, Vec<String>)> {
         let abs_path = frame.abs_path.as_ref()?;
         let lineno = frame.lineno? as usize;
@@ -397,18 +398,7 @@ impl ModuleLookup {
         // TODO: add support for source links via `source_descriptor.url()`
         let source = source_descriptor.contents()?;
 
-        let start_line = lineno.saturating_sub(num_lines);
-        let line_diff = lineno - start_line;
-
-        let mut lines = source.lines().skip(start_line);
-        let pre_context = (&mut lines)
-            .take(line_diff.saturating_sub(1))
-            .map(|x| x.to_string())
-            .collect();
-        let context = lines.next()?.to_string();
-        let post_context = lines.take(num_lines).map(|x| x.to_string()).collect();
-
-        Some((pre_context, context, post_context))
+        get_context_lines(source, lineno, None, None)
     }
 
     /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.

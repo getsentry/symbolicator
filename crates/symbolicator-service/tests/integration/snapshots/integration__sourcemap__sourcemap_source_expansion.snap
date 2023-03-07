@@ -22,7 +22,6 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
-          - ""
 raw_stacktraces:
   - frames:
       - function: "function: \"HTMLDocument.<anonymous>\""
@@ -37,5 +36,4 @@ raw_stacktraces:
         context_line: "function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}"
         post_context:
           - //@ sourceMappingURL=file.min.js.map
-          - ""
 

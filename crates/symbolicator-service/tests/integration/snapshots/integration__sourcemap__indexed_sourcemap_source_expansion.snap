@@ -16,7 +16,6 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
-          - ""
       - status: symbolicated
         function: multiply
         filename: file2.js
@@ -43,7 +42,6 @@ raw_stacktraces:
         post_context:
           - "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
           - "//# sourceMappingURL=indexed.min.js.map"
-          - ""
       - filename: indexed.min.js
         abs_path: "http://example.com/indexed.min.js"
         lineno: 2
@@ -53,5 +51,4 @@ raw_stacktraces:
         context_line: "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
         post_context:
           - "//# sourceMappingURL=indexed.min.js.map"
-          - ""
 

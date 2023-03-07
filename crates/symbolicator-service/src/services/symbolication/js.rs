@@ -1,4 +1,3 @@
-use std::io::BufRead;
 use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
@@ -11,6 +10,7 @@ use crate::types::{
     SymbolicatedJsFrame, SymbolicatedJsStacktrace,
 };
 
+use super::source_context::get_context_lines;
 use super::SymbolicationActor;
 
 #[derive(Debug, Clone)]
@@ -150,7 +150,7 @@ fn symbolicate_js_frame(
     if let Some(file) = token.file() {
         result.raw.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
-            apply_source_context(&mut result.raw, file_source.as_bytes());
+            apply_source_context(&mut result.raw, file_source);
             did_apply_source = true;
         } else {
             // TODO: report missing source?
@@ -162,41 +162,24 @@ fn symbolicate_js_frame(
 
 fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {
     if let Ok(file) = file {
-        apply_source_context(frame, file.contents.as_bytes())
+        apply_source_context(frame, &file.contents)
     } else {
         // TODO: report missing source?
     }
 }
 
-fn apply_source_context(frame: &mut JsFrame, source: &[u8]) {
-    // At this stage we know we have _some_ line here, so it's safe to unwrap.
-    let frame_line = frame.lineno.unwrap();
-    let frame_column = frame.colno.unwrap_or_default();
+fn apply_source_context(frame: &mut JsFrame, source: &str) {
+    let Some(lineno) = frame.lineno else { return; };
+    let lineno = lineno as usize;
+    let column = frame.colno.map(|col| col as usize);
 
-    let current_line = frame_line.saturating_sub(1);
-    let pre_line = current_line.saturating_sub(5);
-    let post_line = current_line.saturating_add(5);
-
-    let mut lines: Vec<_> = source.lines().map(|l| l.unwrap_or_default()).collect();
-
-    // `BufRead::lines` doesn't include trailing new-lines, but we do want one if it was there.
-    if source.ends_with("\n".as_bytes()) {
-        lines.push("\n".to_string());
+    if let Some((pre_context, context_line, post_context)) =
+        get_context_lines(source, lineno, column, None)
+    {
+        frame.pre_context = pre_context;
+        frame.context_line = Some(context_line);
+        frame.post_context = post_context;
     }
-
-    frame.context_line = lines
-        .get(current_line as usize)
-        .map(|line| trim_context_line(line, frame_column));
-
-    frame.pre_context = (pre_line..current_line)
-        .filter_map(|line_no| lines.get(line_no as usize))
-        .map(|line| trim_context_line(line, frame_column))
-        .collect();
-
-    frame.post_context = (current_line + 1..=post_line)
-        .filter_map(|line_no| lines.get(line_no as usize))
-        .map(|line| trim_context_line(line, frame_column))
-        .collect();
 }
 
 /// Fold multiple consecutive occurences of the same property name into a single group, excluding the last component.
@@ -246,54 +229,6 @@ fn fold_function_name(function_name: &str) -> String {
     format!("{folded}.{tail}")
 }
 
-/// Trims a line down to a goal of 140 characters, with a little wiggle room to be sensible
-/// and tries to trim around the given `column`. So it tries to extract 60 characters
-/// before the provided `column` and fill the rest up to 140 characters to yield a better context.
-fn trim_context_line(line: &str, column: u32) -> String {
-    let mut line = line.trim_end_matches('\n').to_string();
-    let len = line.len();
-
-    if len <= 150 {
-        return line;
-    }
-
-    let col: usize = match column.try_into() {
-        Ok(c) => std::cmp::min(c, len),
-        Err(_) => return line,
-    };
-
-    let mut start = col.saturating_sub(60);
-    // Round down if it brings us close to the edge.
-    if start < 5 {
-        start = 0;
-    }
-
-    let mut end = std::cmp::min(start + 140, len);
-    // Round up to the end if it's close.
-    if end > len.saturating_sub(5) {
-        end = len;
-    }
-
-    // If we are bumped all the way to the end, make sure we still get a full 140 chars in the line.
-    if end == len {
-        start = end.saturating_sub(140);
-    }
-
-    line = line[start..end].to_string();
-
-    if end < len {
-        // We've snipped from the end.
-        line = format!("{line} {{snip}}");
-    }
-
-    if start > 0 {
-        // We've snipped from the beginning.
-        line = format!("{{snip}} {line}");
-    }
-
-    line
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -317,16 +252,5 @@ mod tests {
             fold_function_name("bar.foo.foo.bar.bar.onError"),
             "bar.{foo#2}.{bar#2}.onError"
         );
-    }
-
-    #[test]
-    fn test_trim_context_line() {
-        let long_line = "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.";
-        assert_eq!(trim_context_line("foo", 0), "foo".to_string());
-        assert_eq!(trim_context_line(long_line, 0), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, 10), "The public is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it li {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, 66), "{snip} blic is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives wi {snip}".to_string());
-        assert_eq!(trim_context_line(long_line, 190), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
-        assert_eq!(trim_context_line(long_line, 9999), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
     }
 }
