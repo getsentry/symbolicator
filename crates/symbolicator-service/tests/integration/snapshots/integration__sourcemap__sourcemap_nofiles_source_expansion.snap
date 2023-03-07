@@ -15,7 +15,6 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
-          - ""
 raw_stacktraces:
   - frames:
       - abs_path: "app:///nofiles.js"

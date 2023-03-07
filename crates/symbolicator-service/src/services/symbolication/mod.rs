@@ -23,6 +23,7 @@ use crate::utils::hex::HexValue;
 mod apple;
 mod js;
 mod process_minidump;
+pub mod source_context;
 
 pub use js::SymbolicateJsStacktraces;
 
@@ -142,7 +143,7 @@ impl SymbolicationActor {
         for trace in &mut stacktraces {
             for frame in &mut trace.frames {
                 if let Some((pre_context, context_line, post_context)) =
-                    module_lookup.get_context_lines(&debug_sessions, &frame.raw, 5)
+                    module_lookup.get_context_lines(&debug_sessions, &frame.raw)
                 {
                     frame.raw.pre_context = pre_context;
                     frame.raw.context_line = Some(context_line);

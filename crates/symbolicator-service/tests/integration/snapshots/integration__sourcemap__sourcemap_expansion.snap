@@ -28,7 +28,6 @@ stacktraces:
           - ""
           - "  return test;"
           - "})();"
-          - ""
       - status: symbolicated
         function: invoke
         filename: test.js
