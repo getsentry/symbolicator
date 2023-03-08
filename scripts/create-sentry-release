@@ -5,7 +5,7 @@ set -eu
 
 VERSION="${1:-}"
 ENVIRONMENT="${2:-}"
-GITHUB_PROJECT="getsentry/symbolicator"
+# GITHUB_PROJECT="getsentry/symbolicator"
 export SENTRY_ORG="sentry"
 export SENTRY_PROJECT="symbolicator"
 
@@ -31,7 +31,8 @@ sentry-cli upload-dif ./symbolicator-debug.zip ./symbolicator.src.zip
 
 echo 'Creating a new deploy in Sentry...'
 sentry-cli releases new "${VERSION}"
-sentry-cli releases set-commits "${VERSION}" --commit "${GITHUB_PROJECT}@${VERSION}"
+# NOTE: linking commits requires a valid GitHub integration in Sentry4Sentry, which we don't have.
+# sentry-cli releases set-commits "${VERSION}" --commit "${GITHUB_PROJECT}@${VERSION}"
 sentry-cli releases deploys "${VERSION}" new -e "${ENVIRONMENT}"
 sentry-cli releases finalize "${VERSION}"
 echo 'Deploy created.'
