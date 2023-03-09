@@ -4,13 +4,17 @@ members = ["crates/*"]
 default-members = ["crates/symbolicator", "crates/symbolicli", "crates/symsorter", "crates/wasm-split"]
 
 [profile.dev]
-# Debug information slows down the build and increases caches in the
-# target folder, but we don't require stack traces in most cases.
-debug = false
+# For debug builds, we do want to optimize for both debug-ability, and fast iteration times.
+# To de able to "Debug Test", we do need full debug info.
+# However especially on MacOS, incremental build times are primarily dominated by linking time.
+# To help with that, one can try using `lld` as linker by adding the following to `.cargo/config.toml`:
+# [build]
+# rustflags = ["-C", "linker-flavor=ld64.lld"]
+# OR (which I believe is equivalent):
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
 [profile.release]
-# In release, however, we do want full debug information to report
-# panic and error stack traces to Sentry.
+# For release builds, we do want line-only debug information to be able to symbolicate panic stack traces.
 debug = 1
 
 [profile.local]
