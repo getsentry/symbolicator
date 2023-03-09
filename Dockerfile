@@ -33,7 +33,7 @@ RUN cargo chef cook --release --features=${SYMBOLICATOR_FEATURES} --recipe-path 
 COPY . .
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
 RUN cargo build -p symbolicator --release --features=${SYMBOLICATOR_FEATURES}
-RUN objcopy --only-keep-debug target/release/symbolicator target/release/symbolicator.debug \
+RUN cp target/release/symbolicator target/release/symbolicator.debug \
     && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
     && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
     && cp ./target/release/symbolicator /usr/local/bin \
