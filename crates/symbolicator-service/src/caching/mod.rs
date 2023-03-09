@@ -211,11 +211,12 @@ impl Caches {
             config.caches.derived.max_lazy_recomputations.max(1),
         ));
 
-        // NOTE: We default all the caches to ~200 KiB.
-        // A cache item with all its structures is at least ~100 bytes, so this gives us an
-        // estimate of the number of items in memory around ~2_000.
+        // NOTE: A small cache item with all its structures is around ~100 bytes, which gives us an
+        // approximate upper bound of items in the cache.
         // Most items are a lot larger in reality, but giving concrete numbers here is hard to do.
-        let default_cap = 200 * 1024;
+        // Items that use `mmap` under the hood need special attention as well, as those keep a
+        // file descriptor open, and use up *virtual memory* instead of actual memory.
+        let default_cap = 100 * 1024;
         let in_memory = &config.caches.in_memory;
 
         Ok(Self {
