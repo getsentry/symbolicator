@@ -42,16 +42,16 @@ pub struct SourceMapModule {
     abs_path: Result<Url, (String, url::ParseError)>,
     /// The optional [`DebugId`] of this module.
     debug_id: Option<DebugId>,
-    // TODO: errors that happened when processing this file
+    // TODO(sourcemap): errors that happened when processing this file
     /// A flag showing if we have already resolved the minified and sourcemap files.
     was_fetched: bool,
     /// The base url for fetching source files.
     source_file_base: Option<Url>,
     /// The fetched minified JS file.
-    // TODO: maybe this should not be public?
+    // TODO(sourcemap): maybe this should not be public?
     pub minified_source: CacheEntry<CachedFile>,
     /// The converted SourceMap.
-    // TODO: maybe this should not be public?
+    // TODO(sourcemap): maybe this should not be public?
     pub smcache: CacheEntry<OwnedSourceMapCache>,
 }
 
@@ -72,7 +72,7 @@ impl SourceMapModule {
         }
     }
 
-    /// TODO: we should really maintain a list of all the errors that happened for this image?
+    // TODO(sourcemap): we should really maintain a list of all the errors that happened for this image?
     pub fn is_valid(&self) -> bool {
         self.abs_path.is_ok()
     }
@@ -115,17 +115,17 @@ impl SourceMapLookup {
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
             if module.ty != ObjectType::SourceMap {
-                // TODO: raise an error?
+                // TODO(sourcemap): raise an error?
                 continue;
             }
             let Some(code_file) = module.code_file.as_ref() else {
-                // TODO: raise an error?
+                // TODO(sourcemap): raise an error?
                 continue;
             };
 
             let debug_id = match &module.debug_id {
                 Some(id) => {
-                    // TODO: raise an error?
+                    // TODO(sourcemap): raise an error?
                     id.parse().ok()
                 }
                 None => None,
@@ -316,7 +316,7 @@ impl FileKey {
 pub struct CachedFile {
     pub contents: ByteViewString,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
-    // TODO: maybe we should add a `FileOrigin` here, as in:
+    // TODO(sourcemap): maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
 
@@ -324,7 +324,7 @@ impl CachedFile {
     fn from_descriptor(descriptor: SourceFileDescriptor) -> Option<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
             Some(url) => {
-                // TODO: error handling?
+                // TODO(sourcemap): error handling?
                 let abs_path = descriptor
                     .url()
                     .expect("descriptor should have an `abs_path`");
@@ -335,7 +335,7 @@ impl CachedFile {
             None => None,
         };
 
-        // TODO: a `into_contents` would be nice, as we are creating a new copy right now
+        // TODO(sourcemap): a `into_contents` would be nice, as we are creating a new copy right now
         let contents = descriptor.contents()?.to_owned();
         let contents = ByteViewString::from(contents);
 
@@ -364,10 +364,10 @@ struct ArtifactFetcher {
 
 impl ArtifactFetcher {
     async fn prefetch_artifacts(&mut self) {
-        // TODO: filter the API call down to only look for the files we want
+        // TODO(sourcemap): filter the API call down to only look for the files we want
         self.remote_artifacts = self.list_artifacts().await;
 
-        // TODO: actually fetch the needed artifacts :-)
+        // TODO(sourcemap): actually fetch the needed artifacts :-)
     }
 
     async fn list_artifacts(&self) -> HashMap<String, SearchArtifactResult> {
@@ -463,7 +463,7 @@ impl ArtifactFetcher {
         let smcache = match &minified_source {
             Ok(minified_source) => match sourcemap {
                 Ok(sourcemap) => {
-                    // TODO: We should track the information where these files came from,
+                    // TODO(sourcemap): We should track the information where these files came from,
                     // and use that as the `CacheKey` for the `sourcemap_caches`.
                     self.fetch_sourcemap_cache(minified_source.contents.clone(), sourcemap.contents)
                         .await
@@ -495,7 +495,7 @@ impl ArtifactFetcher {
 
         // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
         if self.remote_artifacts.is_empty() {
-            // TODO: the endpoint should really support filtering files,
+            // TODO(sourcemap): the endpoint should really support filtering files,
             // and ideally only giving us a single file that matches, but right now it just gives
             // us the whole list of artifacts
             self.remote_artifacts = self.list_artifacts().await;
@@ -503,7 +503,7 @@ impl ArtifactFetcher {
 
         // At this point, *one* of our known artifacts includes the file we are looking for.
         // So we do the whole dance yet again.
-        // TODO: figure out a way to avoid that?
+        // TODO(sourcemap): figure out a way to avoid that?
         if let Some(file) = self.try_get_file_from_bundles(key) {
             return Ok(file);
         }
@@ -568,7 +568,7 @@ impl ArtifactFetcher {
             .fetch_artifact(self.source.clone(), found_artifact.id.clone())
             .await;
 
-        // TODO: figure out error handling:
+        // TODO(sourcemap): figure out error handling:
         let contents = artifact.ok()?;
 
         // Get the sourcemap reference from the artifact, either from metadata, or file contents
@@ -671,7 +671,7 @@ fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedS
 /// Computes and writes the SourceMapCache.
 #[tracing::instrument(skip_all)]
 fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheEntry {
-    // TODO: maybe log *what* we are converting?
+    // TODO(sourcemap): maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
     let smcache_writer = SourceMapCacheWriter::new(source, sourcemap).unwrap();

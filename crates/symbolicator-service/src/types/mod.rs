@@ -608,7 +608,6 @@ pub struct SystemInfo {
     pub device_model: String,
 }
 
-// TODO: Verify which are required fields
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]

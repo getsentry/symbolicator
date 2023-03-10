@@ -45,7 +45,6 @@ pub fn create_app(service: RequestService) -> Router {
         .route("/requests/:request_id", get(requests))
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
-        // TODO(sourcemap): Verify whether this is the endpoint name we actually want to use.
         .route("/symbolicate-js", post(symbolicate_js))
         .route("/symbolicate", symbolicate_route)
         .with_state(service)
