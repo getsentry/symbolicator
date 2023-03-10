@@ -53,6 +53,16 @@ pub struct ObjectMetaHandle {
 }
 
 impl ObjectMetaHandle {
+    /// Creates an [`ObjectMetaHandle`] for an arbitrary [`RemoteFile`].
+    pub fn for_scoped_file(scope: Scope, file_source: RemoteFile) -> Arc<Self> {
+        Arc::new(Self {
+            scope,
+            file_source,
+            object_id: Default::default(),
+            features: Default::default(),
+        })
+    }
+
     pub fn cache_key(&self) -> CacheKey {
         CacheKey::from_scoped_file(&self.scope, &self.file_source)
     }

@@ -88,6 +88,7 @@ pub fn create_service(
         PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache.clone(), objects.clone());
 
     let sourcemaps = SourceMapService::new(
+        objects.clone(),
         sourcefiles_cache,
         caches.sourcemap_caches,
         shared_cache,

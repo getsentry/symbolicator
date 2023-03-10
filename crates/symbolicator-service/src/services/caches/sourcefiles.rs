@@ -4,9 +4,7 @@ use futures::future::BoxFuture;
 use url::Url;
 
 use symbolic::common::{ByteView, SelfCell};
-use symbolicator_sources::{
-    HttpRemoteFile, HttpSourceConfig, RemoteFile, SourceId, SourceLocation,
-};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile};
 use tempfile::NamedTempFile;
 
 use crate::caching::{
@@ -91,15 +89,7 @@ impl SourceFilesCache {
 
     /// Fetches the file from the given [`Url`] and caches it according to the given [`Scope`].
     pub async fn fetch_scoped_url(&self, scope: &Scope, url: Url) -> CacheEntry<ByteViewString> {
-        let source = Arc::new(HttpSourceConfig {
-            id: SourceId::new("web-scraping"),
-            url,
-            headers: Default::default(),
-            files: Default::default(),
-        });
-        let location = SourceLocation::new("");
-
-        let file = HttpRemoteFile::new(source, location);
+        let file = HttpRemoteFile::from_url(url);
         self.fetch_file(scope, file.into()).await
     }
 }
