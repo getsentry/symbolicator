@@ -41,7 +41,7 @@ pub use tempfile::TempDir;
 /// Setup the test environment.
 ///
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate
-///    and test server, and mutes all other logs (such as actix or symbolic).
+///    and test server, and mutes all other logs.
 pub fn setup() {
     fmt()
         .with_env_filter(EnvFilter::new(
