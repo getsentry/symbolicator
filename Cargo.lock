@@ -5275,9 +5275,9 @@ dependencies = [
 
 [[package]]
 name = "wasmbin"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cff2a7c9cec8bec5e9819716779a26f5e5bf98cfe2d72259372f85b034484aa2"
+checksum = "13cb41ab290430997d8b30474677ba9924d4545f3bcddc8b318de8b8df274c52"
 dependencies = [
  "custom_debug",
  "leb128",
@@ -5288,9 +5288,9 @@ dependencies = [
 
 [[package]]
 name = "wasmbin-derive"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9013e370cefbd27512bb83b07d322a8d6fe3ce7967f252de5cb22affc6dbfcf"
+checksum = "7d81164066a0c96c81c1faf881c8e1f055fd9e67bb6313b605c6c9a3dcf0ee0b"
 dependencies = [
  "proc-macro2",
  "quote",

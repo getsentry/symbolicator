@@ -12,9 +12,7 @@ use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use structopt::StructOpt;
 use uuid::Uuid;
-use wasmbin::builtins::Blob;
-use wasmbin::io::Encode;
-use wasmbin::sections::{CustomSection, RawCustomSection, Section};
+use wasmbin::sections::{CustomSection, Section};
 use wasmbin::Module;
 
 /// Adds build IDs to wasm files.
@@ -58,72 +56,48 @@ pub struct Cli {
     external_dwarf_url: Option<String>,
 }
 
-fn load_custom_section(section: &Section) -> Option<(&str, &[u8])> {
-    if let Some(Ok(CustomSection::Other(ref raw))) =
-        section.try_as::<CustomSection>().map(|x| x.try_contents())
-    {
-        Some((&raw.name, &raw.data))
-    } else {
-        None
-    }
+fn as_custom_section(section: &Section) -> Option<&CustomSection> {
+    section.try_as()?.try_contents().ok()
 }
 
 /// Returns `true` if this section should be stripped.
 fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
-    fn custom_section_name(section: &Section) -> Option<&str> {
-        Some(
-            section
-                .try_as::<CustomSection>()?
-                .try_contents()
-                .ok()?
-                .name(),
-        )
-    }
-
-    match custom_section_name(section) {
-        Some("name") => strip_names,
-        Some(other) if other.starts_with(".debug_") => true,
-        _ => false,
-    }
+    as_custom_section(section).map_or(false, |section| match section {
+        CustomSection::Name(_) => strip_names,
+        other => other.name().starts_with(".debug_"),
+    })
 }
 
 fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::from_args();
 
     let mut module = Module::decode_from(BufReader::new(File::open(&cli.input)?))?;
-    let mut build_id = None;
     let mut should_write_main_module = false;
 
     // try to see if we already have a build ID we can use.  If we already have
     // one we do not need to write a new one.
-    for section in &module.sections {
-        if let Some((name, data)) = load_custom_section(section) {
-            if name == "build_id" {
-                build_id = Some(data.to_owned());
-                break;
-            }
-        }
-    }
-
-    // if we do have to build a new one, use the one from the command line or fall back to
-    // a random uuid v4 as build id.
-    let build_id = build_id.unwrap_or_else(|| {
-        let new_id = cli
-            .build_id
-            .unwrap_or_else(Uuid::new_v4)
-            .as_bytes()
-            .to_vec();
-        should_write_main_module = true;
-        module
-            .sections
-            .push(Section::Custom(Blob::from(CustomSection::Other(
-                RawCustomSection {
-                    name: "build_id".to_string(),
-                    data: new_id.clone(),
-                },
-            ))));
-        new_id
-    });
+    let build_id = module
+        .sections
+        .iter()
+        .filter_map(as_custom_section)
+        .find_map(|section| match section {
+            CustomSection::BuildId(build_id) => Some(build_id.clone()),
+            _ => None,
+        })
+        // if we do have to build a new one, use the one from the command line or fall back to
+        // a random uuid v4 as build id.
+        .unwrap_or_else(|| {
+            let new_id = cli
+                .build_id
+                .unwrap_or_else(Uuid::new_v4)
+                .as_bytes()
+                .to_vec();
+            should_write_main_module = true;
+            module
+                .sections
+                .push(CustomSection::BuildId(new_id.clone()).into());
+            new_id
+        });
 
     // split dwarf data out if needed into a separate file.
     if let Some(debug_output) = cli.debug_out.as_ref() {
@@ -163,22 +137,9 @@ fn main() -> Result<(), anyhow::Error> {
     if let Some(external_dwarf_url) = resolved_external_dwarf_url {
         should_write_main_module = true;
 
-        // From the wasm spec, the URL is encoded as bytes, and prefixed with a varint encoding of a u32 size
-        // https://github.com/WebAssembly/tool-conventions/blob/08bacbed/Debugging.md#external-dwarf
-        // Emscripten: https://github.com/emscripten-core/emscripten/blob/4eefe273/tools/building.py#L1200
-        // We use the `wasmbin::io::Encode` trait, as it will handle serializing a string as a Vec<u8> with
-        // an LEB128 prefix.
-        let data_vec = &mut Vec::new();
-        external_dwarf_url.encode(data_vec).unwrap();
-
         module
             .sections
-            .push(Section::Custom(Blob::from(CustomSection::Other(
-                RawCustomSection {
-                    name: "external_debug_info".to_string(),
-                    data: data_vec.to_vec(),
-                },
-            ))));
+            .push(CustomSection::ExternalDebugInfo(external_dwarf_url.into()).into());
     }
 
     // main module
