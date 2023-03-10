@@ -23,8 +23,6 @@ pub struct SymbolicateJsStacktraces {
     pub allow_scraping: bool,
 }
 
-// TODO(sourcemap): Use our generic caching solution for all Artifacts.
-// TODO(sourcemap): Rename all `JsProcessing_` and `js_processing_` prefixed names to something we agree on.
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     pub async fn symbolicate_js(
@@ -61,7 +59,7 @@ impl SymbolicationActor {
                     Ok((mut frame, did_apply_source)) => {
                         // If we have no source context from within the `SourceMapCache`,
                         // fall back to applying the source context from a raw artifact file
-                        // TODO: we should only do this fallback if there is *no* `DebugId`.
+                        // TODO(sourcemap): we should only do this fallback if there is *no* `DebugId`.
                         if !did_apply_source {
                             let filename = frame.raw.filename.as_ref();
                             let file_key = filename
@@ -112,7 +110,6 @@ fn symbolicate_js_frame(
         raw: frame.clone(),
     };
 
-    // TODO(sourcemap): Report invalid source location error
     let (line, col) = match (frame.lineno, frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
         _ => return Err(JsFrameStatus::InvalidSourceMapLocation),
@@ -147,7 +144,7 @@ fn symbolicate_js_frame(
             apply_source_context(&mut result.raw, file_source);
             did_apply_source = true;
         } else {
-            // TODO: report missing source?
+            // TODO(sourcemap): report missing source?
         }
     }
 
@@ -158,7 +155,7 @@ fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<Cac
     if let Ok(file) = file {
         apply_source_context(frame, &file.contents)
     } else {
-        // TODO: report missing source?
+        // TODO(sourcemap): report missing source?
     }
 }
 

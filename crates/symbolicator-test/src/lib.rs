@@ -27,6 +27,7 @@ use axum::{middleware, Router};
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
+use tower_http::trace::TraceLayer;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
 
@@ -39,11 +40,14 @@ pub use tempfile::TempDir;
 
 /// Setup the test environment.
 ///
-///  - Initializes logs: The logger only captures logs from the `symbolicator` crate and mutes all
-///    other logs (such as actix or symbolic).
+///  - Initializes logs: The logger only captures logs from the `symbolicator` crate
+///    and test server, and mutes all other logs (such as actix or symbolic).
 pub fn setup() {
     fmt()
-        .with_env_filter(EnvFilter::new("symbolicator_service=trace"))
+        .with_env_filter(EnvFilter::new(
+            "symbolicator_service=trace,tower_http=trace",
+        ))
+        .with_env_filter(EnvFilter::from_default_env())
         .with_target(false)
         .pretty()
         .with_test_writer()
@@ -254,7 +258,8 @@ impl Server {
 
     /// Creates a new `Router` that is used in sourcemap symbolication tests.
     pub fn sourcemap_router(fixtures_dir: &str) -> Router {
-        // TODO(kamil): Add some debug logs, as its hard to realize where something went wrong during setup.
+        let artifact_logging_layer = TraceLayer::new_for_http().on_response(());
+
         Router::new().nest(
             "/files",
             Router::new()
@@ -275,7 +280,8 @@ impl Server {
                  */
                 .route(
                     "/*id",
-                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}")))),
+                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))))
+                        .layer(artifact_logging_layer),
                 ),
         )
     }
