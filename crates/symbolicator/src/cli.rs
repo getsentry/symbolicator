@@ -1,5 +1,6 @@
 //! Exposes the command line application.
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use structopt::StructOpt;
@@ -64,6 +65,8 @@ pub fn execute() -> Result<()> {
     let cli = Cli::from_args();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
+    let release = Some(env!("SYMBOLICATOR_RELEASE").into());
+
     #[cfg(feature = "symbolicator-crash")]
     {
         let dsn = config.sentry_dsn.as_ref().map(|d| d.to_string());
@@ -75,15 +78,27 @@ pub fn execute() -> Result<()> {
         });
         if let (Some(dsn), Some(db)) = (dsn, db) {
             symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
-                .release(sentry::release_name!().as_deref())
+                .release(release.as_deref())
                 .install();
         }
     }
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
-        release: Some(env!("SYMBOLICATOR_RELEASE").into()),
+        release,
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
+        traces_sampler: Some(Arc::new(|ctx| {
+            if Some(true) == ctx.sampled() {
+                1.0
+            } else {
+                // Symbolicator receives ~200 rps right now,
+                // with ~20 sampled transactions per minute,
+                // which comes to an effective sampling rate of `1/600` (~0.0016).
+                // Lets crank that up to `0.02`, which would give us ~4 rps,
+                // or ~240 transactions per minute.
+                0.1
+            }
+        })),
         ..Default::default()
     });
 
