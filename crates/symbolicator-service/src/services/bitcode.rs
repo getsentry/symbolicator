@@ -243,17 +243,6 @@ impl BitcodeService {
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        let mut file_handle = None;
-        for result in all_results {
-            match result {
-                Ok(handle) => file_handle = Some(handle),
-                Err(CacheError::NotFound) => (),
-                Err(error) => {
-                    let error: &dyn std::error::Error = &error;
-                    tracing::error!(error, "failed fetching auxiliary DIF");
-                }
-            }
-        }
-        file_handle
+        all_results.into_iter().find_map(Result::ok)
     }
 }

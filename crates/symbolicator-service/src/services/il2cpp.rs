@@ -149,17 +149,6 @@ impl Il2cppService {
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        let mut mapping = None;
-        for result in all_results {
-            match result {
-                Ok(handle) => mapping = Some(handle),
-                Err(CacheError::NotFound) => (),
-                Err(error) => {
-                    let error: &dyn std::error::Error = &error;
-                    tracing::error!(error, "failed fetching il2cpp file");
-                }
-            }
-        }
-        mapping
+        all_results.into_iter().find_map(Result::ok)
     }
 }
