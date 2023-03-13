@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::fs::File;
 use std::io::{self, BufWriter};
@@ -13,9 +13,10 @@ use symbolic::common::{ByteView, DebugId, SelfCell};
 use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
+use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_sources::{
-    ObjectType, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
+    HttpRemoteFile, ObjectType, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
 };
 use tempfile::NamedTempFile;
 use url::Position;
@@ -23,10 +24,12 @@ use url::Position;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
 use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
+use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
+use super::objects::ObjectsActor;
 use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
 
@@ -99,6 +102,7 @@ pub struct SourceMapLookup {
 impl SourceMapLookup {
     pub fn new(service: SourceMapService, request: SymbolicateJsStacktraces) -> Self {
         let SourceMapService {
+            objects,
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
@@ -137,6 +141,7 @@ impl SourceMapLookup {
         }
 
         let fetcher = ArtifactFetcher {
+            objects,
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
@@ -168,7 +173,9 @@ impl SourceMapLookup {
             }
         }
 
-        self.fetcher.prefetch_artifacts().await;
+        self.fetcher
+            .prefetch_artifacts(self.modules_by_abs_path.values())
+            .await;
     }
 
     /// Get the [`SourceMapModule`], which gives access to the `minified_source` and `smcache`.
@@ -347,6 +354,7 @@ impl CachedFile {
 }
 
 struct ArtifactFetcher {
+    objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     download_svc: Arc<DownloadService>,
@@ -357,60 +365,28 @@ struct ArtifactFetcher {
     remote_artifacts: HashMap<String, SearchArtifactResult>,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: Vec<ArtifactBundle>,
+    artifact_bundles: HashMap<String, CacheEntry<ArtifactBundle>>,
 
     allow_scraping: bool,
 }
 
 impl ArtifactFetcher {
-    async fn prefetch_artifacts(&mut self) {
-        // TODO(sourcemap): filter the API call down to only look for the files we want
-        self.remote_artifacts = self.list_artifacts().await;
+    async fn prefetch_artifacts(&mut self, modules: impl Iterator<Item = &SourceMapModule>) {
+        let mut debug_ids = BTreeSet::new();
+        let mut file_stems = BTreeSet::new();
 
-        // TODO(sourcemap): actually fetch the needed artifacts :-)
-    }
+        for module in modules {
+            if let Some(debug_id) = module.debug_id {
+                debug_ids.insert(debug_id);
+            }
 
-    async fn list_artifacts(&self) -> HashMap<String, SearchArtifactResult> {
-        self.download_svc
-            .list_artifacts(self.source.clone())
-            .await
-            .into_iter()
-            .map(|artifact| (artifact.name.clone(), artifact))
-            .collect()
-    }
+            if let Ok(url) = module.abs_path.as_ref() {
+                let stem = extract_file_stem(url);
+                file_stems.insert(stem);
+            }
+        }
 
-    async fn fetch_artifact(
-        &self,
-        source: Arc<SentrySourceConfig>,
-        file_id: SentryFileId,
-    ) -> CacheEntry<ByteViewString> {
-        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
-        self.sourcefiles_cache.fetch_file(&self.scope, file).await
-    }
-
-    async fn fetch_sourcemap_cache(
-        &self,
-        source: ByteViewString,
-        sourcemap: ByteViewString,
-    ) -> CacheEntry<OwnedSourceMapCache> {
-        let cache_key = {
-            let mut cache_key = CacheKey::scoped_builder(&self.scope);
-            let source_hash = Sha256::digest(&source);
-            let sourcemap_hash = Sha256::digest(&sourcemap);
-
-            write!(cache_key, "source:\n{source_hash:x}\n").unwrap();
-            write!(cache_key, "sourcemap:\n{sourcemap_hash:x}").unwrap();
-
-            cache_key.build()
-        };
-
-        let req = FetchSourceMapCacheInternal { source, sourcemap };
-        self.sourcemap_caches.compute_memoized(req, cache_key).await
-    }
-
-    fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
-        get_release_file_candidate_urls(url)
-            .find_map(|candidate| self.remote_artifacts.get(&candidate))
+        self.query_sentry_for_files(debug_ids, file_stems).await
     }
 
     /// Fetches the minified file, and the corresponding [`OwnedSourceMapCache`] for the file
@@ -494,12 +470,7 @@ impl ArtifactFetcher {
         }
 
         // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
-        if self.remote_artifacts.is_empty() {
-            // TODO(sourcemap): the endpoint should really support filtering files,
-            // and ideally only giving us a single file that matches, but right now it just gives
-            // us the whole list of artifacts
-            self.remote_artifacts = self.list_artifacts().await;
-        }
+        self.query_sentry_for_file(key).await;
 
         // At this point, *one* of our known artifacts includes the file we are looking for.
         // So we do the whole dance yet again.
@@ -533,7 +504,8 @@ impl ArtifactFetcher {
         // If we have an `id`, we first try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
-            for bundle in &self.artifact_bundles {
+            for bundle in self.artifact_bundles.values() {
+                let Ok(bundle) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     if let Some(file) = CachedFile::from_descriptor(descriptor) {
@@ -546,7 +518,8 @@ impl ArtifactFetcher {
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
-                for bundle in &self.artifact_bundles {
+                for bundle in self.artifact_bundles.values() {
+                    let Ok(bundle) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         if let Some(file) = CachedFile::from_descriptor(descriptor) {
@@ -579,6 +552,135 @@ impl ArtifactFetcher {
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
     }
+
+    /// Queries the Sentry API for a single file (by its [`DebugId`] and file stem).
+    async fn query_sentry_for_file(&mut self, key: &FileKey) {
+        let mut debug_ids = BTreeSet::new();
+        if let Some(debug_id) = key.debug_id() {
+            debug_ids.insert(debug_id);
+        }
+
+        let mut file_stems = BTreeSet::new();
+        if let Some(url) = key.abs_path() {
+            let stem = extract_file_stem(url);
+            file_stems.insert(stem);
+        }
+
+        self.query_sentry_for_files(debug_ids, file_stems).await
+    }
+
+    /// Queries the Sentry API for a bunch of [`DebugId`]s and file stems.
+    ///
+    /// This will also download all referenced [`ArtifactBundle`]s directly and persist them for
+    /// later access.
+    /// Individual files are not eagerly downloaded, but their metadata will be available.
+    async fn query_sentry_for_files(
+        &mut self,
+        debug_ids: BTreeSet<DebugId>,
+        file_stems: BTreeSet<&str>,
+    ) {
+        // TODO(sourcemap): this is where we want to hook in the not-yet-existing Sentry API
+        let _ = (debug_ids, file_stems);
+        #[allow(unused)]
+        enum FileResult {
+            Individual(SearchArtifactResult),
+            ArtifactBundle(String),
+        }
+        let results: Vec<FileResult> = if self.remote_artifacts.is_empty() {
+            // TODO(sourcemap): as a fallback for now, we use the "release artifacts" API
+            self.download_svc
+                .list_artifacts(self.source.clone())
+                .await
+                .into_iter()
+                .map(FileResult::Individual)
+                .collect()
+        } else {
+            vec![]
+        };
+
+        for file in results {
+            match file {
+                FileResult::Individual(artifact) => {
+                    self.remote_artifacts
+                        .insert(artifact.name.clone(), artifact);
+                }
+                FileResult::ArtifactBundle(url) => {
+                    // thanks clippy, but I would love an `entry_by_ref` instead :-)
+                    #[allow(clippy::map_entry)]
+                    if !self.artifact_bundles.contains_key(&url) {
+                        // NOTE: This could potentially be done concurrently, but lets not
+                        // prematurely optimize for now
+                        let artifact_bundle = self.fetch_artifact_bundle_from_url(&url).await;
+                        self.artifact_bundles.insert(url, artifact_bundle);
+                    }
+                }
+            }
+        }
+    }
+
+    async fn fetch_artifact_bundle_from_url(&self, url: &str) -> CacheEntry<ArtifactBundle> {
+        let url = Url::parse(url).map_err(CacheError::from_std_error)?;
+        let file = HttpRemoteFile::from_url(url.clone()).into();
+        let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
+
+        let fetched_bundle = self.objects.fetch(object_handle).await?;
+        let owner = fetched_bundle.data().clone();
+
+        SelfCell::try_new(owner, |p| unsafe {
+            // We already have a parsed `Object`, but because of ownership issues, we do parse it again
+            match Object::parse(&*p).map_err(CacheError::from_std_error)? {
+                Object::SourceBundle(source_bundle) => source_bundle
+                    .debug_session()
+                    .map_err(CacheError::from_std_error),
+                obj => {
+                    tracing::error!("expected a `SourceBundle`, got `{}`", obj.file_format());
+                    Err(CacheError::InternalError)
+                }
+            }
+        })
+    }
+
+    fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
+        get_release_file_candidate_urls(url)
+            .find_map(|candidate| self.remote_artifacts.get(&candidate))
+    }
+
+    async fn fetch_artifact(
+        &self,
+        source: Arc<SentrySourceConfig>,
+        file_id: SentryFileId,
+    ) -> CacheEntry<ByteViewString> {
+        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
+        self.sourcefiles_cache.fetch_file(&self.scope, file).await
+    }
+
+    async fn fetch_sourcemap_cache(
+        &self,
+        source: ByteViewString,
+        sourcemap: ByteViewString,
+    ) -> CacheEntry<OwnedSourceMapCache> {
+        let cache_key = {
+            let mut cache_key = CacheKey::scoped_builder(&self.scope);
+            let source_hash = Sha256::digest(&source);
+            let sourcemap_hash = Sha256::digest(&sourcemap);
+
+            write!(cache_key, "source:\n{source_hash:x}\n").unwrap();
+            write!(cache_key, "sourcemap:\n{sourcemap_hash:x}").unwrap();
+
+            cache_key.build()
+        };
+
+        let req = FetchSourceMapCacheInternal { source, sourcemap };
+        self.sourcemap_caches.compute_memoized(req, cache_key).await
+    }
+}
+
+/// Extracts a "file stem" from a [`Url`].
+/// This is the `"file"` in `"./path/to/file.min.js?foo=bar"`.
+fn extract_file_stem(url: &Url) -> &str {
+    let path = url.path();
+    let name = path.rsplit_once('/').map(|(_, name)| name).unwrap_or(path);
+    name.split_once('.').map(|(stem, _)| stem).unwrap_or(name)
 }
 
 /// Transforms a full absolute url into 2 or 4 generalized options.

@@ -50,6 +50,20 @@ impl HttpRemoteFile {
         }
     }
 
+    /// Creates a new [`HttpRemoteFile`] from the given [`Url`].
+    /// This internally creates a bogus [`HttpSourceConfig`].
+    pub fn from_url(url: Url) -> Self {
+        let source = Arc::new(HttpSourceConfig {
+            id: SourceId::new("web-scraping"),
+            url,
+            headers: Default::default(),
+            files: Default::default(),
+        });
+        let location = SourceLocation::new("");
+
+        HttpRemoteFile::new(source, location)
+    }
+
     pub(crate) fn uri(&self) -> RemoteFileUri {
         match self.url() {
             Ok(url) => url.as_ref().into(),
