@@ -96,7 +96,7 @@ pub fn execute() -> Result<()> {
                 // which comes to an effective sampling rate of `1/600` (~0.0016).
                 // Lets crank that up to `0.02`, which would give us ~4 rps,
                 // or ~240 transactions per minute.
-                0.1
+                0.02
             }
         })),
         ..Default::default()
