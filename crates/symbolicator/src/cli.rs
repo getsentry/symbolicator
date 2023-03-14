@@ -90,13 +90,17 @@ pub fn execute() -> Result<()> {
         traces_sampler: Some(Arc::new(|ctx| {
             if Some(true) == ctx.sampled() {
                 1.0
-            } else {
+            } else if ctx.operation() != "http.server" {
                 // Symbolicator receives ~200 rps right now,
                 // with ~20 sampled transactions per minute,
                 // which comes to an effective sampling rate of `1/600` (~0.0016).
                 // Lets crank that up to `0.02`, which would give us ~4 rps,
                 // or ~240 transactions per minute.
+                // We only do this for the "real" transactions and not the http frontend that
+                // just spawns these computations.
                 0.02
+            } else {
+                0.0
             }
         })),
         ..Default::default()
