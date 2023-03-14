@@ -2,7 +2,7 @@
 //!
 //! This allows to fetch files which were directly uploaded to Sentry itself.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::Path;
 use std::sync::Arc;
@@ -204,9 +204,18 @@ impl SentryDownloader {
     pub async fn list_artifacts(
         &self,
         source: Arc<SentrySourceConfig>,
+        file_stems: BTreeSet<String>,
     ) -> CacheEntry<Vec<SearchArtifactResult>> {
+        let mut index_url = source.url.clone();
+
+        // Pre-filter required artifacts, so it limits number of pages we have to fetch
+        // in order to collect all the necessary data.
+        for stem in file_stems {
+            index_url.query_pairs_mut().append_pair("query", &stem);
+        }
+
         let query = SearchQuery {
-            index_url: source.url.clone(),
+            index_url,
             token: source.token.clone(),
         };
 

@@ -592,10 +592,11 @@ impl ArtifactFetcher {
     async fn query_sentry_for_files(
         &mut self,
         debug_ids: BTreeSet<DebugId>,
-        file_stems: BTreeSet<&str>,
+        file_stems: BTreeSet<String>,
     ) {
         // TODO(sourcemap): this is where we want to hook in the not-yet-existing Sentry API
-        let _ = (debug_ids, file_stems);
+        let _ = debug_ids;
+
         #[allow(unused)]
         enum FileResult {
             Individual(SearchArtifactResult),
@@ -604,7 +605,7 @@ impl ArtifactFetcher {
         let results: Vec<FileResult> = if self.remote_artifacts.is_empty() {
             // TODO(sourcemap): as a fallback for now, we use the "release artifacts" API
             self.download_svc
-                .list_artifacts(self.source.clone())
+                .list_artifacts(self.source.clone(), file_stems)
                 .await
                 .into_iter()
                 .map(FileResult::Individual)
@@ -692,15 +693,25 @@ impl ArtifactFetcher {
 
 /// Extracts a "file stem" from a [`Url`].
 /// This is the `"file"` in `"./path/to/file.min.js?foo=bar"`.
-fn extract_file_stem(url: &Url) -> &str {
+/// We use the most generic variant instead here, as server-side filtering is using a partial
+/// match on the whole artifact path, thus `index.js` will be fetched no matter it's stored
+/// as `~/index.js`, `~/index.js?foo=bar`, `http://example.com/index.js`,
+/// or `http://example.com/index.js?foo=bar`.
+/// NOTE: We do want a leading slash to be included, eg. `/bundle/app.js` or `/index.js`,
+/// as it's not possible to use artifacts without proper host or `~/` wildcard.
+fn extract_file_stem(url: &Url) -> String {
     let path = url.path();
-    let name = path.rsplit_once('/').map(|(_, name)| name).unwrap_or(path);
-    name.split_once('.').map(|(stem, _)| stem).unwrap_or(name)
+    path.rsplit_once('/')
+        .map(|(prefix, name)| {
+            let name = name.split_once('.').map(|(stem, _)| stem).unwrap_or(name);
+            format!("{prefix}/{name}")
+        })
+        .unwrap_or(path.to_owned())
 }
 
 /// Transforms a full absolute url into 2 or 4 generalized options.
-// Based on `ReleaseFile.normalize`, see:
-// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
+/// Based on `ReleaseFile.normalize`, see:
+/// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
 fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
     let mut urls = [None, None, None, None];
 
@@ -729,7 +740,7 @@ fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
     urls.into_iter().flatten()
 }
 
-// Joins together frames `abs_path` and discovered sourcemap reference.
+/// Joins together frames `abs_path` and discovered sourcemap reference.
 fn resolve_sourcemap_url(
     abs_path: &Url,
     source_remote_artifact: &SearchArtifactResult,
@@ -848,5 +859,35 @@ mod tests {
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
         assert_eq!(&actual, expected);
+    }
+
+    #[test]
+    fn test_extract_file_stem() {
+        let url = "https://example.com/bundle.js".parse().unwrap();
+        assert_eq!(extract_file_stem(&url), "/bundle");
+
+        let url = "https://example.com/bundle.min.js".parse().unwrap();
+        assert_eq!(extract_file_stem(&url), "/bundle");
+
+        let url = "https://example.com/assets/bundle.js".parse().unwrap();
+        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+
+        let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
+        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
+            .parse()
+            .unwrap();
+        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+
+        let url = "https://example.com/assets/bundle.min.js#wat"
+            .parse()
+            .unwrap();
+        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
+            .parse()
+            .unwrap();
+        assert_eq!(extract_file_stem(&url), "/assets/bundle");
     }
 }
