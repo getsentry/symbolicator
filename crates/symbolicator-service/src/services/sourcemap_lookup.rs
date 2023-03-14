@@ -697,8 +697,8 @@ impl ArtifactFetcher {
 /// match on the whole artifact path, thus `index.js` will be fetched no matter it's stored
 /// as `~/index.js`, `~/index.js?foo=bar`, `http://example.com/index.js`,
 /// or `http://example.com/index.js?foo=bar`.
-/// NOTE: We do want a leading slash to be included, eg. `/bundle/app.js` or `/index.js`,
-/// as it's not possible to use artifacts without proper host or `~/` wildcard.
+// NOTE: We do want a leading slash to be included, eg. `/bundle/app.js` or `/index.js`,
+// as it's not possible to use artifacts without proper host or `~/` wildcard.
 fn extract_file_stem(url: &Url) -> String {
     let path = url.path();
     path.rsplit_once('/')
@@ -710,8 +710,8 @@ fn extract_file_stem(url: &Url) -> String {
 }
 
 /// Transforms a full absolute url into 2 or 4 generalized options.
-/// Based on `ReleaseFile.normalize`, see:
-/// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
+// Based on `ReleaseFile.normalize`, see:
+// https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
 fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
     let mut urls = [None, None, None, None];
 
