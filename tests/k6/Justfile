@@ -1,0 +1,9 @@
+
+debug:
+  #!/bin/bash
+
+  cargo run -- run &
+  sleep 2
+  PID=$!
+  k6 run --http-debug=full -e HOST=http://127.0.0.1:3021 main.js
+  trap "kill ${PID}"  SIGINT SIGTERM ERR EXIT
