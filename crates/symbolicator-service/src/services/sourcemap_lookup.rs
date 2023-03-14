@@ -692,7 +692,7 @@ impl ArtifactFetcher {
 }
 
 /// Extracts a "file stem" from a [`Url`].
-/// This is the `"file"` in `"./path/to/file.min.js?foo=bar"`.
+/// This is the `"/path/to/file"` in `"./path/to/file.min.js?foo=bar"`.
 /// We use the most generic variant instead here, as server-side filtering is using a partial
 /// match on the whole artifact path, thus `index.js` will be fetched no matter it's stored
 /// as `~/index.js`, `~/index.js?foo=bar`, `http://example.com/index.js`,
