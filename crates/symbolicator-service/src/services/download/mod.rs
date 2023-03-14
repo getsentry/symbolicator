@@ -3,7 +3,7 @@
 //! The sources are described on
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -445,9 +445,10 @@ impl DownloadService {
     pub async fn list_artifacts(
         &self,
         source: Arc<SentrySourceConfig>,
+        file_stems: BTreeSet<String>,
     ) -> Vec<SearchArtifactResult> {
         let mut remote_artifacts = vec![];
-        let job = self.sentry.list_artifacts(source.clone());
+        let job = self.sentry.list_artifacts(source.clone(), file_stems);
         let timeout = Duration::from_secs(30);
         let job = tokio::time::timeout(timeout, job);
         let job = measure("service.download.list_artifacts", m::timed_result, job);
