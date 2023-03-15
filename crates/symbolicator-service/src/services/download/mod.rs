@@ -27,7 +27,7 @@ use symbolicator_sources::{
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
-use crate::services::download::sentry::SearchArtifactResult;
+use crate::services::download::sentry::ArtifactResult;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::sentry::ConfigureScope;
@@ -446,7 +446,7 @@ impl DownloadService {
         &self,
         source: Arc<SentrySourceConfig>,
         file_stems: BTreeSet<String>,
-    ) -> Vec<SearchArtifactResult> {
+    ) -> Vec<ArtifactResult> {
         let mut remote_artifacts = vec![];
         let job = self.sentry.list_artifacts(source.clone(), file_stems);
         let timeout = Duration::from_secs(30);

@@ -54,8 +54,9 @@ impl S3Downloader {
     }
 
     async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<Client> {
+        metric!(counter("source.s3.client.access") += 1);
         let init = Box::pin(async {
-            metric!(counter("source.s3.client.create") += 1);
+            metric!(counter("source.s3.client.computation") += 1);
 
             tracing::debug!(
                 "Using AWS credentials provider: {:?}",
@@ -79,16 +80,11 @@ impl S3Downloader {
             })
         });
 
-        let entry = self
-            .client_cache
+        self.client_cache
             .entry_by_ref(key)
             .or_insert_with(init)
-            .await;
-
-        if !entry.is_fresh() {
-            metric!(counter("source.s3.client.cached") += 1);
-        }
-        entry.into_value()
+            .await
+            .into_value()
     }
 
     async fn create_s3_client(

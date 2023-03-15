@@ -23,12 +23,12 @@ use crate::config::Config;
 use crate::utils::futures::CancelOnDrop;
 
 #[derive(Clone, Debug, Deserialize)]
-struct SearchResult {
+struct JustIdResult {
     pub id: SentryFileId,
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct SearchArtifactResult {
+pub struct ArtifactResult {
     pub id: SentryFileId,
     pub name: String,
     pub sha1: String,
@@ -37,19 +37,41 @@ pub struct SearchArtifactResult {
     pub headers: BTreeMap<String, String>,
 }
 
+/// We would want to cache differently-shaped results in our lookup cache
+#[derive(Clone, Debug)]
+enum SearchResult {
+    JustId(Vec<JustIdResult>),
+    Artifact(Vec<ArtifactResult>),
+}
+
+trait IntoSearchResult: Sized {
+    fn into_search_result(vec: Vec<Self>) -> SearchResult;
+}
+
+impl IntoSearchResult for JustIdResult {
+    fn into_search_result(vec: Vec<Self>) -> SearchResult {
+        SearchResult::JustId(vec)
+    }
+}
+impl IntoSearchResult for ArtifactResult {
+    fn into_search_result(vec: Vec<Self>) -> SearchResult {
+        SearchResult::Artifact(vec)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct SearchQuery {
-    index_url: Url,
+    query_url: Url,
     token: String,
 }
 
-/// An LRU cache sentry DIF index responses.
-type SentryIndexCache = moka::future::Cache<SearchQuery, CacheEntry<Vec<SearchResult>>>;
+/// An LRU Cache for Sentry API Lookups.
+type SentryLookupCache = moka::future::Cache<SearchQuery, CacheEntry<SearchResult>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
-    index_cache: SentryIndexCache,
+    lookup_cache: SentryLookupCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
@@ -58,7 +80,7 @@ impl fmt::Debug for SentryDownloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(std::any::type_name::<Self>())
             .field("connector", &format_args!("Addr(ClientConnector)"))
-            .field("index_cache", &self.index_cache)
+            .field("index_cache", &self.lookup_cache)
             .finish()
     }
 }
@@ -68,7 +90,7 @@ impl SentryDownloader {
         Self {
             client,
             runtime,
-            index_cache: SentryIndexCache::builder()
+            lookup_cache: SentryLookupCache::builder()
                 .max_capacity(config.caches.in_memory.sentry_index_capacity)
                 .time_to_live(config.caches.in_memory.sentry_index_ttl)
                 .build(),
@@ -77,7 +99,7 @@ impl SentryDownloader {
         }
     }
 
-    /// Make a request to sentry, parse the result as a JSON SearchResult list.
+    /// Make a request to Sentry and parse the result as JSON.
     async fn fetch_sentry_json<T>(
         client: &reqwest::Client,
         query: &SearchQuery,
@@ -86,7 +108,7 @@ impl SentryDownloader {
         T: DeserializeOwned,
     {
         let mut request = client
-            .get(query.index_url.clone())
+            .get(query.query_url.clone())
             .bearer_auth(&query.token)
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT);
@@ -111,12 +133,18 @@ impl SentryDownloader {
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+    async fn cached_sentry_search<T>(&self, query: SearchQuery) -> CacheEntry<SearchResult>
+    where
+        T: IntoSearchResult + DeserializeOwned + Send + 'static,
+    {
+        metric!(counter("source.sentry.query.access") += 1);
+
         let query_ = query.clone();
         let init = Box::pin(async {
+            metric!(counter("source.sentry.query.computation") += 1);
             tracing::debug!(
                 "Fetching list of Sentry debug files from {}",
-                &query_.index_url
+                &query_.query_url
             );
 
             let client = self.client.clone();
@@ -126,10 +154,11 @@ impl SentryDownloader {
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(|_| CacheError::InternalError)?
+            let vec = future.await.map_err(|_| CacheError::InternalError)??;
+            Ok(T::into_search_result(vec))
         });
 
-        self.index_cache
+        self.lookup_cache
             .entry(query)
             .or_insert_with_if(init, |entry| entry.is_err())
             .await
@@ -151,15 +180,15 @@ impl SentryDownloader {
             return Ok(Vec::new());
         }
 
-        let mut index_url = source.url.clone();
+        let mut query_url = source.url.clone();
         if let Some(ref debug_id) = object_id.debug_id {
-            index_url
+            query_url
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
         }
 
         // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
-        index_url.query_pairs_mut().extend_pairs(
+        query_url.query_pairs_mut().extend_pairs(
             file_types
                 .iter()
                 .map(|file_type| match file_type {
@@ -179,18 +208,26 @@ impl SentryDownloader {
         );
 
         if let Some(ref code_id) = object_id.code_id {
-            index_url
+            query_url
                 .query_pairs_mut()
                 .append_pair("code_id", code_id.as_str());
         }
 
         let query = SearchQuery {
-            index_url,
+            query_url,
             token: source.token.clone(),
         };
 
-        let search = self.cached_sentry_search(query).await?;
-        let file_ids = search
+        let search_result = self.cached_sentry_search::<JustIdResult>(query).await?;
+        let results = match search_result {
+            SearchResult::JustId(results) => results,
+            SearchResult::Artifact(_) => {
+                tracing::error!("Cached `SearchResult` has wrong inner type, expected `JustId`");
+                return Err(CacheError::InternalError);
+            }
+        };
+
+        let file_ids = results
             .into_iter()
             .map(|search_result| {
                 SentryRemoteFile::new(source.clone(), search_result.id, SentryFileType::DebugFile)
@@ -205,35 +242,27 @@ impl SentryDownloader {
         &self,
         source: Arc<SentrySourceConfig>,
         file_stems: BTreeSet<String>,
-    ) -> CacheEntry<Vec<SearchArtifactResult>> {
-        let mut index_url = source.url.clone();
+    ) -> CacheEntry<Vec<ArtifactResult>> {
+        let mut query_url = source.url.clone();
 
         // Pre-filter required artifacts, so it limits number of pages we have to fetch
         // in order to collect all the necessary data.
         for stem in file_stems {
-            index_url.query_pairs_mut().append_pair("query", &stem);
+            query_url.query_pairs_mut().append_pair("query", &stem);
         }
 
         let query = SearchQuery {
-            index_url,
+            query_url,
             token: source.token.clone(),
         };
 
-        tracing::debug!(
-            "Fetching list of Sentry artifacts from {}",
-            &query.index_url
-        );
-
-        let entries = {
-            let client = self.client.clone();
-            let query = query.clone();
-            let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
-
-            let future =
-                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
-
-            future.await.map_err(|_| CacheError::InternalError)??
+        let search_result = self.cached_sentry_search::<ArtifactResult>(query).await?;
+        let entries = match search_result {
+            SearchResult::Artifact(entries) => entries,
+            SearchResult::JustId(_) => {
+                tracing::error!("Cached `SearchResult` has wrong inner type, expected `Artifact`");
+                return Err(CacheError::InternalError);
+            }
         };
 
         Ok(entries)

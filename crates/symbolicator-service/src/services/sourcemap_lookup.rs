@@ -22,7 +22,7 @@ use tempfile::NamedTempFile;
 use url::Position;
 
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
-use crate::services::download::sentry::SearchArtifactResult;
+use crate::services::download::sentry::ArtifactResult;
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
@@ -367,7 +367,7 @@ struct ArtifactFetcher {
     scope: Scope,
 
     source: Arc<SentrySourceConfig>,
-    remote_artifacts: HashMap<String, SearchArtifactResult>,
+    remote_artifacts: HashMap<String, ArtifactResult>,
 
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: HashMap<String, CacheEntry<ArtifactBundle>>,
@@ -599,7 +599,7 @@ impl ArtifactFetcher {
 
         #[allow(unused)]
         enum FileResult {
-            Individual(SearchArtifactResult),
+            Individual(ArtifactResult),
             ArtifactBundle(String),
         }
         let results: Vec<FileResult> = if self.remote_artifacts.is_empty() {
@@ -656,7 +656,7 @@ impl ArtifactFetcher {
         })
     }
 
-    fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
+    fn find_remote_artifact(&self, url: &Url) -> Option<&ArtifactResult> {
         get_release_file_candidate_urls(url)
             .find_map(|candidate| self.remote_artifacts.get(&candidate))
     }
@@ -743,7 +743,7 @@ fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
 /// Joins together frames `abs_path` and discovered sourcemap reference.
 fn resolve_sourcemap_url(
     abs_path: &Url,
-    source_remote_artifact: &SearchArtifactResult,
+    source_remote_artifact: &ArtifactResult,
     source_artifact: &[u8],
 ) -> Option<SourceMapUrl> {
     if let Some(header) = source_remote_artifact.headers.get("Sourcemap") {
