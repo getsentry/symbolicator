@@ -44,18 +44,39 @@ enum SearchResult {
     Artifact(Vec<ArtifactResult>),
 }
 
-trait IntoSearchResult: Sized {
+trait ThroughSearchResult: Sized {
     fn into_search_result(vec: Vec<Self>) -> SearchResult;
+    fn from_search_result(res: SearchResult) -> CacheEntry<Vec<Self>>;
 }
 
-impl IntoSearchResult for JustIdResult {
+impl ThroughSearchResult for JustIdResult {
     fn into_search_result(vec: Vec<Self>) -> SearchResult {
         SearchResult::JustId(vec)
     }
+
+    fn from_search_result(res: SearchResult) -> CacheEntry<Vec<Self>> {
+        match res {
+            SearchResult::JustId(entries) => Ok(entries),
+            SearchResult::Artifact(_) => {
+                tracing::error!("Cached `SearchResult` has wrong inner type, expected `JustId`");
+                Err(CacheError::InternalError)
+            }
+        }
+    }
 }
-impl IntoSearchResult for ArtifactResult {
+impl ThroughSearchResult for ArtifactResult {
     fn into_search_result(vec: Vec<Self>) -> SearchResult {
         SearchResult::Artifact(vec)
+    }
+
+    fn from_search_result(res: SearchResult) -> CacheEntry<Vec<Self>> {
+        match res {
+            SearchResult::Artifact(entries) => Ok(entries),
+            SearchResult::JustId(_) => {
+                tracing::error!("Cached `SearchResult` has wrong inner type, expected `Artifact`");
+                Err(CacheError::InternalError)
+            }
+        }
     }
 }
 
@@ -133,9 +154,9 @@ impl SentryDownloader {
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search<T>(&self, query: SearchQuery) -> CacheEntry<SearchResult>
+    async fn cached_sentry_search<T>(&self, query: SearchQuery) -> CacheEntry<Vec<T>>
     where
-        T: IntoSearchResult + DeserializeOwned + Send + 'static,
+        T: ThroughSearchResult + DeserializeOwned + Send + 'static,
     {
         metric!(counter("source.sentry.query.access") += 1);
 
@@ -158,11 +179,13 @@ impl SentryDownloader {
             Ok(T::into_search_result(vec))
         });
 
-        self.lookup_cache
+        let res = self
+            .lookup_cache
             .entry(query)
             .or_insert_with_if(init, |entry| entry.is_err())
             .await
-            .into_value()
+            .into_value()?;
+        T::from_search_result(res)
     }
 
     pub async fn list_files(
@@ -218,18 +241,11 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search_result = self.cached_sentry_search::<JustIdResult>(query).await?;
-        let results = match search_result {
-            SearchResult::JustId(results) => results,
-            SearchResult::Artifact(_) => {
-                tracing::error!("Cached `SearchResult` has wrong inner type, expected `JustId`");
-                return Err(CacheError::InternalError);
-            }
-        };
+        let results = self.cached_sentry_search(query).await?;
 
         let file_ids = results
             .into_iter()
-            .map(|search_result| {
+            .map(|search_result: JustIdResult| {
                 SentryRemoteFile::new(source.clone(), search_result.id, SentryFileType::DebugFile)
                     .into()
             })
@@ -256,16 +272,7 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search_result = self.cached_sentry_search::<ArtifactResult>(query).await?;
-        let entries = match search_result {
-            SearchResult::Artifact(entries) => entries,
-            SearchResult::JustId(_) => {
-                tracing::error!("Cached `SearchResult` has wrong inner type, expected `Artifact`");
-                return Err(CacheError::InternalError);
-            }
-        };
-
-        Ok(entries)
+        self.cached_sentry_search(query).await
     }
 
     /// Downloads a source hosted on Sentry.
