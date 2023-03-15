@@ -112,8 +112,11 @@ impl SentryDownloader {
     ///
     /// If there are cached search results this skips the actual search.
     async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+        metric!(counter("source.sentry.dif_query.access") += 1);
+
         let query_ = query.clone();
         let init = Box::pin(async {
+            metric!(counter("source.sentry.dif_query.computation") += 1);
             tracing::debug!(
                 "Fetching list of Sentry debug files from {}",
                 &query_.index_url
