@@ -107,7 +107,13 @@ struct ModuleEntry {
 pub struct ModuleLookup {
     modules: Vec<ModuleEntry>,
     scope: Scope,
+    // TODO rename variable and type so it wouldn't get confused with source code. Maybe "Provider"?
     sources: Arc<[SourceConfig]>,
+}
+
+pub(crate) enum SetSourceContextResult {
+    Ok,
+    SourceMissing(url::Url),
 }
 
 impl ModuleLookup {
@@ -345,7 +351,7 @@ impl ModuleLookup {
         }
     }
 
-    /// Look up the corresponding SymCache based on the instruction `addr`.
+    /// Look up the corresponding SymCache based on the instruxction `addr`.
     pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
             let relative_addr = match addr_mode {
@@ -383,22 +389,59 @@ impl ModuleLookup {
             .collect()
     }
 
-    /// This looks up the source of the given line, plus `n` lines above/below.
-    pub fn get_context_lines(
+    /// Update the frame with source context, if available. In case the source code references an
+    /// URL that's not yet loaded, returns `SetContextLinesResult::SourceMissing(url)`.
+    pub(crate) fn set_source_context(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
-        frame: &RawFrame,
-    ) -> Option<(Vec<String>, String, Vec<String>)> {
+        frame: &mut RawFrame,
+    ) -> Option<SetSourceContextResult> {
         let abs_path = frame.abs_path.as_ref()?;
-        let lineno = frame.lineno? as usize;
+
+        // Short-circuit here before accessing the source. Line number is required to resolve the context.
+        // TODO how about setting source_link in the output? Shouldn't we still do that?
+        frame.lineno?;
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
         let source_descriptor = session.source_by_path(abs_path).ok()??;
-        // TODO: add support for source links via `source_descriptor.url()`
-        let source = source_descriptor.contents()?;
 
-        get_context_lines(source, lineno, None, None)
+        // Always set the source link URL if available (and it passes a simple validation).
+        frame.source_link = source_descriptor.url().and_then(|url| {
+            // Only allow http:// and https:// URLs to prevent file-system reads.
+            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
+            if url.starts_with("https://") || url.starts_with("http://") {
+                match url::Url::parse(url) {
+                    Ok(url) => Some(url.to_string()),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            }
+        });
+
+        // Set the actual source code, if embedded in the file.
+        if let Some(text) = source_descriptor.contents() {
+            return Self::set_context_lines_from_source(text, frame);
+        }
+
+        if let Some(Ok(url)) = frame.source_link.as_ref().map(|v| url::Url::parse(v)) {
+            return Some(SetSourceContextResult::SourceMissing(url));
+        }
+
+        None
+    }
+
+    pub(crate) fn set_context_lines_from_source(
+        source: &str,
+        frame: &mut RawFrame,
+    ) -> Option<SetSourceContextResult> {
+        let (pre_context, context_line, post_context) =
+            get_context_lines(source, frame.lineno?.try_into().ok()?, None, None)?;
+        frame.pre_context = pre_context;
+        frame.context_line = Some(context_line);
+        frame.post_context = post_context;
+        Some(SetSourceContextResult::Ok)
     }
 
     /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.

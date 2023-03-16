@@ -89,7 +89,7 @@ pub fn create_service(
 
     let sourcemaps = SourceMapService::new(
         objects.clone(),
-        sourcefiles_cache,
+        sourcefiles_cache.clone(),
         caches.sourcemap_caches,
         shared_cache,
         downloader,
@@ -102,6 +102,7 @@ pub fn create_service(
         ppdb_caches,
         caches.diagnostics,
         sourcemaps,
+        sourcefiles_cache,
     );
 
     Ok((symbolication, objects))
