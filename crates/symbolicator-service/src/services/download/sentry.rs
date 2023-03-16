@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use sentry::types::DebugId;
 use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
@@ -37,41 +38,63 @@ pub struct SearchArtifactResult {
     pub headers: BTreeMap<String, String>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+enum RawJsLookupResult {
+    // TODO: This is the raw payload as we deserialize it, with a raw `url` in it
+}
+
+#[derive(Clone, Debug)]
+pub enum JsLookupResult {
+    // TODO: We want to transform the `url` into a `RemoteFile` that we can use to download, taking
+    // care of the edge-case documented here:
+    // https://github.com/getsentry/sentry/pull/45757#pullrequestreview-1341676444
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct SearchQuery {
     index_url: Url,
     token: String,
 }
 
-/// An LRU cache sentry DIF index responses.
-type SentryIndexCache = moka::future::Cache<SearchQuery, CacheEntry<Vec<SearchResult>>>;
+/// An LRU Cache for Sentry DIF (Native Debug Files) lookups.
+type SentryDifCache = moka::future::Cache<SearchQuery, CacheEntry<Arc<[SearchResult]>>>;
+
+/// An LRU Cache for Sentry JS Artifact lookups.
+type SentryJsCache = moka::future::Cache<SearchQuery, CacheEntry<Arc<[RawJsLookupResult]>>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
-    index_cache: SentryIndexCache,
+    dif_cache: SentryDifCache,
+    js_cache: SentryJsCache,
     connect_timeout: Duration,
     streaming_timeout: Duration,
 }
 
 impl fmt::Debug for SentryDownloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(std::any::type_name::<Self>())
-            .field("connector", &format_args!("Addr(ClientConnector)"))
-            .field("index_cache", &self.index_cache)
+        f.debug_struct("SentryDownloader")
+            .field("dif_cache", &self.dif_cache.entry_count())
+            .field("js_cache", &self.js_cache.entry_count())
             .finish()
     }
 }
 
 impl SentryDownloader {
     pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
+        let dif_cache = SentryDifCache::builder()
+            .max_capacity(config.caches.in_memory.sentry_index_capacity)
+            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .build();
+        let js_cache = SentryJsCache::builder()
+            .max_capacity(config.caches.in_memory.sentry_index_capacity)
+            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .build();
         Self {
             client,
             runtime,
-            index_cache: SentryIndexCache::builder()
-                .max_capacity(config.caches.in_memory.sentry_index_capacity)
-                .time_to_live(config.caches.in_memory.sentry_index_ttl)
-                .build(),
+            dif_cache,
+            js_cache,
             connect_timeout: config.connect_timeout,
             streaming_timeout: config.streaming_timeout,
         }
@@ -81,7 +104,7 @@ impl SentryDownloader {
     async fn fetch_sentry_json<T>(
         client: &reqwest::Client,
         query: &SearchQuery,
-    ) -> CacheEntry<Vec<T>>
+    ) -> CacheEntry<Arc<[T]>>
     where
         T: DeserializeOwned,
     {
@@ -111,7 +134,7 @@ impl SentryDownloader {
     /// Return the search results.
     ///
     /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Vec<SearchResult>> {
+    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Arc<[SearchResult]>> {
         metric!(counter("source.sentry.dif_query.access") += 1);
 
         let query_ = query.clone();
@@ -132,7 +155,7 @@ impl SentryDownloader {
             future.await.map_err(|_| CacheError::InternalError)?
         });
 
-        self.index_cache
+        self.dif_cache
             .entry(query)
             .or_insert_with_if(init, |entry| entry.is_err())
             .await
@@ -194,10 +217,14 @@ impl SentryDownloader {
 
         let search = self.cached_sentry_search(query).await?;
         let file_ids = search
-            .into_iter()
+            .iter()
             .map(|search_result| {
-                SentryRemoteFile::new(source.clone(), search_result.id, SentryFileType::DebugFile)
-                    .into()
+                SentryRemoteFile::new(
+                    source.clone(),
+                    search_result.id.clone(),
+                    SentryFileType::DebugFile,
+                )
+                .into()
             })
             .collect();
 
@@ -239,7 +266,72 @@ impl SentryDownloader {
             future.await.map_err(|_| CacheError::InternalError)??
         };
 
-        Ok(entries)
+        Ok(entries.iter().cloned().collect())
+    }
+
+    // TODO: this should completely replace the `list_artifacts` above
+    pub async fn lookup_js_artifacts(
+        &self,
+        source: Arc<SentrySourceConfig>,
+        debug_ids: BTreeSet<DebugId>,
+        file_stems: BTreeSet<String>,
+        release: Option<&str>,
+        dist: Option<&str>,
+    ) -> CacheEntry<Vec<JsLookupResult>> {
+        let mut lookup_url = source.url.clone();
+        {
+            let mut query = lookup_url.query_pairs_mut();
+
+            if let Some(release) = release {
+                query.append_pair("release", release);
+            }
+            if let Some(dist) = dist {
+                query.append_pair("dist", dist);
+            }
+            for debug_id in debug_ids {
+                query.append_pair("debug_id", &debug_id.to_string());
+            }
+            for file_stem in file_stems {
+                query.append_pair("url", &file_stem);
+            }
+        }
+
+        let query = SearchQuery {
+            index_url: lookup_url,
+            token: source.token.clone(),
+        };
+
+        metric!(counter("source.sentry.js_lookup.access") += 1);
+
+        let query_ = query.clone();
+
+        let init = Box::pin(async {
+            metric!(counter("source.sentry.js_lookup.computation") += 1);
+            tracing::debug!(
+                "Fetching list of Sentry JS artifacts from {}",
+                &query_.index_url
+            );
+
+            let client = self.client.clone();
+            let future =
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            future.await.map_err(|_| CacheError::InternalError)?
+        });
+
+        let entries = self
+            .dif_cache
+            .entry(query)
+            .or_insert_with_if(init, |entry| entry.is_err())
+            .await
+            .into_value();
+
+        // TODO: map entries to `JsLookupResult`
+        drop(entries);
+        Ok(vec![])
     }
 
     /// Downloads a source hosted on Sentry.
