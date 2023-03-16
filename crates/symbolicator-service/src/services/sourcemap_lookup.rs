@@ -1,3 +1,31 @@
+//! The main logic to lookup and fetch JS/SourceMap-related files.
+//!
+//! # Lookup Logic
+//!
+//! At the start of processing an event, a call to [`SourceMapLookup::prefetch_artifacts`] will
+//! query the Sentry API with a Set of all the [`DebugId`]s, and the file stems for all the
+//! modules that do not have a [`DebugId`].
+//!
+//! An API request will feed into our list of [`ArtifactBundle`]s and potential artifact candidates.
+//!
+//! A request to [`SourceMapLookup::get_module`] will then fetch the minified source file, and its
+//! corresponding `SourceMap`, either by [`DebugId`], by a `Sourcemap` reference, or a
+//! `sourceMappingURL` comment within that file.
+//!
+//! Each file will be looked up first inside of all the open [`ArtifactBundle`]s.
+//! If the requested file has a [`DebugId`], the lookup will be performed based on that, and no
+//! other lookup methods will be tried.
+//! A file without [`DebugId`] will be looked up by a number of candidate URLs, see
+//! [`get_release_file_candidate_urls`]. It will be first looked up inside all the open
+//! [`ArtifactBundle`]s, falling back to individual artifacts, doing another API request if
+//! necessary.
+//! If none of the methods is successful, it will fall back to trying to load the file directly
+//! from the Web if the `allow_scraping` option is `true`.
+//!
+//! In an ideal situation, all the file requests would be served by a single API request and a
+//! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
+//! and web scraping should trend to `0` with time.
+
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::fs::File;
@@ -16,7 +44,7 @@ use symbolic::debuginfo::sourcebundle::{
 use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_sources::{
-    HttpRemoteFile, ObjectType, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
+    HttpRemoteFile, ObjectType, SentryFileType, SentryRemoteFile, SentrySourceConfig,
 };
 use tempfile::NamedTempFile;
 use url::Position;
@@ -155,6 +183,11 @@ impl SourceMapLookup {
             allow_scraping,
             remote_artifacts: Default::default(),
             artifact_bundles: Default::default(),
+            api_requests: 0,
+            queried_artifacts: 0,
+            fetched_artifacts: 0,
+            queried_bundles: 0,
+            scraped_files: 0,
         };
 
         Self {
@@ -231,6 +264,11 @@ impl SourceMapLookup {
             self.files_by_key.insert(key.clone(), file);
         }
         self.files_by_key.get(&key).expect("we should have a file")
+    }
+
+    /// Records various metrics for this Event, such as number of API requests.
+    pub fn record_metrics(&self) {
+        self.fetcher.record_metrics();
     }
 }
 
@@ -373,6 +411,13 @@ struct ArtifactFetcher {
     artifact_bundles: HashMap<String, CacheEntry<ArtifactBundle>>,
 
     allow_scraping: bool,
+
+    // various metrics:
+    api_requests: u64,
+    queried_artifacts: u64,
+    fetched_artifacts: u64,
+    queried_bundles: u64,
+    scraped_files: u64,
 }
 
 impl ArtifactFetcher {
@@ -496,6 +541,7 @@ impl ArtifactFetcher {
         // Otherwise, fall back to scraping from the Web.
         if self.allow_scraping {
             if let Some(url) = key.abs_path() {
+                self.scraped_files += 1;
                 let scraped_file = self
                     .sourcefiles_cache
                     .fetch_scoped_url(&self.scope, url.to_owned())
@@ -548,19 +594,23 @@ impl ArtifactFetcher {
         None
     }
 
-    async fn try_fetch_file_from_artifacts(&self, key: &FileKey) -> Option<CachedFile> {
+    async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFile> {
         let abs_path = key.abs_path()?;
-        let found_artifact = self.find_remote_artifact(abs_path)?;
+        let found_candidate = get_release_file_candidate_urls(abs_path)
+            .find_map(|candidate| self.remote_artifacts.get(&candidate))?;
 
-        let artifact = self
-            .fetch_artifact(self.source.clone(), found_artifact.id.clone())
-            .await;
+        self.fetched_artifacts += 1;
+
+        let source = self.source.clone();
+        let file_id = found_candidate.id.clone();
+        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
+        let artifact = self.sourcefiles_cache.fetch_file(&self.scope, file).await;
 
         // TODO(sourcemap): figure out error handling:
         let contents = artifact.ok()?;
 
         // Get the sourcemap reference from the artifact, either from metadata, or file contents
-        let sourcemap_url = resolve_sourcemap_url(abs_path, found_artifact, contents.as_bytes());
+        let sourcemap_url = resolve_sourcemap_url(abs_path, found_candidate, contents.as_bytes());
 
         Some(CachedFile {
             contents,
@@ -594,6 +644,7 @@ impl ArtifactFetcher {
         debug_ids: BTreeSet<DebugId>,
         file_stems: BTreeSet<String>,
     ) {
+        self.api_requests += 1;
         // TODO(sourcemap): this is where we want to hook in the not-yet-existing Sentry API
         let _ = debug_ids;
 
@@ -617,10 +668,12 @@ impl ArtifactFetcher {
         for file in results {
             match file {
                 FileResult::Individual(artifact) => {
+                    self.queried_artifacts += 1;
                     self.remote_artifacts
                         .insert(artifact.name.clone(), artifact);
                 }
                 FileResult::ArtifactBundle(url) => {
+                    self.queried_bundles += 1;
                     // thanks clippy, but I would love an `entry_by_ref` instead :-)
                     #[allow(clippy::map_entry)]
                     if !self.artifact_bundles.contains_key(&url) {
@@ -656,20 +709,6 @@ impl ArtifactFetcher {
         })
     }
 
-    fn find_remote_artifact(&self, url: &Url) -> Option<&SearchArtifactResult> {
-        get_release_file_candidate_urls(url)
-            .find_map(|candidate| self.remote_artifacts.get(&candidate))
-    }
-
-    async fn fetch_artifact(
-        &self,
-        source: Arc<SentrySourceConfig>,
-        file_id: SentryFileId,
-    ) -> CacheEntry<ByteViewString> {
-        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
-        self.sourcefiles_cache.fetch_file(&self.scope, file).await
-    }
-
     async fn fetch_sourcemap_cache(
         &self,
         source: ByteViewString,
@@ -688,6 +727,15 @@ impl ArtifactFetcher {
 
         let req = FetchSourceMapCacheInternal { source, sourcemap };
         self.sourcemap_caches.compute_memoized(req, cache_key).await
+    }
+
+    fn record_metrics(&self) {
+        metric!(time_raw("js.api_requests") = self.api_requests);
+        metric!(time_raw("js.queried_bundles") = self.queried_bundles);
+        metric!(time_raw("js.fetched_bundles") = self.artifact_bundles.len() as u64);
+        metric!(time_raw("js.queried_artifacts") = self.queried_artifacts);
+        metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
+        metric!(time_raw("js.scraped_files") = self.scraped_files);
     }
 }
 

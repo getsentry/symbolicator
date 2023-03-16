@@ -1,3 +1,33 @@
+//! Symbolication of JS/SourceMap requests.
+//!
+//! # Metrics
+//!
+//! - `js.unsymbolicated_frames`: The number of unsymbolicated frames, per event.
+//!   Should be `0` in the best case, as we obviously should symbolicate :-)
+//!
+//! - `js.missing_sourcescontent`: The number of frames, per event, that have no embedded sources.
+//!   Should be `0` in the best case, as the SourceMaps we use should have embedded sources.
+//!   If they don’t, we have to fall back to applying source context from elsewhere.
+//!
+//! - `js.api_requests`: The number of (potentially cached) API requests, per event.
+//!   Should be `1` in the best case, as `prefetch_artifacts` should provide us with everything we need.
+//!
+//! - `js.queried_bundles` / `js.fetched_bundles`: The number of artifact bundles the API gave us,
+//!   and the ones we ended up using.
+//!   Should both be `1` in the best case, as a single bundle should ideally serve all our needs.
+//!   Otherwise `queried` and `fetched` should be the same, as a difference between the two means
+//!   that multiple API requests gave us duplicated bundles.
+//!
+//! - `js.queried_artifacts` / `js.fetched_artifacts`: The number of individual artifacts the API
+//!   gave us, and the ones we ended up using.
+//!   Should both be `0` as we should not be using individual artifacts but rather bundles.
+//!   Otherwise, `queried` should be close to `fetched`. If they differ, it means the API is sending
+//!   us a lot of candidate artifacts that we don’t end up using, or multiple API requests give us
+//!   duplicated artifacts.
+//!
+//! - `js.scraped_files`: The number of files that were scraped from the Web.
+//!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
+
 use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
@@ -33,6 +63,9 @@ impl SymbolicationActor {
         let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
         lookup.prefetch_artifacts(&raw_stacktraces).await;
 
+        let mut unsymbolicated_frames = 0;
+        let mut missing_sourcescontent = 0;
+
         let num_stacktraces = raw_stacktraces.len();
         let mut stacktraces = Vec::with_capacity(num_stacktraces);
 
@@ -41,11 +74,14 @@ impl SymbolicationActor {
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
 
             for raw_frame in &mut raw_stacktrace.frames {
-                match symbolicate_js_frame(&mut lookup, raw_frame).await {
+                match symbolicate_js_frame(&mut lookup, raw_frame, &mut missing_sourcescontent)
+                    .await
+                {
                     Ok(frame) => {
                         symbolicated_frames.push(frame);
                     }
                     Err(status) => {
+                        unsymbolicated_frames += 1;
                         symbolicated_frames.push(SymbolicatedJsFrame {
                             status,
                             raw: raw_frame.clone(),
@@ -59,6 +95,10 @@ impl SymbolicationActor {
             });
         }
 
+        lookup.record_metrics();
+        metric!(time_raw("js.unsymbolicated_frames") = unsymbolicated_frames);
+        metric!(time_raw("js.missing_sourcescontent") = missing_sourcescontent);
+
         Ok(CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
@@ -69,6 +109,7 @@ impl SymbolicationActor {
 async fn symbolicate_js_frame(
     lookup: &mut SourceMapLookup,
     raw_frame: &mut JsFrame,
+    missing_sourcescontent: &mut u64,
 ) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
 
@@ -125,8 +166,10 @@ async fn symbolicate_js_frame(
         if let Some(file_source) = file.source() {
             apply_source_context(&mut frame.raw, file_source);
         } else if module.has_debug_id() {
+            *missing_sourcescontent += 1;
             tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
         } else {
+            *missing_sourcescontent += 1;
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file
             let filename = frame.raw.filename.as_ref();
