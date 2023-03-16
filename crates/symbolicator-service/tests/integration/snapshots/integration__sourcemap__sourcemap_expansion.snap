@@ -1,17 +1,16 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 78
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: missing_sourcemap
-        function: produceStack
+      - function: produceStack
         filename: index.html
         abs_path: "http://example.com/index.html"
         lineno: 6
         colno: 7
-      - status: symbolicated
-        function: test
+      - function: test
         filename: test.js
         abs_path: test.js
         lineno: 20
@@ -28,8 +27,7 @@ stacktraces:
           - ""
           - "  return test;"
           - "})();"
-      - status: symbolicated
-        function: invoke
+      - function: invoke
         filename: test.js
         abs_path: test.js
         lineno: 15
@@ -47,8 +45,7 @@ stacktraces:
           - "  function test() {"
           - "    var data = {failed: true, value: 42};"
           - "    invoke(data);"
-      - status: symbolicated
-        function: onFailure
+      - function: onFailure
         filename: test.js
         abs_path: test.js
         lineno: 5
@@ -96,4 +93,7 @@ raw_stacktraces:
         context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+errors:
+  - abs_path: "http://example.com/index.html"
+    kind: missing_sourcemap
 

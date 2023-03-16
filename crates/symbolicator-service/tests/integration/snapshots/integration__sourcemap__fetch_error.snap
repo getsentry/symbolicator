@@ -1,0 +1,40 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 255
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - filename: foo.js
+        abs_path: "https://s1.sentry-cdn.com/_static/dist/sentry/entrypoints/app.js"
+        lineno: 1
+        colno: 0
+        context_line: "(()=>{var e,_,s,a={},t={};function o(e){var _=t[e];if(void 0!==_)return _.exports;var s=t[e]={id:e,loaded:!1,exports:{}};return a[e].call(s. {snip}"
+        post_context:
+          - "//# sourceMappingURL=../sourcemaps/app.26663d2c7e75b426db472b81f7ce7414.js.map"
+      - filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 4
+        colno: 0
+raw_stacktraces:
+  - frames:
+      - filename: foo.js
+        abs_path: "https://s1.sentry-cdn.com/_static/dist/sentry/entrypoints/app.js"
+        lineno: 1
+        colno: 0
+        context_line: "(()=>{var e,_,s,a={},t={};function o(e){var _=t[e];if(void 0!==_)return _.exports;var s=t[e]={id:e,loaded:!1,exports:{}};return a[e].call(s. {snip}"
+        post_context:
+          - "//# sourceMappingURL=../sourcemaps/app.26663d2c7e75b426db472b81f7ce7414.js.map"
+      - filename: foo.js
+        abs_path: "http://example.com/foo.js"
+        lineno: 4
+        colno: 0
+errors:
+  - abs_path: "http://example.com/foo.js"
+    kind: missing_sourcemap
+  - abs_path: "https://s1.sentry-cdn.com/_static/dist/sentry/entrypoints/app.js"
+    kind:
+      invalid_location:
+        line: 1
+        col: 0
+

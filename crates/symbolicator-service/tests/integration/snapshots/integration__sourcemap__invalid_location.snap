@@ -1,0 +1,32 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 275
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - function: e
+        filename: test.min.js
+        abs_path: "http://example.com/test.min.js"
+        lineno: 0
+        colno: 0
+        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+raw_stacktraces:
+  - frames:
+      - function: e
+        filename: test.min.js
+        abs_path: "http://example.com/test.min.js"
+        lineno: 0
+        colno: 0
+        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+errors:
+  - abs_path: "http://example.com/test.min.js"
+    kind:
+      invalid_location:
+        line: 0
+        col: 0
+

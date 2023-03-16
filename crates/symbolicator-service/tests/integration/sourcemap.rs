@@ -337,3 +337,60 @@ async fn test_malformed_abs_path() {
 
     assert_snapshot!(response.unwrap());
 }
+
+#[tokio::test]
+async fn test_fetch_error() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = symbolicator_test::sourcemap_server("", |url, _query| json!([]));
+
+    let frames = r#"[{
+        "abs_path": "https://s1.sentry-cdn.com/_static/dist/sentry/entrypoints/app.js",
+        "filename": "foo.js",
+        "lineno": 1,
+        "colno": 0
+    }, {
+        "abs_path": "http://example.com/foo.js",
+        "filename": "foo.js",
+        "lineno": 4,
+        "colno": 0
+    }]"#;
+
+    let mut request = make_js_request(source, frames, None, None);
+    request.allow_scraping = true;
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
+//TODO: Create 10_ fixtures
+#[tokio::test]
+async fn test_invalid_location() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) =
+        symbolicator_test::sourcemap_server("01_sourcemap_expansion", |url, _query| {
+            json!([{
+                "type": "file",
+                "id": "1",
+                "url": format!("{url}/test.min.js"),
+                "abs_path": "~/test.min.js",
+            }, {
+                "type": "file",
+                "id": "2",
+                "url": format!("{url}/test.min.js.map"),
+                "abs_path": "~/test.min.js.map",
+            }])
+        });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/test.min.js",
+        "filename": "test.min.js",
+        "lineno": 0,
+        "colno": 0,
+        "function": "e"
+    }]"#;
+
+    let request = make_js_request(source, frames, None, None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}

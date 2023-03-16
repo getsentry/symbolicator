@@ -1,11 +1,11 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 212
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: symbolicated
-        function: add
+      - function: add
         filename: file1.js
         abs_path: file1.js
         lineno: 3
@@ -16,8 +16,7 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
-      - status: symbolicated
-        function: multiply
+      - function: multiply
         filename: file2.js
         abs_path: file2.js
         lineno: 3

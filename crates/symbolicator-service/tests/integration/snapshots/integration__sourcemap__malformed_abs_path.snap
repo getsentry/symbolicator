@@ -1,12 +1,11 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 228
+assertion_line: 231
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: invalid_abs_path
-        filename: test.js
+      - filename: test.js
         abs_path: http//example.com/test.min.js
         lineno: 1
         colno: 1
@@ -16,4 +15,7 @@ raw_stacktraces:
         abs_path: http//example.com/test.min.js
         lineno: 1
         colno: 1
+errors:
+  - abs_path: http//example.com/test.min.js
+    kind: invalid_abs_path
 
