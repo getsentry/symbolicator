@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/public_sources.rs
+assertion_line: 48
 expression: response.unwrap()
 ---
 stacktraces:
@@ -15,6 +16,7 @@ stacktraces:
         abs_path: /_/src/TimeZoneConverter/TZConvert.cs
         lineno: 115
         pre_context:
+          - "        if (TryIanaToWindows(ianaTimeZoneName, out var windowsTimeZoneId))"
           - "        {"
           - "            return windowsTimeZoneId;"
           - "        }"

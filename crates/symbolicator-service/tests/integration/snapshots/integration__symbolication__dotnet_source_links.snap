@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 201
 expression: response.unwrap()
 ---
 stacktraces:
@@ -14,6 +15,7 @@ stacktraces:
         abs_path: /_/src/libraries/Common/src/System/ThrowHelper.cs
         lineno: 24
         pre_context:
+          - "            [NotNull]"
           - "#endif"
           - "            object? argument,"
           - "            [CallerArgumentExpression(\"argument\")] string? paramName = null)"

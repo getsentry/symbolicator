@@ -11,6 +11,7 @@
 - Fully migrate `CacheKey` usage and remove legacy markers. ([#1043](https://github.com/getsentry/symbolicator/pull/1043))
 - Add support for in-memory caching. ([#1028](https://github.com/getsentry/symbolicator/pull/1028))
 - Add --log-level argument to `symbolicli`. ([#1074](https://github.com/getsentry/symbolicator/pull/1074))
+- Resolve source context from embedded source links (mainly in Portable PDBs) ([#1103](https://github.com/getsentry/symbolicator/pull/1103))
 
 ### Fixes
 
@@ -270,7 +271,7 @@
 ### Breaking Changes
 
 - The configuration file is stricter on which fields can be present, unknown fields will no longer be accepted and cause an error.
-- Configuring cache durations is now done using (humantime)[https://docs.rs/humantime/latest/humantime/fn.parse_duration.html].
+- Configuring cache durations is now done using [humantime](https://docs.rs/humantime/latest/humantime/fn.parse_duration.html).
 
 ## 0.1.0
 
