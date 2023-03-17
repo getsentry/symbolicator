@@ -147,26 +147,26 @@ impl SymbolicationActor {
             .fetch_sources(self.objects.clone(), &stacktraces)
             .await;
 
-        let debug_sessions = module_lookup.prepare_debug_sessions();
-
-        // Map collected source contexts to frames.
+        // Collect info about sources that are only available remotely.
         let mut remote_sources: HashMap<url::Url, Vec<&mut RawFrame>> = HashMap::new();
-        for trace in &mut stacktraces {
-            for frame in &mut trace.frames {
-                if let Some(SetSourceContextResult::SourceMissing(url)) =
-                    module_lookup.set_source_context(&debug_sessions, &mut frame.raw)
-                {
-                    if let Some(vec) = remote_sources.get_mut(&url) {
-                        vec.push(&mut frame.raw)
-                    } else {
-                        remote_sources.insert(url, vec![&mut frame.raw]);
+        {
+            let debug_sessions = module_lookup.prepare_debug_sessions();
+
+            // Map collected source contexts to frames.
+            for trace in &mut stacktraces {
+                for frame in &mut trace.frames {
+                    if let Some(SetSourceContextResult::SourceMissing(url)) =
+                        module_lookup.set_source_context(&debug_sessions, &mut frame.raw)
+                    {
+                        if let Some(vec) = remote_sources.get_mut(&url) {
+                            vec.push(&mut frame.raw)
+                        } else {
+                            remote_sources.insert(url, vec![&mut frame.raw]);
+                        }
                     }
                 }
             }
         }
-
-        // explicitly drop this, so it does not borrow `module_lookup` anymore.
-        drop(debug_sessions);
 
         if !remote_sources.is_empty() {
             let cache = self.sourcefiles_cache.as_ref();
