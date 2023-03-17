@@ -21,12 +21,13 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use axum::extract;
 use axum::routing::{get, get_service};
+use axum::{extract, Json};
 use axum::{middleware, Router};
 use reqwest::{StatusCode, Url};
 use serde::{Deserialize, Serialize};
-use tower_http::services::{ServeDir, ServeFile};
+use tokio::sync::OnceCell;
+use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::filter::EnvFilter;
 use tracing_subscriber::fmt::fmt;
@@ -256,36 +257,6 @@ impl Server {
             .nest_service("/symbols", serve_dir)
     }
 
-    /// Creates a new `Router` that is used in sourcemap symbolication tests.
-    pub fn sourcemap_router(fixtures_dir: &str) -> Router {
-        let artifact_logging_layer = TraceLayer::new_for_http().on_response(());
-
-        Router::new().nest(
-            "/files",
-            Router::new()
-                .route(
-                    "/",
-                    get_service(ServeFile::new(fixture(format!(
-                        "sourcemaps/{fixtures_dir}/files.json"
-                    )))),
-                )
-                /*
-                 * NOTE: We change the `id` of the artifact in the `files.json` to be the path
-                 * pointing to the file  placed in the fixtures dir.
-                 *
-                 * In the real world, it would be a number pointing to the same `/files/:id` route.
-                 *
-                 * eg. with `files.json` giving us `{ "id": 2, "name": "foo.js" }`
-                 * we use `/files/foo.js` instead of `/files/2` as it's easier to reason about.
-                 */
-                .route(
-                    "/*id",
-                    get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))))
-                        .layer(artifact_logging_layer),
-                ),
-        )
-    }
-
     /// Returns the sum total of hits and clears the hit counts.
     pub fn accesses(&self) -> usize {
         let map = std::mem::take(&mut *self.hits.lock().unwrap());
@@ -374,12 +345,39 @@ pub fn symbol_server() -> (Server, SourceConfig) {
     (server, source)
 }
 
-pub fn sourcemap_server(fixtures_dir: &str) -> (Server, SentrySourceConfig) {
-    let server = Server::with_router(Server::sourcemap_router(fixtures_dir));
+pub fn sourcemap_server<L>(fixtures_dir: &str, lookup: L) -> (Server, SentrySourceConfig)
+where
+    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + 'static,
+{
+    let tracing_layer = TraceLayer::new_for_http().on_response(());
+
+    let serve_dir = get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))));
+
+    let files_url = Arc::new(OnceCell::<Url>::new());
+
+    let router = {
+        let files_url = files_url.clone();
+        Router::new()
+            .route(
+                "/lookup",
+                get(move |extract::RawQuery(raw_query): extract::RawQuery| {
+                    let files_url = files_url.get().unwrap().as_str();
+                    let query = &raw_query.as_deref().unwrap_or_default();
+                    let res = lookup(files_url, query);
+                    async move { Json(res) }
+                }),
+            )
+            .nest_service("/files", serve_dir)
+            .layer(tracing_layer)
+    };
+
+    let server = Server::with_router(router);
+
+    files_url.set(server.url("/files")).unwrap();
 
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
-        url: server.url("/files/"),
+        url: server.url("/lookup"),
         token: String::new(),
     };
 

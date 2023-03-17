@@ -144,6 +144,7 @@ impl SourceMapLookup {
             source,
             modules,
             allow_scraping,
+            dist,
             ..
         } = request;
 
@@ -178,6 +179,7 @@ impl SourceMapLookup {
             download_svc,
             scope,
             source,
+            dist,
             allow_scraping,
             remote_artifacts: Default::default(),
             artifact_bundles: Default::default(),
@@ -406,14 +408,15 @@ struct ArtifactFetcher {
     download_svc: Arc<DownloadService>,
 
     scope: Scope,
-
     source: Arc<SentrySourceConfig>,
-    remote_artifacts: HashMap<String, IndividualArtifact>,
 
+    dist: Option<String>,
+    allow_scraping: bool,
+
+    /// The set of individual artifacts, by their `url`.
+    remote_artifacts: HashMap<String, IndividualArtifact>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
-
-    allow_scraping: bool,
 
     // various metrics:
     api_requests: u64,
@@ -648,16 +651,23 @@ impl ArtifactFetcher {
     ) {
         self.api_requests += 1;
 
-        let Ok(results) = self.download_svc.lookup_js_artifacts(
-            self.source.clone(),
-            debug_ids,
-            file_stems,
-            // TODO(sourcemap): actually thread these values through
-            "".into(),
-            "".into(),
-        ).await else {
-            // TODO(sourcemap): handle errors
-            return;
+        let results = match self
+            .download_svc
+            .lookup_js_artifacts(
+                self.source.clone(),
+                debug_ids,
+                file_stems,
+                // TODO(sourcemap): actually thread these values through
+                None,
+                self.dist.as_deref(),
+            )
+            .await
+        {
+            Ok(results) => results,
+            Err(_err) => {
+                // TODO(sourcemap): handle errors
+                return;
+            }
         };
 
         for file in results {

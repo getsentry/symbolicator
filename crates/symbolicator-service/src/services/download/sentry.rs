@@ -29,6 +29,7 @@ struct SearchResult {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 enum RawJsLookupResult {
     Bundle {
         id: SentryFileId,
