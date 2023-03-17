@@ -15,7 +15,7 @@ use serde::Deserialize;
 use url::Url;
 
 use symbolicator_sources::{
-    ObjectId, RemoteFile, SentryFileId, SentryFileType, SentryRemoteFile, SentrySourceConfig,
+    HttpRemoteFile, ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
 
 use super::{FileType, USER_AGENT};
@@ -40,14 +40,36 @@ pub struct SearchArtifactResult {
 
 #[derive(Clone, Debug, Deserialize)]
 enum RawJsLookupResult {
-    // TODO: This is the raw payload as we deserialize it, with a raw `url` in it
+    Bundle {
+        id: SentryFileId,
+        url: Url,
+    },
+    File {
+        id: SentryFileId,
+        url: Url,
+        abs_path: String,
+        #[serde(default)]
+        headers: BTreeMap<String, String>,
+    },
 }
 
+/// The Result of looking up JS Artifacts.
 #[derive(Clone, Debug)]
 pub enum JsLookupResult {
-    // TODO: We want to transform the `url` into a `RemoteFile` that we can use to download, taking
-    // care of the edge-case documented here:
-    // https://github.com/getsentry/sentry/pull/45757#pullrequestreview-1341676444
+    /// This is an `ArtifactBundle`.
+    Bundle {
+        /// The [`RemoteFile`] to download this bundle from.
+        remote_file: RemoteFile,
+    },
+    /// This is an individual artifact file.
+    Individual {
+        /// The [`RemoteFile`] to download this artifact from.
+        remote_file: RemoteFile,
+        /// The absolute path (also called `url`) of the artifact.
+        abs_path: String,
+        /// Arbitrary headers of this file, such as a `Sourcemap` reference.
+        headers: BTreeMap<String, String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -219,12 +241,7 @@ impl SentryDownloader {
         let file_ids = search
             .iter()
             .map(|search_result| {
-                SentryRemoteFile::new(
-                    source.clone(),
-                    search_result.id.clone(),
-                    SentryFileType::DebugFile,
-                )
-                .into()
+                SentryRemoteFile::new(source.clone(), search_result.id.clone(), None).into()
             })
             .collect();
 
@@ -323,15 +340,30 @@ impl SentryDownloader {
         });
 
         let entries = self
-            .dif_cache
+            .js_cache
             .entry(query)
             .or_insert_with_if(init, |entry| entry.is_err())
             .await
-            .into_value();
+            .into_value()?;
 
-        // TODO: map entries to `JsLookupResult`
-        drop(entries);
-        Ok(vec![])
+        Ok(entries
+            .iter()
+            .map(|raw| match raw {
+                RawJsLookupResult::Bundle { id, url } => JsLookupResult::Bundle {
+                    remote_file: make_remote_file(&source, id, url),
+                },
+                RawJsLookupResult::File {
+                    id,
+                    url,
+                    abs_path,
+                    headers,
+                } => JsLookupResult::Individual {
+                    remote_file: make_remote_file(&source, id, url),
+                    abs_path: abs_path.clone(),
+                    headers: headers.clone(),
+                },
+            })
+            .collect())
     }
 
     /// Downloads a source hosted on Sentry.
@@ -360,6 +392,27 @@ impl SentryDownloader {
     }
 }
 
+/// Transforms the gives `url` into a [`RemoteFile`].
+///
+/// Depending on the `source`, this creates either a [`SentryRemoteFile`], or a
+/// [`HttpRemoteFile`].
+/// The problem here is being forward-compatible to a future in which the Sentry API returns
+/// pre-authenticated Urls on some external file storage service.
+/// Whereas right now, these files are still being served from a Sentry API endpoint, which
+/// needs to be authenticated via a `token` that we do not want to leak to any public Url, as
+/// well as using a restricted IP that is being blocked for arbitrary HTTP files.
+fn make_remote_file(
+    source: &Arc<SentrySourceConfig>,
+    file_id: &SentryFileId,
+    url: &Url,
+) -> RemoteFile {
+    if url.as_str().starts_with(source.url.as_str()) {
+        SentryRemoteFile::new(Arc::clone(source), file_id.clone(), Some(url.clone())).into()
+    } else {
+        HttpRemoteFile::from_url(url.clone()).into()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,11 +426,8 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteFile::new(
-            Arc::new(source),
-            SentryFileId("abc123".into()),
-            SentryFileType::DebugFile,
-        );
+        let file_source =
+            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -389,11 +439,8 @@ mod tests {
             url: Url::parse("https://example.net/endpoint/").unwrap(),
             token: "token".into(),
         };
-        let file_source = SentryRemoteFile::new(
-            Arc::new(source),
-            SentryFileId("abc123".into()),
-            SentryFileType::DebugFile,
-        );
+        let file_source =
+            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
         let uri = file_source.uri();
         assert_eq!(
             uri,

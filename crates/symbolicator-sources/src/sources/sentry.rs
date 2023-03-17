@@ -25,7 +25,7 @@ pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
     pub(crate) file_id: SentryFileId,
-    pub(crate) r#type: SentryFileType,
+    url: Url,
 }
 
 impl From<SentryRemoteFile> for RemoteFile {
@@ -36,51 +36,32 @@ impl From<SentryRemoteFile> for RemoteFile {
 
 impl SentryRemoteFile {
     /// Creates a new [`SentryRemoteFile`].
-    pub fn new(
-        source: Arc<SentrySourceConfig>,
-        file_id: SentryFileId,
-        r#type: SentryFileType,
-    ) -> Self {
+    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId, url: Option<Url>) -> Self {
+        let url = url.unwrap_or_else(|| {
+            let mut url = source.url.clone();
+            url.query_pairs_mut().append_pair("id", &file_id.0);
+            url
+        });
+
         Self {
             source,
             file_id,
-            r#type,
+            url,
         }
     }
 
     /// Gives a synthetic [`RemoteFileUri`] for this file.
     pub fn uri(&self) -> RemoteFileUri {
-        match self.r#type {
-            SentryFileType::DebugFile => {
-                format!("sentry://project_debug_file/{}", self.file_id).into()
-            }
-            SentryFileType::ReleaseArtifact => {
-                format!("sentry://project_release_artifact/{}", self.file_id).into()
-            }
-        }
+        format!("sentry://project_debug_file/{}", self.file_id).into()
     }
 
     /// Returns the URL from which to download this object file.
     pub fn url(&self) -> Url {
-        match self.r#type {
-            SentryFileType::DebugFile => {
-                let mut url = self.source.url.clone();
-                url.query_pairs_mut().append_pair("id", &self.file_id.0);
-                url
-            }
-            SentryFileType::ReleaseArtifact => {
-                let mut url = self.source.url.clone();
-                url = url
-                    .join(&format!("{}/", &self.file_id.to_string()))
-                    .unwrap();
-                url.query_pairs_mut().append_pair("download", "1");
-                url
-            }
-        }
+        self.url.clone()
     }
 
     pub(crate) fn host(&self) -> String {
-        self.source.url.to_string()
+        self.url.to_string()
     }
 }
 
@@ -92,13 +73,4 @@ impl fmt::Display for SentryFileId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
-}
-
-/// Available file types stored on Sentry servers.
-#[derive(Debug, Clone)]
-pub enum SentryFileType {
-    /// Native Debug Information File
-    DebugFile,
-    /// JavaScript Release Artifact (SourceCode/SourceMap)
-    ReleaseArtifact,
 }
