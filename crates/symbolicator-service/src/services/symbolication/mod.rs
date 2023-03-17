@@ -147,27 +147,30 @@ impl SymbolicationActor {
             .fetch_sources(self.objects.clone(), &stacktraces)
             .await;
 
-        // Collect info about sources that are only available remotely.
+        // Map collected source contexts to frames and collect URLs for remote source links.
         let mut remote_sources: HashMap<url::Url, Vec<&mut RawFrame>> = HashMap::new();
         {
             let debug_sessions = module_lookup.prepare_debug_sessions();
 
-            // Map collected source contexts to frames.
             for trace in &mut stacktraces {
                 for frame in &mut trace.frames {
                     if let Some(SetSourceContextResult::SourceMissing(url)) =
                         module_lookup.set_source_context(&debug_sessions, &mut frame.raw)
                     {
-                        if let Some(vec) = remote_sources.get_mut(&url) {
-                            vec.push(&mut frame.raw)
-                        } else {
-                            remote_sources.insert(url, vec![&mut frame.raw]);
+                        // Only resolve source context from URLs if the frame is "in-app".
+                        if frame.raw.in_app.unwrap_or(false) {
+                            if let Some(vec) = remote_sources.get_mut(&url) {
+                                vec.push(&mut frame.raw)
+                            } else {
+                                remote_sources.insert(url, vec![&mut frame.raw]);
+                            }
                         }
                     }
                 }
             }
         }
 
+        // Download remote sources and update contexts.
         if !remote_sources.is_empty() {
             let cache = self.sourcefiles_cache.as_ref();
             let scope_clone = &scope.clone();
@@ -426,6 +429,7 @@ fn symbolicate_native_frame(
                     Language::Unknown => None,
                     language => Some(language),
                 },
+                in_app: None,
                 trust: frame.trust,
             },
         });

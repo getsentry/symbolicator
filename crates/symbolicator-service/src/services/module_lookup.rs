@@ -351,7 +351,7 @@ impl ModuleLookup {
         }
     }
 
-    /// Look up the corresponding SymCache based on the instruxction `addr`.
+    /// Look up the corresponding SymCache based on the instruction `addr`.
     pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
             let relative_addr = match addr_mode {
@@ -425,6 +425,7 @@ impl ModuleLookup {
             return Self::set_context_lines_from_source(text, frame);
         }
 
+        // Let caller know this source code can be resolved from a remote URL.
         if let Some(Ok(url)) = frame.source_link.as_ref().map(|v| url::Url::parse(v)) {
             return Some(SetSourceContextResult::SourceMissing(url));
         }
