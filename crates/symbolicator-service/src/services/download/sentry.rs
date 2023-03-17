@@ -348,7 +348,7 @@ impl SentryDownloader {
     }
 }
 
-/// Transforms the gives `url` into a [`RemoteFile`].
+/// Transforms the given `url` into a [`RemoteFile`].
 ///
 /// Depending on the `source`, this creates either a [`SentryRemoteFile`], or a
 /// [`HttpRemoteFile`].
