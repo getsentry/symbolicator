@@ -29,16 +29,6 @@ struct SearchResult {
 }
 
 #[derive(Clone, Debug, Deserialize)]
-pub struct SearchArtifactResult {
-    pub id: SentryFileId,
-    pub name: String,
-    pub sha1: String,
-    pub dist: Option<String>,
-    #[serde(default)]
-    pub headers: BTreeMap<String, String>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
 enum RawJsLookupResult {
     Bundle {
         id: SentryFileId,
@@ -49,26 +39,28 @@ enum RawJsLookupResult {
         url: Url,
         abs_path: String,
         #[serde(default)]
-        headers: BTreeMap<String, String>,
+        headers: ArtifactHeaders,
     },
 }
+
+pub type ArtifactHeaders = BTreeMap<String, String>;
 
 /// The Result of looking up JS Artifacts.
 #[derive(Clone, Debug)]
 pub enum JsLookupResult {
     /// This is an `ArtifactBundle`.
-    Bundle {
+    ArtifactBundle {
         /// The [`RemoteFile`] to download this bundle from.
         remote_file: RemoteFile,
     },
     /// This is an individual artifact file.
-    Individual {
+    IndividualArtifact {
         /// The [`RemoteFile`] to download this artifact from.
         remote_file: RemoteFile,
         /// The absolute path (also called `url`) of the artifact.
         abs_path: String,
         /// Arbitrary headers of this file, such as a `Sourcemap` reference.
-        headers: BTreeMap<String, String>,
+        headers: ArtifactHeaders,
     },
 }
 
@@ -248,45 +240,8 @@ impl SentryDownloader {
         Ok(file_ids)
     }
 
-    pub async fn list_artifacts(
-        &self,
-        source: Arc<SentrySourceConfig>,
-        file_stems: BTreeSet<String>,
-    ) -> CacheEntry<Vec<SearchArtifactResult>> {
-        let mut index_url = source.url.clone();
-
-        // Pre-filter required artifacts, so it limits number of pages we have to fetch
-        // in order to collect all the necessary data.
-        for stem in file_stems {
-            index_url.query_pairs_mut().append_pair("query", &stem);
-        }
-
-        let query = SearchQuery {
-            index_url,
-            token: source.token.clone(),
-        };
-
-        tracing::debug!(
-            "Fetching list of Sentry artifacts from {}",
-            &query.index_url
-        );
-
-        let entries = {
-            let client = self.client.clone();
-            let query = query.clone();
-            let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await };
-
-            let future =
-                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
-
-            future.await.map_err(|_| CacheError::InternalError)??
-        };
-
-        Ok(entries.iter().cloned().collect())
-    }
-
-    // TODO: this should completely replace the `list_artifacts` above
+    /// Look up a list of bundles or individual artifact files covering the
+    /// `debug_ids` and `file_stems` (using the `release` + `dist`).
     pub async fn lookup_js_artifacts(
         &self,
         source: Arc<SentrySourceConfig>,
@@ -349,7 +304,7 @@ impl SentryDownloader {
         Ok(entries
             .iter()
             .map(|raw| match raw {
-                RawJsLookupResult::Bundle { id, url } => JsLookupResult::Bundle {
+                RawJsLookupResult::Bundle { id, url } => JsLookupResult::ArtifactBundle {
                     remote_file: make_remote_file(&source, id, url),
                 },
                 RawJsLookupResult::File {
@@ -357,7 +312,7 @@ impl SentryDownloader {
                     url,
                     abs_path,
                     headers,
-                } => JsLookupResult::Individual {
+                } => JsLookupResult::IndividualArtifact {
                     remote_file: make_remote_file(&source, id, url),
                     abs_path: abs_path.clone(),
                     headers: headers.clone(),
