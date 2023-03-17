@@ -78,6 +78,7 @@ impl SentryDownloader {
     }
 
     /// Make a request to sentry, parse the result as a JSON SearchResult list.
+    #[tracing::instrument(skip_all)]
     async fn fetch_sentry_json<T>(
         client: &reqwest::Client,
         query: &SearchQuery,
