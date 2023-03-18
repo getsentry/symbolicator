@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::future;
-use lazy_static::__Deref;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
@@ -12,9 +11,7 @@ use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
 use crate::caching::{Cache, CacheError};
 use crate::services::caches::SourceFilesCache;
 use crate::services::cficaches::CfiCacheActor;
-use crate::services::module_lookup::{
-    CacheFileEntry, CacheLookupResult, ModuleLookup, SetSourceContextResult,
-};
+use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
 use crate::services::sourcemap::SourceMapService;
@@ -154,8 +151,8 @@ impl SymbolicationActor {
 
             for trace in &mut stacktraces {
                 for frame in &mut trace.frames {
-                    if let Some(SetSourceContextResult::SourceMissing(url)) =
-                        module_lookup.set_source_context(&debug_sessions, &mut frame.raw)
+                    if let Some(url) =
+                        module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw)
                     {
                         // Only resolve source context from URLs if the frame is "in-app".
                         if frame.raw.in_app.unwrap_or(false) {
@@ -173,14 +170,13 @@ impl SymbolicationActor {
         // Download remote sources and update contexts.
         if !remote_sources.is_empty() {
             let cache = self.sourcefiles_cache.as_ref();
-            let scope_clone = &scope.clone();
-            let futures = remote_sources.into_iter().map(|(url, frames)| async move {
+            let futures = remote_sources.into_iter().map(|(url, frames)| async {
                 if let Ok(source) = cache
-                    .fetch_file(scope_clone, HttpRemoteFile::from_url(url).into())
+                    .fetch_file(&scope, HttpRemoteFile::from_url(url).into())
                     .await
                 {
                     for frame in frames {
-                        ModuleLookup::set_context_lines_from_source(source.deref(), frame);
+                        ModuleLookup::set_source_context(&source, frame);
                     }
                 }
             });

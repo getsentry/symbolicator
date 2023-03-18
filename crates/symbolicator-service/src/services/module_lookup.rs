@@ -107,13 +107,7 @@ struct ModuleEntry {
 pub struct ModuleLookup {
     modules: Vec<ModuleEntry>,
     scope: Scope,
-    // TODO rename variable and type so it wouldn't get confused with source code. Maybe "Provider"?
     sources: Arc<[SourceConfig]>,
-}
-
-pub(crate) enum SetSourceContextResult {
-    Ok,
-    SourceMissing(url::Url),
 }
 
 impl ModuleLookup {
@@ -391,15 +385,16 @@ impl ModuleLookup {
 
     /// Update the frame with source context, if available. In case the source code references an
     /// URL that's not yet loaded, returns `SetContextLinesResult::SourceMissing(url)`.
-    pub(crate) fn set_source_context(
+    pub(crate) fn try_set_source_context(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
         frame: &mut RawFrame,
-    ) -> Option<SetSourceContextResult> {
+    ) -> Option<url::Url> {
         let abs_path = frame.abs_path.as_ref()?;
 
         // Short-circuit here before accessing the source. Line number is required to resolve the context.
         // TODO how about setting source_link in the output? Shouldn't we still do that?
+        // Related: https://github.com/getsentry/sentry/issues/44015
         frame.lineno?;
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
@@ -407,42 +402,35 @@ impl ModuleLookup {
         let source_descriptor = session.source_by_path(abs_path).ok()??;
 
         // Always set the source link URL if available (and it passes a simple validation).
-        frame.source_link = source_descriptor.url().and_then(|url| {
+        let filtered_url = source_descriptor.url().and_then(|url| {
             // Only allow http:// and https:// URLs to prevent file-system reads.
             // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
             if url.starts_with("https://") || url.starts_with("http://") {
-                match url::Url::parse(url) {
-                    Ok(url) => Some(url.to_string()),
-                    Err(_) => None,
-                }
+                url::Url::parse(url).ok()
             } else {
                 None
             }
         });
 
-        // Set the actual source code, if embedded in the file.
+        frame.source_link = filtered_url.as_ref().map(url::Url::to_string);
+
         if let Some(text) = source_descriptor.contents() {
-            return Self::set_context_lines_from_source(text, frame);
+            // Set the actual source code, if embedded in the file.
+            Self::set_source_context(text, frame);
+            None
+        } else {
+            // Let caller know this source code may be resolved from a remote URL.
+            filtered_url
         }
-
-        // Let caller know this source code can be resolved from a remote URL.
-        if let Some(Ok(url)) = frame.source_link.as_ref().map(|v| url::Url::parse(v)) {
-            return Some(SetSourceContextResult::SourceMissing(url));
-        }
-
-        None
     }
 
-    pub(crate) fn set_context_lines_from_source(
-        source: &str,
-        frame: &mut RawFrame,
-    ) -> Option<SetSourceContextResult> {
+    pub(crate) fn set_source_context(source: &str, frame: &mut RawFrame) -> Option<()> {
         let (pre_context, context_line, post_context) =
             get_context_lines(source, frame.lineno?.try_into().ok()?, None, None)?;
         frame.pre_context = pre_context;
         frame.context_line = Some(context_line);
         frame.post_context = post_context;
-        Some(SetSourceContextResult::Ok)
+        Some(())
     }
 
     /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.
