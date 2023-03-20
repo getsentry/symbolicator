@@ -383,8 +383,8 @@ impl ModuleLookup {
             .collect()
     }
 
-    /// Update the frame with source context, if available. In case the source code references an
-    /// URL that's not yet loaded, returns `SetContextLinesResult::SourceMissing(url)`.
+    /// Update the frame with source context, if available.
+    /// Returns an `Url` in case the source code has to be fetched.
     pub(crate) fn try_set_source_context(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
