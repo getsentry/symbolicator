@@ -383,22 +383,54 @@ impl ModuleLookup {
             .collect()
     }
 
-    /// This looks up the source of the given line, plus `n` lines above/below.
-    pub fn get_context_lines(
+    /// Update the frame with source context, if available.
+    /// Returns an `Url` in case the source code has to be fetched.
+    pub(crate) fn try_set_source_context(
         &self,
         debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
-        frame: &RawFrame,
-    ) -> Option<(Vec<String>, String, Vec<String>)> {
+        frame: &mut RawFrame,
+    ) -> Option<url::Url> {
         let abs_path = frame.abs_path.as_ref()?;
-        let lineno = frame.lineno? as usize;
+
+        // Short-circuit here before accessing the source. Line number is required to resolve the context.
+        // TODO how about setting source_link in the output? Shouldn't we still do that?
+        // Related: https://github.com/getsentry/sentry/issues/44015
+        frame.lineno?;
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
         let source_descriptor = session.source_by_path(abs_path).ok()??;
-        // TODO: add support for source links via `source_descriptor.url()`
-        let source = source_descriptor.contents()?;
 
-        get_context_lines(source, lineno, None, None)
+        // Always set the source link URL if available (and it passes a simple validation).
+        let filtered_url = source_descriptor.url().and_then(|url| {
+            // Only allow http:// and https:// URLs to prevent file-system reads.
+            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
+            if url.starts_with("https://") || url.starts_with("http://") {
+                url::Url::parse(url).ok()
+            } else {
+                None
+            }
+        });
+
+        frame.source_link = filtered_url.as_ref().map(url::Url::to_string);
+
+        if let Some(text) = source_descriptor.contents() {
+            // Set the actual source code, if embedded in the file.
+            Self::set_source_context(text, frame);
+            None
+        } else {
+            // Let caller know this source code may be resolved from a remote URL.
+            filtered_url
+        }
+    }
+
+    pub(crate) fn set_source_context(source: &str, frame: &mut RawFrame) -> Option<()> {
+        let (pre_context, context_line, post_context) =
+            get_context_lines(source, frame.lineno?.try_into().ok()?, None, None)?;
+        frame.pre_context = pre_context;
+        frame.context_line = Some(context_line);
+        frame.post_context = post_context;
+        Some(())
     }
 
     /// Looks up the [`ModuleEntry`] for the given `addr` and `addr_mode`.

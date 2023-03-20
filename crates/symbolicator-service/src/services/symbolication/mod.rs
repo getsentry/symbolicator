@@ -1,12 +1,15 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use futures::future;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
 use symbolic::symcache::SymCache;
-use symbolicator_sources::{ObjectType, SourceConfig};
+use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
+use crate::services::caches::SourceFilesCache;
 use crate::services::cficaches::CfiCacheActor;
 use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use crate::services::objects::ObjectsActor;
@@ -83,6 +86,7 @@ pub struct SymbolicationActor {
     ppdb_caches: PortablePdbCacheActor,
     diagnostics_cache: Cache,
     sourcemaps: SourceMapService,
+    sourcefiles_cache: Arc<SourceFilesCache>,
 }
 
 impl SymbolicationActor {
@@ -93,6 +97,7 @@ impl SymbolicationActor {
         ppdb_caches: PortablePdbCacheActor,
         diagnostics_cache: Cache,
         sourcemaps: SourceMapService,
+        sourcefiles_cache: Arc<SourceFilesCache>,
     ) -> Self {
         SymbolicationActor {
             objects,
@@ -101,6 +106,7 @@ impl SymbolicationActor {
             ppdb_caches,
             diagnostics_cache,
             sourcemaps,
+            sourcefiles_cache,
         }
     }
 
@@ -119,7 +125,7 @@ impl SymbolicationActor {
             ..
         } = request;
 
-        let mut module_lookup = ModuleLookup::new(scope, sources, modules.into_iter());
+        let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules.into_iter());
         module_lookup
             .fetch_caches(
                 self.symcaches.clone(),
@@ -138,21 +144,44 @@ impl SymbolicationActor {
             .fetch_sources(self.objects.clone(), &stacktraces)
             .await;
 
-        let debug_sessions = module_lookup.prepare_debug_sessions();
+        // Map collected source contexts to frames and collect URLs for remote source links.
+        let mut remote_sources: HashMap<url::Url, Vec<&mut RawFrame>> = HashMap::new();
+        {
+            let debug_sessions = module_lookup.prepare_debug_sessions();
 
-        for trace in &mut stacktraces {
-            for frame in &mut trace.frames {
-                if let Some((pre_context, context_line, post_context)) =
-                    module_lookup.get_context_lines(&debug_sessions, &frame.raw)
-                {
-                    frame.raw.pre_context = pre_context;
-                    frame.raw.context_line = Some(context_line);
-                    frame.raw.post_context = post_context;
+            for trace in &mut stacktraces {
+                for frame in &mut trace.frames {
+                    if let Some(url) =
+                        module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw)
+                    {
+                        // Only resolve source context from URLs if the frame is "in-app".
+                        if frame.raw.in_app.unwrap_or(false) {
+                            if let Some(vec) = remote_sources.get_mut(&url) {
+                                vec.push(&mut frame.raw)
+                            } else {
+                                remote_sources.insert(url, vec![&mut frame.raw]);
+                            }
+                        }
+                    }
                 }
             }
         }
-        // explicitly drop this, so it does not borrow `module_lookup` anymore.
-        drop(debug_sessions);
+
+        // Download remote sources and update contexts.
+        if !remote_sources.is_empty() {
+            let cache = self.sourcefiles_cache.as_ref();
+            let futures = remote_sources.into_iter().map(|(url, frames)| async {
+                if let Ok(source) = cache
+                    .fetch_file(&scope, HttpRemoteFile::from_url(url).into())
+                    .await
+                {
+                    for frame in frames {
+                        ModuleLookup::set_source_context(&source, frame);
+                    }
+                }
+            });
+            future::join_all(futures).await;
+        }
 
         // bring modules back into the original order
         let modules = module_lookup.into_inner();
@@ -390,11 +419,13 @@ fn symbolicate_native_frame(
                 pre_context: vec![],
                 context_line: None,
                 post_context: vec![],
+                source_link: None,
                 sym_addr: None,
                 lang: match func.language() {
                     Language::Unknown => None,
                     language => Some(language),
                 },
+                in_app: None,
                 trust: frame.trust,
             },
         });

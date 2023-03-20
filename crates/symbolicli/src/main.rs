@@ -696,6 +696,10 @@ mod event {
         #[serde(default)]
         post_context: Vec<String>,
 
+        source_link: Option<String>,
+
+        in_app: Option<bool>,
+
         #[serde(default)]
         trust: FrameTrust,
     }
@@ -717,6 +721,8 @@ mod event {
             pre_context: value.pre_context,
             context_line: value.context_line,
             post_context: value.post_context,
+            source_link: value.source_link,
+            in_app: value.in_app,
             trust: value.trust,
         })
     }
