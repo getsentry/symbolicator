@@ -320,8 +320,7 @@ async fn test_indexed_sourcemap_source_expansion() {
 #[tokio::test]
 async fn test_malformed_abs_path() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("08_malformed_abs_path", |_url, _query| json!([]));
+    let (_srv, source) = symbolicator_test::sourcemap_server("", |_url, _query| json!([]));
 
     // Missing colon was removed on purpose.
     let frames = r#"[{
