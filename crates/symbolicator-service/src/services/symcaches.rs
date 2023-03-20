@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
+use sentry::{Hub, SentryFutureExt};
 use tempfile::NamedTempFile;
 
 use symbolic::common::{ByteView, SelfCell};
@@ -154,6 +155,7 @@ impl SymCacheActor {
                                 handle.scope().clone(),
                                 request.sources.clone(),
                             )
+                            .bind_hub(Hub::new_from_top(Hub::current()))
                             .await
                     }
                     None => None,
@@ -171,6 +173,7 @@ impl SymCacheActor {
                                 handle.scope().clone(),
                                 request.sources.clone(),
                             )
+                            .bind_hub(Hub::new_from_top(Hub::current()))
                             .await
                     }
                     None => None,
