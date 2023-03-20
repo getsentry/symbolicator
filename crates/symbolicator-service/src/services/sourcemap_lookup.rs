@@ -177,12 +177,16 @@ impl SourceMapLookup {
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
+
             scope,
             source,
+
             dist,
             allow_scraping,
-            remote_artifacts: Default::default(),
+
             artifact_bundles: Default::default(),
+            individual_artifacts: Default::default(),
+
             api_requests: 0,
             queried_artifacts: 0,
             fetched_artifacts: 0,
@@ -402,21 +406,24 @@ struct IndividualArtifact {
 }
 
 struct ArtifactFetcher {
+    // other services:
     objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     download_svc: Arc<DownloadService>,
 
+    // source config
     scope: Scope,
     source: Arc<SentrySourceConfig>,
 
+    // settings:
     dist: Option<String>,
     allow_scraping: bool,
 
-    /// The set of individual artifacts, by their `url`.
-    remote_artifacts: HashMap<String, IndividualArtifact>,
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
+    /// The set of individual artifacts, by their `url`.
+    individual_artifacts: HashMap<String, IndividualArtifact>,
 
     // various metrics:
     api_requests: u64,
@@ -603,7 +610,7 @@ impl ArtifactFetcher {
     async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFile> {
         let abs_path = key.abs_path()?;
         let found_candidate = get_release_file_candidate_urls(abs_path)
-            .find_map(|candidate| self.remote_artifacts.get(&candidate))?;
+            .find_map(|candidate| self.individual_artifacts.get(&candidate))?;
 
         self.fetched_artifacts += 1;
 
@@ -677,7 +684,7 @@ impl ArtifactFetcher {
                     abs_path,
                     headers,
                 } => {
-                    self.remote_artifacts.insert(
+                    self.individual_artifacts.insert(
                         abs_path,
                         IndividualArtifact {
                             remote_file,
