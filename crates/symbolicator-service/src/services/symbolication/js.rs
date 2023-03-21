@@ -47,6 +47,7 @@ use super::SymbolicationActor;
 pub struct SymbolicateJsStacktraces {
     pub scope: Scope,
     pub source: Arc<SentrySourceConfig>,
+    pub release: Option<String>,
     pub dist: Option<String>,
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
