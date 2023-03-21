@@ -1,0 +1,51 @@
+---
+source: crates/symbolicator-service/tests/integration/symbolication.rs
+assertion_line: 253
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: symbolicated
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0x2f"
+        function_id: "0x5"
+        lang: csharp
+        filename: Program.cs
+        abs_path: "C:\\dev\\dotnet\\samples\\Sentry.Samples.Console.Basic\\Program.cs"
+        lineno: 13
+        source_link: "https://raw.githubusercontent.com/getsentry/sentry-dotnet/b31b62192e6934ea04396456461f430e143cf4f9/samples/Sentry.Samples.Console.Basic/Program.cs"
+        in_app: true
+modules:
+  - debug_status: found
+    features:
+      has_debug_info: true
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe_dotnet
+    debug_id: 0c380a12-8221-4069-8565-bee6b3ac196e-a596286e
+    debug_file: source-links.pdb
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Ea596286e/source-links.src.zip"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: false
+            has_symbols: false
+            has_sources: false
+        debug:
+          status: ok
+      - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.src.zip"
+        download:
+          status: notfound
+
