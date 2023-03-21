@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
+use ::sentry::types::DebugId;
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
@@ -27,10 +28,11 @@ use symbolicator_sources::{
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
-use crate::services::download::sentry::SearchArtifactResult;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::sentry::ConfigureScope;
+
+use self::sentry::JsLookupResult;
 
 mod filesystem;
 mod gcs;
@@ -442,25 +444,24 @@ impl DownloadService {
         remote_files
     }
 
-    pub async fn list_artifacts(
+    /// Look up a list of bundles or individual artifact files covering the
+    /// `debug_ids` and `file_stems` (using the `release` + `dist`).
+    pub async fn lookup_js_artifacts(
         &self,
         source: Arc<SentrySourceConfig>,
+        debug_ids: BTreeSet<DebugId>,
         file_stems: BTreeSet<String>,
-    ) -> Vec<SearchArtifactResult> {
-        let mut remote_artifacts = vec![];
-        let job = self.sentry.list_artifacts(source.clone(), file_stems);
+        release: Option<&str>,
+        dist: Option<&str>,
+    ) -> CacheEntry<Vec<JsLookupResult>> {
+        let job = self
+            .sentry
+            .lookup_js_artifacts(source, debug_ids, file_stems, release, dist);
         let timeout = Duration::from_secs(30);
         let job = tokio::time::timeout(timeout, job);
-        let job = measure("service.download.list_artifacts", m::timed_result, job);
-        let sentry_files = job.await.map_err(|_| CacheError::Timeout(timeout));
-        match sentry_files {
-            Ok(Ok(files)) => remote_artifacts.extend(files),
-            Ok(Err(error)) | Err(error) => {
-                let error: &dyn std::error::Error = &error;
-                tracing::error!(error, "Failed to fetch artifacts list");
-            }
-        }
-        remote_artifacts
+        let job = measure("service.download.lookup_js_artifacts", m::timed_result, job);
+
+        job.await.map_err(|_| CacheError::Timeout(timeout))?
     }
 }
 

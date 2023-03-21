@@ -43,20 +43,18 @@ use symbolic::debuginfo::sourcebundle::{
 };
 use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
-use symbolicator_sources::{
-    HttpRemoteFile, ObjectType, SentryFileType, SentryRemoteFile, SentrySourceConfig,
-};
+use symbolicator_sources::{ObjectType, RemoteFile, RemoteFileUri, SentrySourceConfig};
 use tempfile::NamedTempFile;
 use url::Position;
 
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
-use crate::services::download::sentry::SearchArtifactResult;
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
+use super::download::sentry::{ArtifactHeaders, JsLookupResult};
 use super::objects::ObjectsActor;
 use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
@@ -146,6 +144,7 @@ impl SourceMapLookup {
             source,
             modules,
             allow_scraping,
+            dist,
             ..
         } = request;
 
@@ -178,11 +177,16 @@ impl SourceMapLookup {
             sourcefiles_cache,
             sourcemap_caches,
             download_svc,
+
             scope,
             source,
+
+            dist,
             allow_scraping,
-            remote_artifacts: Default::default(),
+
             artifact_bundles: Default::default(),
+            individual_artifacts: Default::default(),
+
             api_requests: 0,
             queried_artifacts: 0,
             fetched_artifacts: 0,
@@ -396,21 +400,30 @@ impl CachedFile {
     }
 }
 
+struct IndividualArtifact {
+    remote_file: RemoteFile,
+    headers: ArtifactHeaders,
+}
+
 struct ArtifactFetcher {
+    // other services:
     objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     download_svc: Arc<DownloadService>,
 
+    // source config
     scope: Scope,
-
     source: Arc<SentrySourceConfig>,
-    remote_artifacts: HashMap<String, SearchArtifactResult>,
+
+    // settings:
+    dist: Option<String>,
+    allow_scraping: bool,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: HashMap<String, CacheEntry<ArtifactBundle>>,
-
-    allow_scraping: bool,
+    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
+    /// The set of individual artifacts, by their `url`.
+    individual_artifacts: HashMap<String, IndividualArtifact>,
 
     // various metrics:
     api_requests: u64,
@@ -597,20 +610,19 @@ impl ArtifactFetcher {
     async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFile> {
         let abs_path = key.abs_path()?;
         let found_candidate = get_release_file_candidate_urls(abs_path)
-            .find_map(|candidate| self.remote_artifacts.get(&candidate))?;
+            .find_map(|candidate| self.individual_artifacts.get(&candidate))?;
 
         self.fetched_artifacts += 1;
 
-        let source = self.source.clone();
-        let file_id = found_candidate.id.clone();
-        let file = SentryRemoteFile::new(source, file_id, SentryFileType::ReleaseArtifact).into();
+        let file = found_candidate.remote_file.clone();
         let artifact = self.sourcefiles_cache.fetch_file(&self.scope, file).await;
 
         // TODO(sourcemap): figure out error handling:
         let contents = artifact.ok()?;
 
         // Get the sourcemap reference from the artifact, either from metadata, or file contents
-        let sourcemap_url = resolve_sourcemap_url(abs_path, found_candidate, contents.as_bytes());
+        let sourcemap_url =
+            resolve_sourcemap_url(abs_path, &found_candidate.headers, contents.as_bytes());
 
         Some(CachedFile {
             contents,
@@ -645,51 +657,58 @@ impl ArtifactFetcher {
         file_stems: BTreeSet<String>,
     ) {
         self.api_requests += 1;
-        // TODO(sourcemap): this is where we want to hook in the not-yet-existing Sentry API
-        let _ = debug_ids;
 
-        #[allow(unused)]
-        enum FileResult {
-            Individual(SearchArtifactResult),
-            ArtifactBundle(String),
-        }
-        let results: Vec<FileResult> = if self.remote_artifacts.is_empty() {
-            // TODO(sourcemap): as a fallback for now, we use the "release artifacts" API
-            self.download_svc
-                .list_artifacts(self.source.clone(), file_stems)
-                .await
-                .into_iter()
-                .map(FileResult::Individual)
-                .collect()
-        } else {
-            vec![]
+        let results = match self
+            .download_svc
+            .lookup_js_artifacts(
+                self.source.clone(),
+                debug_ids,
+                file_stems,
+                // TODO(sourcemap): actually thread these values through
+                None,
+                self.dist.as_deref(),
+            )
+            .await
+        {
+            Ok(results) => results,
+            Err(_err) => {
+                // TODO(sourcemap): handle errors
+                return;
+            }
         };
 
         for file in results {
             match file {
-                FileResult::Individual(artifact) => {
-                    self.queried_artifacts += 1;
-                    self.remote_artifacts
-                        .insert(artifact.name.clone(), artifact);
+                JsLookupResult::IndividualArtifact {
+                    remote_file,
+                    abs_path,
+                    headers,
+                } => {
+                    self.individual_artifacts.insert(
+                        abs_path,
+                        IndividualArtifact {
+                            remote_file,
+                            headers,
+                        },
+                    );
                 }
-                FileResult::ArtifactBundle(url) => {
+                JsLookupResult::ArtifactBundle { remote_file } => {
                     self.queried_bundles += 1;
-                    // thanks clippy, but I would love an `entry_by_ref` instead :-)
+                    let uri = remote_file.uri();
+                    // clippy, you are wrong, as this would result in borrowing errors
                     #[allow(clippy::map_entry)]
-                    if !self.artifact_bundles.contains_key(&url) {
+                    if !self.artifact_bundles.contains_key(&uri) {
                         // NOTE: This could potentially be done concurrently, but lets not
                         // prematurely optimize for now
-                        let artifact_bundle = self.fetch_artifact_bundle_from_url(&url).await;
-                        self.artifact_bundles.insert(url, artifact_bundle);
+                        let artifact_bundle = self.fetch_artifact_bundle(remote_file).await;
+                        self.artifact_bundles.insert(uri, artifact_bundle);
                     }
                 }
             }
         }
     }
 
-    async fn fetch_artifact_bundle_from_url(&self, url: &str) -> CacheEntry<ArtifactBundle> {
-        let url = Url::parse(url).map_err(CacheError::from_std_error)?;
-        let file = HttpRemoteFile::from_url(url.clone()).into();
+    async fn fetch_artifact_bundle(&self, file: RemoteFile) -> CacheEntry<ArtifactBundle> {
         let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
 
         let fetched_bundle = self.objects.fetch(object_handle).await?;
@@ -791,15 +810,15 @@ fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
 /// Joins together frames `abs_path` and discovered sourcemap reference.
 fn resolve_sourcemap_url(
     abs_path: &Url,
-    source_remote_artifact: &SearchArtifactResult,
-    source_artifact: &[u8],
+    artifact_headers: &ArtifactHeaders,
+    artifact_source: &[u8],
 ) -> Option<SourceMapUrl> {
-    if let Some(header) = source_remote_artifact.headers.get("Sourcemap") {
+    if let Some(header) = artifact_headers.get("Sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
-    } else if let Some(header) = source_remote_artifact.headers.get("X-SourceMap") {
+    } else if let Some(header) = artifact_headers.get("X-SourceMap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
-        let sm_ref = locate_sourcemap_reference(source_artifact).ok()??;
+        let sm_ref = locate_sourcemap_reference(artifact_source).ok()??;
         SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url()).ok()
     }
 }
