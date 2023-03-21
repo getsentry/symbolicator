@@ -133,6 +133,19 @@ async fn symbolicate_js_frame(
 
     let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
+        // Without a column we can still at least apply source context
+        (Some(line), _) if line > 0 => {
+            let filename = frame.raw.filename.as_ref();
+            let file_key = filename.and_then(|filename| module.source_file_key(filename));
+
+            let source_file = match file_key {
+                Some(key) => lookup.get_source_file(key).await,
+                None => &Err(CacheError::NotFound),
+            };
+
+            apply_source_context_from_artifact(&mut frame.raw, source_file);
+            return Ok(frame);
+        }
         _ => return Err(JsFrameStatus::InvalidSourceMapLocation),
     };
     let sp = SourcePosition::new(line - 1, col - 1);
