@@ -24,8 +24,54 @@ use crate::config::Config;
 use crate::utils::futures::CancelOnDrop;
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SearchResult {
-    pub id: SentryFileId,
+    id: SentryFileId,
+    symbol_type: SentryFileType,
+}
+
+/// The is almost the same as [`FileType`], except it does not treat MachO, Elf and Wasm
+/// Code / Debug differently.
+/// All the formats Sentry itself knows about are listed here:
+/// <https://github.com/getsentry/sentry/blob/8fd506a8af5264b1f894fcf7ad066faf64cb966c/src/sentry/constants.py#L315-L329>
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum SentryFileType {
+    Pe,
+    Pdb,
+    PortablePdb,
+    MachO,
+    Elf,
+    Wasm,
+    Breakpad,
+    SourceBundle,
+    UuidMap,
+    BcSymbolMap,
+    Il2cpp,
+}
+
+impl From<FileType> for SentryFileType {
+    fn from(file_type: FileType) -> Self {
+        match file_type {
+            FileType::Pe => Self::Pe,
+            FileType::Pdb => Self::Pdb,
+            FileType::PortablePdb => Self::PortablePdb,
+            FileType::MachDebug | FileType::MachCode => Self::MachO,
+            FileType::ElfDebug | FileType::ElfCode => Self::Elf,
+            FileType::WasmDebug | FileType::WasmCode => Self::Wasm,
+            FileType::Breakpad => Self::Breakpad,
+            FileType::SourceBundle => Self::SourceBundle,
+            FileType::UuidMap => Self::UuidMap,
+            FileType::BcSymbolMap => Self::BcSymbolMap,
+            FileType::Il2cpp => Self::Il2cpp,
+        }
+    }
+}
+
+impl SentryFileType {
+    fn matches(self, file_types: &[FileType]) -> bool {
+        file_types.iter().any(|ty| Self::from(*ty) == self)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -147,46 +193,12 @@ impl SentryDownloader {
         }
     }
 
-    /// Return the search results.
-    ///
-    /// If there are cached search results this skips the actual search.
-    async fn cached_sentry_search(&self, query: SearchQuery) -> CacheEntry<Arc<[SearchResult]>> {
-        metric!(counter("source.sentry.dif_query.access") += 1);
-
-        let query_ = query.clone();
-        let init = Box::pin(async {
-            metric!(counter("source.sentry.dif_query.computation") += 1);
-            tracing::debug!(
-                "Fetching list of Sentry debug files from {}",
-                &query_.index_url
-            );
-
-            let client = self.client.clone();
-            let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
-
-            let future =
-                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
-
-            future.await.map_err(|_| CacheError::InternalError)?
-        });
-
-        self.dif_cache
-            .entry(query)
-            .or_insert_with_if(init, |entry| entry.is_err())
-            .await
-            .into_value()
-    }
-
     pub async fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
         object_id: &ObjectId,
         file_types: &[FileType],
     ) -> CacheEntry<Vec<RemoteFile>> {
-        // TODO(flub): These queries do not handle pagination.  But sentry only starts to
-        // paginate at 20 results so we get away with this for now.
-
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -198,29 +210,10 @@ impl SentryDownloader {
             index_url
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
-        }
-
-        // See <sentry-repo>/src/sentry/constants.py KNOWN_DIF_FORMATS for these query strings.
-        index_url.query_pairs_mut().extend_pairs(
-            file_types
-                .iter()
-                .map(|file_type| match file_type {
-                    FileType::UuidMap => "uuidmap",
-                    FileType::BcSymbolMap => "bcsymbolmap",
-                    FileType::Pe => "pe",
-                    FileType::Pdb => "pdb",
-                    FileType::MachDebug | FileType::MachCode => "macho",
-                    FileType::ElfDebug | FileType::ElfCode => "elf",
-                    FileType::WasmDebug | FileType::WasmCode => "wasm",
-                    FileType::Breakpad => "breakpad",
-                    FileType::SourceBundle => "sourcebundle",
-                    FileType::Il2cpp => "il2cpp",
-                    FileType::PortablePdb => "portablepdb",
-                })
-                .map(|val| ("file_formats", val)),
-        );
-
-        if let Some(ref code_id) = object_id.code_id {
+        } else if let Some(ref code_id) = object_id.code_id {
+            // NOTE: We only query by code-id if we do *not* have a debug-id.
+            // This matches the Sentry backend behavior here:
+            // <https://github.com/getsentry/sentry/blob/17644550024d6a2eb01356ee48ec0d3ef95c043d/src/sentry/api/endpoints/debug_files.py#L155-L161>
             index_url
                 .query_pairs_mut()
                 .append_pair("code_id", code_id.as_str());
@@ -231,14 +224,49 @@ impl SentryDownloader {
             token: source.token.clone(),
         };
 
-        let search = self.cached_sentry_search(query).await?;
-        let file_ids = search
-            .iter()
-            .map(|search_result| {
-                SentryRemoteFile::new(source.clone(), search_result.id.clone(), None).into()
-            })
-            .collect();
+        metric!(counter("source.sentry.dif_query.access") += 1);
 
+        let init = Box::pin(async {
+            metric!(counter("source.sentry.dif_query.computation") += 1);
+            tracing::debug!(
+                "Fetching list of Sentry debug files from {}",
+                &query.index_url
+            );
+
+            let future = {
+                let client = self.client.clone();
+                let query = query.clone();
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await }
+            };
+
+            let future =
+                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
+
+            let result = future.await.map_err(|_| CacheError::InternalError)?;
+
+            if let Ok(result) = &result {
+                // TODO(flub): These queries do not handle pagination.  But sentry only starts to
+                // paginate at 20 results so we get away with this for now.
+                if result.len() >= 20 {
+                    tracing::error!(query = ?query.index_url, "Sentry API Query returned 20 results");
+                }
+            }
+
+            result
+        });
+
+        let entries = self
+            .dif_cache
+            .entry_by_ref(&query)
+            .or_insert_with_if(init, |entry| entry.is_err())
+            .await
+            .into_value()?;
+
+        let file_ids = entries
+            .iter()
+            .filter(|file| file.symbol_type.matches(file_types))
+            .map(|file| SentryRemoteFile::new(source.clone(), file.id.clone(), None).into())
+            .collect();
         Ok(file_ids)
     }
 
@@ -277,18 +305,18 @@ impl SentryDownloader {
 
         metric!(counter("source.sentry.js_lookup.access") += 1);
 
-        let query_ = query.clone();
-
         let init = Box::pin(async {
             metric!(counter("source.sentry.js_lookup.computation") += 1);
             tracing::debug!(
                 "Fetching list of Sentry JS artifacts from {}",
-                &query_.index_url
+                &query.index_url
             );
 
-            let client = self.client.clone();
-            let future =
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query_)).await };
+            let future = {
+                let client = self.client.clone();
+                let query = query.clone();
+                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await }
+            };
 
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
@@ -298,12 +326,12 @@ impl SentryDownloader {
 
         let entries = self
             .js_cache
-            .entry(query)
+            .entry_by_ref(&query)
             .or_insert_with_if(init, |entry| entry.is_err())
             .await
             .into_value()?;
 
-        Ok(entries
+        let results = entries
             .iter()
             .map(|raw| match raw {
                 RawJsLookupResult::Bundle { id, url } => JsLookupResult::ArtifactBundle {
@@ -320,7 +348,8 @@ impl SentryDownloader {
                     headers: headers.clone(),
                 },
             })
-            .collect())
+            .collect();
+        Ok(results)
     }
 
     /// Downloads a source hosted on Sentry.
