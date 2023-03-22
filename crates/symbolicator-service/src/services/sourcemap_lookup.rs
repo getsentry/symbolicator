@@ -144,6 +144,7 @@ impl SourceMapLookup {
             source,
             modules,
             allow_scraping,
+            release,
             dist,
             ..
         } = request;
@@ -181,6 +182,7 @@ impl SourceMapLookup {
             scope,
             source,
 
+            release,
             dist,
             allow_scraping,
 
@@ -417,6 +419,7 @@ struct ArtifactFetcher {
     source: Arc<SentrySourceConfig>,
 
     // settings:
+    release: Option<String>,
     dist: Option<String>,
     allow_scraping: bool,
 
@@ -656,6 +659,11 @@ impl ArtifactFetcher {
         debug_ids: BTreeSet<DebugId>,
         file_stems: BTreeSet<String>,
     ) {
+        if debug_ids.is_empty() && file_stems.is_empty() {
+            // FIXME: this should really not happen, but I just observed it.
+            // The callers should better validate the args in that case?
+            return;
+        }
         self.api_requests += 1;
 
         let results = match self
@@ -664,8 +672,7 @@ impl ArtifactFetcher {
                 self.source.clone(),
                 debug_ids,
                 file_stems,
-                // TODO(sourcemap): actually thread these values through
-                None,
+                self.release.as_deref(),
                 self.dist.as_deref(),
             )
             .await

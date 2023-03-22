@@ -27,6 +27,7 @@ use crate::{assert_snapshot, setup_service};
 fn make_js_request(
     source: SentrySourceConfig,
     frames: &str,
+    release: impl Into<Option<String>>,
     dist: impl Into<Option<String>>,
 ) -> SymbolicateJsStacktraces {
     let frames: Vec<JsFrame> = serde_json::from_str(frames).unwrap();
@@ -37,6 +38,7 @@ fn make_js_request(
         source: Arc::new(source),
         stacktraces,
         modules: vec![],
+        release: release.into(),
         dist: dist.into(),
         allow_scraping: false,
     }
@@ -86,7 +88,7 @@ async fn test_sourcemap_expansion() {
         "function": "e"
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -134,7 +136,7 @@ async fn test_sourcemap_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -174,7 +176,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -205,7 +207,7 @@ async fn test_source_expansion() {
         "colno": 0
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -231,7 +233,7 @@ async fn test_inlined_sources() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -263,7 +265,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -311,7 +313,7 @@ async fn test_indexed_sourcemap_source_expansion() {
         "colno": 44
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -330,7 +332,7 @@ async fn test_malformed_abs_path() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None);
+    let request = make_js_request(source, frames, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());

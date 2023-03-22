@@ -26,6 +26,8 @@ pub struct JsSymbolicationRequestBody {
     #[serde(default)]
     pub modules: Vec<RawObjectInfo>,
     #[serde(default)]
+    pub release: Option<String>,
+    #[serde(default)]
     pub dist: Option<String>,
     #[serde(default = "default_allow_scraping")]
     pub allow_scraping: bool,
@@ -44,6 +46,7 @@ pub async fn handle_symbolication_request(
         source,
         stacktraces,
         modules,
+        release,
         dist,
         allow_scraping,
     } = body;
@@ -53,6 +56,7 @@ pub async fn handle_symbolication_request(
         source: Arc::new(source.unwrap()),
         stacktraces,
         modules,
+        release,
         dist,
         allow_scraping,
     })?;
