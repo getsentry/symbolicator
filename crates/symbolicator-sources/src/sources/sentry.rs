@@ -20,12 +20,21 @@ pub struct SentrySourceConfig {
 }
 
 /// The Sentry-specific [`RemoteFile`].
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
     pub(crate) file_id: SentryFileId,
     url: Url,
+}
+
+impl fmt::Debug for SentryRemoteFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SentryRemoteFile")
+            .field("id", &self.file_id.0)
+            .field("url", &self.url.as_str())
+            .finish()
+    }
 }
 
 impl From<SentryRemoteFile> for RemoteFile {

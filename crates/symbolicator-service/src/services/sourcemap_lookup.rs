@@ -27,7 +27,7 @@
 //! and web scraping should trend to `0` with time.
 
 use std::collections::{BTreeSet, HashMap};
-use std::fmt::Write;
+use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
@@ -282,10 +282,22 @@ impl SourceMapLookup {
 ///
 /// May either be a conventional URL or a data URL containing the sourcemap
 /// encoded as BASE64.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 enum SourceMapUrl {
     Data(ByteViewString),
     Remote(url::Url),
+}
+
+impl fmt::Debug for SourceMapUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Data(data) => {
+                let contents: &str = data;
+                f.debug_tuple("Data").field(&contents).finish()
+            }
+            Self::Remote(url) => f.debug_tuple("Remote").field(&url.as_str()).finish(),
+        }
+    }
 }
 
 impl SourceMapUrl {
@@ -368,12 +380,22 @@ impl FileKey {
 
 /// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
 /// the parts that we care about.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CachedFile {
     pub contents: ByteViewString,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
     // TODO(sourcemap): maybe we should add a `FileOrigin` here, as in:
     // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
+}
+
+impl fmt::Debug for CachedFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let contents: &str = &self.contents;
+        f.debug_struct("CachedFile")
+            .field("contents", &contents)
+            .field("sourcemap_url", &self.sourcemap_url)
+            .finish()
+    }
 }
 
 impl CachedFile {
@@ -402,6 +424,7 @@ impl CachedFile {
     }
 }
 
+#[derive(Debug)]
 struct IndividualArtifact {
     remote_file: RemoteFile,
     headers: ArtifactHeaders,
@@ -563,9 +586,12 @@ impl ArtifactFetcher {
                     .fetch_scoped_url(&self.scope, url.to_owned())
                     .await;
 
-                return scraped_file.map(|contents| CachedFile {
-                    contents,
-                    sourcemap_url: None,
+                return scraped_file.map(|contents| {
+                    tracing::trace!(?key, "Found file by scraping the web");
+                    CachedFile {
+                        contents,
+                        sourcemap_url: None,
+                    }
                 });
             }
         }
@@ -582,6 +608,7 @@ impl ArtifactFetcher {
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     if let Some(file) = CachedFile::from_descriptor(descriptor) {
+                        tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                         return Some(file);
                     }
                 }
@@ -600,6 +627,7 @@ impl ArtifactFetcher {
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         if let Some(file) = CachedFile::from_descriptor(descriptor) {
+                            tracing::trace!(?key, url, "Found file in artifact bundles by url");
                             return Some(file);
                         }
                     }
@@ -612,20 +640,24 @@ impl ArtifactFetcher {
 
     async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFile> {
         let abs_path = key.abs_path()?;
-        let found_candidate = get_release_file_candidate_urls(abs_path)
-            .find_map(|candidate| self.individual_artifacts.get(&candidate))?;
+        let (url, artifact) = get_release_file_candidate_urls(abs_path).find_map(|url| {
+            self.individual_artifacts
+                .get(&url)
+                .map(|artifact| (url, artifact))
+        })?;
 
         self.fetched_artifacts += 1;
 
-        let file = found_candidate.remote_file.clone();
-        let artifact = self.sourcefiles_cache.fetch_file(&self.scope, file).await;
+        let file = artifact.remote_file.clone();
+        let artifact_contents = self.sourcefiles_cache.fetch_file(&self.scope, file).await;
 
         // TODO(sourcemap): figure out error handling:
-        let contents = artifact.ok()?;
+        let contents = artifact_contents.ok()?;
+
+        tracing::trace!(?key, ?url, ?artifact, "Found file as individual artifact");
 
         // Get the sourcemap reference from the artifact, either from metadata, or file contents
-        let sourcemap_url =
-            resolve_sourcemap_url(abs_path, &found_candidate.headers, contents.as_bytes());
+        let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, contents.as_bytes());
 
         Some(CachedFile {
             contents,

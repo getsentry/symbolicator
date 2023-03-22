@@ -118,6 +118,12 @@ async fn symbolicate_js_frame(
         return Err(JsFrameStatus::InvalidAbsPath);
     }
 
+    tracing::trace!(
+        abs_path = &raw_frame.abs_path,
+        ?module,
+        "Found Module for `abs_path`"
+    );
+
     // Apply source context to the raw frame
     apply_source_context_from_artifact(raw_frame, &module.minified_source);
 

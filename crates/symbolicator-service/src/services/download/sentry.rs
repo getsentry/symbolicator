@@ -184,10 +184,10 @@ impl SentryDownloader {
         let response = request.send().await?;
 
         if response.status().is_success() {
-            tracing::trace!("Success fetching index from Sentry");
+            tracing::trace!("Success fetching from Sentry API");
             Ok(response.json().await?)
         } else {
-            tracing::warn!("Sentry returned status code {}", response.status());
+            tracing::warn!("Sentry API returned status code {}", response.status());
             let details = response.status().to_string();
             Err(CacheError::DownloadError(details))
         }
