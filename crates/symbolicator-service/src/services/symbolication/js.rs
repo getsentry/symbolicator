@@ -73,12 +73,19 @@ impl SymbolicationActor {
         for raw_stacktrace in &mut raw_stacktraces {
             let num_frames = raw_stacktrace.frames.len();
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
+            let mut prev_frame_token_name = None;
 
             for raw_frame in &mut raw_stacktrace.frames {
-                match symbolicate_js_frame(&mut lookup, raw_frame, &mut missing_sourcescontent)
-                    .await
+                match symbolicate_js_frame(
+                    &mut lookup,
+                    raw_frame,
+                    prev_frame_token_name.clone(),
+                    &mut missing_sourcescontent,
+                )
+                .await
                 {
                     Ok(frame) => {
+                        prev_frame_token_name = frame.raw.token_name.clone();
                         symbolicated_frames.push(frame);
                     }
                     Err(status) => {
@@ -110,6 +117,7 @@ impl SymbolicationActor {
 async fn symbolicate_js_frame(
     lookup: &mut SourceMapLookup,
     raw_frame: &mut JsFrame,
+    previous_token_name: Option<String>,
     missing_sourcescontent: &mut u64,
 ) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
@@ -149,6 +157,9 @@ async fn symbolicate_js_frame(
         .lookup(sp)
         .ok_or(JsFrameStatus::InvalidSourceMapLocation)?;
 
+    // Store the resolved token name, which can be used for function name resolution in next frame.
+    frame.raw.token_name = token.name().map(|n| n.to_owned());
+
     let function_name = match token.scope() {
         ScopeLookupResult::NamedScope(name) => name.to_string(),
         ScopeLookupResult::AnonymousScope => "<anonymous>".to_string(),
@@ -161,7 +172,11 @@ async fn symbolicate_js_frame(
         }
     };
 
-    frame.raw.function = Some(fold_function_name(&function_name));
+    frame.raw.function = Some(fold_function_name(get_function_for_token(
+        raw_frame.function.as_deref(),
+        &function_name,
+        previous_token_name.as_deref(),
+    )));
     if let Some(filename) = token.file_name() {
         frame.raw.abs_path = filename.to_string();
     }
@@ -216,6 +231,44 @@ fn apply_source_context(frame: &mut JsFrame, source: &str) {
     }
 }
 
+// Names that do not provide any reasonable value, and that can possibly obstruct
+// better available names. In case we encounter one, we fallback to current frame fn name if available.
+const USELESS_FN_NAMES: [&str; 3] = ["<anonymous>", "__webpack_require__", "__webpack_modules__"];
+
+/// Get function name for a given frame based on the token resolved by symbolic.
+/// It tries following paths in order:
+/// - return token function name if we have a usable value (filtered through `USELESS_FN_NAMES` list),
+/// - return mapped name of the caller (previous frame) token if it had,
+/// - return token function name, including filtered values if it mapped to anything in the first place,
+/// - return current frames function name as a fallback
+///
+// fn get_function_for_token(frame, token, previous_frame=None):
+fn get_function_for_token<'a>(
+    frame_fn_name: Option<&'a str>,
+    token_fn_name: &'a str,
+    previous_token_name: Option<&'a str>,
+) -> &'a str {
+    // Try to use the function name we got from sourcemap-cache, filtering useless names.
+    if !USELESS_FN_NAMES.contains(&token_fn_name) {
+        return token_fn_name;
+    }
+
+    // If not found, ask the callsite (previous token) for function name if possible.
+    if let Some(token_name) = previous_token_name {
+        if !token_name.is_empty() {
+            return token_name;
+        }
+    }
+
+    // If there was no minified name at all, return even useless, filtered one from the original token.
+    if frame_fn_name.is_none() {
+        return token_fn_name;
+    }
+
+    // Otherwise fallback to the old, minified name.
+    frame_fn_name.unwrap_or("<unknown>")
+}
+
 /// Fold multiple consecutive occurences of the same property name into a single group, excluding the last component.
 ///
 /// foo | foo
@@ -266,6 +319,35 @@ fn fold_function_name(function_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_get_function_name_valid_name() {
+        assert_eq!(
+            get_function_for_token(Some("original"), "lookedup", None),
+            "lookedup"
+        );
+    }
+    #[test]
+    fn test_get_function_name_fallback_to_previous_frames_token_if_useless_name() {
+        assert_eq!(
+            get_function_for_token(None, "__webpack_require__", Some("previous_name")),
+            "previous_name"
+        )
+    }
+    #[test]
+    fn test_get_function_name_fallback_to_useless_name() {
+        assert_eq!(
+            get_function_for_token(None, "__webpack_require__", None),
+            "__webpack_require__"
+        )
+    }
+    #[test]
+    fn test_get_function_name_fallback_to_original_name() {
+        assert_eq!(
+            get_function_for_token(Some("original"), "__webpack_require__", None),
+            "original"
+        )
+    }
 
     #[test]
     fn test_fold_function_name() {
