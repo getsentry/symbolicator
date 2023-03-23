@@ -821,27 +821,27 @@ fn extract_file_stem(url: &Url) -> String {
 fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
     let mut urls = [None, None, None, None];
 
-    // Relative without query
+    // Absolute without fragment
+    urls[0] = Some(url[..Position::AfterQuery].to_string());
+
+    // Absolute without query
     if url.query().is_some() {
-        urls[0] = Some(format!(
-            "~{}",
-            &url[Position::BeforePath..Position::AfterPath]
-        ));
+        urls[1] = Some(url[..Position::AfterPath].to_string());
     }
 
     // Relative without fragment
-    urls[1] = Some(format!(
+    urls[2] = Some(format!(
         "~{}",
         &url[Position::BeforePath..Position::AfterQuery]
     ));
 
-    // Absolute without query
+    // Relative without query
     if url.query().is_some() {
-        urls[2] = Some(url[..Position::AfterPath].to_string());
+        urls[3] = Some(format!(
+            "~{}",
+            &url[Position::BeforePath..Position::AfterPath]
+        ));
     }
-
-    // Absolute without fragment
-    urls[3] = Some(url[..Position::AfterQuery].to_string());
 
     urls.into_iter().flatten()
 }
@@ -926,8 +926,8 @@ mod tests {
     fn test_get_release_file_candidate_urls() {
         let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
         let expected = &[
-            "~/assets/bundle.min.js",
             "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
         assert_eq!(&actual, expected);
@@ -936,10 +936,10 @@ mod tests {
             .parse()
             .unwrap();
         let expected = &[
-            "~/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
             "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
         assert_eq!(&actual, expected);
@@ -948,8 +948,8 @@ mod tests {
             .parse()
             .unwrap();
         let expected = &[
-            "~/assets/bundle.min.js",
             "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js",
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
         assert_eq!(&actual, expected);
@@ -958,10 +958,10 @@ mod tests {
             .parse()
             .unwrap();
         let expected = &[
-            "~/assets/bundle.min.js",
-            "~/assets/bundle.min.js?foo=1&bar=baz",
-            "https://example.com/assets/bundle.min.js",
             "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
+            "https://example.com/assets/bundle.min.js",
+            "~/assets/bundle.min.js?foo=1&bar=baz",
+            "~/assets/bundle.min.js",
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
         assert_eq!(&actual, expected);
