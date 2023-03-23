@@ -640,6 +640,9 @@ pub struct JsFrame {
 
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_context: Vec<String>,
+
+    #[serde(skip_serializing)]
+    pub token_name: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
