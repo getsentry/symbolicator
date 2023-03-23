@@ -73,19 +73,19 @@ impl SymbolicationActor {
         for raw_stacktrace in &mut raw_stacktraces {
             let num_frames = raw_stacktrace.frames.len();
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
-            let mut prev_frame_token_name = None;
+            let mut callsite_fn_name = None;
 
             for raw_frame in &mut raw_stacktrace.frames {
                 match symbolicate_js_frame(
                     &mut lookup,
                     raw_frame,
-                    prev_frame_token_name.clone(),
+                    std::mem::take(&mut callsite_fn_name),
                     &mut missing_sourcescontent,
                 )
                 .await
                 {
-                    Ok(frame) => {
-                        prev_frame_token_name = frame.raw.token_name.clone();
+                    Ok(mut frame) => {
+                        std::mem::swap(&mut callsite_fn_name, &mut frame.raw.token_name);
                         symbolicated_frames.push(frame);
                     }
                     Err(status) => {
@@ -117,7 +117,7 @@ impl SymbolicationActor {
 async fn symbolicate_js_frame(
     lookup: &mut SourceMapLookup,
     raw_frame: &mut JsFrame,
-    previous_token_name: Option<String>,
+    callsite_fn_name: Option<String>,
     missing_sourcescontent: &mut u64,
 ) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
@@ -158,6 +158,8 @@ async fn symbolicate_js_frame(
         .ok_or(JsFrameStatus::InvalidSourceMapLocation)?;
 
     // Store the resolved token name, which can be used for function name resolution in next frame.
+    // Refer to https://blog.sentry.io/2022/11/30/how-we-made-javascript-stack-traces-awesome/
+    // for more details about "caller naming".
     frame.raw.token_name = token.name().map(|n| n.to_owned());
 
     let function_name = match token.scope() {
@@ -175,7 +177,7 @@ async fn symbolicate_js_frame(
     frame.raw.function = Some(fold_function_name(get_function_for_token(
         raw_frame.function.as_deref(),
         &function_name,
-        previous_token_name.as_deref(),
+        callsite_fn_name.as_deref(),
     )));
     if let Some(filename) = token.file_name() {
         frame.raw.abs_path = filename.to_string();
@@ -246,7 +248,7 @@ const USELESS_FN_NAMES: [&str; 3] = ["<anonymous>", "__webpack_require__", "__we
 fn get_function_for_token<'a>(
     frame_fn_name: Option<&'a str>,
     token_fn_name: &'a str,
-    previous_token_name: Option<&'a str>,
+    callsite_fn_name: Option<&'a str>,
 ) -> &'a str {
     // Try to use the function name we got from sourcemap-cache, filtering useless names.
     if !USELESS_FN_NAMES.contains(&token_fn_name) {
@@ -254,7 +256,7 @@ fn get_function_for_token<'a>(
     }
 
     // If not found, ask the callsite (previous token) for function name if possible.
-    if let Some(token_name) = previous_token_name {
+    if let Some(token_name) = callsite_fn_name {
         if !token_name.is_empty() {
             return token_name;
         }
