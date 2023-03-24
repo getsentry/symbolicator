@@ -579,12 +579,7 @@ pub struct CompletedSymbolicationResponse {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum JsModuleErrorKind {
-    InvalidLocation {
-        #[serde(rename = "row")]
-        line: Option<u32>,
-        #[serde(rename = "column")]
-        col: Option<u32>,
-    },
+    InvalidLocation { line: Option<u32>, col: Option<u32> },
     InvalidAbsPath,
     NoColumn,
     MissingSourceContent,
