@@ -1,0 +1,38 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - function: e
+        filename: invalidlocation.js
+        abs_path: "http://example.com/invalidlocation.js"
+        lineno: 0
+        colno: 0
+        context_line: "function add(a, b) {"
+        post_context:
+          - "  \"use strict\";"
+          - "  return a + b;"
+          - "}"
+          - "function multiply(a, b) {"
+          - "  \"use strict\";"
+raw_stacktraces:
+  - frames:
+      - function: e
+        filename: invalidlocation.js
+        abs_path: "http://example.com/invalidlocation.js"
+        lineno: 0
+        colno: 0
+        context_line: "function add(a, b) {"
+        post_context:
+          - "  \"use strict\";"
+          - "  return a + b;"
+          - "}"
+          - "function multiply(a, b) {"
+          - "  \"use strict\";"
+errors:
+  - abs_path: "http://example.com/invalidlocation.js"
+    type: invalid_location
+    row: 0
+    column: 0
+

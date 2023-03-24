@@ -573,28 +573,41 @@ pub struct CompletedSymbolicationResponse {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
-/// Information on the symbolication status of this JavaScript frame.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+// Some of the renames are there only to make it synchronized
+// with the already existing monolith naming scheme.
+#[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum JsFrameStatus {
-    /// The frame was symbolicated successfully.
-    #[default]
-    Symbolicated,
-    /// The frame's line and column could not be found in the sourcemap.
-    InvalidSourceMapLocation,
-    /// No sourcemap was found for the frame.
-    MissingSourcemap,
-    /// The frame's absolute path is invalid.
+#[serde(tag = "type")]
+pub enum JsModuleErrorKind {
+    InvalidLocation {
+        #[serde(rename = "row")]
+        line: Option<u32>,
+        #[serde(rename = "column")]
+        col: Option<u32>,
+    },
     InvalidAbsPath,
-    /// The retrieved sourcemap could not be processed.
+    NoColumn,
+    MissingSourceContent,
+    MissingSource,
+    // new variants:
     MalformedSourcemap,
+    MissingSourcemap,
+    InvalidBase64Sourcemap,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
+pub struct JsModuleError {
+    pub abs_path: String,
+    #[serde(flatten)]
+    pub kind: JsModuleErrorKind,
 }
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedJsSymbolicationResponse {
-    pub stacktraces: Vec<SymbolicatedJsStacktrace>,
+    pub stacktraces: Vec<JsStacktrace>,
     pub raw_stacktraces: Vec<JsStacktrace>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<JsModuleError>,
 }
 
 /// Information about the operating system.
@@ -645,19 +658,7 @@ pub struct JsFrame {
     pub token_name: Option<String>,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct SymbolicatedJsFrame {
-    pub status: JsFrameStatus,
-    #[serde(flatten)]
-    pub raw: JsFrame,
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct JsStacktrace {
     pub frames: Vec<JsFrame>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-pub struct SymbolicatedJsStacktrace {
-    pub frames: Vec<SymbolicatedJsFrame>,
 }

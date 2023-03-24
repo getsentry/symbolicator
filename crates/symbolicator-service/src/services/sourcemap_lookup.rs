@@ -588,9 +588,19 @@ impl ArtifactFetcher {
 
                 return scraped_file.map(|contents| {
                     tracing::trace!(?key, "Found file by scraping the web");
+
+                    let sm_ref = locate_sourcemap_reference(contents.as_bytes())
+                        .ok()
+                        .flatten();
+                    let sourcemap_url = sm_ref.and_then(|sm_ref| {
+                        SourceMapUrl::parse_with_prefix(url, sm_ref.get_url())
+                            .ok()
+                            .map(Arc::new)
+                    });
+
                     CachedFile {
                         contents,
-                        sourcemap_url: None,
+                        sourcemap_url,
                     }
                 });
             }

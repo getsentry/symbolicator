@@ -1,11 +1,11 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 170
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - status: symbolicated
-        function: "<unknown>"
+      - function: "<unknown>"
         filename: /test.js
         abs_path: /test.js
         lineno: 1

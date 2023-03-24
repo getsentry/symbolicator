@@ -1,0 +1,30 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - filename: foo.js
+        abs_path: "http://localhost:<port>/assets/missing_foo.js"
+        lineno: 1
+        colno: 0
+      - filename: foo.js
+        abs_path: "http://localhost:<port>/assets/missing_bar.js"
+        lineno: 4
+        colno: 0
+raw_stacktraces:
+  - frames:
+      - filename: foo.js
+        abs_path: "http://localhost:<port>/assets/missing_foo.js"
+        lineno: 1
+        colno: 0
+      - filename: foo.js
+        abs_path: "http://localhost:<port>/assets/missing_bar.js"
+        lineno: 4
+        colno: 0
+errors:
+  - abs_path: "http://localhost:<port>/assets/missing_foo.js"
+    type: missing_sourcemap
+  - abs_path: "http://localhost:<port>/assets/missing_bar.js"
+    type: missing_sourcemap
+

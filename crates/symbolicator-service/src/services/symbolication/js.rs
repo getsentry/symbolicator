@@ -28,6 +28,7 @@
 //! - `js.scraped_files`: The number of files that were scraped from the Web.
 //!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
@@ -36,8 +37,8 @@ use symbolicator_sources::SentrySourceConfig;
 use crate::caching::{CacheEntry, CacheError};
 use crate::services::sourcemap_lookup::{CachedFile, SourceMapLookup};
 use crate::types::{
-    CompletedJsSymbolicationResponse, JsFrame, JsFrameStatus, JsStacktrace, RawObjectInfo, Scope,
-    SymbolicatedJsFrame, SymbolicatedJsStacktrace,
+    CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
+    RawObjectInfo, Scope,
 };
 
 use super::source_context::get_context_lines;
@@ -70,6 +71,7 @@ impl SymbolicationActor {
         let num_stacktraces = raw_stacktraces.len();
         let mut stacktraces = Vec::with_capacity(num_stacktraces);
 
+        let mut errors = HashSet::new();
         for raw_stacktrace in &mut raw_stacktraces {
             let num_frames = raw_stacktrace.frames.len();
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
@@ -85,20 +87,21 @@ impl SymbolicationActor {
                 .await
                 {
                     Ok(mut frame) => {
-                        std::mem::swap(&mut callsite_fn_name, &mut frame.raw.token_name);
+                        std::mem::swap(&mut callsite_fn_name, &mut frame.token_name);
                         symbolicated_frames.push(frame);
                     }
-                    Err(status) => {
+                    Err(err) => {
                         unsymbolicated_frames += 1;
-                        symbolicated_frames.push(SymbolicatedJsFrame {
-                            status,
-                            raw: raw_frame.clone(),
+                        errors.insert(JsModuleError {
+                            kind: err,
+                            abs_path: raw_frame.abs_path.clone(),
                         });
+                        symbolicated_frames.push(raw_frame.clone());
                     }
                 }
             }
 
-            stacktraces.push(SymbolicatedJsStacktrace {
+            stacktraces.push(JsStacktrace {
                 frames: symbolicated_frames,
             });
         }
@@ -110,6 +113,7 @@ impl SymbolicationActor {
         Ok(CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
+            errors: errors.into_iter().collect(),
         })
     }
 }
@@ -119,11 +123,11 @@ async fn symbolicate_js_frame(
     raw_frame: &mut JsFrame,
     callsite_fn_name: Option<String>,
     missing_sourcescontent: &mut u64,
-) -> Result<SymbolicatedJsFrame, JsFrameStatus> {
+) -> Result<JsFrame, JsModuleErrorKind> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
 
     if !module.is_valid() {
-        return Err(JsFrameStatus::InvalidAbsPath);
+        return Err(JsModuleErrorKind::InvalidAbsPath);
     }
 
     tracing::trace!(
@@ -137,30 +141,35 @@ async fn symbolicate_js_frame(
 
     let smcache = match &module.smcache {
         Ok(smcache) => smcache,
-        Err(CacheError::Malformed(_)) => return Err(JsFrameStatus::MalformedSourcemap),
-        Err(_) => return Err(JsFrameStatus::MissingSourcemap),
+        Err(CacheError::Malformed(_)) => return Err(JsModuleErrorKind::MalformedSourcemap),
+        Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
     };
 
-    let mut frame = SymbolicatedJsFrame {
-        status: JsFrameStatus::Symbolicated,
-        raw: raw_frame.clone(),
-    };
+    let mut frame = raw_frame.clone();
 
     let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
-        _ => return Err(JsFrameStatus::InvalidSourceMapLocation),
+        _ => {
+            return Err(JsModuleErrorKind::InvalidLocation {
+                line: raw_frame.lineno,
+                col: raw_frame.colno,
+            })
+        }
     };
     let sp = SourcePosition::new(line - 1, col - 1);
 
     let token = smcache
         .get()
         .lookup(sp)
-        .ok_or(JsFrameStatus::InvalidSourceMapLocation)?;
+        .ok_or(JsModuleErrorKind::InvalidLocation {
+            line: Some(line),
+            col: Some(col),
+        })?;
 
     // Store the resolved token name, which can be used for function name resolution in next frame.
     // Refer to https://blog.sentry.io/2022/11/30/how-we-made-javascript-stack-traces-awesome/
     // for more details about "caller naming".
-    frame.raw.token_name = token.name().map(|n| n.to_owned());
+    frame.token_name = token.name().map(|n| n.to_owned());
 
     let function_name = match token.scope() {
         ScopeLookupResult::NamedScope(name) => name.to_string(),
@@ -174,21 +183,21 @@ async fn symbolicate_js_frame(
         }
     };
 
-    frame.raw.function = Some(fold_function_name(get_function_for_token(
+    frame.function = Some(fold_function_name(get_function_for_token(
         raw_frame.function.as_deref(),
         &function_name,
         callsite_fn_name.as_deref(),
     )));
     if let Some(filename) = token.file_name() {
-        frame.raw.abs_path = filename.to_string();
+        frame.abs_path = filename.to_string();
     }
-    frame.raw.lineno = Some(token.line().saturating_add(1));
-    frame.raw.colno = Some(token.column().saturating_add(1));
+    frame.lineno = Some(token.line().saturating_add(1));
+    frame.colno = Some(token.column().saturating_add(1));
 
     if let Some(file) = token.file() {
-        frame.raw.filename = file.name().map(|f| f.to_string());
+        frame.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
-            apply_source_context(&mut frame.raw, file_source);
+            apply_source_context(&mut frame, file_source);
         } else if module.has_debug_id() {
             *missing_sourcescontent += 1;
             tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
@@ -196,7 +205,7 @@ async fn symbolicate_js_frame(
             *missing_sourcescontent += 1;
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file
-            let filename = frame.raw.filename.as_ref();
+            let filename = frame.filename.as_ref();
             let file_key = filename.and_then(|filename| module.source_file_key(filename));
 
             let source_file = match file_key {
@@ -204,7 +213,7 @@ async fn symbolicate_js_frame(
                 None => &Err(CacheError::NotFound),
             };
 
-            apply_source_context_from_artifact(&mut frame.raw, source_file);
+            apply_source_context_from_artifact(&mut frame, source_file);
         }
     }
 
