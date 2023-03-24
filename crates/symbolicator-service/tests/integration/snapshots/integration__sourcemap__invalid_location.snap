@@ -33,6 +33,6 @@ raw_stacktraces:
 errors:
   - abs_path: "http://example.com/invalidlocation.js"
     type: invalid_location
-    row: 0
-    column: 0
+    line: 0
+    col: 0
 
