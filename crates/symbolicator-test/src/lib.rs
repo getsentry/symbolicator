@@ -519,6 +519,9 @@ macro_rules! assert_snapshot {
         ::insta::assert_yaml_snapshot!($e, {
             ".**.location" => ::insta::dynamic_redaction(
                 $crate::redact_localhost_port
+            ),
+            ".**.abs_path" => ::insta::dynamic_redaction(
+                $crate::redact_localhost_port
             )
         });
     }
