@@ -1,32 +1,38 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 275
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
       - function: e
-        filename: test.min.js
-        abs_path: "http://example.com/test.min.js"
+        filename: invalidlocation.js
+        abs_path: "http://example.com/invalidlocation.js"
         lineno: 0
         colno: 0
-        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        context_line: "function add(a, b) {"
         post_context:
-          - "//# sourceMappingURL=test.min.js.map"
+          - "  \"use strict\";"
+          - "  return a + b;"
+          - "}"
+          - "function multiply(a, b) {"
+          - "  \"use strict\";"
 raw_stacktraces:
   - frames:
       - function: e
-        filename: test.min.js
-        abs_path: "http://example.com/test.min.js"
+        filename: invalidlocation.js
+        abs_path: "http://example.com/invalidlocation.js"
         lineno: 0
         colno: 0
-        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        context_line: "function add(a, b) {"
         post_context:
-          - "//# sourceMappingURL=test.min.js.map"
+          - "  \"use strict\";"
+          - "  return a + b;"
+          - "}"
+          - "function multiply(a, b) {"
+          - "  \"use strict\";"
 errors:
-  - abs_path: "http://example.com/test.min.js"
-    kind:
-      invalid_location:
-        line: 0
-        col: 0
+  - abs_path: "http://example.com/invalidlocation.js"
+    type: invalid_location
+    row: 0
+    column: 0
 

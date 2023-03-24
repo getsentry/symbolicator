@@ -61,5 +61,5 @@ raw_stacktraces:
           - r
 errors:
   - abs_path: "http://example.com/foo.js"
-    kind: missing_sourcemap
+    type: missing_sourcemap
 

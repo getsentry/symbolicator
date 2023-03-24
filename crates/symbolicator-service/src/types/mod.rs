@@ -573,10 +573,18 @@ pub struct CompletedSymbolicationResponse {
     pub modules: Vec<CompleteObjectInfo>,
 }
 
+// Some of the renames are there only to make it synchronized
+// with the already existing monolith naming scheme.
 #[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "type")]
 pub enum JsModuleErrorKind {
-    InvalidLocation { line: Option<u32>, col: Option<u32> },
+    InvalidLocation {
+        #[serde(rename = "row")]
+        line: Option<u32>,
+        #[serde(rename = "column")]
+        col: Option<u32>,
+    },
     InvalidAbsPath,
     NoColumn,
     MissingSourceContent,
@@ -590,6 +598,7 @@ pub enum JsModuleErrorKind {
 #[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
 pub struct JsModuleError {
     pub abs_path: String,
+    #[serde(flatten)]
     pub kind: JsModuleErrorKind,
 }
 

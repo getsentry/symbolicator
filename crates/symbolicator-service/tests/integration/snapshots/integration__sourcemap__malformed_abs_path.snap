@@ -17,5 +17,5 @@ raw_stacktraces:
         colno: 1
 errors:
   - abs_path: http//example.com/test.min.js
-    kind: invalid_abs_path
+    type: invalid_abs_path
 

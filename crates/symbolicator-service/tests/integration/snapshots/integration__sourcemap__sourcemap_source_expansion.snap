@@ -37,5 +37,5 @@ raw_stacktraces:
           - //@ sourceMappingURL=file.min.js.map
 errors:
   - abs_path: "http://example.com/index.html"
-    kind: missing_sourcemap
+    type: missing_sourcemap
 
