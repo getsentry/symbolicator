@@ -147,9 +147,6 @@ async fn symbolicate_js_frame(
 
     let mut frame = raw_frame.clone();
 
-    // NOTE: The monolith processor creates a `EventError.JS_NO_COLUMN` error when `(Some(line), _)`
-    // variant is matched. We don't do this here currently, as we always short-circuit processing
-    // flow. If we decide to "collect" errors as-we-go instead, we can add this case as well.
     let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
         _ => {
