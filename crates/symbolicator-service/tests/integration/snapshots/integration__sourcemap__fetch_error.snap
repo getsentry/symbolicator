@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 367
 expression: response.unwrap()
 ---
 stacktraces:
@@ -23,8 +24,8 @@ raw_stacktraces:
         lineno: 4
         colno: 0
 errors:
-  - abs_path: "http://localhost:<port>/assets/missing_foo.js"
-    type: missing_sourcemap
   - abs_path: "http://localhost:<port>/assets/missing_bar.js"
+    type: missing_sourcemap
+  - abs_path: "http://localhost:<port>/assets/missing_foo.js"
     type: missing_sourcemap
 
