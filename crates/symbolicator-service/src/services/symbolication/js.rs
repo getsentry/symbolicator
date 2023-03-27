@@ -28,7 +28,7 @@
 //! - `js.scraped_files`: The number of files that were scraped from the Web.
 //!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
@@ -71,7 +71,7 @@ impl SymbolicationActor {
         let num_stacktraces = raw_stacktraces.len();
         let mut stacktraces = Vec::with_capacity(num_stacktraces);
 
-        let mut errors = HashSet::new();
+        let mut errors = BTreeSet::new();
         for raw_stacktrace in &mut raw_stacktraces {
             let num_frames = raw_stacktrace.frames.len();
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
@@ -93,8 +93,8 @@ impl SymbolicationActor {
                     Err(err) => {
                         unsymbolicated_frames += 1;
                         errors.insert(JsModuleError {
-                            kind: err,
                             abs_path: raw_frame.abs_path.clone(),
+                            kind: err,
                         });
                         symbolicated_frames.push(raw_frame.clone());
                     }

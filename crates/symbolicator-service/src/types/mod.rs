@@ -575,7 +575,7 @@ pub struct CompletedSymbolicationResponse {
 
 // Some of the renames are there only to make it synchronized
 // with the already existing monolith naming scheme.
-#[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum JsModuleErrorKind {
@@ -590,7 +590,7 @@ pub enum JsModuleErrorKind {
     InvalidBase64Sourcemap,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JsModuleError {
     pub abs_path: String,
     #[serde(flatten)]
