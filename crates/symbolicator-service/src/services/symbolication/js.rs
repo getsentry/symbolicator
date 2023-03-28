@@ -137,9 +137,9 @@ async fn symbolicate_js_frame(
     );
 
     // Apply source context to the raw frame
-    apply_source_context_from_artifact(raw_frame, &module.minified_source);
+    apply_source_context_from_artifact(raw_frame, &module.minified_source.entry);
 
-    let smcache = match &module.smcache {
+    let smcache = match &module.smcache.entry {
         Ok(smcache) => smcache,
         Err(CacheError::Malformed(_)) => return Err(JsModuleErrorKind::MalformedSourcemap),
         Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
@@ -209,7 +209,7 @@ async fn symbolicate_js_frame(
             let file_key = filename.and_then(|filename| module.source_file_key(filename));
 
             let source_file = match file_key {
-                Some(key) => lookup.get_source_file(key).await,
+                Some(key) => &lookup.get_source_file(key).await.entry,
                 None => &Err(CacheError::NotFound),
             };
 
