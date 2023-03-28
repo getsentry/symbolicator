@@ -383,13 +383,13 @@ impl FileKey {
 /// The source of an individual file.
 #[derive(Clone, Debug)]
 pub enum CachedFileUri {
-    /// This file was fetched using its own URI.
+    /// The file was fetched using its own URI.
     IndividualFile(RemoteFileUri),
     /// The file was found using [`FileKey`] in the bundle identified by the URI.
     Bundled(RemoteFileUri, FileKey),
-    /// The SourceMap was embedded in a minified file.
-    /// This will only ever happen for SourceMaps, and the SourceMap is always used in combination
-    /// with a minified File that has a [`CachedFileUri`] itself.
+    /// The file was embedded in another file. This will only ever happen
+    /// for Base64-encoded SourceMaps, and the SourceMap is always used
+    /// in combination with a minified File that has a [`CachedFileUri`] itself.
     Embedded,
 }
 
