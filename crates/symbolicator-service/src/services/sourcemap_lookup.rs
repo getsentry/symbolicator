@@ -43,7 +43,9 @@ use symbolic::debuginfo::sourcebundle::{
 };
 use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
-use symbolicator_sources::{ObjectType, RemoteFile, RemoteFileUri, SentrySourceConfig};
+use symbolicator_sources::{
+    HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentrySourceConfig,
+};
 use tempfile::NamedTempFile;
 use url::Position;
 
@@ -78,10 +80,10 @@ pub struct SourceMapModule {
     source_file_base: Option<Url>,
     /// The fetched minified JS file.
     // TODO(sourcemap): maybe this should not be public?
-    pub minified_source: CacheEntry<CachedFile>,
+    pub minified_source: CachedFileEntry,
     /// The converted SourceMap.
     // TODO(sourcemap): maybe this should not be public?
-    pub smcache: CacheEntry<OwnedSourceMapCache>,
+    pub smcache: CachedFileEntry<OwnedSourceMapCache>,
 }
 
 impl SourceMapModule {
@@ -96,8 +98,8 @@ impl SourceMapModule {
             debug_id,
             was_fetched: false,
             source_file_base: None,
-            minified_source: Err(CacheError::NotFound),
-            smcache: Err(CacheError::NotFound),
+            minified_source: CachedFileEntry::empty(),
+            smcache: CachedFileEntry::empty(),
         }
     }
 
@@ -124,7 +126,7 @@ pub struct SourceMapLookup {
     modules_by_abs_path: HashMap<String, SourceMapModule>,
 
     /// Arbitrary source files keyed by their [`FileKey`].
-    files_by_key: HashMap<FileKey, CacheEntry<CachedFile>>,
+    files_by_key: HashMap<FileKey, CachedFileEntry>,
 
     /// The [`ArtifactFetcher`] responsible for fetching artifacts, from bundles or as individual files.
     fetcher: ArtifactFetcher,
@@ -247,7 +249,7 @@ impl SourceMapLookup {
 
         // We use the sourcemap url as the base. If that is not available because there is no
         // sourcemap url, or it is an for embedded sourcemap, we fall back to the minified file.
-        let sourcemap_url = match &minified_source {
+        let sourcemap_url = match &minified_source.entry {
             Ok(minified_source) => match minified_source.sourcemap_url.as_deref() {
                 Some(SourceMapUrl::Remote(url)) => Some(url.clone()),
                 _ => None,
@@ -264,7 +266,7 @@ impl SourceMapLookup {
     }
 
     /// Gets the source file based on its [`FileKey`].
-    pub async fn get_source_file(&mut self, key: FileKey) -> &CacheEntry<CachedFile> {
+    pub async fn get_source_file(&mut self, key: FileKey) -> &CachedFileEntry {
         if !self.files_by_key.contains_key(&key) {
             let file = self.fetcher.get_file(&key).await;
             self.files_by_key.insert(key.clone(), file);
@@ -378,14 +380,41 @@ impl FileKey {
     }
 }
 
+/// The source of an individual file.
+#[derive(Clone, Debug)]
+pub enum CachedFileUri {
+    /// The file was fetched using its own URI.
+    IndividualFile(RemoteFileUri),
+    /// The file was found using [`FileKey`] in the bundle identified by the URI.
+    Bundled(RemoteFileUri, FileKey),
+    /// The file was embedded in another file. This will only ever happen
+    /// for Base64-encoded SourceMaps, and the SourceMap is always used
+    /// in combination with a minified File that has a [`CachedFileUri`] itself.
+    Embedded,
+}
+
+#[derive(Clone, Debug)]
+pub struct CachedFileEntry<T = CachedFile> {
+    pub uri: CachedFileUri,
+    pub entry: CacheEntry<T>,
+}
+
+impl<T> CachedFileEntry<T> {
+    fn empty() -> Self {
+        let uri = RemoteFileUri::new("<invalid>");
+        Self {
+            uri: CachedFileUri::IndividualFile(uri),
+            entry: Err(CacheError::NotFound),
+        }
+    }
+}
+
 /// This is very similar to `SourceFileDescriptor`, except that it is `'static` and includes just
 /// the parts that we care about.
 #[derive(Clone)]
 pub struct CachedFile {
     pub contents: ByteViewString,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
-    // TODO(sourcemap): maybe we should add a `FileOrigin` here, as in:
-    // RemoteFile(Artifact)+path_in_zip ; RemoteFile ; "embedded"
 }
 
 impl fmt::Debug for CachedFile {
@@ -399,25 +428,30 @@ impl fmt::Debug for CachedFile {
 }
 
 impl CachedFile {
-    fn from_descriptor(descriptor: SourceFileDescriptor) -> Option<Self> {
+    fn from_descriptor(descriptor: SourceFileDescriptor) -> CacheEntry<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
             Some(url) => {
                 // TODO(sourcemap): error handling?
-                let abs_path = descriptor
-                    .url()
-                    .expect("descriptor should have an `abs_path`");
-                let abs_path = Url::parse(abs_path).ok()?;
+                let abs_path = descriptor.url().ok_or_else(|| {
+                    CacheError::Malformed("descriptor should have an `abs_path`".into())
+                })?;
+                let abs_path = Url::parse(abs_path).map_err(|err| {
+                    CacheError::Malformed(format!("invalid `sourceMappingURL`: {err}"))
+                })?;
 
-                SourceMapUrl::parse_with_prefix(&abs_path, url).ok()
+                Some(SourceMapUrl::parse_with_prefix(&abs_path, url)?)
             }
             None => None,
         };
 
         // TODO(sourcemap): a `into_contents` would be nice, as we are creating a new copy right now
-        let contents = descriptor.contents()?.to_owned();
+        let contents = descriptor
+            .contents()
+            .ok_or_else(|| CacheError::Malformed("descriptor should have `contents`".into()))?
+            .to_owned();
         let contents = ByteViewString::from(contents);
 
-        Some(Self {
+        Ok(Self {
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
@@ -484,7 +518,7 @@ impl ArtifactFetcher {
         &mut self,
         abs_path: Url,
         debug_id: Option<DebugId>,
-    ) -> (CacheEntry<CachedFile>, CacheEntry<OwnedSourceMapCache>) {
+    ) -> (CachedFileEntry, CachedFileEntry<OwnedSourceMapCache>) {
         // First, check if we have already cached / created the `SourceMapCache`.
         let key = FileKey::MinifiedSource {
             abs_path: abs_path.clone(),
@@ -495,17 +529,20 @@ impl ArtifactFetcher {
         let minified_source = self.get_file(&key).await;
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_url = match &minified_source {
+        let sourcemap_url = match &minified_source.entry {
             Ok(minified_source) => minified_source.sourcemap_url.as_deref(),
             Err(_) => None,
         };
         // We have three cases here:
         let sourcemap = match sourcemap_url {
             // We have an embedded SourceMap via data URL
-            Some(SourceMapUrl::Data(data)) => Ok(CachedFile {
-                contents: data.clone(),
-                sourcemap_url: None,
-            }),
+            Some(SourceMapUrl::Data(data)) => CachedFileEntry {
+                uri: CachedFileUri::Embedded,
+                entry: Ok(CachedFile {
+                    contents: data.clone(),
+                    sourcemap_url: None,
+                }),
+            },
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
                 let sourcemap_key = FileKey::SourceMap {
@@ -525,17 +562,19 @@ impl ArtifactFetcher {
         };
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
-        let smcache = match &minified_source {
-            Ok(minified_source) => match sourcemap {
+        let smcache = match &minified_source.entry {
+            Ok(minified_source) => match sourcemap.entry {
                 Ok(sourcemap) => {
-                    // TODO(sourcemap): We should track the information where these files came from,
-                    // and use that as the `CacheKey` for the `sourcemap_caches`.
                     self.fetch_sourcemap_cache(minified_source.contents.clone(), sourcemap.contents)
                         .await
                 }
                 Err(err) => Err(err),
             },
             Err(err) => Err(err.clone()),
+        };
+        let smcache = CachedFileEntry {
+            uri: sourcemap.uri,
+            entry: smcache,
         };
 
         (minified_source, smcache)
@@ -544,16 +583,20 @@ impl ArtifactFetcher {
     /// Fetches an arbitrary file using its `abs_path`,
     /// or optionally its [`DebugId`] and [`SourceFileType`]
     /// (because multiple files can share one [`DebugId`]).
-    pub async fn get_file(&mut self, key: &FileKey) -> CacheEntry<CachedFile> {
+    pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
         // Try looking up the file in one of the artifact bundles that we know about.
         if let Some(file) = self.try_get_file_from_bundles(key) {
-            return Ok(file);
+            return file;
         } else if key.debug_id().is_some() {
             // If we have a `DebugId`, we do not want to ever fall back to fetching a non-bundled
             // artifact, nor to scraping the file from the web.
             // We also do not call `query_sentry_for_file`, as we can assume that whatever `ArtifactBundle`
             // contains the file has already been queried and fetched from within `prefetch_artifacts`.
-            return Err(CacheError::NotFound);
+            let uri = RemoteFileUri::new("<not-found>");
+            return CachedFileEntry {
+                uri: CachedFileUri::Bundled(uri, key.clone()),
+                entry: Err(CacheError::NotFound),
+            };
         }
 
         // Otherwise, try to get the file from an individual artifact.
@@ -561,7 +604,7 @@ impl ArtifactFetcher {
         // If we have a `DebugId`, we are guaranteed to use artifact bundles, and to have found the
         // file in the check up above already.
         if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
-            return Ok(file);
+            return file;
         }
 
         // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
@@ -571,56 +614,62 @@ impl ArtifactFetcher {
         // So we do the whole dance yet again.
         // TODO(sourcemap): figure out a way to avoid that?
         if let Some(file) = self.try_get_file_from_bundles(key) {
-            return Ok(file);
+            return file;
         }
         if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
-            return Ok(file);
+            return file;
         }
 
         // Otherwise, fall back to scraping from the Web.
         if self.allow_scraping {
             if let Some(url) = key.abs_path() {
                 self.scraped_files += 1;
+                let remote_file: RemoteFile = HttpRemoteFile::from_url(url.to_owned()).into();
+                let uri = CachedFileUri::IndividualFile(remote_file.uri());
                 let scraped_file = self
                     .sourcefiles_cache
-                    .fetch_scoped_url(&self.scope, url.to_owned())
+                    .fetch_file(&self.scope, remote_file)
                     .await;
 
-                return scraped_file.map(|contents| {
-                    tracing::trace!(?key, "Found file by scraping the web");
+                return CachedFileEntry {
+                    uri,
+                    entry: scraped_file.map(|contents| {
+                        tracing::trace!(?key, "Found file by scraping the web");
 
-                    let sm_ref = locate_sourcemap_reference(contents.as_bytes())
-                        .ok()
-                        .flatten();
-                    let sourcemap_url = sm_ref.and_then(|sm_ref| {
-                        SourceMapUrl::parse_with_prefix(url, sm_ref.get_url())
+                        let sm_ref = locate_sourcemap_reference(contents.as_bytes())
                             .ok()
-                            .map(Arc::new)
-                    });
+                            .flatten();
+                        let sourcemap_url = sm_ref.and_then(|sm_ref| {
+                            SourceMapUrl::parse_with_prefix(url, sm_ref.get_url())
+                                .ok()
+                                .map(Arc::new)
+                        });
 
-                    CachedFile {
-                        contents,
-                        sourcemap_url,
-                    }
-                });
+                        CachedFile {
+                            contents,
+                            sourcemap_url,
+                        }
+                    }),
+                };
             }
         }
 
-        Err(CacheError::NotFound)
+        CachedFileEntry::empty()
     }
 
-    fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFile> {
+    fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFileEntry> {
         // If we have a `DebugId`, we try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
-            for bundle in self.artifact_bundles.values() {
+            for (bundle_uri, bundle) in &self.artifact_bundles {
                 let Ok(bundle) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
-                    if let Some(file) = CachedFile::from_descriptor(descriptor) {
-                        tracing::trace!(?key, "Found file in artifact bundles by debug-id");
-                        return Some(file);
-                    }
+                    tracing::trace!(?key, "Found file in artifact bundles by debug-id");
+                    return Some(CachedFileEntry {
+                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
+                        entry: CachedFile::from_descriptor(descriptor),
+                    });
                 }
             }
 
@@ -632,14 +681,15 @@ impl ArtifactFetcher {
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
-                for bundle in self.artifact_bundles.values() {
+                for (bundle_uri, bundle) in &self.artifact_bundles {
                     let Ok(bundle) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
-                        if let Some(file) = CachedFile::from_descriptor(descriptor) {
-                            tracing::trace!(?key, url, "Found file in artifact bundles by url");
-                            return Some(file);
-                        }
+                        tracing::trace!(?key, url, "Found file in artifact bundles by url");
+                        return Some(CachedFileEntry {
+                            uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
+                            entry: CachedFile::from_descriptor(descriptor),
+                        });
                     }
                 }
             }
@@ -648,7 +698,7 @@ impl ArtifactFetcher {
         None
     }
 
-    async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFile> {
+    async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
         let abs_path = key.abs_path()?;
         let (url, artifact) = get_release_file_candidate_urls(abs_path).find_map(|url| {
             self.individual_artifacts
@@ -658,20 +708,24 @@ impl ArtifactFetcher {
 
         self.fetched_artifacts += 1;
 
-        let file = artifact.remote_file.clone();
-        let artifact_contents = self.sourcefiles_cache.fetch_file(&self.scope, file).await;
+        let artifact_contents = self
+            .sourcefiles_cache
+            .fetch_file(&self.scope, artifact.remote_file.clone())
+            .await;
 
-        // TODO(sourcemap): figure out error handling:
-        let contents = artifact_contents.ok()?;
+        Some(CachedFileEntry {
+            uri: CachedFileUri::IndividualFile(artifact.remote_file.uri()),
+            entry: artifact_contents.map(|contents| {
+                tracing::trace!(?key, ?url, ?artifact, "Found file as individual artifact");
 
-        tracing::trace!(?key, ?url, ?artifact, "Found file as individual artifact");
-
-        // Get the sourcemap reference from the artifact, either from metadata, or file contents
-        let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, contents.as_bytes());
-
-        Some(CachedFile {
-            contents,
-            sourcemap_url: sourcemap_url.map(Arc::new),
+                // Get the sourcemap reference from the artifact, either from metadata, or file contents
+                let sourcemap_url =
+                    resolve_sourcemap_url(abs_path, &artifact.headers, contents.as_bytes());
+                CachedFile {
+                    contents,
+                    sourcemap_url: sourcemap_url.map(Arc::new),
+                }
+            }),
         })
     }
 
@@ -733,6 +787,7 @@ impl ArtifactFetcher {
                     abs_path,
                     headers,
                 } => {
+                    self.queried_artifacts += 1;
                     self.individual_artifacts.insert(
                         abs_path,
                         IndividualArtifact {
