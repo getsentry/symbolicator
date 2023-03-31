@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 201
+assertion_line: 278
 expression: response.unwrap()
 ---
 stacktraces:
@@ -8,13 +8,13 @@ stacktraces:
       - status: symbolicated
         original_index: 0
         addr_mode: "rel:0"
-        instruction_addr: "0x1"
-        function_id: "0x7"
+        instruction_addr: "0x2f"
+        function_id: "0x5"
         lang: csharp
-        filename: ThrowHelper.cs
-        abs_path: /_/src/libraries/Common/src/System/ThrowHelper.cs
-        lineno: 24
-        source_link: "https://raw.githubusercontent.com/dotnet/runtime/d099f075e45d2aa6007a22b71b45a08758559f80/src/libraries/Common/src/System/ThrowHelper.cs"
+        filename: Program.cs
+        abs_path: "C:\\dev\\dotnet\\samples\\Sentry.Samples.Console.Basic\\Program.cs"
+        lineno: 13
+        source_link: "https://raw.githubusercontent.com/getsentry/sentry-dotnet/b31b62192e6934ea04396456461f430e143cf4f9/samples/Sentry.Samples.Console.Basic/Program.cs"
 modules:
   - debug_status: found
     features:
@@ -24,16 +24,16 @@ modules:
       has_sources: true
     arch: unknown
     type: pe_dotnet
-    debug_id: 37e9e8a6-1a8e-404e-b93c-6902e277ff55-a09672e1
+    debug_id: 0c380a12-8221-4069-8565-bee6b3ac196e-a596286e
     debug_file: source-links.pdb
     image_addr: "0x0"
     candidates:
       - source: local
-        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55a09672e1/source-links.src.zip"
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Ea596286e/source-links.src.zip"
         download:
           status: notfound
       - source: local
-        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55ffffffff/source-links.pdb"
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.pdb"
         download:
           status: ok
           features:
@@ -44,7 +44,7 @@ modules:
         debug:
           status: ok
       - source: local
-        location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55ffffffff/source-links.src.zip"
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.src.zip"
         download:
           status: notfound
 
