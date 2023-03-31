@@ -4,7 +4,7 @@ use std::sync::Arc;
 use symbolicator_service::config::Config;
 use symbolicator_sources::SourceConfig;
 
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
@@ -104,7 +104,7 @@ struct ConfigFile {
 }
 
 impl ConfigFile {
-    pub fn parse(path: &Path) -> anyhow::Result<Self> {
+    pub fn parse(path: &Path) -> Result<Self> {
         match std::fs::read_to_string(path) {
             Ok(buf) => toml::from_str(&buf).context("Could not parse configuration file"),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -129,7 +129,7 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn get() -> anyhow::Result<Self> {
+    pub fn get() -> Result<Self> {
         let cli = Cli::parse();
 
         let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
@@ -210,7 +210,7 @@ impl Settings {
     }
 }
 
-fn find_global_config_file() -> anyhow::Result<PathBuf> {
+fn find_global_config_file() -> Result<PathBuf> {
     dirs::home_dir()
         .ok_or_else(|| anyhow!("Could not find home dir"))
         .map(|mut path| {

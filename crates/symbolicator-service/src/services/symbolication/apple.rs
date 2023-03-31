@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
@@ -24,7 +24,7 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> anyhow::Result<(SymbolicateStacktraces, AppleCrashReportState)> {
+    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
         let report =
             AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
         let mut metadata = report.metadata;
@@ -122,7 +122,7 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> anyhow::Result<CompletedSymbolicationResponse> {
+    ) -> Result<CompletedSymbolicationResponse> {
         let (request, state) = self.parse_apple_crash_report(scope, report, sources)?;
         let mut response = self.symbolicate(request).await?;
 
