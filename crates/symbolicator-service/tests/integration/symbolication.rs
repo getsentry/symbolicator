@@ -277,4 +277,3 @@ async fn test_dotnet_only_source_links_3rd_party() {
 
     assert_snapshot!(response.unwrap());
 }
-
