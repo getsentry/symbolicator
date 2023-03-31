@@ -17,3 +17,6 @@ __pycache__
 
 # mkdocs
 site
+
+# New test snapshots
+*.snap.new
