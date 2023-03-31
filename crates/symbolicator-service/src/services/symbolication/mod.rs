@@ -114,7 +114,7 @@ impl SymbolicationActor {
     pub async fn symbolicate(
         &self,
         request: SymbolicateStacktraces,
-    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+    ) -> anyhow::Result<CompletedSymbolicationResponse> {
         let SymbolicateStacktraces {
             stacktraces,
             sources,

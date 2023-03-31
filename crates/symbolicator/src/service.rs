@@ -25,7 +25,6 @@ use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
 use tempfile::TempPath;
-use thiserror::Error;
 use uuid::Uuid;
 
 use symbolicator_service::caching::CacheEntry;
@@ -99,27 +98,6 @@ pub enum SymbolicationResponse {
     },
     Timeout,
     InternalError,
-}
-
-/// Errors during symbolication.
-#[derive(Debug, Error)]
-pub enum SymbolicationError {
-    #[error("symbolication took too long")]
-    Timeout,
-
-    #[error(transparent)]
-    Failed(#[from] anyhow::Error),
-}
-
-impl From<&SymbolicationError> for SymbolicationResponse {
-    fn from(error: &SymbolicationError) -> Self {
-        match error {
-            SymbolicationError::Timeout => SymbolicationResponse::Timeout,
-            SymbolicationError::Failed(_) => SymbolicationResponse::Failed {
-                message: error.to_string(),
-            },
-        }
-    }
 }
 
 /// Common options for all symbolication API requests.
@@ -383,7 +361,7 @@ impl RequestService {
         f: F,
     ) -> Result<RequestId, MaxRequestsError>
     where
-        F: Future<Output = Result<CompletedResponse, anyhow::Error>> + Send + 'static,
+        F: Future<Output = Result<CompletedResponse>> + Send + 'static,
     {
         let (sender, receiver) = oneshot::channel();
 
@@ -422,18 +400,12 @@ impl RequestService {
         let request_future = async move {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
 
-            let f = tokio::time::timeout(Duration::from_secs(3600), f);
+            let timeout = Duration::from_secs(3600);
+            let f = tokio::time::timeout(timeout, f);
             let f = measure(task_name, m::timed_result, f);
 
-            // This flattens the `Result<Result<_, Error>, Timeout>` into a
-            // `Result<_, SymbolicationError>` so we can match on it more easily.
-            let result = f
-                .await
-                .map(|inner| inner.map_err(SymbolicationError::from))
-                .unwrap_or(Err(SymbolicationError::Timeout));
-
-            let response = match result {
-                Ok(mut response) => {
+            let response = match f.await {
+                Ok(Ok(mut response)) => {
                     if !options.dif_candidates {
                         if let CompletedResponse::NativeSymbolication(ref mut res) = response {
                             clear_dif_candidates(res)
@@ -442,18 +414,27 @@ impl RequestService {
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
-                Err(error) => {
-                    // a timeout is an abnormal session exit, all other errors are considered "crashed"
-                    let status = match &error {
-                        SymbolicationError::Timeout => SessionStatus::Abnormal,
-                        _ => SessionStatus::Crashed,
-                    };
-                    sentry::end_session_with_status(status);
+                Ok(Err(err)) => {
+                    // NOTE: This will double-report this error to Sentry.
+                    // We want the `tracing::error` here for local command line output, but we also
+                    // want the `capture_anyhow` which will give a full error with a symbolicated backtrace.
+                    // So until we can actually get a `Backtrace` out of an `Error`, and `anyhow`
+                    // implements that functionality through its `Error` impl, we are stuck with this for now.
+                    // See <https://github.com/rust-lang/rust/issues/99301>
+                    let error: &dyn std::error::Error = err.as_ref();
+                    tracing::error!(error, "Symbolication failed");
+                    sentry_anyhow::capture_anyhow(&err);
 
-                    let response = SymbolicationResponse::from(&error);
-                    let error = anyhow::Error::new(error);
-                    tracing::error!("Symbolication error: {:?}", error);
-                    response
+                    sentry::end_session_with_status(SessionStatus::Crashed);
+                    SymbolicationResponse::Failed {
+                        message: err.to_string(),
+                    }
+                }
+                Err(_) => {
+                    tracing::error!("Symbolication timed out after {timeout:?}");
+                    // a timeout is an abnormal session exit, all other errors are considered "crashed"
+                    sentry::end_session_with_status(SessionStatus::Abnormal);
+                    SymbolicationResponse::Timeout
                 }
             };
 

@@ -24,7 +24,7 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<(SymbolicateStacktraces, AppleCrashReportState), anyhow::Error> {
+    ) -> anyhow::Result<(SymbolicateStacktraces, AppleCrashReportState)> {
         let report =
             AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
         let mut metadata = report.metadata;
@@ -122,7 +122,7 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+    ) -> anyhow::Result<CompletedSymbolicationResponse> {
         let (request, state) = self.parse_apple_crash_report(scope, report, sources)?;
         let mut response = self.symbolicate(request).await?;
 

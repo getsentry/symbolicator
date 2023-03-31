@@ -400,7 +400,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+    ) -> anyhow::Result<CompletedSymbolicationResponse> {
         let (request, state) = self
             .stackwalk_minidump(scope, minidump_file, sources)
             .await?;
@@ -417,7 +417,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
+    ) -> anyhow::Result<(SymbolicateStacktraces, MinidumpState)> {
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);

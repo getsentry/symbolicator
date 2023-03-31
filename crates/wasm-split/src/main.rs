@@ -68,7 +68,7 @@ fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
     })
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::from_args();
 
     let mut module = Module::decode_from(BufReader::new(File::open(&cli.input)?))?;
