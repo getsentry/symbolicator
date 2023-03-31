@@ -7,7 +7,7 @@ use std::fmt::{self, Display};
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{Context, Error};
+use anyhow::Context;
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
 
@@ -40,7 +40,7 @@ pub struct BcSymbolMapHandle {
 
 impl BcSymbolMapHandle {
     /// Parses the map from the handle.
-    pub fn bc_symbol_map(&self) -> Result<BcSymbolMap<'_>, Error> {
+    pub fn bc_symbol_map(&self) -> anyhow::Result<BcSymbolMap<'_>> {
         BcSymbolMap::parse(&self.data).context("Failed to parse BCSymbolMap")
     }
 }

@@ -37,7 +37,7 @@ struct Cli {
     pretty: bool,
 }
 
-fn main() -> Result<(), anyhow::Error> {
+fn main() -> anyhow::Result<()> {
     let Cli {
         input,
         symbolicator,

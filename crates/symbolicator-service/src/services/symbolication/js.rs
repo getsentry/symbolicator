@@ -60,7 +60,7 @@ impl SymbolicationActor {
     pub async fn symbolicate_js(
         &self,
         mut request: SymbolicateJsStacktraces,
-    ) -> Result<CompletedJsSymbolicationResponse, anyhow::Error> {
+    ) -> anyhow::Result<CompletedJsSymbolicationResponse> {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
         let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
         lookup.prefetch_artifacts(&raw_stacktraces).await;

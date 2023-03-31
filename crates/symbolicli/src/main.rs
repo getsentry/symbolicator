@@ -11,7 +11,7 @@ use symbolicator_service::services::symbolication::SymbolicationActor;
 use symbolicator_service::types::{CompletedSymbolicationResponse, Scope};
 use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
 
-use anyhow::Context;
+use anyhow::{Context, Result};
 use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
@@ -20,7 +20,7 @@ use tracing_subscriber::prelude::*;
 mod settings;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let settings::Settings {
         event_id,
         symbolicator_config,
@@ -124,7 +124,7 @@ impl Payload {
         symbolication: &SymbolicationActor,
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-    ) -> anyhow::Result<CompletedSymbolicationResponse> {
+    ) -> Result<CompletedSymbolicationResponse> {
         match self {
             Payload::Event(event) => {
                 let symbolication_request =
@@ -143,7 +143,7 @@ impl Payload {
         }
     }
 
-    fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> anyhow::Result<Option<Self>> {
+    fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> Result<Option<Self>> {
         match std::fs::File::open(path) {
             Ok(mut file) => {
                 let mut magic = [0; 4];
@@ -167,7 +167,7 @@ impl Payload {
         }
     }
 
-    async fn get_remote<'a>(client: &reqwest::Client, key: EventKey<'a>) -> anyhow::Result<Self> {
+    async fn get_remote<'a>(client: &reqwest::Client, key: EventKey<'a>) -> Result<Self> {
         tracing::info!("trying to resolve event remotely");
         let event = remote::download_event(client, key).await?;
         tracing::info!("event json file downloaded");
@@ -390,7 +390,7 @@ mod output {
 mod remote {
     use std::io::Write;
 
-    use anyhow::{bail, Context};
+    use anyhow::{bail, Context, Result};
     use reqwest::{StatusCode, Url};
     use serde::Deserialize;
     use tempfile::{NamedTempFile, TempPath};
@@ -414,7 +414,7 @@ mod remote {
     pub async fn get_attached_minidump<'a>(
         client: &reqwest::Client,
         key: EventKey<'a>,
-    ) -> anyhow::Result<Option<Url>> {
+    ) -> Result<Option<Url>> {
         let EventKey {
             base_url,
             org,
@@ -466,7 +466,7 @@ mod remote {
     pub async fn download_minidump(
         client: &reqwest::Client,
         download_url: Url,
-    ) -> anyhow::Result<TempPath> {
+    ) -> Result<TempPath> {
         tracing::info!(url = %download_url, "downloading minidump file");
 
         let response = client
@@ -498,10 +498,7 @@ mod remote {
         Ok(temp_file.into_temp_path())
     }
 
-    pub async fn download_event<'a>(
-        client: &reqwest::Client,
-        key: EventKey<'a>,
-    ) -> anyhow::Result<Event> {
+    pub async fn download_event<'a>(client: &reqwest::Client, key: EventKey<'a>) -> Result<Event> {
         let EventKey {
             base_url,
             org,

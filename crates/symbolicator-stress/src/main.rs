@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
 async fn process_payload(
     symbolication: &SymbolicationActor,
     workload: ParsedPayload,
-) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+) -> Result<CompletedSymbolicationResponse> {
     match workload {
         ParsedPayload::Minidump(payload) => {
             let MinidumpPayload {

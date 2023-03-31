@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{bail, Context};
+use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
@@ -275,7 +275,7 @@ async fn stackwalk(
     minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
-) -> anyhow::Result<StackWalkMinidumpResult> {
+) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
     let system_info = minidump
@@ -400,7 +400,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse, anyhow::Error> {
+    ) -> Result<CompletedSymbolicationResponse> {
         let (request, state) = self
             .stackwalk_minidump(scope, minidump_file, sources)
             .await?;
@@ -417,7 +417,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
-    ) -> Result<(SymbolicateStacktraces, MinidumpState), anyhow::Error> {
+    ) -> Result<(SymbolicateStacktraces, MinidumpState)> {
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);
@@ -548,7 +548,7 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
     }
 }
 
-fn read_minidump(path: &Path) -> anyhow::Result<Minidump> {
+fn read_minidump(path: &Path) -> Result<Minidump> {
     let bv = ByteView::open(path)?;
     let md = Minidump::read(bv)?;
     Ok(md)
