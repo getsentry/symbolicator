@@ -280,6 +280,11 @@ impl SourceMapLookup {
     }
 }
 
+// TODO: Handle relative paths like `../`, `./`, etc
+fn join_url(base: &Url, url: &str) -> Option<Url> {
+    base.join(url).ok()
+}
+
 /// A URL to a sourcemap file.
 ///
 /// May either be a conventional URL or a data URL containing the sourcemap
@@ -319,9 +324,8 @@ impl SourceMapUrl {
                 .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
             Ok(Self::Data(decoded.into()))
         } else {
-            let url = base
-                .join(url_string)
-                .map_err(|_| CacheError::DownloadError("Invalid sourcemap url".to_string()))?;
+            let url = join_url(base, url_string)
+                .ok_or_else(|| CacheError::DownloadError("Invalid sourcemap url".to_string()))?;
             Ok(Self::Remote(url))
         }
     }
@@ -428,18 +432,19 @@ impl fmt::Debug for CachedFile {
 }
 
 impl CachedFile {
-    fn from_descriptor(descriptor: SourceFileDescriptor) -> CacheEntry<Self> {
+    fn from_descriptor(
+        abs_path: Option<&Url>,
+        descriptor: SourceFileDescriptor,
+    ) -> CacheEntry<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
             Some(url) => {
-                // TODO(sourcemap): error handling?
-                let abs_path = descriptor.url().ok_or_else(|| {
-                    CacheError::Malformed("descriptor should have an `abs_path`".into())
+                // `abs_path` here is expected to be the *absolute* `descriptor.url()`
+                // The only case where `abs_path` is `None` is if we were looking up a `SourceMap` with
+                // *just* the `DebugId`. But a `SourceMap` itself will never have a `source_mapping_url`, so we are good.
+                let abs_path = abs_path.ok_or_else(|| {
+                    CacheError::Malformed("using a descriptor without an `abs_path`".into())
                 })?;
-                let abs_path = Url::parse(abs_path).map_err(|err| {
-                    CacheError::Malformed(format!("invalid `sourceMappingURL`: {err}"))
-                })?;
-
-                Some(SourceMapUrl::parse_with_prefix(&abs_path, url)?)
+                Some(SourceMapUrl::parse_with_prefix(abs_path, url)?)
             }
             None => None,
         };
@@ -668,7 +673,7 @@ impl ArtifactFetcher {
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                        entry: CachedFile::from_descriptor(descriptor),
+                        entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
                     });
                 }
             }
@@ -688,7 +693,7 @@ impl ArtifactFetcher {
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
                         return Some(CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                            entry: CachedFile::from_descriptor(descriptor),
+                            entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
                         });
                     }
                 }
