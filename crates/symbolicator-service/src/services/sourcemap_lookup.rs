@@ -280,8 +280,12 @@ impl SourceMapLookup {
     }
 }
 
-// TODO: Handle relative paths like `../`, `./`, etc
+/// Joins a `url` to the `base` [`Url`], taking care of our special `~/` prefix that is treated just
+/// like an absolute url.
 fn join_url(base: &Url, url: &str) -> Option<Url> {
+    if let Some(url) = url.strip_prefix('~') {
+        return base.join(url).ok();
+    }
     base.join(url).ok()
 }
 
@@ -1065,5 +1069,43 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(extract_file_stem(&url), "/assets/bundle");
+    }
+
+    #[test]
+    fn joining_urls() {
+        let base = Url::parse("https://example.com/path/to/assets/bundle.min.js?foo=1&bar=baz#wat")
+            .unwrap();
+        // relative
+        assert_eq!(
+            join_url(&base, "../sourcemaps/bundle.min.js.map")
+                .unwrap()
+                .as_str(),
+            "https://example.com/path/to/sourcemaps/bundle.min.js.map"
+        );
+        // absolute
+        assert_eq!(
+            join_url(&base, "/foo.js").unwrap().as_str(),
+            "https://example.com/foo.js"
+        );
+        // absolute with tilde
+        assert_eq!(
+            join_url(&base, "~/foo.js").unwrap().as_str(),
+            "https://example.com/foo.js"
+        );
+
+        // dots
+        assert_eq!(
+            join_url(&base, ".././.././to/./sourcemaps/./bundle.min.js.map")
+                .unwrap()
+                .as_str(),
+            "https://example.com/path/to/sourcemaps/bundle.min.js.map"
+        );
+        // unmatched dot-dots
+        assert_eq!(
+            join_url(&base, "../../../../../../caps-at-absolute")
+                .unwrap()
+                .as_str(),
+            "https://example.com/caps-at-absolute"
+        );
     }
 }
