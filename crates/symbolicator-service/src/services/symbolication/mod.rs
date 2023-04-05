@@ -5,7 +5,7 @@ use futures::future;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::ppdb::PortablePdbCache;
-use symbolic::symcache::SymCache;
+use symbolic::symcache::{Function, SymCache};
 use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
 
 use crate::caching::{Cache, CacheError};
@@ -80,6 +80,7 @@ impl AdjustInstructionAddr {
 // than just symbolication ;-)
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
+    demangle_cache: DemangleCache,
     objects: ObjectsActor,
     symcaches: SymCacheActor,
     cficaches: CfiCacheActor,
@@ -99,7 +100,13 @@ impl SymbolicationActor {
         sourcemaps: SourceMapService,
         sourcefiles_cache: Arc<SourceFilesCache>,
     ) -> Self {
+        let demangle_cache = DemangleCache::builder()
+            .max_capacity(10 * 1024 * 1024) // 10 MiB, considering key and value:
+            .weigher(|k, v| (k.0.len() + v.len()).try_into().unwrap_or(u32::MAX))
+            .build();
+
         SymbolicationActor {
+            demangle_cache,
             objects,
             symcaches,
             cficaches,
@@ -137,7 +144,15 @@ impl SymbolicationActor {
         let mut metrics = StacktraceMetrics::default();
         let mut stacktraces: Vec<_> = stacktraces
             .into_iter()
-            .map(|trace| symbolicate_stacktrace(trace, &module_lookup, &mut metrics, signal))
+            .map(|trace| {
+                symbolicate_stacktrace(
+                    &self.demangle_cache,
+                    trace,
+                    &module_lookup,
+                    &mut metrics,
+                    signal,
+                )
+            })
             .collect();
 
         module_lookup
@@ -226,6 +241,7 @@ pub struct SymbolicateStacktraces {
 }
 
 fn symbolicate_frame(
+    demangle_cache: &DemangleCache,
     caches: &ModuleLookup,
     registers: &Registers,
     signal: Option<Signal>,
@@ -240,15 +256,27 @@ fn symbolicate_frame(
     frame.package = lookup_result.object_info.raw.code_file.clone();
 
     match lookup_result.cache {
-        Ok(CacheFileEntry::SymCache(symcache)) => symbolicate_native_frame(
-            symcache.get(),
-            lookup_result,
-            registers,
-            signal,
-            frame,
-            index,
-            adjustment,
-        ),
+        Ok(CacheFileEntry::SymCache(symcache)) => {
+            let symcache = symcache.get();
+            let relative_addr = get_relative_caller_addr(
+                symcache,
+                &lookup_result,
+                registers,
+                signal,
+                index,
+                adjustment,
+            );
+            relative_addr.and_then(|addr| {
+                symbolicate_native_frame(
+                    demangle_cache,
+                    symcache,
+                    lookup_result,
+                    addr,
+                    frame,
+                    index,
+                )
+            })
+        }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
             symbolicate_dotnet_frame(ppdb_cache.get(), frame, index)
         }
@@ -287,17 +315,15 @@ fn symbolicate_dotnet_frame(
     Ok(vec![result])
 }
 
-fn symbolicate_native_frame(
+fn get_relative_caller_addr(
     symcache: &SymCache,
-    lookup_result: CacheLookupResult,
+    lookup_result: &CacheLookupResult,
     registers: &Registers,
     signal: Option<Signal>,
-    frame: &RawFrame,
     index: usize,
     adjustment: AdjustInstructionAddr,
-) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
-    // get the relative caller address
-    let relative_addr = if let Some(addr) = lookup_result.relative_addr {
+) -> Result<u64, FrameStatus> {
+    if let Some(addr) = lookup_result.relative_addr {
         // heuristics currently are only supported when we can work with absolute addresses.
         // In cases where this is not possible we skip this part entirely and use the relative
         // address calculated by the lookup result as lookup address in the module.
@@ -335,16 +361,25 @@ fn symbolicate_native_frame(
                         );
                     metric!(counter("relative_addr.underflow") += 1);
                     FrameStatus::MissingSymbol
-                })?
+                })
         } else {
-            addr
+            Ok(addr)
         }
     } else {
         tracing::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
         metric!(counter("relative_addr.underflow") += 1);
-        return Err(FrameStatus::MissingSymbol);
-    };
+        Err(FrameStatus::MissingSymbol)
+    }
+}
 
+fn symbolicate_native_frame(
+    demangle_cache: &DemangleCache,
+    symcache: &SymCache,
+    lookup_result: CacheLookupResult,
+    relative_addr: u64,
+    frame: &RawFrame,
+    index: usize,
+) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
 
@@ -362,30 +397,7 @@ fn symbolicate_native_frame(
         let filename = split_path(&abs_path).1;
 
         let func = source_location.function();
-        let symbol = func.name();
-
-        // Detect the language from the bare name, ignoring any pre-set language. There are a few
-        // languages that we should always be able to demangle. Only complain about those that we
-        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
-        // reported as C++, which are expected not to demangle.
-        let detected_language = Name::from(symbol).detect_language();
-        let should_demangle = match (func.language(), detected_language) {
-            (_, Language::Unknown) => false, // can't demangle what we cannot detect
-            (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
-            (Language::Unknown, _) => true,  // if there was no language, then rely on detection
-            (lang, detected) => lang == detected, // avoid false-positive detections
-        };
-
-        let demangled_opt = func.name_for_demangling().demangle(DEMANGLE_OPTIONS);
-        if should_demangle && demangled_opt.is_none() {
-            sentry::with_scope(
-                |scope| scope.set_extra("identifier", symbol.to_string().into()),
-                || {
-                    let message = format!("Failed to demangle {} identifier", func.language());
-                    sentry::capture_message(&message, sentry::Level::Error);
-                },
-            );
-        }
+        let (symbol, function) = demangle_symbol(demangle_cache, &func);
 
         sym_addr = Some(HexValue(
             lookup_result.expose_preferred_addr(func.entry_pc() as u64),
@@ -404,16 +416,13 @@ fn symbolicate_native_frame(
                 instruction_addr,
                 adjust_instruction_addr: frame.adjust_instruction_addr,
                 function_id: frame.function_id,
-                symbol: Some(symbol.to_string()),
+                symbol: Some(symbol),
                 abs_path: if !abs_path.is_empty() {
                     Some(abs_path)
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(match demangled_opt {
-                    Some(demangled) => demangled,
-                    None => symbol.to_string(),
-                }),
+                function: Some(function),
                 filename,
                 lineno: Some(source_location.line()),
                 pre_context: vec![],
@@ -444,6 +453,45 @@ fn symbolicate_native_frame(
 
 /// Options for demangling all symbols.
 const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
+
+/// A cache for demangled symbols
+type DemangleCache = moka::sync::Cache<(String, Language), String>;
+
+/// Demangles the name of the given [`Function`].
+fn demangle_symbol(cache: &DemangleCache, func: &Function) -> (String, String) {
+    let symbol = func.name();
+    let key = (symbol.to_string(), func.language());
+
+    let init = || {
+        // Detect the language from the bare name, ignoring any pre-set language. There are a few
+        // languages that we should always be able to demangle. Only complain about those that we
+        // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
+        // reported as C++, which are expected not to demangle.
+        let detected_language = Name::from(symbol).detect_language();
+        let should_demangle = match (func.language(), detected_language) {
+            (_, Language::Unknown) => false, // can't demangle what we cannot detect
+            (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
+            (Language::Unknown, _) => true,  // if there was no language, then rely on detection
+            (lang, detected) => lang == detected, // avoid false-positive detections
+        };
+
+        let demangled_opt = func.name_for_demangling().demangle(DEMANGLE_OPTIONS);
+        if should_demangle && demangled_opt.is_none() {
+            sentry::with_scope(
+                |scope| scope.set_extra("identifier", symbol.to_string().into()),
+                || {
+                    let message = format!("Failed to demangle {} identifier", func.language());
+                    sentry::capture_message(&message, sentry::Level::Error);
+                },
+            );
+        }
+        demangled_opt.unwrap_or_else(|| symbol.to_string())
+    };
+
+    let entry = cache.entry_by_ref(&key).or_insert_with(init);
+
+    (key.0, entry.into_value())
+}
 
 /// Stacktrace related Metrics
 ///
@@ -646,6 +694,7 @@ fn record_symbolication_metrics(
 }
 
 fn symbolicate_stacktrace(
+    demangle_cache: &DemangleCache,
     thread: RawStacktrace,
     caches: &ModuleLookup,
     metrics: &mut StacktraceMetrics,
@@ -658,6 +707,7 @@ fn symbolicate_stacktrace(
     while let Some((index, mut frame)) = unsymbolicated_frames_iter.next() {
         let adjustment = AdjustInstructionAddr::for_frame(&frame, default_adjustment);
         match symbolicate_frame(
+            demangle_cache,
             caches,
             &thread.registers,
             signal,
