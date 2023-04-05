@@ -139,6 +139,11 @@ async fn symbolicate_js_frame(
     // Apply source context to the raw frame
     apply_source_context_from_artifact(raw_frame, &module.minified_source.entry);
 
+    // If there is no `sourceMappingUrl` or `debugId`, don't even bother doing any further processing.
+    if !module.has_source_mapping_url() && !module.has_debug_id() {
+        return Ok(raw_frame.clone());
+    }
+
     let smcache = match &module.smcache.entry {
         Ok(smcache) => smcache,
         Err(CacheError::Malformed(_)) => return Err(JsModuleErrorKind::MalformedSourcemap),

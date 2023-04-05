@@ -71,6 +71,8 @@ pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'stati
 pub struct SourceMapModule {
     /// The parsed [`Url`] or the original `abs_path` along with a [`url::ParseError`] if it is invalid.
     abs_path: Result<Url, (String, url::ParseError)>,
+    /// The optional [`sourceMappingUrl`] of this module.
+    source_mapping_url: Option<Url>,
     /// The optional [`DebugId`] of this module.
     debug_id: Option<DebugId>,
     // TODO(sourcemap): errors that happened when processing this file
@@ -95,6 +97,7 @@ impl SourceMapModule {
         });
         Self {
             abs_path,
+            source_mapping_url: None,
             debug_id,
             was_fetched: false,
             source_file_base: None,
@@ -106,6 +109,11 @@ impl SourceMapModule {
     // TODO(sourcemap): we should really maintain a list of all the errors that happened for this image?
     pub fn is_valid(&self) -> bool {
         self.abs_path.is_ok()
+    }
+
+    /// Whether this module has a [`sourceMappingUrl`].
+    pub fn has_source_mapping_url(&self) -> bool {
+        self.source_mapping_url.is_some()
     }
 
     /// Whether this module has a [`DebugId`].
@@ -256,9 +264,8 @@ impl SourceMapLookup {
             },
             Err(_) => None,
         };
-        let source_file_base = sourcemap_url.unwrap_or(url);
-
-        module.source_file_base = Some(source_file_base);
+        module.source_mapping_url = sourcemap_url.clone();
+        module.source_file_base = Some(sourcemap_url.unwrap_or(url));
         module.minified_source = minified_source;
         module.smcache = smcache;
 
