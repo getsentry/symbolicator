@@ -1,11 +1,13 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
+use reqwest::Url;
 use serde_json::json;
-use symbolicator_service::types::{JsFrame, Scope};
+use symbolicator_service::types::{JsFrame, RawObjectInfo, Scope};
 use symbolicator_service::{
     services::symbolication::SymbolicateJsStacktraces, types::JsStacktrace,
 };
-use symbolicator_sources::SentrySourceConfig;
+use symbolicator_sources::{SentrySourceConfig, SourceId};
 
 use crate::{assert_snapshot, setup_service};
 
@@ -27,17 +29,21 @@ use crate::{assert_snapshot, setup_service};
 fn make_js_request(
     source: SentrySourceConfig,
     frames: &str,
+    modules: Option<&str>,
     release: impl Into<Option<String>>,
     dist: impl Into<Option<String>>,
 ) -> SymbolicateJsStacktraces {
     let frames: Vec<JsFrame> = serde_json::from_str(frames).unwrap();
+    let modules: Vec<RawObjectInfo> = modules
+        .map(|m| serde_json::from_str(m).unwrap())
+        .unwrap_or_default();
     let stacktraces = vec![JsStacktrace { frames }];
 
     SymbolicateJsStacktraces {
         scope: Scope::Global,
         source: Arc::new(source),
         stacktraces,
-        modules: vec![],
+        modules,
         release: release.into(),
         dist: dist.into(),
         allow_scraping: false,
@@ -88,7 +94,7 @@ async fn test_sourcemap_expansion() {
         "function": "e"
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -136,7 +142,7 @@ async fn test_sourcemap_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -176,7 +182,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -207,7 +213,7 @@ async fn test_source_expansion() {
         "colno": 0
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -233,7 +239,7 @@ async fn test_inlined_sources() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -265,7 +271,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -313,7 +319,7 @@ async fn test_indexed_sourcemap_source_expansion() {
         "colno": 44
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -332,7 +338,7 @@ async fn test_malformed_abs_path() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -360,7 +366,7 @@ async fn test_fetch_error() {
         }}]"#
     );
 
-    let mut request = make_js_request(source, &frames, None, None);
+    let mut request = make_js_request(source, &frames, None, None, None);
     request.allow_scraping = true;
     let response = symbolication.symbolicate_js(request).await;
 
@@ -393,7 +399,52 @@ async fn test_invalid_location() {
         "function": "e"
     }]"#;
 
-    let request = make_js_request(source, frames, None, None);
+    let request = make_js_request(source, frames, None, None, None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
+// A manually triggered test that can be used to locally debug monolith behavior. Requires a list
+// of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
+// JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
+//
+// Run with:
+// RUST_LOG=debug cargo test --package 'symbolicator-service' --test 'integration' -- 'sourcemap::test_manual_processing' --include-ignored
+#[tokio::test]
+#[ignore]
+async fn test_manual_processing() {
+    let token = "token";
+    let org = "org";
+    let project = "project";
+    let release = None;
+    let dist = None;
+    let frames = r#"[{
+        "function": "x",
+        "module": "x",
+        "filename": "x",
+        "abs_path": "x",
+        "lineno": 1,
+        "colno": 1,
+        "in_app": true
+    }]"#;
+    let modules = r#"[{
+        "code_file": "x",
+        "debug_id": "x",
+        "type": "x"
+    }]"#;
+
+    let (symbolication, _) = setup_service(|_| ());
+    let source = SentrySourceConfig {
+        id: SourceId::new("sentry:project"),
+        url: Url::from_str(&format!(
+            "https://sentry.io/api/0/projects/{org}/{project}/artifact-lookup/"
+        ))
+        .unwrap(),
+        token: token.to_string(),
+    };
+
+    let request = make_js_request(source, frames, Some(modules), release, dist);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
