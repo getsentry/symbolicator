@@ -283,9 +283,7 @@ impl SourceMapLookup {
 /// Joins a `url` to the `base` [`Url`], taking care of our special `~/` prefix that is treated just
 /// like an absolute url.
 fn join_url(base: &Url, url: &str) -> Option<Url> {
-    if let Some(url) = url.strip_prefix('~') {
-        return base.join(url).ok();
-    }
+    let url = url.strip_prefix('~').unwrap_or(url);
     base.join(url).ok()
 }
 
