@@ -989,7 +989,11 @@ fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> Cach
     // TODO(sourcemap): maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
-    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap).unwrap();
+    // There's currently no way to access inner error of `SourceMapCacheWriterError`,
+    // if we change that. We might want to match on `SourceMap` and get actual underlying
+    // `sourcemap::Error` instead to see more details.
+    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)
+        .map_err(|_| CacheError::Malformed("Unable to produce a SourceMapCache".to_string()))?;
 
     let mut writer = BufWriter::new(file);
     smcache_writer.serialize(&mut writer)?;

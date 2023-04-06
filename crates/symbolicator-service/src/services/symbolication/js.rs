@@ -81,6 +81,7 @@ impl SymbolicationActor {
                 match symbolicate_js_frame(
                     &mut lookup,
                     raw_frame,
+                    &mut errors,
                     std::mem::take(&mut callsite_fn_name),
                     &mut missing_sourcescontent,
                 )
@@ -121,6 +122,7 @@ impl SymbolicationActor {
 async fn symbolicate_js_frame(
     lookup: &mut SourceMapLookup,
     raw_frame: &mut JsFrame,
+    errors: &mut BTreeSet<JsModuleError>,
     callsite_fn_name: Option<String>,
     missing_sourcescontent: &mut u64,
 ) -> Result<JsFrame, JsModuleErrorKind> {
@@ -202,9 +204,28 @@ async fn symbolicate_js_frame(
     if let Some(file) = token.file() {
         frame.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
-            apply_source_context(&mut frame, file_source).ok();
+            if let Err(err) = apply_source_context(&mut frame, file_source) {
+                errors.insert(JsModuleError {
+                    abs_path: raw_frame.abs_path.clone(),
+                    kind: err,
+                });
+            }
         } else if module.has_debug_id() {
             *missing_sourcescontent += 1;
+            // We explicitly want a `raw_frame`, non-minified `abs_path` value here.
+            // As at this point, `frame` already points to the `abs_path` extracted from
+            // the SourceMapCache tokens filename, and we want the original one.
+            errors.insert(JsModuleError {
+                abs_path: raw_frame.abs_path.clone(),
+                // TODO: This error should include a `sourcemap_label`, which is in form of:
+                // - `raw_frame.abs_path` if sourcemap was base64 encoded
+                // - resolved `sourceMappingUrl` if we used `abs_path` to find it
+                // - `debug-id://{debug_id}/~/{filename}` if we used `DebugId` to find it
+                // Or, because we control all the errors in the monolith, we can just drop this detail.
+                kind: JsModuleErrorKind::MissingSourceContent {
+                    sourcemap: String::from(""),
+                },
+            });
             tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
         } else {
             *missing_sourcescontent += 1;
@@ -218,7 +239,12 @@ async fn symbolicate_js_frame(
                 None => &Err(CacheError::NotFound),
             };
 
-            apply_source_context_from_artifact(&mut frame, source_file).ok();
+            if let Err(err) = apply_source_context_from_artifact(&mut frame, source_file) {
+                errors.insert(JsModuleError {
+                    abs_path: raw_frame.abs_path.clone(),
+                    kind: err,
+                });
+            }
         }
     }
 
@@ -232,7 +258,7 @@ fn apply_source_context_from_artifact(
     if let Ok(file) = file {
         apply_source_context(frame, &file.contents)
     } else {
-        Err(JsModuleErrorKind::MissingSourcemap)
+        Err(JsModuleErrorKind::MissingSource)
     }
 }
 
