@@ -463,6 +463,16 @@ impl CachedFile {
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
     }
+
+    /// Returns a string representation of a SourceMap URL if it was coming from a remote resource.
+    pub fn sourcemap_url(&self) -> Option<String> {
+        self.sourcemap_url
+            .as_ref()
+            .and_then(|sm| match sm.as_ref() {
+                SourceMapUrl::Remote(url) => Some(url.to_string()),
+                SourceMapUrl::Data(_) => None,
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -989,11 +999,8 @@ fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> Cach
     // TODO(sourcemap): maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
-    // There's currently no way to access inner error of `SourceMapCacheWriterError`,
-    // if we change that. We might want to match on `SourceMap` and get actual underlying
-    // `sourcemap::Error` instead to see more details.
     let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)
-        .map_err(|_| CacheError::Malformed("Unable to produce a SourceMapCache".to_string()))?;
+        .map_err(|err| CacheError::Malformed(err.to_string()))?;
 
     let mut writer = BufWriter::new(file);
     smcache_writer.serialize(&mut writer)?;

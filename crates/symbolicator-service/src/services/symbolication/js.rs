@@ -142,10 +142,23 @@ async fn symbolicate_js_frame(
     // to construct a `SourceMapCache` without the minified source anyway.
     apply_source_context_from_artifact(raw_frame, &module.minified_source.entry)?;
 
+    let sourcemap_label = &module
+        .minified_source
+        .entry
+        .as_ref()
+        .map(|entry| entry.sourcemap_url())
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| raw_frame.abs_path.clone());
+
     let smcache = match &module.smcache {
         Some(smcache) => match &smcache.entry {
             Ok(entry) => entry,
-            Err(CacheError::Malformed(_)) => return Err(JsModuleErrorKind::MalformedSourcemap),
+            Err(CacheError::Malformed(_)) => {
+                return Err(JsModuleErrorKind::MalformedSourcemap {
+                    url: sourcemap_label.to_owned(),
+                })
+            }
             Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
         },
         // In case it's just a source file, with no sourcemap reference or any debug id, we bail.
@@ -217,13 +230,8 @@ async fn symbolicate_js_frame(
             // the SourceMapCache tokens filename, and we want the original one.
             errors.insert(JsModuleError {
                 abs_path: raw_frame.abs_path.clone(),
-                // TODO: This error should include a `sourcemap_label`, which is in form of:
-                // - `raw_frame.abs_path` if sourcemap was base64 encoded
-                // - resolved `sourceMappingUrl` if we used `abs_path` to find it
-                // - `debug-id://{debug_id}/~/{filename}` if we used `DebugId` to find it
-                // Or, because we control all the errors in the monolith, we can just drop this detail.
                 kind: JsModuleErrorKind::MissingSourceContent {
-                    sourcemap: String::from(""),
+                    url: sourcemap_label.to_owned(),
                 },
             });
             tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
