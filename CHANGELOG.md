@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Features
+
 - Migrate to monthly CalVer releases. ([#1130](https://github.com/getsentry/symbolicator/pull/1130))
 - Introduce a `CacheKeyBuilder` and human-readable `CacheKey` metadata. ([#1033](https://github.com/getsentry/symbolicator/pull/1033), [#1036](https://github.com/getsentry/symbolicator/pull/1036))
 - Use new `CacheKey` for writes and shared-cache. ([#1038](https://github.com/getsentry/symbolicator/pull/1038))
@@ -16,6 +17,7 @@
 ### Fixes
 
 - Reject minidumps containing invalid file names. ([#1047](https://github.com/getsentry/symbolicator/pull/1047))
+- Update `minidump-processor` so minidumps with a 0-sized module are being processed. ([#1131](https://github.com/getsentry/symbolicator/pull/1131))
 
 ### Dependencies
 
