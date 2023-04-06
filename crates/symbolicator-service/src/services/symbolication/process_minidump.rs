@@ -89,7 +89,7 @@ impl MinidumpState {
             crash_reason: process_state
                 .exception_info
                 .as_ref()
-                .map(|info| format!("{} / {:#x}", info.reason, info.address))
+                .map(|info| format!("{} / {:#x}", info.reason, info.address.0))
                 .unwrap_or_default(),
             assertion: process_state.assertion.clone().unwrap_or_default(),
         }
