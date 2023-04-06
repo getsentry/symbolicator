@@ -265,17 +265,15 @@ fn symbolicate_frame(
                 signal,
                 index,
                 adjustment,
-            );
-            relative_addr.and_then(|addr| {
-                symbolicate_native_frame(
-                    demangle_cache,
-                    symcache,
-                    lookup_result,
-                    addr,
-                    frame,
-                    index,
-                )
-            })
+            )?;
+            symbolicate_native_frame(
+                demangle_cache,
+                symcache,
+                lookup_result,
+                relative_addr,
+                frame,
+                index,
+            )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
             symbolicate_dotnet_frame(ppdb_cache.get(), frame, index)
