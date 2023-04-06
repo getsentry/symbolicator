@@ -4,11 +4,11 @@ This page describes reasoning behind the design of Symbolicator.
 
 ## Symbolicator Principles
 
-Symbolizer is a service that unifies symbolication for all kinds of native
+Symbolicator is a service that unifies symbolication for all kinds of native
 frames and allows us to add more features or improve performance more easily
-than in the former setup. Goals of the Symbolizer are:
+than in the former setup. Goals of Symbolicator are:
 
-- **Symbolize entire stack traces at once**, referencing both system- and
+- **Symbolicate entire stack traces at once**, referencing both system and
   customer images. Thanks to this, heuristics for detecting system images are no
   longer necessary.
 - **Fetch DIFs from external sources.** These could be third-party servers like
