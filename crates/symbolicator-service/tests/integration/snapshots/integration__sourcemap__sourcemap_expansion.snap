@@ -95,5 +95,5 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
 errors:
   - abs_path: "http://example.com/index.html"
-    type: missing_sourcemap
+    type: missing_source
 

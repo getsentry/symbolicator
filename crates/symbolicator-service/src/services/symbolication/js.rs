@@ -81,6 +81,7 @@ impl SymbolicationActor {
                 match symbolicate_js_frame(
                     &mut lookup,
                     raw_frame,
+                    &mut errors,
                     std::mem::take(&mut callsite_fn_name),
                     &mut missing_sourcescontent,
                 )
@@ -121,6 +122,7 @@ impl SymbolicationActor {
 async fn symbolicate_js_frame(
     lookup: &mut SourceMapLookup,
     raw_frame: &mut JsFrame,
+    errors: &mut BTreeSet<JsModuleError>,
     callsite_fn_name: Option<String>,
     missing_sourcescontent: &mut u64,
 ) -> Result<JsFrame, JsModuleErrorKind> {
@@ -136,13 +138,31 @@ async fn symbolicate_js_frame(
         "Found Module for `abs_path`"
     );
 
-    // Apply source context to the raw frame
-    apply_source_context_from_artifact(raw_frame, &module.minified_source.entry);
+    // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
+    // to construct a `SourceMapCache` without the minified source anyway.
+    apply_source_context_from_artifact(raw_frame, &module.minified_source.entry)?;
 
-    let smcache = match &module.smcache.entry {
-        Ok(smcache) => smcache,
-        Err(CacheError::Malformed(_)) => return Err(JsModuleErrorKind::MalformedSourcemap),
-        Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
+    let sourcemap_label = &module
+        .minified_source
+        .entry
+        .as_ref()
+        .map(|entry| entry.sourcemap_url())
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| raw_frame.abs_path.clone());
+
+    let smcache = match &module.smcache {
+        Some(smcache) => match &smcache.entry {
+            Ok(entry) => entry,
+            Err(CacheError::Malformed(_)) => {
+                return Err(JsModuleErrorKind::MalformedSourcemap {
+                    url: sourcemap_label.to_owned(),
+                })
+            }
+            Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
+        },
+        // In case it's just a source file, with no sourcemap reference or any debug id, we bail.
+        None => return Ok(raw_frame.clone()),
     };
 
     let mut frame = raw_frame.clone();
@@ -197,9 +217,23 @@ async fn symbolicate_js_frame(
     if let Some(file) = token.file() {
         frame.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
-            apply_source_context(&mut frame, file_source);
+            if let Err(err) = apply_source_context(&mut frame, file_source) {
+                errors.insert(JsModuleError {
+                    abs_path: raw_frame.abs_path.clone(),
+                    kind: err,
+                });
+            }
         } else if module.has_debug_id() {
             *missing_sourcescontent += 1;
+            // We explicitly want a `raw_frame`, non-minified `abs_path` value here.
+            // As at this point, `frame` already points to the `abs_path` extracted from
+            // the SourceMapCache tokens filename, and we want the original one.
+            errors.insert(JsModuleError {
+                abs_path: raw_frame.abs_path.clone(),
+                kind: JsModuleErrorKind::MissingSourceContent {
+                    url: sourcemap_label.to_owned(),
+                },
+            });
             tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
         } else {
             *missing_sourcescontent += 1;
@@ -213,23 +247,36 @@ async fn symbolicate_js_frame(
                 None => &Err(CacheError::NotFound),
             };
 
-            apply_source_context_from_artifact(&mut frame, source_file);
+            if let Err(err) = apply_source_context_from_artifact(&mut frame, source_file) {
+                errors.insert(JsModuleError {
+                    abs_path: raw_frame.abs_path.clone(),
+                    kind: err,
+                });
+            }
         }
     }
 
     Ok(frame)
 }
 
-fn apply_source_context_from_artifact(frame: &mut JsFrame, file: &CacheEntry<CachedFile>) {
+fn apply_source_context_from_artifact(
+    frame: &mut JsFrame,
+    file: &CacheEntry<CachedFile>,
+) -> Result<(), JsModuleErrorKind> {
     if let Ok(file) = file {
         apply_source_context(frame, &file.contents)
     } else {
-        // TODO(sourcemap): report missing source?
+        Err(JsModuleErrorKind::MissingSource)
     }
 }
 
-fn apply_source_context(frame: &mut JsFrame, source: &str) {
-    let Some(lineno) = frame.lineno else { return; };
+fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
+    let Some(lineno) = frame.lineno else {
+        return Err(JsModuleErrorKind::InvalidLocation {
+            line: frame.lineno,
+            col: frame.colno,
+        })
+    };
     let lineno = lineno as usize;
     let column = frame.colno.map(|col| col as usize);
 
@@ -240,6 +287,8 @@ fn apply_source_context(frame: &mut JsFrame, source: &str) {
         frame.context_line = Some(context_line);
         frame.post_context = post_context;
     }
+
+    Ok(())
 }
 
 // Names that do not provide any reasonable value, and that can possibly obstruct

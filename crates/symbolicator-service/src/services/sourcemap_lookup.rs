@@ -83,7 +83,7 @@ pub struct SourceMapModule {
     pub minified_source: CachedFileEntry,
     /// The converted SourceMap.
     // TODO(sourcemap): maybe this should not be public?
-    pub smcache: CachedFileEntry<OwnedSourceMapCache>,
+    pub smcache: Option<CachedFileEntry<OwnedSourceMapCache>>,
 }
 
 impl SourceMapModule {
@@ -99,7 +99,7 @@ impl SourceMapModule {
             was_fetched: false,
             source_file_base: None,
             minified_source: CachedFileEntry::empty(),
-            smcache: CachedFileEntry::empty(),
+            smcache: None,
         }
     }
 
@@ -463,6 +463,16 @@ impl CachedFile {
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
     }
+
+    /// Returns a string representation of a SourceMap URL if it was coming from a remote resource.
+    pub fn sourcemap_url(&self) -> Option<String> {
+        self.sourcemap_url
+            .as_ref()
+            .and_then(|sm| match sm.as_ref() {
+                SourceMapUrl::Remote(url) => Some(url.to_string()),
+                SourceMapUrl::Data(_) => None,
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -525,7 +535,10 @@ impl ArtifactFetcher {
         &mut self,
         abs_path: Url,
         debug_id: Option<DebugId>,
-    ) -> (CachedFileEntry, CachedFileEntry<OwnedSourceMapCache>) {
+    ) -> (
+        CachedFileEntry,
+        Option<CachedFileEntry<OwnedSourceMapCache>>,
+    ) {
         // First, check if we have already cached / created the `SourceMapCache`.
         let key = FileKey::MinifiedSource {
             abs_path: abs_path.clone(),
@@ -540,6 +553,12 @@ impl ArtifactFetcher {
             Ok(minified_source) => minified_source.sourcemap_url.as_deref(),
             Err(_) => None,
         };
+
+        // If we don't have sourcemap reference, nor a `DebugId`, we skip creating `SourceMapCache`.
+        if sourcemap_url.is_none() && debug_id.is_none() {
+            return (minified_source, None);
+        }
+
         // We have three cases here:
         let sourcemap = match sourcemap_url {
             // We have an embedded SourceMap via data URL
@@ -558,7 +577,7 @@ impl ArtifactFetcher {
                 };
                 self.get_file(&sourcemap_key).await
             }
-            // We *might* have a valid `DebugId`, in which case we don’t need no URL
+            // We have a `DebugId`, in which case we don’t need no URL
             None => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: None,
@@ -584,7 +603,7 @@ impl ArtifactFetcher {
             entry: smcache,
         };
 
-        (minified_source, smcache)
+        (minified_source, Some(smcache))
     }
 
     /// Fetches an arbitrary file using its `abs_path`,
@@ -980,7 +999,8 @@ fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> Cach
     // TODO(sourcemap): maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
-    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap).unwrap();
+    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)
+        .map_err(|err| CacheError::Malformed(err.to_string()))?;
 
     let mut writer = BufWriter::new(file);
     smcache_writer.serialize(&mut writer)?;

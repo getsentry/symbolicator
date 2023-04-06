@@ -25,7 +25,7 @@ raw_stacktraces:
         colno: 0
 errors:
   - abs_path: "http://localhost:<port>/assets/missing_bar.js"
-    type: missing_sourcemap
+    type: missing_source
   - abs_path: "http://localhost:<port>/assets/missing_foo.js"
-    type: missing_sourcemap
+    type: missing_source
 
