@@ -59,7 +59,4 @@ raw_stacktraces:
           - w
           - o
           - r
-errors:
-  - abs_path: "http://example.com/foo.js"
-    type: missing_sourcemap
 
