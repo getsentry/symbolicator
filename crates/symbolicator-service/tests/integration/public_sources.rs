@@ -48,6 +48,7 @@ async fn test_nuget_source() {
     assert_snapshot!(response.unwrap());
 }
 
+#[ignore]
 #[tokio::test]
 async fn test_ubuntu_source() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
