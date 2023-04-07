@@ -225,32 +225,28 @@ async fn symbolicate_js_frame(
             }
         } else {
             *missing_sourcescontent += 1;
-            // We explicitly want a `raw_frame`, non-minified `abs_path` value here.
-            // As at this point, `frame` already points to the `abs_path` extracted from
-            // the SourceMapCache tokens filename, and we want the original one.
-            // It's arguable whether we should collect it, but this is what monolith does now,
-            // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
-            errors.insert(JsModuleError {
-                abs_path: raw_frame.abs_path.clone(),
-                kind: JsModuleErrorKind::MissingSourceContent {
-                    url: sourcemap_label.to_owned(),
-                },
-            });
 
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file
             let filename = frame.filename.as_ref();
             let file_key = filename.and_then(|filename| module.source_file_key(filename));
 
-            let source_file = match file_key {
-                Some(key) => &lookup.get_source_file(key).await.entry,
+            let source_file = match &file_key {
+                Some(key) => &lookup.get_source_file(key.clone()).await.entry,
                 None => &Err(CacheError::NotFound),
             };
 
-            if let Err(err) = apply_source_context_from_artifact(&mut frame, source_file) {
+            if apply_source_context_from_artifact(&mut frame, source_file).is_err() {
+                // It's arguable whether we should collect it, but this is what monolith does now,
+                // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
                 errors.insert(JsModuleError {
                     abs_path: raw_frame.abs_path.clone(),
-                    kind: err,
+                    kind: JsModuleErrorKind::MissingSourceContent {
+                        source: file_key
+                            .and_then(|key| key.abs_path().map(|path| path.to_string()))
+                            .unwrap_or_default(),
+                        sourcemap: sourcemap_label.clone(),
+                    },
                 });
             }
         }

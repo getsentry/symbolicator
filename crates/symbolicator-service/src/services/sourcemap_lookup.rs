@@ -363,7 +363,7 @@ impl FileKey {
     }
 
     /// Returns this key's abs_path, if any.
-    fn abs_path(&self) -> Option<&Url> {
+    pub fn abs_path(&self) -> Option<&Url> {
         match self {
             FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
             FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
