@@ -537,7 +537,7 @@ fn read_minidump(path: &Path) -> Result<Minidump> {
     Ok(md)
 }
 
-/// Replaces invalid file names by a `<invalid>` marker, otherwise returns a `String` for non-empty file names.
+/// Returns an owned version of `file_name`, or `None` if it is empty.
 fn non_empty_file_name(file_name: &str) -> Option<String> {
     if file_name.is_empty() {
         return None;
