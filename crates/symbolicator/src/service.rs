@@ -415,15 +415,13 @@ impl RequestService {
                     SymbolicationResponse::Completed(Box::new(response))
                 }
                 Ok(Err(err)) => {
-                    // NOTE: This will double-report this error to Sentry.
-                    // We want the `tracing::error` here for local command line output, but we also
-                    // want the `capture_anyhow` which will give a full error with a symbolicated backtrace.
-                    // So until we can actually get a `Backtrace` out of an `Error`, and `anyhow`
-                    // implements that functionality through its `Error` impl, we are stuck with this for now.
-                    // See <https://github.com/rust-lang/rust/issues/99301>
+                    // NOTE: We could use `capture_anyhow` here, which would correctly resolve any
+                    // stack trace thats attached to the error. However these stack traces are not
+                    // that useful in practice, and if these events have a stack trace, they will
+                    // group the same depending on stack trace, whereas without a stack trace, they
+                    // group by the chained errors, which is much better in our case.
                     let error: &dyn std::error::Error = err.as_ref();
                     tracing::error!(error, "Symbolication failed");
-                    sentry_anyhow::capture_anyhow(&err);
 
                     sentry::end_session_with_status(SessionStatus::Crashed);
                     SymbolicationResponse::Failed {

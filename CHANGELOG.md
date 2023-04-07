@@ -16,7 +16,7 @@
 
 ### Fixes
 
-- Reject minidumps containing invalid file names. ([#1047](https://github.com/getsentry/symbolicator/pull/1047))
+- Mask invalid file names in minidumps. ([#1047](https://github.com/getsentry/symbolicator/pull/1047), [#1133](https://github.com/getsentry/symbolicator/pull/1133))
 - Update `minidump-processor` so minidumps with a 0-sized module are being processed. ([#1131](https://github.com/getsentry/symbolicator/pull/1131))
 
 ### Dependencies

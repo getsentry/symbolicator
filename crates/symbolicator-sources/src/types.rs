@@ -143,4 +143,47 @@ impl ObjectId {
     pub fn debug_file_basename(&self) -> Option<&str> {
         Some(split_path(self.debug_file.as_ref()?).1)
     }
+
+    /// Validated basename of the `code_file` field.
+    pub fn validated_code_file_basename(&self) -> Option<&str> {
+        valid_file_name(self.code_file.as_ref()?)
+    }
+
+    /// Validated basename of the `debug_file` field.
+    pub fn validated_debug_file_basename(&self) -> Option<&str> {
+        valid_file_name(self.debug_file.as_ref()?)
+    }
+}
+
+/// Returns the "valid" basename of the file.
+///
+/// The basename is valid if:
+/// - it is not longer than 255 bytes and
+/// - does not contain a control character
+fn valid_file_name(file_name: &str) -> Option<&str> {
+    let basename = split_path(file_name).1;
+    if basename.len() < 256 && !basename.contains(|c: char| c.is_control()) {
+        return Some(basename);
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_file_names() {
+        let too_long = "foobar".repeat(50);
+        assert_eq!(valid_file_name(&too_long), None);
+
+        let still_too_long = format!("a/few\\segments/{too_long}");
+        assert_eq!(valid_file_name(&still_too_long), None);
+
+        let not_too_long = format!("{too_long}/last");
+        assert_eq!(valid_file_name(&not_too_long), Some("last"));
+
+        let corrupt_prefix = "some\ninvalid\0stuff\r/correct";
+        assert_eq!(valid_file_name(corrupt_prefix), Some("correct"));
+    }
 }
