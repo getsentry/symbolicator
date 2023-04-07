@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{bail, Context, Result};
+use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
@@ -178,13 +178,14 @@ impl SymbolicatorSymbolProvider {
             let sources = self.sources.clone();
             let scope = self.scope.clone();
 
+            let code_file = non_empty_file_name(&module.code_file());
+            let debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
             let identifier = ObjectId {
                 code_id: key.code_id.clone(),
-                code_file: Some(module.code_file().into_owned()),
+                code_file,
                 debug_id: key.debug_id,
-                debug_file: module
-                    .debug_file()
-                    .map(|debug_file| debug_file.into_owned()),
+                debug_file,
                 debug_checksum: None,
                 object_type: self.object_type,
             };
@@ -249,18 +250,15 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
         .code_identifier()
         .filter(|code_id| !code_id.is_nil())
         .map(|code_id| code_id.to_string().to_lowercase());
-    let code_file = module.code_file();
-    let code_file = match code_file.is_empty() {
-        true => None,
-        false => Some(code_file.into_owned()),
-    };
+    let code_file = non_empty_file_name(&module.code_file());
+    let debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
 
     CompleteObjectInfo::from(RawObjectInfo {
         ty,
         code_id,
         code_file,
         debug_id: module.debug_identifier().map(|c| c.breakpad().to_string()),
-        debug_file: module.debug_file().map(|c| c.into_owned()),
+        debug_file,
         debug_checksum: None,
         image_addr: HexValue(module.base_address()),
         image_size: match module.size() {
@@ -304,20 +302,24 @@ async fn stackwalk(
             None => Registers::new(),
         };
 
-        // Trim infinite recursions explicitly because those do not
-        // correlate to minidump size. Every other kind of bloated
-        // input data we know is already trimmed/rejected by raw
-        // byte size alone.
-        let frame_count = thread.frames.len().min(20000);
-        let mut frames = Vec::with_capacity(frame_count);
-        for frame in thread.frames.iter().take(frame_count) {
-            frames.push(RawFrame {
-                instruction_addr: HexValue(frame.resume_address),
-                package: frame.module.as_ref().map(|m| m.code_file().into_owned()),
-                trust: frame.trust.into(),
-                ..RawFrame::default()
-            });
-        }
+        // We trim stack traces to 256 frames from the top. A similar limit is also in place in
+        // relay / store normalization, so any excess frames will be thrown away by Sentry anyway.
+        let frames = thread
+            .frames
+            .into_iter()
+            .take(256)
+            .map(|frame| {
+                let package = frame
+                    .module
+                    .and_then(|module| non_empty_file_name(&module.code_file()));
+                RawFrame {
+                    instruction_addr: HexValue(frame.resume_address),
+                    package,
+                    trust: frame.trust.into(),
+                    ..RawFrame::default()
+                }
+            })
+            .collect();
 
         stacktraces.push(RawStacktrace {
             is_requesting: requesting_thread_index.map(|r| r == index),
@@ -432,25 +434,6 @@ impl SymbolicationActor {
             }
         };
 
-        let modules = minidump
-            .get_stream::<MinidumpModuleList>()
-            .context("Failed to read minidump module list")?;
-
-        for module in modules.iter() {
-            let code_file = module.code_file();
-            if file_name_is_invalid(&code_file) {
-                tracing::error!(%code_file, "Minidump module has an invalid code file name");
-                bail!("Minidump rejected due to invalid code file name")
-            }
-
-            if let Some(debug_file) = module.debug_file() {
-                if file_name_is_invalid(&debug_file) {
-                    tracing::error!(%debug_file, "Minidump module has an invalid debug file name");
-                    bail!("Minidump rejected due to invalid debug file name")
-                }
-            }
-        }
-
         let stackwalk_future = stackwalk(
             self.cficaches.clone(),
             &minidump,
@@ -554,39 +537,12 @@ fn read_minidump(path: &Path) -> Result<Minidump> {
     Ok(md)
 }
 
-/// Checks whether a file name contains a control character or its last segment
-/// is longer than 255 bytes.
-fn file_name_is_invalid(file_name: &str) -> bool {
-    if file_name.contains(|c: char| c.is_control()) {
-        return true;
+/// Replaces invalid file names by a `<invalid>` marker, otherwise returns a `String` for non-empty file names.
+fn non_empty_file_name(file_name: &str) -> Option<String> {
+    if file_name.is_empty() {
+        return None;
     }
-
-    let last_segment = file_name
-        .rsplit_once(&['/', '\\'])
-        .map(|(_init, last)| last)
-        .unwrap_or(file_name);
-
-    last_segment.len() > 255
-}
-
-#[cfg(test)]
-mod tests {
-    use super::file_name_is_invalid;
-
-    #[test]
-    fn invalid_file_names() {
-        let too_long = "foobar".repeat(50);
-
-        assert!(file_name_is_invalid(&too_long));
-
-        let still_too_long = format!("a/few\\segments/{too_long}");
-
-        assert!(file_name_is_invalid(&still_too_long));
-
-        let not_too_long = format!("{too_long}/last");
-
-        assert!(!file_name_is_invalid(&not_too_long));
-    }
+    Some(file_name.to_owned())
 }
 
 #[cfg(skip)]

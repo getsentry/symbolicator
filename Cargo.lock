@@ -4372,7 +4372,6 @@ dependencies = [
  "jemallocator",
  "reqwest",
  "sentry",
- "sentry-anyhow",
  "serde",
  "serde_json",
  "structopt",

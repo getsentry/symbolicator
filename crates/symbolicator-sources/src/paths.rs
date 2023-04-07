@@ -47,7 +47,7 @@ fn get_lldb_path(identifier: &ObjectId) -> Option<String> {
 }
 
 fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
-    let debug_file = identifier.debug_file_basename()?;
+    let debug_file = identifier.validated_debug_file_basename()?;
     let debug_id = identifier.debug_id.as_ref()?;
 
     let debug_file = if ssqp_casing {
@@ -74,7 +74,7 @@ fn get_pdb_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<Str
 }
 
 fn get_pe_symstore_path(identifier: &ObjectId, ssqp_casing: bool) -> Option<String> {
-    let code_file = identifier.code_file_basename()?;
+    let code_file = identifier.validated_code_file_basename()?;
     let code_id = identifier.code_id.as_ref()?.as_str();
 
     let code_file = if ssqp_casing {
@@ -103,7 +103,7 @@ fn get_breakpad_path(identifier: &ObjectId) -> Option<String> {
         return None;
     }
 
-    let debug_file = identifier.debug_file_basename()?;
+    let debug_file = identifier.validated_debug_file_basename()?;
     let debug_id = identifier.debug_id.as_ref()?;
     let new_debug_file = debug_file
         .strip_suffix(".exe")
@@ -223,7 +223,7 @@ fn get_symstore_path(
     match filetype {
         FileType::ElfCode => {
             let code_id = identifier.code_id.as_ref()?;
-            let code_file = identifier.code_file_basename()?;
+            let code_file = identifier.validated_code_file_basename()?;
             let code_file = if ssqp_casing {
                 Cow::Owned(code_file.to_lowercase())
             } else {
@@ -237,7 +237,7 @@ fn get_symstore_path(
         }
 
         FileType::MachCode => {
-            let code_file = identifier.code_file_basename()?;
+            let code_file = identifier.validated_code_file_basename()?;
             let code_file = if ssqp_casing {
                 Cow::Owned(code_file.to_lowercase())
             } else {
