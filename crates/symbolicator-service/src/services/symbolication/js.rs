@@ -223,20 +223,20 @@ async fn symbolicate_js_frame(
                     kind: err,
                 });
             }
-        } else if module.has_debug_id() {
+        } else {
             *missing_sourcescontent += 1;
             // We explicitly want a `raw_frame`, non-minified `abs_path` value here.
             // As at this point, `frame` already points to the `abs_path` extracted from
             // the SourceMapCache tokens filename, and we want the original one.
+            // It's arguable whether we should collect it, but this is what monolith does now,
+            // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
             errors.insert(JsModuleError {
                 abs_path: raw_frame.abs_path.clone(),
                 kind: JsModuleErrorKind::MissingSourceContent {
                     url: sourcemap_label.to_owned(),
                 },
             });
-            tracing::error!("expected `SourceMap` with `DebugId` to have embedded sources");
-        } else {
-            *missing_sourcescontent += 1;
+
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file
             let filename = frame.filename.as_ref();
