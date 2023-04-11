@@ -67,13 +67,42 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
     }
 }
 
+/// A struct implementing [`moka::Expiry`] that uses the [`InMemoryItem`] [`Instant`] as the explicit
+/// expiration time.
+struct CacheExpiration;
+fn saturating_duration_since(now: Instant, target: Instant) -> Option<Duration> {
+    // NOTE: the argument to `checked_duration_since` is the *earlier* instant.
+    // `target` is in the future, and `now` is the earlier one.
+    Some(target.checked_duration_since(now).unwrap_or_default())
+}
+
+impl<T> moka::Expiry<CacheKey, InMemoryItem<T>> for CacheExpiration {
+    fn expire_after_create(
+        &self,
+        _key: &CacheKey,
+        value: &InMemoryItem<T>,
+        current_time: Instant,
+    ) -> Option<Duration> {
+        saturating_duration_since(current_time, value.0)
+    }
+
+    fn expire_after_update(
+        &self,
+        _key: &CacheKey,
+        value: &InMemoryItem<T>,
+        current_time: Instant,
+        _current_duration: Option<Duration>,
+    ) -> Option<Duration> {
+        saturating_duration_since(current_time, value.0)
+    }
+}
+
 impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
         let cache = InMemoryCache::builder()
             .max_capacity(config.in_memory_capacity)
             .name(config.name().as_ref())
-            // NOTE: even though we have a per-item TTL, we still want to have a hard limit here
-            .time_to_live(Duration::from_secs(60 * 60))
+            .expire_after(CacheExpiration)
             // NOTE: we count all the bookkeeping structures to the weight as well
             .weigher(|_k, v| {
                 let value_size =
@@ -367,12 +396,11 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             (expiration.as_instant(), item)
         });
-        let replace_if = |v: &InMemoryItem<T::Item>| Instant::now() >= v.0;
 
         let entry = self
             .cache
             .entry_by_ref(&cache_key)
-            .or_insert_with_if(init, replace_if)
+            .or_insert_with(init)
             .await;
 
         if !entry.is_fresh() {

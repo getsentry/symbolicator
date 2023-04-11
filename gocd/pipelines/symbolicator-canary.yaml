@@ -16,7 +16,7 @@ pipelines:
             symbolicator_repo:
                 git: git@github.com:getsentry/symbolicator.git
                 shallow_clone: true
-                branch: master
+                branch: release/moka-expiry
                 destination: symbolicator
         stages:
             - checks:

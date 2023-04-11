@@ -3,7 +3,7 @@ name: Release build
 on:
   push:
     branches:
-      - release/**
+      - not-release/**
 
 jobs:
   linux:
