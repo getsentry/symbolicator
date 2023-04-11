@@ -582,7 +582,7 @@ pub enum JsModuleErrorKind {
     InvalidLocation { line: Option<u32>, col: Option<u32> },
     InvalidAbsPath,
     NoColumn,
-    MissingSourceContent { url: String },
+    MissingSourceContent { source: String, sourcemap: String },
     MissingSource,
     MalformedSourcemap { url: String },
     MissingSourcemap,

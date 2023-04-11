@@ -108,11 +108,6 @@ impl SourceMapModule {
         self.abs_path.is_ok()
     }
 
-    /// Whether this module has a [`DebugId`].
-    pub fn has_debug_id(&self) -> bool {
-        self.debug_id.is_some()
-    }
-
     /// Creates a new [`FileKey`] for the `file_path` relative to this module
     pub fn source_file_key(&self, file_path: &str) -> Option<FileKey> {
         let base_url = self.source_file_base.as_ref()?;
@@ -368,7 +363,7 @@ impl FileKey {
     }
 
     /// Returns this key's abs_path, if any.
-    fn abs_path(&self) -> Option<&Url> {
+    pub fn abs_path(&self) -> Option<&Url> {
         match self {
             FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
             FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
@@ -518,9 +513,8 @@ impl ArtifactFetcher {
         for module in modules {
             if let Some(debug_id) = module.debug_id {
                 debug_ids.insert(debug_id);
-                // If we have a `DebugId`, we assume that the `DebugId`-based lookup will succeed.
-                // In that case, we do not want to look up the file by its file stem.
-            } else if let Ok(url) = module.abs_path.as_ref() {
+            }
+            if let Ok(url) = module.abs_path.as_ref() {
                 let stem = extract_file_stem(url);
                 file_stems.insert(stem);
             }
@@ -613,16 +607,6 @@ impl ArtifactFetcher {
         // Try looking up the file in one of the artifact bundles that we know about.
         if let Some(file) = self.try_get_file_from_bundles(key) {
             return file;
-        } else if key.debug_id().is_some() {
-            // If we have a `DebugId`, we do not want to ever fall back to fetching a non-bundled
-            // artifact, nor to scraping the file from the web.
-            // We also do not call `query_sentry_for_file`, as we can assume that whatever `ArtifactBundle`
-            // contains the file has already been queried and fetched from within `prefetch_artifacts`.
-            let uri = RemoteFileUri::new("<not-found>");
-            return CachedFileEntry {
-                uri: CachedFileUri::Bundled(uri, key.clone()),
-                entry: Err(CacheError::NotFound),
-            };
         }
 
         // Otherwise, try to get the file from an individual artifact.
@@ -698,10 +682,6 @@ impl ArtifactFetcher {
                     });
                 }
             }
-
-            // If we have a `DebugId`, we assume it is found by its `DebugId` in one of our `ArtifactBundle`s.
-            // We do not want to fall back to `abs_path`-based lookup in this case.
-            return None;
         }
 
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
@@ -761,9 +741,8 @@ impl ArtifactFetcher {
         let mut file_stems = BTreeSet::new();
         if let Some(debug_id) = key.debug_id() {
             debug_ids.insert(debug_id);
-            // If we have a `DebugId`, we assume that the `DebugId`-based lookup will succeed.
-            // In that case, we do not want to look up the file by its file stem.
-        } else if let Some(url) = key.abs_path() {
+        }
+        if let Some(url) = key.abs_path() {
             let stem = extract_file_stem(url);
             file_stems.insert(stem);
         }
