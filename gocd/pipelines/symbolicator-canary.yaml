@@ -66,7 +66,7 @@ pipelines:
                           tasks:
                               - script: |
                                     /devinfra/scripts/k8s/k8stunnel \
-                                    && /devinfra/scripts/k8s/k8sdeploy.py \
+                                    && /devinfra/scripts/k8s/k8s-deploy.py \
                                     --type="statefulset" \
                                     --label-selector="service=symbolicator,deploy_if_canary=true" \
                                     --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
