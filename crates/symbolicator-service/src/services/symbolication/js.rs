@@ -209,13 +209,16 @@ async fn symbolicate_js_frame(
         callsite_fn_name.as_deref(),
     )));
     if let Some(filename) = token.file_name() {
-        frame.abs_path = filename.to_string();
+        frame.filename = Some(filename.to_string());
+        frame.abs_path = module
+            .source_file_key(filename)
+            .and_then(|key| key.abs_path().map(ToString::to_string))
+            .unwrap_or_else(|| filename.to_string());
     }
     frame.lineno = Some(token.line().saturating_add(1));
     frame.colno = Some(token.column().saturating_add(1));
 
     if let Some(file) = token.file() {
-        frame.filename = file.name().map(|f| f.to_string());
         if let Some(file_source) = file.source() {
             if let Err(err) = apply_source_context(&mut frame, file_source) {
                 errors.insert(JsModuleError {
@@ -228,8 +231,9 @@ async fn symbolicate_js_frame(
 
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file
-            let filename = frame.filename.as_ref();
-            let file_key = filename.and_then(|filename| module.source_file_key(filename));
+            let file_key = file
+                .name()
+                .and_then(|filename| module.source_file_key(filename));
 
             let source_file = match &file_key {
                 Some(key) => &lookup.get_source_file(key.clone()).await.entry,
