@@ -1,13 +1,13 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 212
+assertion_line: 325
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
       - function: add
         filename: file1.js
-        abs_path: file1.js
+        abs_path: "http://example.com/file1.js"
         lineno: 3
         colno: 9
         pre_context:
@@ -18,7 +18,7 @@ stacktraces:
           - "}"
       - function: multiply
         filename: file2.js
-        abs_path: file2.js
+        abs_path: "http://example.com/file2.js"
         lineno: 3
         colno: 9
         pre_context:

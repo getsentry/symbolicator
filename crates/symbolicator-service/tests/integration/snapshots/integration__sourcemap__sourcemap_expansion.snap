@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 78
+assertion_line: 100
 expression: response.unwrap()
 ---
 stacktraces:
@@ -12,7 +12,7 @@ stacktraces:
         colno: 7
       - function: test
         filename: test.js
-        abs_path: test.js
+        abs_path: "http://example.com/test.js"
         lineno: 20
         colno: 5
         pre_context:
@@ -29,7 +29,7 @@ stacktraces:
           - "})();"
       - function: invoke
         filename: test.js
-        abs_path: test.js
+        abs_path: "http://example.com/test.js"
         lineno: 15
         colno: 5
         pre_context:
@@ -47,7 +47,7 @@ stacktraces:
           - "    invoke(data);"
       - function: onFailure
         filename: test.js
-        abs_path: test.js
+        abs_path: "http://example.com/test.js"
         lineno: 5
         colno: 11
         pre_context:
