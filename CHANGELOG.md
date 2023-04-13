@@ -13,6 +13,7 @@
 - Add support for in-memory caching. ([#1028](https://github.com/getsentry/symbolicator/pull/1028))
 - Add --log-level argument to `symbolicli`. ([#1074](https://github.com/getsentry/symbolicator/pull/1074))
 - Resolve source context from embedded source links (mainly in Portable PDBs) ([#1103](https://github.com/getsentry/symbolicator/pull/1103), [#1108](https://github.com/getsentry/symbolicator/pull/1108))
+- Add single-file ZipArchive support to `maybe_decompress_file` ([#1139](https://github.com/getsentry/symbolicator/pull/1139))
 
 ### Fixes
 
