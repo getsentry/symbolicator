@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 23.4.0
 
 ### Features
 
