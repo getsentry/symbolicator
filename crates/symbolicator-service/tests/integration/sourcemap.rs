@@ -29,14 +29,12 @@ use crate::{assert_snapshot, setup_service};
 fn make_js_request(
     source: SentrySourceConfig,
     frames: &str,
-    modules: Option<&str>,
+    modules: &str,
     release: impl Into<Option<String>>,
     dist: impl Into<Option<String>>,
 ) -> SymbolicateJsStacktraces {
     let frames: Vec<JsFrame> = serde_json::from_str(frames).unwrap();
-    let modules: Vec<RawObjectInfo> = modules
-        .map(|m| serde_json::from_str(m).unwrap())
-        .unwrap_or_default();
+    let modules: Vec<RawObjectInfo> = serde_json::from_str(modules).unwrap();
     let stacktraces = vec![JsStacktrace { frames }];
 
     SymbolicateJsStacktraces {
@@ -94,7 +92,7 @@ async fn test_sourcemap_expansion() {
         "function": "e"
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -142,7 +140,7 @@ async fn test_sourcemap_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -182,7 +180,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -213,7 +211,7 @@ async fn test_source_expansion() {
         "colno": 0
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -239,7 +237,7 @@ async fn test_inlined_sources() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -271,7 +269,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
         "colno": 39
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -319,7 +317,7 @@ async fn test_indexed_sourcemap_source_expansion() {
         "colno": 44
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -338,7 +336,7 @@ async fn test_malformed_abs_path() {
         "colno": 1
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -366,7 +364,7 @@ async fn test_fetch_error() {
         }}]"#
     );
 
-    let mut request = make_js_request(source, &frames, None, None, None);
+    let mut request = make_js_request(source, &frames, "[]", String::from("release"), None);
     request.allow_scraping = true;
     let response = symbolication.symbolicate_js(request).await;
 
@@ -399,7 +397,7 @@ async fn test_invalid_location() {
         "function": "e"
     }]"#;
 
-    let request = make_js_request(source, frames, None, None, None);
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
@@ -444,7 +442,7 @@ async fn test_manual_processing() {
         token: token.to_string(),
     };
 
-    let request = make_js_request(source, frames, Some(modules), release, dist);
+    let request = make_js_request(source, frames, modules, release, dist);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());
