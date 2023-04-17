@@ -506,6 +506,11 @@ struct ArtifactFetcher {
 }
 
 impl ArtifactFetcher {
+    // TODO: Figure out if we actually want to do this? We are falling back from `DebugId` lookup to
+    // `abs_path`-based lookup anyway, so we are no longer required to fetch `DebugId`-related bundles
+    // ahead of time. Batching multiple `DebugId`/`abs_path` into a single request makes it harder
+    // to cache. Also the API server might have an easier time to satisfy a query for a single file
+    // rather than for a bunch.
     async fn prefetch_artifacts(&mut self, modules: impl Iterator<Item = &SourceMapModule>) {
         let mut debug_ids = BTreeSet::new();
         let mut file_stems = BTreeSet::new();
@@ -610,9 +615,6 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, try to get the file from an individual artifact.
-        // This is mutually exclusive with having a `DebugId`, and we only care about `abs_path` here.
-        // If we have a `DebugId`, we are guaranteed to use artifact bundles, and to have found the
-        // file in the check up above already.
         if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
             return file;
         }
@@ -760,10 +762,13 @@ impl ArtifactFetcher {
         debug_ids: BTreeSet<DebugId>,
         file_stems: BTreeSet<String>,
     ) {
-        if debug_ids.is_empty() && file_stems.is_empty() {
-            // FIXME: this should really not happen, but I just observed it.
-            // The callers should better validate the args in that case?
-            return;
+        if debug_ids.is_empty() {
+            // `file_stems` only make sense in combination with a `release`.
+            if file_stems.is_empty() || self.release.is_none() {
+                // FIXME: this should really not happen, but I just observed it.
+                // The callers should better validate the args in that case?
+                return;
+            }
         }
         self.api_requests += 1;
 
