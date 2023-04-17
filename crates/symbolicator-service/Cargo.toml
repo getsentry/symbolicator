@@ -51,6 +51,7 @@ uuid = { version = "1.0.0", features = ["v4", "serde"] }
 zstd = "0.12.1"
 data-encoding = "2.3.3"
 humantime = "2.1.0"
+zip = { version = "0.6.4", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }

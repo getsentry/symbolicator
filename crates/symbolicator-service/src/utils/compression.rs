@@ -68,6 +68,31 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
 
             std::mem::swap(src, &mut dst);
         }
+        // Magic bytes for ZipArchive
+        // https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.10.TXT
+        // Section: 4.3.7  Local file header
+        [0x50, 0x4b, 0x03, 0x04] => {
+            metric!(counter("compression") += 1, "type" => "zip");
+
+            let mut dst = {
+                let mut archive = zip::ZipArchive::new(file)?;
+
+                if archive.len() != 1 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "ZipArchive contains more than one symbol file",
+                    ));
+                }
+                let mut symbol_file = archive.by_index(0)?;
+
+                let mut dst = tempfile_in_parent(src)?;
+                io::copy(&mut symbol_file, &mut dst)?;
+
+                dst
+            };
+
+            std::mem::swap(src, &mut dst);
+        }
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
