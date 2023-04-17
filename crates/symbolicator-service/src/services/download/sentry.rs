@@ -286,15 +286,17 @@ impl SentryDownloader {
 
             if let Some(release) = release {
                 query.append_pair("release", release);
+
+                // A `url` is only valid in combination with a `release`.
+                for file_stem in file_stems {
+                    query.append_pair("url", &file_stem);
+                }
             }
             if let Some(dist) = dist {
                 query.append_pair("dist", dist);
             }
             for debug_id in debug_ids {
                 query.append_pair("debug_id", &debug_id.to_string());
-            }
-            for file_stem in file_stems {
-                query.append_pair("url", &file_stem);
             }
         }
 
