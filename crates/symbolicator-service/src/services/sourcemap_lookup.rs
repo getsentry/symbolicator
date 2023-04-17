@@ -822,6 +822,7 @@ impl ArtifactFetcher {
         }
     }
 
+    #[tracing::instrument(skip(self))]
     async fn fetch_artifact_bundle(&self, file: RemoteFile) -> CacheEntry<ArtifactBundle> {
         let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
 
