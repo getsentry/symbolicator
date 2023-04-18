@@ -48,6 +48,7 @@ use super::SymbolicationActor;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
+static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
@@ -227,6 +228,10 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
+        frame.in_app = frame
+            .in_app
+            .or_else(|| is_in_app(&frame.abs_path, &filename));
+
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
         }
@@ -399,6 +404,55 @@ fn fixup_webpack_filename(filename: &str) -> String {
     } else {
         filename.to_string()
     }
+}
+
+fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
+    if abs_path.starts_with("webpack:") {
+        Some(filename.starts_with("./") && !filename.contains("/node_modules/"))
+    } else if abs_path.starts_with("app:") {
+        Some(!NODE_MODULES_RE.is_match(filename))
+    } else if abs_path.contains("/node_modules/") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn is_in_app_faithful(abs_path: &str, filename: &str) -> Option<bool> {
+    let mut in_app = None;
+    if abs_path.starts_with("webpack:") {
+        // As noted above:
+        // * [js/node] '~/' means they're coming from node_modules, so these are not app dependencies
+        // * [node] sames goes for `./node_modules/` and '../node_modules/', which is used when bundling node apps
+        // * [node] and webpack, which includes it's own code to bootstrap all modules and its internals
+        //   eg. webpack:///webpack/bootstrap, webpack:///external
+        if filename.starts_with("~/")
+            || filename.contains("/node_modules/")
+            || !filename.starts_with("./")
+        {
+            in_app = Some(false);
+        }
+        // And conversely, local dependencies start with './'
+        else if filename.starts_with("./") {
+            in_app = Some(true);
+        }
+    }
+    // while you could technically use a subpath of 'node_modules' for your libraries,
+    // it would be an extremely complicated decision and we've not seen anyone do it
+    // so instead we assume if node_modules is in the path its part of the vendored code
+    else if abs_path.contains("/node_modules/") {
+        in_app = Some(false);
+    }
+
+    if abs_path.starts_with("app:") {
+        if NODE_MODULES_RE.is_match(filename) {
+            in_app = Some(false);
+        } else {
+            in_app = Some(true);
+        }
+    }
+
+    in_app
 }
 
 #[cfg(test)]

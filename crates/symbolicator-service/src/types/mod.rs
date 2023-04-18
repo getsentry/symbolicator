@@ -652,6 +652,9 @@ pub struct JsFrame {
     #[serde(skip_serializing)]
     pub token_name: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in_app: Option<bool>,
+
     #[serde(default, skip_serializing_if = "JsFrameData::is_empty")]
     pub data: JsFrameData,
 }

@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 190
+assertion_line: 192
 expression: response.unwrap()
 ---
 stacktraces:
@@ -10,6 +10,7 @@ stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
+        in_app: false
       - function: add
         filename: file1.js
         abs_path: "http://example.com/file1.js"
@@ -30,6 +31,7 @@ raw_stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
+        in_app: false
       - filename: embedded.js
         abs_path: "http://example.com/embedded.js"
         lineno: 1
