@@ -31,6 +31,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
@@ -43,6 +45,9 @@ use crate::types::{
 
 use super::source_context::get_context_lines;
 use super::SymbolicationActor;
+
+static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
@@ -209,13 +214,21 @@ async fn symbolicate_js_frame(
         &function_name,
         callsite_fn_name.as_deref(),
     )));
+
     if let Some(filename) = token.file_name() {
-        frame.filename = Some(filename.to_string());
+        let mut filename = filename.to_string();
         frame.abs_path = module
-            .source_file_key(filename)
+            .source_file_key(&filename)
             .and_then(|key| key.abs_path().map(ToString::to_string))
             .unwrap_or_else(|| filename.to_string());
+
+        if frame.abs_path.starts_with("webpack:") {
+            filename = fixup_webpack_filename(&frame.abs_path);
+        }
+
+        frame.filename = Some(filename);
     }
+
     frame.lineno = Some(token.line().saturating_add(1));
     frame.colno = Some(token.column().saturating_add(1));
 
@@ -377,6 +390,18 @@ fn fold_function_name(function_name: &str) -> String {
     format!("{folded}.{tail}")
 }
 
+fn fixup_webpack_filename(abs_path: &str) -> String {
+    if let Some((_, rest)) = abs_path.split_once("/~/") {
+        format!("~/{rest}")
+    } else if WEBPACK_NAMESPACE_RE.is_match(abs_path) {
+        WEBPACK_NAMESPACE_RE.replace(abs_path, "./").to_string()
+    } else if let Some(rest) = abs_path.strip_prefix("webpack:///") {
+        rest.to_string()
+    } else {
+        abs_path.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -428,6 +453,16 @@ mod tests {
         assert_eq!(
             fold_function_name("bar.foo.foo.bar.bar.onError"),
             "bar.{foo#2}.{bar#2}.onError"
+        );
+    }
+
+    #[test]
+    fn test_fixup_webpack_filename() {
+        let abs_path = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(
+            fixup_webpack_filename(abs_path),
+            "../node_modules/@sentry/browser/esm/helpers.js"
         );
     }
 }

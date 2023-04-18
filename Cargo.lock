@@ -4429,6 +4429,7 @@ dependencies = [
  "minidump",
  "minidump-processor",
  "moka",
+ "once_cell",
  "parking_lot 0.12.1",
  "regex",
  "reqwest",
