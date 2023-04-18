@@ -2,10 +2,6 @@
 //!
 //! # Lookup Logic
 //!
-//! At the start of processing an event, a call to [`SourceMapLookup::prefetch_artifacts`] will
-//! query the Sentry API with a Set of all the [`DebugId`]s, and the file stems for all the
-//! modules that do not have a [`DebugId`].
-//!
 //! An API request will feed into our list of [`ArtifactBundle`]s and potential artifact candidates.
 //!
 //! A request to [`SourceMapLookup::get_module`] will then fetch the minified source file, and its
@@ -13,8 +9,8 @@
 //! `sourceMappingURL` comment within that file.
 //!
 //! Each file will be looked up first inside of all the open [`ArtifactBundle`]s.
-//! If the requested file has a [`DebugId`], the lookup will be performed based on that, and no
-//! other lookup methods will be tried.
+//! If the requested file has a [`DebugId`], the lookup will be performed based on that first,
+//! falling back to other lookup methods.
 //! A file without [`DebugId`] will be looked up by a number of candidate URLs, see
 //! [`get_release_file_candidate_urls`]. It will be first looked up inside all the open
 //! [`ArtifactBundle`]s, falling back to individual artifacts, doing another API request if
