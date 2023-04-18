@@ -2,10 +2,6 @@
 //!
 //! # Lookup Logic
 //!
-//! At the start of processing an event, a call to [`SourceMapLookup::prefetch_artifacts`] will
-//! query the Sentry API with a Set of all the [`DebugId`]s, and the file stems for all the
-//! modules that do not have a [`DebugId`].
-//!
 //! An API request will feed into our list of [`ArtifactBundle`]s and potential artifact candidates.
 //!
 //! A request to [`SourceMapLookup::get_module`] will then fetch the minified source file, and its
@@ -13,8 +9,8 @@
 //! `sourceMappingURL` comment within that file.
 //!
 //! Each file will be looked up first inside of all the open [`ArtifactBundle`]s.
-//! If the requested file has a [`DebugId`], the lookup will be performed based on that, and no
-//! other lookup methods will be tried.
+//! If the requested file has a [`DebugId`], the lookup will be performed based on that first,
+//! falling back to other lookup methods.
 //! A file without [`DebugId`] will be looked up by a number of candidate URLs, see
 //! [`get_release_file_candidate_urls`]. It will be first looked up inside all the open
 //! [`ArtifactBundle`]s, falling back to individual artifacts, doing another API request if
@@ -200,8 +196,8 @@ impl SourceMapLookup {
         }
     }
 
-    /// Tries to pre-fetch some of the artifacts needed for symbolication.
-    pub async fn prefetch_artifacts(&mut self, stacktraces: &[JsStacktrace]) {
+    /// Prepares the modules for processing
+    pub fn prepare_modules(&mut self, stacktraces: &[JsStacktrace]) {
         for stacktrace in stacktraces {
             for frame in &stacktrace.frames {
                 let abs_path = &frame.abs_path;
@@ -213,10 +209,6 @@ impl SourceMapLookup {
                     .insert(abs_path.to_owned(), cached_module);
             }
         }
-
-        self.fetcher
-            .prefetch_artifacts(self.modules_by_abs_path.values())
-            .await;
     }
 
     /// Get the [`SourceMapModule`], which gives access to the `minified_source` and `smcache`.
@@ -506,30 +498,9 @@ struct ArtifactFetcher {
 }
 
 impl ArtifactFetcher {
-    // TODO: Figure out if we actually want to do this? We are falling back from `DebugId` lookup to
-    // `abs_path`-based lookup anyway, so we are no longer required to fetch `DebugId`-related bundles
-    // ahead of time. Batching multiple `DebugId`/`abs_path` into a single request makes it harder
-    // to cache. Also the API server might have an easier time to satisfy a query for a single file
-    // rather than for a bunch.
-    async fn prefetch_artifacts(&mut self, modules: impl Iterator<Item = &SourceMapModule>) {
-        let mut debug_ids = BTreeSet::new();
-        let mut file_stems = BTreeSet::new();
-
-        for module in modules {
-            if let Some(debug_id) = module.debug_id {
-                debug_ids.insert(debug_id);
-            }
-            if let Ok(url) = module.abs_path.as_ref() {
-                let stem = extract_file_stem(url);
-                file_stems.insert(stem);
-            }
-        }
-
-        self.query_sentry_for_files(debug_ids, file_stems).await
-    }
-
     /// Fetches the minified file, and the corresponding [`OwnedSourceMapCache`] for the file
     /// identified by its `abs_path`, or optionally its [`DebugId`].
+    #[tracing::instrument(skip(self, abs_path), fields(%abs_path))]
     async fn fetch_minified_and_sourcemap(
         &mut self,
         abs_path: Url,
@@ -830,7 +801,7 @@ impl ArtifactFetcher {
         let owner = fetched_bundle.data().clone();
 
         SelfCell::try_new(owner, |p| unsafe {
-            // We already have a parsed `Object`, but because of ownership issues, we do parse it again
+            // We already have a parsed `Object`, but because of ownership issues, we have to parse it again
             match Object::parse(&*p).map_err(CacheError::from_std_error)? {
                 Object::SourceBundle(source_bundle) => source_bundle
                     .debug_session()
@@ -843,6 +814,7 @@ impl ArtifactFetcher {
         })
     }
 
+    #[tracing::instrument(skip_all)]
     async fn fetch_sourcemap_cache(
         &self,
         source: ByteViewString,
