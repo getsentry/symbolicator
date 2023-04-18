@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 188
+assertion_line: 275
 expression: response.unwrap()
 ---
 stacktraces:
@@ -15,6 +15,8 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
+        data:
+          sourcemap: "app:///nofiles.js.map"
 raw_stacktraces:
   - frames:
       - abs_path: "app:///nofiles.js"

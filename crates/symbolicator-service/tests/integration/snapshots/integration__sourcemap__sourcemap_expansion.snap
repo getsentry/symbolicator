@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 100
+assertion_line: 98
 expression: response.unwrap()
 ---
 stacktraces:
@@ -27,6 +27,8 @@ stacktraces:
           - ""
           - "  return test;"
           - "})();"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
       - function: invoke
         filename: test.js
         abs_path: "http://example.com/test.js"
@@ -45,6 +47,8 @@ stacktraces:
           - "  function test() {"
           - "    var data = {failed: true, value: 42};"
           - "    invoke(data);"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
       - function: onFailure
         filename: test.js
         abs_path: "http://example.com/test.js"
@@ -62,6 +66,8 @@ stacktraces:
           - "  function invoke(data) {"
           - "    var cb = null;"
           - "    if (data.failed) {"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
 raw_stacktraces:
   - frames:
       - function: produceStack

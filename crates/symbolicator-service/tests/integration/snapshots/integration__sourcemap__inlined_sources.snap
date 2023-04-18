@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 245
+assertion_line: 243
 expression: response.unwrap()
 ---
 stacktraces:
@@ -11,6 +11,8 @@ stacktraces:
         lineno: 1
         colno: 1
         context_line: "console.log('hello, World!')"
+        data:
+          sourcemap: "http://example.com/test.min.js"
 raw_stacktraces:
   - frames:
       - filename: test.js
