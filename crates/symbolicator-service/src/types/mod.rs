@@ -650,6 +650,21 @@ pub struct JsFrame {
 
     #[serde(skip_serializing)]
     pub token_name: Option<String>,
+
+    #[serde(default, skip_serializing_if = "JsFrameData::is_empty")]
+    pub data: JsFrameData,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct JsFrameData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sourcemap: Option<String>,
+}
+
+impl JsFrameData {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

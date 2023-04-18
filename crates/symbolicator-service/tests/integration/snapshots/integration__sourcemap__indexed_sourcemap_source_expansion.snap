@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 325
+assertion_line: 323
 expression: response.unwrap()
 ---
 stacktraces:
@@ -16,6 +16,8 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
+        data:
+          sourcemap: "http://example.com/indexed.min.js.map"
       - function: multiply
         filename: file2.js
         abs_path: "http://example.com/file2.js"
@@ -31,6 +33,8 @@ stacktraces:
           - "\t\"use strict\";"
           - "\ttry {"
           - "\t\treturn multiply(add(a, b), a, b) / c;"
+        data:
+          sourcemap: "http://example.com/indexed.min.js.map"
 raw_stacktraces:
   - frames:
       - filename: indexed.min.js
