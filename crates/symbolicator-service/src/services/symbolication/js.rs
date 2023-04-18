@@ -166,6 +166,7 @@ async fn symbolicate_js_frame(
     };
 
     let mut frame = raw_frame.clone();
+    frame.data.sourcemap = Some(sourcemap_label.clone());
 
     let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
         (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
