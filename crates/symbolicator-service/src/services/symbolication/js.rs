@@ -31,7 +31,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
@@ -46,10 +46,8 @@ use crate::types::{
 use super::source_context::get_context_lines;
 use super::SymbolicationActor;
 
-lazy_static! {
-    static ref WEBPACK_NAMESPACE_RE: Regex =
-        Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap();
-}
+static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
