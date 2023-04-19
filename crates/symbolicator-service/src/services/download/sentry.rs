@@ -15,7 +15,7 @@ use serde::Deserialize;
 use url::Url;
 
 use symbolicator_sources::{
-    HttpRemoteFile, ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
+    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
 
 use super::{FileType, USER_AGENT};
@@ -265,7 +265,7 @@ impl SentryDownloader {
         let file_ids = entries
             .iter()
             .filter(|file| file.symbol_type.matches(file_types))
-            .map(|file| SentryRemoteFile::new(source.clone(), file.id.clone(), None).into())
+            .map(|file| SentryRemoteFile::new(source.clone(), true, file.id.clone(), None).into())
             .collect();
         Ok(file_ids)
     }
@@ -362,11 +362,13 @@ impl SentryDownloader {
     ) -> CacheEntry {
         tracing::debug!("Fetching Sentry artifact from {}", file_source.url());
 
-        let request = self
+        let mut request = self
             .client
             .get(file_source.url())
-            .header("User-Agent", USER_AGENT)
-            .bearer_auth(&file_source.source.token);
+            .header("User-Agent", USER_AGENT);
+        if file_source.use_credentials() {
+            request = request.bearer_auth(&file_source.source.token);
+        }
         let source = RemoteFile::from(file_source);
 
         super::download_reqwest(
@@ -382,8 +384,6 @@ impl SentryDownloader {
 
 /// Transforms the given `url` into a [`RemoteFile`].
 ///
-/// Depending on the `source`, this creates either a [`SentryRemoteFile`], or a
-/// [`HttpRemoteFile`].
 /// The problem here is being forward-compatible to a future in which the Sentry API returns
 /// pre-authenticated Urls on some external file storage service.
 /// Whereas right now, these files are still being served from a Sentry API endpoint, which
@@ -394,11 +394,14 @@ fn make_remote_file(
     file_id: &SentryFileId,
     url: &Url,
 ) -> RemoteFile {
-    if url.as_str().starts_with(source.url.as_str()) {
-        SentryRemoteFile::new(Arc::clone(source), file_id.clone(), Some(url.clone())).into()
-    } else {
-        HttpRemoteFile::from_url(url.clone()).into()
-    }
+    let use_credentials = url.as_str().starts_with(source.url.as_str());
+    SentryRemoteFile::new(
+        Arc::clone(source),
+        use_credentials,
+        file_id.clone(),
+        Some(url.clone()),
+    )
+    .into()
 }
 
 #[cfg(test)]
@@ -415,7 +418,7 @@ mod tests {
             token: "token".into(),
         };
         let file_source =
-            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
+            SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -428,7 +431,7 @@ mod tests {
             token: "token".into(),
         };
         let file_source =
-            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
+            SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
         let uri = file_source.uri();
         assert_eq!(
             uri,

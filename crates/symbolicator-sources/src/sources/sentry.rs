@@ -25,6 +25,7 @@ pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
     pub(crate) file_id: SentryFileId,
+    use_credentials: bool,
     url: Url,
 }
 
@@ -45,7 +46,12 @@ impl From<SentryRemoteFile> for RemoteFile {
 
 impl SentryRemoteFile {
     /// Creates a new [`SentryRemoteFile`].
-    pub fn new(source: Arc<SentrySourceConfig>, file_id: SentryFileId, url: Option<Url>) -> Self {
+    pub fn new(
+        source: Arc<SentrySourceConfig>,
+        use_credentials: bool,
+        file_id: SentryFileId,
+        url: Option<Url>,
+    ) -> Self {
         let url = url.unwrap_or_else(|| {
             let mut url = source.url.clone();
             url.query_pairs_mut().append_pair("id", &file_id.0);
@@ -55,6 +61,7 @@ impl SentryRemoteFile {
         Self {
             source,
             file_id,
+            use_credentials,
             url,
         }
     }
@@ -71,6 +78,11 @@ impl SentryRemoteFile {
 
     pub(crate) fn host(&self) -> String {
         self.url.to_string()
+    }
+
+    /// Indicates that credentials should be provided for this request.
+    pub fn use_credentials(&self) -> bool {
+        self.use_credentials
     }
 }
 
