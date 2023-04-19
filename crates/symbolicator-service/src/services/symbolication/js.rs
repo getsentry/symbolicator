@@ -479,5 +479,11 @@ mod tests {
         let base = "http://example.com".parse().unwrap();
         let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
         assert_eq!(nonstandard_path_join(&base, path).unwrap(), path);
+
+        let path = "path/./to/file.min.js";
+        assert_eq!(
+            nonstandard_path_join(&base, path).unwrap(),
+            "http://example.com/path/./to/file.min.js"
+        );
     }
 }
