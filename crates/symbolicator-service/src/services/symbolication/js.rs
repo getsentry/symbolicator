@@ -222,8 +222,8 @@ async fn symbolicate_js_frame(
             .and_then(|key| key.abs_path().map(ToString::to_string))
             .unwrap_or_else(|| filename.to_string());
 
-        if frame.abs_path.starts_with("webpack:") {
-            filename = fixup_webpack_filename(&frame.abs_path);
+        if filename.starts_with("webpack:") {
+            filename = fixup_webpack_filename(&filename);
         }
 
         frame.filename = Some(filename);
@@ -390,15 +390,15 @@ fn fold_function_name(function_name: &str) -> String {
     format!("{folded}.{tail}")
 }
 
-fn fixup_webpack_filename(abs_path: &str) -> String {
-    if let Some((_, rest)) = abs_path.split_once("/~/") {
+fn fixup_webpack_filename(filename: &str) -> String {
+    if let Some((_, rest)) = filename.split_once("/~/") {
         format!("~/{rest}")
-    } else if WEBPACK_NAMESPACE_RE.is_match(abs_path) {
-        WEBPACK_NAMESPACE_RE.replace(abs_path, "./").to_string()
-    } else if let Some(rest) = abs_path.strip_prefix("webpack:///") {
+    } else if WEBPACK_NAMESPACE_RE.is_match(filename) {
+        WEBPACK_NAMESPACE_RE.replace(filename, "./").to_string()
+    } else if let Some(rest) = filename.strip_prefix("webpack:///") {
         rest.to_string()
     } else {
-        abs_path.to_string()
+        filename.to_string()
     }
 }
 
@@ -458,10 +458,10 @@ mod tests {
 
     #[test]
     fn test_fixup_webpack_filename() {
-        let abs_path = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
 
         assert_eq!(
-            fixup_webpack_filename(abs_path),
+            fixup_webpack_filename(filename),
             "../node_modules/@sentry/browser/esm/helpers.js"
         );
     }
