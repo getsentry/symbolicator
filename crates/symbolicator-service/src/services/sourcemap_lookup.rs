@@ -45,7 +45,9 @@ use symbolicator_sources::{
 use tempfile::NamedTempFile;
 use url::Position;
 
-use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher};
+use crate::caching::{
+    CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
+};
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
@@ -376,14 +378,40 @@ impl FileKey {
 /// The source of an individual file.
 #[derive(Clone, Debug)]
 pub enum CachedFileUri {
-    /// The file was fetched using its own URI.
+    /// The file was an individual artifact fetched using its own URI.
     IndividualFile(RemoteFileUri),
+    /// The file was scraped from teh web using the given URI.
+    ScrapedFile(RemoteFileUri),
     /// The file was found using [`FileKey`] in the bundle identified by the URI.
     Bundled(RemoteFileUri, FileKey),
     /// The file was embedded in another file. This will only ever happen
     /// for Base64-encoded SourceMaps, and the SourceMap is always used
     /// in combination with a minified File that has a [`CachedFileUri`] itself.
     Embedded,
+}
+
+impl fmt::Display for CachedFileUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CachedFileUri::IndividualFile(uri) => write!(f, "{uri}"),
+            CachedFileUri::ScrapedFile(uri) => write!(f, "{uri}"),
+            CachedFileUri::Bundled(uri, key) => {
+                write!(f, "{uri} / {:?}:", key.as_type())?;
+                if let Some(abs_path) = key.abs_path() {
+                    write!(f, "{abs_path}")?;
+                } else {
+                    write!(f, "-")?;
+                }
+                write!(f, " / ")?;
+                if let Some(debug_id) = key.debug_id() {
+                    write!(f, "{debug_id}")
+                } else {
+                    write!(f, "-")
+                }
+            }
+            CachedFileUri::Embedded => f.write_str("<embedded>"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -547,7 +575,7 @@ impl ArtifactFetcher {
                 };
                 self.get_file(&sourcemap_key).await
             }
-            // We have a `DebugId`, in which case we don’t need no URL
+            // We may have a `DebugId`, in which case we don’t need no URL
             None => {
                 let sourcemap_key = FileKey::SourceMap {
                     abs_path: None,
@@ -558,20 +586,9 @@ impl ArtifactFetcher {
         };
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
-        let smcache = match &minified_source.entry {
-            Ok(minified_source) => match sourcemap.entry {
-                Ok(sourcemap) => {
-                    self.fetch_sourcemap_cache(minified_source.contents.clone(), sourcemap.contents)
-                        .await
-                }
-                Err(err) => Err(err),
-            },
-            Err(err) => Err(err.clone()),
-        };
-        let smcache = CachedFileEntry {
-            uri: sourcemap.uri,
-            entry: smcache,
-        };
+        let smcache = self
+            .fetch_sourcemap_cache(&minified_source, sourcemap)
+            .await;
 
         (minified_source, Some(smcache))
     }
@@ -608,7 +625,7 @@ impl ArtifactFetcher {
             if let Some(url) = key.abs_path() {
                 self.scraped_files += 1;
                 let remote_file: RemoteFile = HttpRemoteFile::from_url(url.to_owned()).into();
-                let uri = CachedFileUri::IndividualFile(remote_file.uri());
+                let uri = CachedFileUri::ScrapedFile(remote_file.uri());
                 let scraped_file = self
                     .sourcefiles_cache
                     .fetch_file(&self.scope, remote_file)
@@ -817,22 +834,62 @@ impl ArtifactFetcher {
     #[tracing::instrument(skip_all)]
     async fn fetch_sourcemap_cache(
         &self,
-        source: ByteViewString,
-        sourcemap: ByteViewString,
-    ) -> CacheEntry<OwnedSourceMapCache> {
-        let cache_key = {
-            let mut cache_key = CacheKey::scoped_builder(&self.scope);
-            let source_hash = Sha256::digest(&source);
-            let sourcemap_hash = Sha256::digest(&sourcemap);
+        source: &CachedFileEntry,
+        sourcemap: CachedFileEntry,
+    ) -> CachedFileEntry<OwnedSourceMapCache> {
+        fn write_cache_key(
+            cache_key: &mut CacheKeyBuilder,
+            prefix: &str,
+            uri: &CachedFileUri,
+            contents: &[u8],
+        ) {
+            if matches!(uri, CachedFileUri::ScrapedFile(_)) {
+                let hash = Sha256::digest(contents);
+                write!(cache_key, "{prefix}:\n{hash:x}\n").unwrap();
+            } else {
+                write!(cache_key, "{prefix}:\n{uri}\n").unwrap();
+            }
+        }
 
-            write!(cache_key, "source:\n{source_hash:x}\n").unwrap();
-            write!(cache_key, "sourcemap:\n{sourcemap_hash:x}").unwrap();
+        let smcache = match &source.entry {
+            Ok(source_entry) => match sourcemap.entry {
+                Ok(sourcemap_entry) => {
+                    let source_content = source_entry.contents.clone();
+                    let sourcemap_content = sourcemap_entry.contents;
 
-            cache_key.build()
+                    let cache_key = {
+                        let mut cache_key = CacheKey::scoped_builder(&self.scope);
+
+                        write_cache_key(
+                            &mut cache_key,
+                            "source",
+                            &source.uri,
+                            source_content.as_ref(),
+                        );
+                        write_cache_key(
+                            &mut cache_key,
+                            "sourcemap",
+                            &sourcemap.uri,
+                            sourcemap_content.as_ref(),
+                        );
+
+                        cache_key.build()
+                    };
+
+                    let req = FetchSourceMapCacheInternal {
+                        source: source_content,
+                        sourcemap: sourcemap_content,
+                    };
+                    self.sourcemap_caches.compute_memoized(req, cache_key).await
+                }
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err.clone()),
         };
-
-        let req = FetchSourceMapCacheInternal { source, sourcemap };
-        self.sourcemap_caches.compute_memoized(req, cache_key).await
+        CachedFileEntry {
+            uri: sourcemap.uri,
+            entry: smcache,
+        }
     }
 
     fn record_metrics(&self) {
