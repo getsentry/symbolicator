@@ -384,8 +384,6 @@ impl SentryDownloader {
 
 /// Transforms the given `url` into a [`RemoteFile`].
 ///
-/// Depending on the `source`, this creates either a [`SentryRemoteFile`], or a
-/// [`HttpRemoteFile`].
 /// The problem here is being forward-compatible to a future in which the Sentry API returns
 /// pre-authenticated Urls on some external file storage service.
 /// Whereas right now, these files are still being served from a Sentry API endpoint, which
