@@ -33,6 +33,7 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use reqwest::Url;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
@@ -218,9 +219,9 @@ async fn symbolicate_js_frame(
     if let Some(filename) = token.file_name() {
         let mut filename = filename.to_string();
         frame.abs_path = module
-            .source_file_key(&filename)
-            .and_then(|key| key.abs_path().map(ToString::to_string))
-            .unwrap_or_else(|| filename.to_string());
+            .source_file_base()
+            .and_then(|base| nonstandard_path_join(base, &filename))
+            .unwrap_or_else(|| filename.clone());
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
@@ -402,6 +403,13 @@ fn fixup_webpack_filename(filename: &str) -> String {
     }
 }
 
+/// Joins a path to a base URL without normalizing `..` segments.
+fn nonstandard_path_join(base: &Url, path: &str) -> Option<String> {
+    let path = path.replace("./", "__dotslash__");
+    let result = base.join(&path).ok()?.to_string();
+    Some(result.replace("__dotslash__", "./"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,6 +478,19 @@ mod tests {
         assert_eq!(
             fixup_webpack_filename(filename),
             "./app/utils/requestError/createRequestError.tsx"
+        );
+    }
+
+    #[test]
+    fn test_join_paths() {
+        let base = "http://example.com".parse().unwrap();
+        let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
+        assert_eq!(nonstandard_path_join(&base, path).unwrap(), path);
+
+        let path = "path/./to/file.min.js";
+        assert_eq!(
+            nonstandard_path_join(&base, path).unwrap(),
+            "http://example.com/path/./to/file.min.js"
         );
     }
 }

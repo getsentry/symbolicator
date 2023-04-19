@@ -112,6 +112,11 @@ impl SourceMapModule {
         let url = base_url.join(file_path).ok()?;
         Some(FileKey::new_source(url))
     }
+
+    /// The base url for fetching source files.
+    pub fn source_file_base(&self) -> Option<&Url> {
+        self.source_file_base.as_ref()
+    }
 }
 
 pub struct SourceMapLookup {
