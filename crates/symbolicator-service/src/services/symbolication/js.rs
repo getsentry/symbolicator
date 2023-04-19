@@ -405,9 +405,9 @@ fn fixup_webpack_filename(abs_path: &str) -> String {
 
 /// Joins a path to a base URL without normalizing `..` segments.
 fn nonstandard_path_join(base: &Url, path: &str) -> Option<String> {
-    let path = path.replace("..", "__dotdot__");
+    let path = path.replace("./", "__dotslash__");
     let result = base.join(&path).ok()?.to_string();
-    Some(result.replace("__dotdot__", ".."))
+    Some(result.replace("__dotslash__", "./"))
 }
 
 #[cfg(test)]
