@@ -464,5 +464,12 @@ mod tests {
             fixup_webpack_filename(filename),
             "../node_modules/@sentry/browser/esm/helpers.js"
         );
+
+        let filename = "webpack:///./app/utils/requestError/createRequestError.tsx";
+
+        assert_eq!(
+            fixup_webpack_filename(filename),
+            "./app/utils/requestError/createRequestError.tsx"
+        );
     }
 }
