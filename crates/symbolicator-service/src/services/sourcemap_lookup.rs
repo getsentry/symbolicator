@@ -380,7 +380,7 @@ impl FileKey {
 pub enum CachedFileUri {
     /// The file was an individual artifact fetched using its own URI.
     IndividualFile(RemoteFileUri),
-    /// The file was scraped from teh web using the given URI.
+    /// The file was scraped from the web using the given URI.
     ScrapedFile(RemoteFileUri),
     /// The file was found using [`FileKey`] in the bundle identified by the URI.
     Bundled(RemoteFileUri, FileKey),
