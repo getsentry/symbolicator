@@ -33,12 +33,11 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
-use reqwest::Url;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap_lookup::{CachedFile, SourceMapLookup};
+use crate::services::sourcemap_lookup::{join_paths, CachedFile, SourceMapLookup};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     RawObjectInfo, Scope,
@@ -134,10 +133,6 @@ async fn symbolicate_js_frame(
 ) -> Result<JsFrame, JsModuleErrorKind> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
 
-    if !module.is_valid() {
-        return Err(JsModuleErrorKind::InvalidAbsPath);
-    }
-
     tracing::trace!(
         abs_path = &raw_frame.abs_path,
         ?module,
@@ -220,7 +215,7 @@ async fn symbolicate_js_frame(
         let mut filename = filename.to_string();
         frame.abs_path = module
             .source_file_base()
-            .and_then(|base| nonstandard_path_join(base, &filename))
+            .and_then(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
         if filename.starts_with("webpack:") {
@@ -403,15 +398,10 @@ fn fixup_webpack_filename(filename: &str) -> String {
     }
 }
 
-/// Joins a path to a base URL without normalizing `..` segments.
-fn nonstandard_path_join(base: &Url, path: &str) -> Option<String> {
-    let path = path.replace("./", "__dotslash__");
-    let result = base.join(&path).ok()?.to_string();
-    Some(result.replace("__dotslash__", "./"))
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::services::sourcemap_lookup::join_paths;
+
     use super::*;
 
     #[test]
@@ -483,13 +473,13 @@ mod tests {
 
     #[test]
     fn test_join_paths() {
-        let base = "http://example.com".parse().unwrap();
+        let base = "http://example.com";
         let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
-        assert_eq!(nonstandard_path_join(&base, path).unwrap(), path);
+        assert_eq!(join_paths(base, path).unwrap(), path);
 
         let path = "path/./to/file.min.js";
         assert_eq!(
-            nonstandard_path_join(&base, path).unwrap(),
+            join_paths(base, path).unwrap(),
             "http://example.com/path/./to/file.min.js"
         );
     }
