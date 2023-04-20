@@ -55,7 +55,7 @@ use crate::types::{JsStacktrace, Scope};
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
 use super::download::sentry::{ArtifactHeaders, JsLookupResult};
-use super::objects::ObjectsActor;
+use super::objects::{ObjectHandle, ObjectsActor};
 use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
 
@@ -327,7 +327,7 @@ impl SourceMapUrl {
     }
 }
 
-type ArtifactBundle = SelfCell<ByteView<'static>, SourceBundleDebugSession<'static>>;
+type ArtifactBundle = SelfCell<Arc<ObjectHandle>, SourceBundleDebugSession<'static>>;
 
 /// The lookup key of an arbitrary file.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -601,6 +601,7 @@ impl ArtifactFetcher {
     /// Fetches an arbitrary file using its `abs_path`,
     /// or optionally its [`DebugId`] and [`SourceFileType`]
     /// (because multiple files can share one [`DebugId`]).
+    #[tracing::instrument(skip(self))]
     pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
         // Try looking up the file in one of the artifact bundles that we know about.
         if let Some(file) = self.try_get_file_from_bundles(key) {
@@ -613,16 +614,15 @@ impl ArtifactFetcher {
         }
 
         // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
-        self.query_sentry_for_file(key).await;
-
-        // At this point, *one* of our known artifacts includes the file we are looking for.
-        // So we do the whole dance yet again.
-        // TODO(sourcemap): figure out a way to avoid that?
-        if let Some(file) = self.try_get_file_from_bundles(key) {
-            return file;
-        }
-        if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
-            return file;
+        if self.query_sentry_for_file(key).await {
+            // At this point, *one* of our known artifacts includes the file we are looking for.
+            // So we do the whole dance yet again.
+            if let Some(file) = self.try_get_file_from_bundles(key) {
+                return file;
+            }
+            if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
+                return file;
+            }
         }
 
         // Otherwise, fall back to scraping from the Web.
@@ -663,6 +663,10 @@ impl ArtifactFetcher {
     }
 
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFileEntry> {
+        if self.artifact_bundles.is_empty() {
+            return None;
+        }
+
         // If we have a `DebugId`, we try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
@@ -700,6 +704,10 @@ impl ArtifactFetcher {
     }
 
     async fn try_fetch_file_from_artifacts(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+        if self.individual_artifacts.is_empty() {
+            return None;
+        }
+
         let abs_path = key.abs_path()?;
         let (url, artifact) = get_release_file_candidate_urls(abs_path).find_map(|url| {
             self.individual_artifacts
@@ -731,7 +739,9 @@ impl ArtifactFetcher {
     }
 
     /// Queries the Sentry API for a single file (by its [`DebugId`] and file stem).
-    async fn query_sentry_for_file(&mut self, key: &FileKey) {
+    ///
+    /// Returns `true` if any new data was made available through this API request.
+    async fn query_sentry_for_file(&mut self, key: &FileKey) -> bool {
         let mut debug_ids = BTreeSet::new();
         let mut file_stems = BTreeSet::new();
         if let Some(debug_id) = key.debug_id() {
@@ -750,17 +760,19 @@ impl ArtifactFetcher {
     /// This will also download all referenced [`ArtifactBundle`]s directly and persist them for
     /// later access.
     /// Individual files are not eagerly downloaded, but their metadata will be available.
+    ///
+    /// Returns `true` if any new data was made available through this API request.
     async fn query_sentry_for_files(
         &mut self,
         debug_ids: BTreeSet<DebugId>,
         file_stems: BTreeSet<String>,
-    ) {
+    ) -> bool {
         if debug_ids.is_empty() {
             // `file_stems` only make sense in combination with a `release`.
             if file_stems.is_empty() || self.release.is_none() {
                 // FIXME: this should really not happen, but I just observed it.
                 // The callers should better validate the args in that case?
-                return;
+                return false;
             }
         }
         self.api_requests += 1;
@@ -779,9 +791,11 @@ impl ArtifactFetcher {
             Ok(results) => results,
             Err(_err) => {
                 // TODO(sourcemap): handle errors
-                return;
+                return false;
             }
         };
+
+        let mut did_get_new_data = false;
 
         for file in results {
             match file {
@@ -791,28 +805,35 @@ impl ArtifactFetcher {
                     headers,
                 } => {
                     self.queried_artifacts += 1;
-                    self.individual_artifacts.insert(
-                        abs_path,
-                        IndividualArtifact {
-                            remote_file,
-                            headers,
-                        },
-                    );
+                    self.individual_artifacts
+                        .entry(abs_path)
+                        .or_insert_with(|| {
+                            did_get_new_data = true;
+                            IndividualArtifact {
+                                remote_file,
+                                headers,
+                            }
+                        });
                 }
                 JsLookupResult::ArtifactBundle { remote_file } => {
                     self.queried_bundles += 1;
                     let uri = remote_file.uri();
-                    // clippy, you are wrong, as this would result in borrowing errors
+                    // clippy, you are wrong, as this would result in borrowing errors,
+                    // because we are calling a `self` method while borrowing from self
                     #[allow(clippy::map_entry)]
                     if !self.artifact_bundles.contains_key(&uri) {
                         // NOTE: This could potentially be done concurrently, but lets not
                         // prematurely optimize for now
                         let artifact_bundle = self.fetch_artifact_bundle(remote_file).await;
                         self.artifact_bundles.insert(uri, artifact_bundle);
+
+                        did_get_new_data = true;
                     }
                 }
             }
         }
+
+        did_get_new_data
     }
 
     #[tracing::instrument(skip(self))]
@@ -820,11 +841,9 @@ impl ArtifactFetcher {
         let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
 
         let fetched_bundle = self.objects.fetch(object_handle).await?;
-        let owner = fetched_bundle.data().clone();
 
-        SelfCell::try_new(owner, |p| unsafe {
-            // We already have a parsed `Object`, but because of ownership issues, we have to parse it again
-            match Object::parse(&*p).map_err(CacheError::from_std_error)? {
+        SelfCell::try_new(fetched_bundle, |handle| unsafe {
+            match (*handle).object() {
                 Object::SourceBundle(source_bundle) => source_bundle
                     .debug_session()
                     .map_err(CacheError::from_std_error),
@@ -852,6 +871,14 @@ impl ArtifactFetcher {
                 let hash = Sha256::digest(contents);
                 write!(cache_key, "{prefix}:\n{hash:x}\n").unwrap();
             } else {
+                // TODO: using the `uri` here means we avoid an expensive hash calculation.
+                // But it also means that a file that does not change but is included in
+                // multiple bundles will cause the `SourceMapCache` to be regenerated.
+                // We could potentially optimize this further by also keeping track of which
+                // part of the `FileKey` was found in a bundle. If it was found via `DebugId`,
+                // we could use that as a stable cache key, otherwise falling back on either
+                // using the bundle URI+abs_path, or hashing the contents, depending on which
+                // one is cheaper.
                 write!(cache_key, "{prefix}:\n{uri}\n").unwrap();
             }
         }
