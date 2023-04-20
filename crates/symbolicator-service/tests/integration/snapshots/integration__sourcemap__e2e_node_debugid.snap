@@ -1,0 +1,41 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 433
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - function: Object.<anonymous>
+        filename: "../../this is a söurce path/entrypoint1.js"
+        abs_path: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/this is a söurce path/entrypoint1.js
+        lineno: 29
+        colno: 1
+        pre_context:
+          - "  debug: true,"
+          - "  integrations: () => [],"
+          - "});"
+          - ""
+          - // asdfaf
+        context_line: "Sentry.captureException(new Error(\"Errör\"));"
+        data:
+          sourcemap: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js.map
+raw_stacktraces:
+  - frames:
+      - function: Object.<anonymous>
+        abs_path: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js
+        lineno: 73
+        colno: 36
+        pre_context:
+          - "  debug: true,"
+          - "  integrations: () => [],"
+          - "});"
+          - ""
+          - // asdfaf
+        context_line: "Sentry__namespace.captureException(new Error(\"Errör\"));"
+        post_context:
+          - ""
+          - exports.getGlobal = getGlobal;
+          - exports.main = main;
+          - "//# sourceMappingURL=entrypoint1.js.map"
+          - ""
+
