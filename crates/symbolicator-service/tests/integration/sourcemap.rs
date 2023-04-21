@@ -407,7 +407,7 @@ async fn test_invalid_location() {
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = symbolicator_test::sourcemap_server("e2e_node_debugid", |url, query| {
-        dbg!(query);
+        assert_eq!(query, "debug_id=2f259f80-58b7-44cb-d7cd-de1505e7e718");
         json!([{
             "type": "bundle",
             "id": "1",
