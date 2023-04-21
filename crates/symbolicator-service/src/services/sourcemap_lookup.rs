@@ -85,11 +85,6 @@ pub struct SourceMapModule {
 
 impl SourceMapModule {
     fn new(abs_path: &str, debug_id: Option<DebugId>) -> Self {
-        // let abs_path = Url::parse(abs_path).map_err(|err| {
-        //     let error: &dyn std::error::Error = &err;
-        //     tracing::warn!(error, abs_path, "Invalid Url in JS processing");
-        //     (abs_path.to_owned(), err)
-        // });
         Self {
             abs_path: abs_path.to_owned(),
             debug_id,
@@ -264,7 +259,7 @@ impl SourceMapLookup {
     }
 }
 
-/// Joins a `url` to the `base` [`Url`], taking care of our special `~/` prefix that is treated just
+/// Joins the `right` path to the `base` path, taking care of our special `~/` prefix that is treated just
 /// like an absolute url.
 pub fn join_paths(base: &str, right: &str) -> String {
     if right.contains("://") {
@@ -330,10 +325,7 @@ enum SourceMapUrl {
 impl fmt::Debug for SourceMapUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Data(data) => {
-                let contents: &str = data;
-                f.debug_tuple("Data").field(&contents).finish()
-            }
+            Self::Data(_) => f.debug_tuple("Data").field(&"...").finish(),
             Self::Remote(url) => f.debug_tuple("Remote").field(&url).finish(),
         }
     }
@@ -578,10 +570,7 @@ impl ArtifactFetcher {
         Option<CachedFileEntry<OwnedSourceMapCache>>,
     ) {
         // First, check if we have already cached / created the `SourceMapCache`.
-        let key = FileKey::MinifiedSource {
-            abs_path: abs_path.clone(),
-            debug_id,
-        };
+        let key = FileKey::MinifiedSource { abs_path, debug_id };
 
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
@@ -991,7 +980,7 @@ fn strip_hostname(path: &str) -> &str {
     path
 }
 
-/// Extracts a "file stem" from a [`Url`].
+/// Extracts a "file stem" from a path.
 /// This is the `"/path/to/file"` in `"./path/to/file.min.js?foo=bar"`.
 /// We use the most generic variant instead here, as server-side filtering is using a partial
 /// match on the whole artifact path, thus `index.js` will be fetched no matter it's stored
