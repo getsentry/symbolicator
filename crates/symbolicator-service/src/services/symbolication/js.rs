@@ -215,7 +215,7 @@ async fn symbolicate_js_frame(
         let mut filename = filename.to_string();
         frame.abs_path = module
             .source_file_base()
-            .and_then(|base| join_paths(base, &filename))
+            .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
         if filename.starts_with("webpack:") {
@@ -400,7 +400,6 @@ fn fixup_webpack_filename(filename: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::services::sourcemap_lookup::join_paths;
 
     use super::*;
 
@@ -468,19 +467,6 @@ mod tests {
         assert_eq!(
             fixup_webpack_filename(filename),
             "./app/utils/requestError/createRequestError.tsx"
-        );
-    }
-
-    #[test]
-    fn test_join_paths() {
-        let base = "http://example.com";
-        let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
-        assert_eq!(join_paths(base, path).unwrap(), path);
-
-        let path = "path/./to/file.min.js";
-        assert_eq!(
-            join_paths(base, path).unwrap(),
-            "http://example.com/path/./to/file.min.js"
         );
     }
 }
