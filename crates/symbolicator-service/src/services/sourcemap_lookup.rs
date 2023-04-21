@@ -43,7 +43,6 @@ use symbolicator_sources::{
     HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentrySourceConfig,
 };
 use tempfile::NamedTempFile;
-use url::Position;
 
 use crate::caching::{
     CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
@@ -67,15 +66,15 @@ pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'stati
 /// about it.
 #[derive(Clone, Debug)]
 pub struct SourceMapModule {
-    /// The parsed [`Url`] or the original `abs_path` along with a [`url::ParseError`] if it is invalid.
-    abs_path: Result<Url, (String, url::ParseError)>,
+    /// The original `abs_path`.
+    abs_path: String,
     /// The optional [`DebugId`] of this module.
     debug_id: Option<DebugId>,
     // TODO(sourcemap): errors that happened when processing this file
     /// A flag showing if we have already resolved the minified and sourcemap files.
     was_fetched: bool,
     /// The base url for fetching source files.
-    source_file_base: Option<Url>,
+    source_file_base: Option<String>,
     /// The fetched minified JS file.
     // TODO(sourcemap): maybe this should not be public?
     pub minified_source: CachedFileEntry,
@@ -86,13 +85,8 @@ pub struct SourceMapModule {
 
 impl SourceMapModule {
     fn new(abs_path: &str, debug_id: Option<DebugId>) -> Self {
-        let abs_path = Url::parse(abs_path).map_err(|err| {
-            let error: &dyn std::error::Error = &err;
-            tracing::warn!(error, abs_path, "Invalid Url in JS processing");
-            (abs_path.to_owned(), err)
-        });
         Self {
-            abs_path,
+            abs_path: abs_path.to_owned(),
             debug_id,
             was_fetched: false,
             source_file_base: None,
@@ -101,21 +95,16 @@ impl SourceMapModule {
         }
     }
 
-    // TODO(sourcemap): we should really maintain a list of all the errors that happened for this image?
-    pub fn is_valid(&self) -> bool {
-        self.abs_path.is_ok()
-    }
-
     /// Creates a new [`FileKey`] for the `file_path` relative to this module
     pub fn source_file_key(&self, file_path: &str) -> Option<FileKey> {
         let base_url = self.source_file_base.as_ref()?;
-        let url = base_url.join(file_path).ok()?;
+        let url = join_paths(base_url, file_path);
         Some(FileKey::new_source(url))
     }
 
     /// The base url for fetching source files.
-    pub fn source_file_base(&self) -> Option<&Url> {
-        self.source_file_base.as_ref()
+    pub fn source_file_base(&self) -> Option<&str> {
+        self.source_file_base.as_deref()
     }
 }
 
@@ -231,14 +220,10 @@ impl SourceMapLookup {
         }
         module.was_fetched = true;
 
-        let Ok(url) = module.abs_path.clone() else {
-            return module;
-        };
-
         // we can’t have a mutable `module` while calling `fetch_module` :-(
         let (minified_source, smcache) = self
             .fetcher
-            .fetch_minified_and_sourcemap(url.clone(), module.debug_id)
+            .fetch_minified_and_sourcemap(module.abs_path.clone(), module.debug_id)
             .await;
 
         // We use the sourcemap url as the base. If that is not available because there is no
@@ -250,7 +235,7 @@ impl SourceMapLookup {
             },
             Err(_) => None,
         };
-        let source_file_base = sourcemap_url.unwrap_or(url);
+        let source_file_base = sourcemap_url.unwrap_or(module.abs_path.clone());
 
         module.source_file_base = Some(source_file_base);
         module.minified_source = minified_source;
@@ -274,11 +259,57 @@ impl SourceMapLookup {
     }
 }
 
-/// Joins a `url` to the `base` [`Url`], taking care of our special `~/` prefix that is treated just
+/// Joins the `right` path to the `base` path, taking care of our special `~/` prefix that is treated just
 /// like an absolute url.
-fn join_url(base: &Url, url: &str) -> Option<Url> {
-    let url = url.strip_prefix('~').unwrap_or(url);
-    base.join(url).ok()
+pub fn join_paths(base: &str, right: &str) -> String {
+    if right.contains("://") {
+        return right.into();
+    }
+
+    let (scheme, rest) = base.split_once("://").unwrap_or(("file", base));
+
+    let right = right.strip_prefix('~').unwrap_or(right);
+    // the right path is absolute:
+    if right.starts_with('/') {
+        if scheme == "file" {
+            return right.into();
+        }
+        let first_fragment = rest.split('/').next().unwrap_or(rest);
+        return format!("{scheme}://{first_fragment}{right}");
+    }
+
+    let mut final_path = String::new();
+
+    let mut left_iter = rest.split('/').peekable();
+    // add the scheme/hostname
+    if scheme != "file" {
+        let hostname = left_iter.next().unwrap_or_default();
+        write!(final_path, "{scheme}://{hostname}").unwrap();
+    } else if left_iter.peek() == Some(&"") {
+        // pop a leading `/`
+        let _ = left_iter.next();
+    }
+
+    // pop the basename from the back
+    let _ = left_iter.next_back();
+
+    let mut segments: Vec<_> = left_iter.collect();
+    let is_http = scheme == "http" || scheme == "https";
+    for right_segment in right.split('/') {
+        if right_segment == ".." && (segments.pop().is_some() || is_http) {
+            continue;
+        }
+        if right_segment == "." && is_http {
+            continue;
+        }
+
+        segments.push(right_segment);
+    }
+
+    for seg in segments {
+        write!(final_path, "/{seg}").unwrap();
+    }
+    final_path
 }
 
 /// A URL to a sourcemap file.
@@ -288,17 +319,14 @@ fn join_url(base: &Url, url: &str) -> Option<Url> {
 #[derive(Clone)]
 enum SourceMapUrl {
     Data(ByteViewString),
-    Remote(url::Url),
+    Remote(String),
 }
 
 impl fmt::Debug for SourceMapUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Data(data) => {
-                let contents: &str = data;
-                f.debug_tuple("Data").field(&contents).finish()
-            }
-            Self::Remote(url) => f.debug_tuple("Remote").field(&url.as_str()).finish(),
+            Self::Data(_) => f.debug_tuple("Data").field(&"...").finish(),
+            Self::Remote(url) => f.debug_tuple("Remote").field(&url).finish(),
         }
     }
 }
@@ -311,7 +339,7 @@ impl SourceMapUrl {
     ///
     /// If the string starts with [`DATA_PREAMBLE`](Self::DATA_PREAMBLE), the rest is decoded from BASE64.
     /// Otherwise, the string is joined to the `base` URL.
-    fn parse_with_prefix(base: &Url, url_string: &str) -> CacheEntry<Self> {
+    fn parse_with_prefix(base: &str, url_string: &str) -> CacheEntry<Self> {
         if let Some(encoded) = url_string.strip_prefix(Self::DATA_PREAMBLE) {
             let decoded = BASE64
                 .decode(encoded.as_bytes())
@@ -320,8 +348,7 @@ impl SourceMapUrl {
                 .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
             Ok(Self::Data(decoded.into()))
         } else {
-            let url = join_url(base, url_string)
-                .ok_or_else(|| CacheError::DownloadError("Invalid sourcemap url".to_string()))?;
+            let url = join_paths(base, url_string);
             Ok(Self::Remote(url))
         }
     }
@@ -334,21 +361,21 @@ type ArtifactBundle = SelfCell<Arc<ObjectHandle>, SourceBundleDebugSession<'stat
 pub enum FileKey {
     /// This key represents a [`SourceFileType::MinifiedSource`].
     MinifiedSource {
-        abs_path: Url,
+        abs_path: String,
         debug_id: Option<DebugId>,
     },
     /// This key represents a [`SourceFileType::SourceMap`].
     SourceMap {
-        abs_path: Option<Url>,
+        abs_path: Option<String>,
         debug_id: Option<DebugId>,
     },
     /// This key represents a [`SourceFileType::Source`].
-    Source { abs_path: Url },
+    Source { abs_path: String },
 }
 
 impl FileKey {
     /// Creates a new [`FileKey`] for a source file.
-    fn new_source(abs_path: Url) -> Self {
+    fn new_source(abs_path: String) -> Self {
         Self::Source { abs_path }
     }
 
@@ -362,11 +389,11 @@ impl FileKey {
     }
 
     /// Returns this key's abs_path, if any.
-    pub fn abs_path(&self) -> Option<&Url> {
+    pub fn abs_path(&self) -> Option<&str> {
         match self {
-            FileKey::MinifiedSource { abs_path, .. } => Some(abs_path),
-            FileKey::SourceMap { abs_path, .. } => abs_path.as_ref(),
-            FileKey::Source { abs_path } => Some(abs_path),
+            FileKey::MinifiedSource { abs_path, .. } => Some(&abs_path[..]),
+            FileKey::SourceMap { abs_path, .. } => abs_path.as_deref(),
+            FileKey::Source { abs_path } => Some(&abs_path[..]),
         }
     }
 
@@ -455,7 +482,7 @@ impl fmt::Debug for CachedFile {
 
 impl CachedFile {
     fn from_descriptor(
-        abs_path: Option<&Url>,
+        abs_path: Option<&str>,
         descriptor: SourceFileDescriptor,
     ) -> CacheEntry<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
@@ -536,17 +563,14 @@ impl ArtifactFetcher {
     #[tracing::instrument(skip(self, abs_path), fields(%abs_path))]
     async fn fetch_minified_and_sourcemap(
         &mut self,
-        abs_path: Url,
+        abs_path: String,
         debug_id: Option<DebugId>,
     ) -> (
         CachedFileEntry,
         Option<CachedFileEntry<OwnedSourceMapCache>>,
     ) {
         // First, check if we have already cached / created the `SourceMapCache`.
-        let key = FileKey::MinifiedSource {
-            abs_path: abs_path.clone(),
-            debug_id,
-        };
+        let key = FileKey::MinifiedSource { abs_path, debug_id };
 
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
@@ -627,7 +651,16 @@ impl ArtifactFetcher {
 
         // Otherwise, fall back to scraping from the Web.
         if self.allow_scraping {
-            if let Some(url) = key.abs_path() {
+            if let Some(abs_path) = key.abs_path() {
+                let url = match Url::parse(abs_path) {
+                    Ok(url) => url,
+                    Err(err) => {
+                        return CachedFileEntry {
+                            uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                            entry: Err(CacheError::DownloadError(err.to_string())),
+                        }
+                    }
+                };
                 self.scraped_files += 1;
                 let remote_file: RemoteFile = HttpRemoteFile::from_url(url.to_owned()).into();
                 let uri = CachedFileUri::ScrapedFile(remote_file.uri());
@@ -645,7 +678,7 @@ impl ArtifactFetcher {
                             .ok()
                             .flatten();
                         let sourcemap_url = sm_ref.and_then(|sm_ref| {
-                            SourceMapUrl::parse_with_prefix(url, sm_ref.get_url())
+                            SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
                                 .ok()
                                 .map(Arc::new)
                         });
@@ -934,7 +967,20 @@ impl ArtifactFetcher {
     }
 }
 
-/// Extracts a "file stem" from a [`Url`].
+/// Strips the hostname (or leading tilde) from the `path` and returns the path following the
+/// hostname, with a leading `/`.
+fn strip_hostname(path: &str) -> &str {
+    if let Some(after_tilde) = path.strip_prefix('~') {
+        return after_tilde;
+    }
+
+    if let Some((_scheme, rest)) = path.split_once("://") {
+        return rest.find('/').map(|idx| &rest[idx..]).unwrap_or(rest);
+    }
+    path
+}
+
+/// Extracts a "file stem" from a path.
 /// This is the `"/path/to/file"` in `"./path/to/file.min.js?foo=bar"`.
 /// We use the most generic variant instead here, as server-side filtering is using a partial
 /// match on the whole artifact path, thus `index.js` will be fetched no matter it's stored
@@ -942,8 +988,9 @@ impl ArtifactFetcher {
 /// or `http://example.com/index.js?foo=bar`.
 // NOTE: We do want a leading slash to be included, eg. `/bundle/app.js` or `/index.js`,
 // as it's not possible to use artifacts without proper host or `~/` wildcard.
-fn extract_file_stem(url: &Url) -> String {
-    let path = url.path();
+fn extract_file_stem(path: &str) -> String {
+    let path = strip_hostname(path);
+
     path.rsplit_once('/')
         .map(|(prefix, name)| {
             let name = name.split_once('.').map(|(stem, _)| stem).unwrap_or(name);
@@ -955,37 +1002,27 @@ fn extract_file_stem(url: &Url) -> String {
 /// Transforms a full absolute url into 2 or 4 generalized options.
 // Based on `ReleaseFile.normalize`, see:
 // https://github.com/getsentry/sentry/blob/master/src/sentry/models/releasefile.py
-fn get_release_file_candidate_urls(url: &Url) -> impl Iterator<Item = String> {
-    let mut urls = [None, None, None, None];
+fn get_release_file_candidate_urls(url: &str) -> impl Iterator<Item = String> {
+    let url = url.split('#').next().unwrap_or(url);
+    let relative = strip_hostname(url);
 
-    // Absolute without fragment
-    urls[0] = Some(url[..Position::AfterQuery].to_string());
-
-    // Absolute without query
-    if url.query().is_some() {
-        urls[1] = Some(url[..Position::AfterPath].to_string());
-    }
-
-    // Relative without fragment
-    urls[2] = Some(format!(
-        "~{}",
-        &url[Position::BeforePath..Position::AfterQuery]
-    ));
-
-    // Relative without query
-    if url.query().is_some() {
-        urls[3] = Some(format!(
-            "~{}",
-            &url[Position::BeforePath..Position::AfterPath]
-        ));
-    }
+    let urls = [
+        // Absolute without fragment
+        Some(url.to_string()),
+        // Absolute without query
+        url.split_once('?').map(|s| s.0.to_string()),
+        // Relative without fragment
+        Some(format!("~{relative}")),
+        // Relative without query
+        relative.split_once('?').map(|s| format!("~{}", s.0)),
+    ];
 
     urls.into_iter().flatten()
 }
 
 /// Joins together frames `abs_path` and discovered sourcemap reference.
 fn resolve_sourcemap_url(
-    abs_path: &Url,
+    abs_path: &str,
     artifact_headers: &ArtifactHeaders,
     artifact_source: &[u8],
 ) -> Option<SourceMapUrl> {
@@ -1061,115 +1098,126 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_strip_hostname() {
+        assert_eq!(strip_hostname("/absolute/unix/path"), "/absolute/unix/path");
+        assert_eq!(strip_hostname("~/with/tilde"), "/with/tilde");
+        assert_eq!(strip_hostname("https://example.com/"), "/");
+        assert_eq!(
+            strip_hostname("https://example.com/some/path/file.js"),
+            "/some/path/file.js"
+        );
+    }
+
+    #[test]
     fn test_get_release_file_candidate_urls() {
-        let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
+        let url = "https://example.com/assets/bundle.min.js";
         let expected = &[
             "https://example.com/assets/bundle.min.js",
             "~/assets/bundle.min.js",
         ];
-        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
         assert_eq!(&actual, expected);
 
-        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
-            .parse()
-            .unwrap();
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz";
         let expected = &[
             "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
             "https://example.com/assets/bundle.min.js",
             "~/assets/bundle.min.js?foo=1&bar=baz",
             "~/assets/bundle.min.js",
         ];
-        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
         assert_eq!(&actual, expected);
 
-        let url = "https://example.com/assets/bundle.min.js#wat"
-            .parse()
-            .unwrap();
+        let url = "https://example.com/assets/bundle.min.js#wat";
         let expected = &[
             "https://example.com/assets/bundle.min.js",
             "~/assets/bundle.min.js",
         ];
-        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
         assert_eq!(&actual, expected);
 
-        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
-            .parse()
-            .unwrap();
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat";
         let expected = &[
             "https://example.com/assets/bundle.min.js?foo=1&bar=baz",
             "https://example.com/assets/bundle.min.js",
             "~/assets/bundle.min.js?foo=1&bar=baz",
             "~/assets/bundle.min.js",
         ];
-        let actual: Vec<_> = get_release_file_candidate_urls(&url).collect();
+        let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
         assert_eq!(&actual, expected);
     }
 
     #[test]
     fn test_extract_file_stem() {
-        let url = "https://example.com/bundle.js".parse().unwrap();
-        assert_eq!(extract_file_stem(&url), "/bundle");
+        let url = "https://example.com/bundle.js";
+        assert_eq!(extract_file_stem(url), "/bundle");
 
-        let url = "https://example.com/bundle.min.js".parse().unwrap();
-        assert_eq!(extract_file_stem(&url), "/bundle");
+        let url = "https://example.com/bundle.min.js";
+        assert_eq!(extract_file_stem(url), "/bundle");
 
-        let url = "https://example.com/assets/bundle.js".parse().unwrap();
-        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+        let url = "https://example.com/assets/bundle.js";
+        assert_eq!(extract_file_stem(url), "/assets/bundle");
 
-        let url = "https://example.com/assets/bundle.min.js".parse().unwrap();
-        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+        let url = "https://example.com/assets/bundle.min.js";
+        assert_eq!(extract_file_stem(url), "/assets/bundle");
 
-        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz"
-            .parse()
-            .unwrap();
-        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz";
+        assert_eq!(extract_file_stem(url), "/assets/bundle");
 
-        let url = "https://example.com/assets/bundle.min.js#wat"
-            .parse()
-            .unwrap();
-        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+        let url = "https://example.com/assets/bundle.min.js#wat";
+        assert_eq!(extract_file_stem(url), "/assets/bundle");
 
-        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat"
-            .parse()
-            .unwrap();
-        assert_eq!(extract_file_stem(&url), "/assets/bundle");
+        let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat";
+        assert_eq!(extract_file_stem(url), "/assets/bundle");
     }
 
     #[test]
-    fn joining_urls() {
-        let base = Url::parse("https://example.com/path/to/assets/bundle.min.js?foo=1&bar=baz#wat")
-            .unwrap();
+    fn joining_paths() {
+        // (http) URLs
+        let base = "https://example.com/path/to/assets/bundle.min.js?foo=1&bar=baz#wat";
+
         // relative
         assert_eq!(
-            join_url(&base, "../sourcemaps/bundle.min.js.map")
-                .unwrap()
-                .as_str(),
+            join_paths(base, "../sourcemaps/bundle.min.js.map"),
             "https://example.com/path/to/sourcemaps/bundle.min.js.map"
         );
         // absolute
-        assert_eq!(
-            join_url(&base, "/foo.js").unwrap().as_str(),
-            "https://example.com/foo.js"
-        );
+        assert_eq!(join_paths(base, "/foo.js"), "https://example.com/foo.js");
         // absolute with tilde
-        assert_eq!(
-            join_url(&base, "~/foo.js").unwrap().as_str(),
-            "https://example.com/foo.js"
-        );
+        assert_eq!(join_paths(base, "~/foo.js"), "https://example.com/foo.js");
 
         // dots
         assert_eq!(
-            join_url(&base, ".././.././to/./sourcemaps/./bundle.min.js.map")
-                .unwrap()
-                .as_str(),
+            join_paths(base, ".././.././to/./sourcemaps/./bundle.min.js.map"),
             "https://example.com/path/to/sourcemaps/bundle.min.js.map"
         );
-        // unmatched dot-dots
+
+        // file paths
+        let base = "/home/foo/bar/baz.js";
+
+        // relative
         assert_eq!(
-            join_url(&base, "../../../../../../caps-at-absolute")
-                .unwrap()
-                .as_str(),
-            "https://example.com/caps-at-absolute"
+            join_paths(base, "../sourcemaps/bundle.min.js.map"),
+            "/home/foo/sourcemaps/bundle.min.js.map"
+        );
+        // absolute
+        assert_eq!(join_paths(base, "/foo.js"), "/foo.js");
+        // absolute with tilde
+        assert_eq!(join_paths(base, "~/foo.js"), "/foo.js");
+
+        // absolute path with its own scheme
+        let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
+        assert_eq!(join_paths("http://example.com", path), path);
+
+        // path with a dot in the middle
+        assert_eq!(
+            join_paths("http://example.com", "path/./to/file.min.js"),
+            "http://example.com/path/to/file.min.js"
+        );
+
+        assert_eq!(
+            join_paths("/playground/öut path/rollup/entrypoint1.js", "~/0.js.map"),
+            "/0.js.map"
         );
     }
 }
