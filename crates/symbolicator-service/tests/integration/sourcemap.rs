@@ -403,6 +403,36 @@ async fn test_invalid_location() {
     assert_snapshot!(response.unwrap());
 }
 
+#[tokio::test]
+async fn e2e_node_debugid() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = symbolicator_test::sourcemap_server("e2e_node_debugid", |url, query| {
+        assert_eq!(query, "debug_id=2f259f80-58b7-44cb-d7cd-de1505e7e718");
+        json!([{
+            "type": "bundle",
+            "id": "1",
+            "url": format!("{url}/bundle.zip"),
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "/Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js",
+        "lineno": 73,
+        "colno": 36,
+        "function": "Object.<anonymous>"
+    }]"#;
+    let modules = r#"[{
+        "code_file": "/Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js",
+        "debug_id": "2f259f80-58b7-44cb-d7cd-de1505e7e718",
+        "type": "sourcemap"
+    }]"#;
+
+    let request = make_js_request(source, frames, modules, None, None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
 // of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
 // JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
