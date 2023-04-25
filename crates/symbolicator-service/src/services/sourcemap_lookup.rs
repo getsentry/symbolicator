@@ -28,7 +28,6 @@ use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
 
-use data_encoding::BASE64;
 use futures::future::BoxFuture;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
@@ -316,7 +315,7 @@ pub fn join_paths(base: &str, right: &str) -> String {
 ///
 /// May either be a conventional URL or a data URL containing the sourcemap
 /// encoded as BASE64.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum SourceMapUrl {
     Data(ByteViewString),
     Remote(String),
@@ -332,20 +331,18 @@ impl fmt::Debug for SourceMapUrl {
 }
 
 impl SourceMapUrl {
-    /// The string prefix denoting a data URL.
-    const DATA_PREAMBLE: &str = "data:application/json;base64,";
-
     /// Parses a string into a [`SourceMapUrl`].
     ///
-    /// If the string starts with [`DATA_PREAMBLE`](Self::DATA_PREAMBLE), the rest is decoded from BASE64.
+    /// If it starts with `"data:"`, it is parsed as a data-URL that is base64 or url-encoded.
     /// Otherwise, the string is joined to the `base` URL.
     fn parse_with_prefix(base: &str, url_string: &str) -> CacheEntry<Self> {
-        if let Some(encoded) = url_string.strip_prefix(Self::DATA_PREAMBLE) {
-            let decoded = BASE64
-                .decode(encoded.as_bytes())
-                .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
-            let decoded = String::from_utf8(decoded)
-                .map_err(|_| CacheError::Malformed("Invalid base64 sourcemap".to_string()))?;
+        if url_string.starts_with("data:") {
+            let decoded = data_url::DataUrl::process(url_string)
+                .map_err(|_| ())
+                .and_then(|url| url.decode_to_vec().map_err(|_| ()))
+                .and_then(|data| String::from_utf8(data.0).map_err(|_| ()))
+                .map_err(|_| CacheError::Malformed(String::from("invalid `data:` url")))?;
+
             Ok(Self::Data(decoded.into()))
         } else {
             let url = join_paths(base, url_string);
@@ -1218,6 +1215,34 @@ mod tests {
         assert_eq!(
             join_paths("/playground/öut path/rollup/entrypoint1.js", "~/0.js.map"),
             "/0.js.map"
+        );
+    }
+
+    #[test]
+    fn data_urls() {
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data"),
+            Ok(SourceMapUrl::Remote("/data".into())),
+        );
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data:"),
+            Err(CacheError::Malformed("invalid `data:` url".into())),
+        );
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data:,foo"),
+            Ok(SourceMapUrl::Data(String::from("foo").into())),
+        );
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data:,Hello%2C%20World%21"),
+            Ok(SourceMapUrl::Data(String::from("Hello, World!").into())),
+        );
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data:;base64,SGVsbG8sIFdvcmxkIQ=="),
+            Ok(SourceMapUrl::Data(String::from("Hello, World!").into())),
+        );
+        assert_eq!(
+            SourceMapUrl::parse_with_prefix("/foo", "data:;base64,SGVsbG8sIFdvcmxkIQ="),
+            Err(CacheError::Malformed("invalid `data:` url".into())),
         );
     }
 }
