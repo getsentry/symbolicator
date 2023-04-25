@@ -433,6 +433,36 @@ async fn e2e_node_debugid() {
     assert_snapshot!(response.unwrap());
 }
 
+#[tokio::test]
+async fn e2e_source_no_header() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) =
+        symbolicator_test::sourcemap_server("e2e_source_no_header", |url, _query| {
+            // NOTE: this bundle was manually constructed and has a `"source"` file without a
+            // `Sourcemap` header, but with a `sourceMappingURL`.
+            // The test files are the same as in `01_sourcemap_expansion`, but with a different
+            // base url.
+            json!([{
+                "type": "bundle",
+                "id": "1",
+                "url": format!("{url}/bundle.zip"),
+            }])
+        });
+
+    let frames = r#"[{
+        "abs_path": "app:///_next/server/pages/_error.js",
+        "lineno": 1,
+        "colno": 64,
+        "function": "e"
+    }]"#;
+    let modules = r#"[]"#;
+
+    let request = make_js_request(source, frames, modules, String::from("some-release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
 // of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
 // JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
