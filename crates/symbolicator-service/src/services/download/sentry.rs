@@ -21,7 +21,7 @@ use symbolicator_sources::{
 use super::{FileType, USER_AGENT};
 use crate::caching::{CacheEntry, CacheError};
 use crate::config::Config;
-use crate::utils::futures::CancelOnDrop;
+use crate::utils::futures::{m, measure, CancelOnDrop};
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -242,7 +242,14 @@ impl SentryDownloader {
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            let result = future.await.map_err(|_| CacheError::InternalError)?;
+            let timeout = Duration::from_secs(30);
+            let future = tokio::time::timeout(timeout, future);
+            let future = measure("service.download.list_files", m::timed_result, future);
+
+            let result = future
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?
+                .map_err(|_| CacheError::InternalError)?;
 
             if let Ok(result) = &result {
                 // TODO(flub): These queries do not handle pagination.  But sentry only starts to
@@ -300,6 +307,13 @@ impl SentryDownloader {
             }
         }
 
+        // NOTE: `http::Uri` has a hard limit defined, and reqwest unconditionally unwraps such
+        // errors, when converting between `Url` to `Uri`. To avoid a panic in that case, we
+        // duplicate the check here to gracefully error out.
+        if lookup_url.as_str().len() > (u16::MAX - 1) as usize {
+            return Err(CacheError::DownloadError("uri too long".into()));
+        }
+
         let query = SearchQuery {
             index_url: lookup_url,
             token: source.token.clone(),
@@ -323,7 +337,18 @@ impl SentryDownloader {
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(|_| CacheError::InternalError)?
+            let timeout = Duration::from_secs(30);
+            let future = tokio::time::timeout(timeout, future);
+            let future = measure(
+                "service.download.lookup_js_artifacts",
+                m::timed_result,
+                future,
+            );
+
+            future
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?
+                .map_err(|_| CacheError::InternalError)?
         });
 
         let entries = self

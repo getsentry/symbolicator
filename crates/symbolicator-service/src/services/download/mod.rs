@@ -401,15 +401,11 @@ impl DownloadService {
         for source in sources {
             match source {
                 SourceConfig::Sentry(cfg) => {
-                    let job = self.sentry.list_files(cfg.clone(), object_id, filetypes);
-                    let timeout = Duration::from_secs(30);
-                    let job = tokio::time::timeout(timeout, job);
-                    let job = measure("service.download.list_files", m::timed_result, job);
+                    let future = self.sentry.list_files(cfg.clone(), object_id, filetypes);
 
-                    let sentry_files = job.await.map_err(|_| CacheError::Timeout(timeout));
-                    match sentry_files {
-                        Ok(Ok(files)) => remote_files.extend(files),
-                        Ok(Err(error)) | Err(error) => {
+                    match future.await {
+                        Ok(files) => remote_files.extend(files),
+                        Err(error) => {
                             let error: &dyn std::error::Error = &error;
                             tracing::error!(error, "Failed to fetch file list");
                             // TODO: create a special "finding files failed" `RemoteFile`?
@@ -454,14 +450,9 @@ impl DownloadService {
         release: Option<&str>,
         dist: Option<&str>,
     ) -> CacheEntry<Vec<JsLookupResult>> {
-        let job = self
-            .sentry
-            .lookup_js_artifacts(source, debug_ids, file_stems, release, dist);
-        let timeout = Duration::from_secs(30);
-        let job = tokio::time::timeout(timeout, job);
-        let job = measure("service.download.lookup_js_artifacts", m::timed_result, job);
-
-        job.await.map_err(|_| CacheError::Timeout(timeout))?
+        self.sentry
+            .lookup_js_artifacts(source, debug_ids, file_stems, release, dist)
+            .await
     }
 }
 
