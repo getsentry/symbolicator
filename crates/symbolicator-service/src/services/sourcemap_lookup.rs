@@ -1145,6 +1145,14 @@ mod tests {
         ];
         let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
         assert_eq!(&actual, expected);
+
+        let url = "app:///_next/server/pages/_error.js";
+        let expected = &[
+            "app:///_next/server/pages/_error.js",
+            "~/_next/server/pages/_error.js",
+        ];
+        let actual: Vec<_> = get_release_file_candidate_urls(url).collect();
+        assert_eq!(&actual, expected);
     }
 
     #[test]
@@ -1169,6 +1177,16 @@ mod tests {
 
         let url = "https://example.com/assets/bundle.min.js?foo=1&bar=baz#wat";
         assert_eq!(extract_file_stem(url), "/assets/bundle");
+
+        // app:// urls
+        assert_eq!(
+            extract_file_stem("app:///_next/server/pages/_error.js"),
+            "/_next/server/pages/_error"
+        );
+        assert_eq!(
+            extract_file_stem("app:///polyfills.e9f8f1606b76a9c9.js"),
+            "/polyfills"
+        );
     }
 
     #[test]
