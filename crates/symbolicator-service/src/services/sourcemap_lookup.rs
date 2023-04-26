@@ -690,64 +690,64 @@ impl ArtifactFetcher {
 
     /// Attempt to scrape a file from the web.
     async fn scrape(&mut self, key: &FileKey) -> CachedFileEntry {
-        if let Some(abs_path) = key.abs_path() {
-            let url = match Url::parse(abs_path) {
-                Ok(url) => url,
-                Err(err) => {
-                    return CachedFileEntry {
-                        uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                        entry: Err(CacheError::DownloadError(err.to_string())),
-                    }
-                }
-            };
+        let Some(abs_path) = key.abs_path() else {
+            return CachedFileEntry::empty();
+        };
 
-            if !is_valid_origin(&url, &self.scraping.allowed_origins) {
+        let url = match Url::parse(abs_path) {
+            Ok(url) => url,
+            Err(err) => {
                 return CachedFileEntry {
                     uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                    entry: Err(CacheError::DownloadError(format!(
-                        "{abs_path} is not an allowed download origin"
-                    ))),
-                };
+                    entry: Err(CacheError::DownloadError(err.to_string())),
+                }
             }
+        };
 
-            self.scraped_files += 1;
-            let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
-            remote_file.headers.extend(
-                self.scraping
-                    .headers
-                    .iter()
-                    .map(|(key, value)| (key.clone(), value.clone())),
-            );
-            let remote_file: RemoteFile = remote_file.into();
-            let uri = CachedFileUri::ScrapedFile(remote_file.uri());
-            let scraped_file = self
-                .sourcefiles_cache
-                .fetch_file(&self.scope, remote_file)
-                .await;
-
+        if !is_valid_origin(&url, &self.scraping.allowed_origins) {
             return CachedFileEntry {
-                uri,
-                entry: scraped_file.map(|contents| {
-                    tracing::trace!(?key, "Found file by scraping the web");
-
-                    let sm_ref = locate_sourcemap_reference(contents.as_bytes())
-                        .ok()
-                        .flatten();
-                    let sourcemap_url = sm_ref.and_then(|sm_ref| {
-                        SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
-                            .ok()
-                            .map(Arc::new)
-                    });
-
-                    CachedFile {
-                        contents,
-                        sourcemap_url,
-                    }
-                }),
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError(format!(
+                    "{abs_path} is not an allowed download origin"
+                ))),
             };
         }
 
-        CachedFileEntry::empty()
+        self.scraped_files += 1;
+        let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
+        remote_file.headers.extend(
+            self.scraping
+                .headers
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
+        let remote_file: RemoteFile = remote_file.into();
+        let uri = CachedFileUri::ScrapedFile(remote_file.uri());
+        let scraped_file = self
+            .sourcefiles_cache
+            .fetch_file(&self.scope, remote_file)
+            .await;
+
+        CachedFileEntry {
+            uri,
+            entry: scraped_file.map(|contents| {
+                tracing::trace!(?key, "Found file by scraping the web");
+
+                let sm_ref = locate_sourcemap_reference(contents.as_bytes())
+                    .ok()
+                    .flatten();
+                let sourcemap_url = sm_ref.and_then(|sm_ref| {
+                    SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
+                        .ok()
+                        .map(Arc::new)
+                });
+
+                CachedFile {
+                    contents,
+                    sourcemap_url,
+                }
+            }),
+        }
     }
 
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFileEntry> {
