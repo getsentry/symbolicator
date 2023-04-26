@@ -471,7 +471,13 @@ pub struct CachedFile {
 
 impl fmt::Debug for CachedFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let contents: &str = &self.contents;
+        let contents = if self.contents.len() > 64 {
+            // its just `Debug` prints, but we would like the end of the file, as it may
+            // have a `sourceMappingURL`
+            format!("...{}", &self.contents[self.contents.len() - 61..])
+        } else {
+            self.contents.to_string()
+        };
         f.debug_struct("CachedFile")
             .field("contents", &contents)
             .field("sourcemap_url", &self.sourcemap_url)
@@ -1066,18 +1072,6 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
     }
 }
 
-#[tracing::instrument(skip_all)]
-fn write_artifact_cache(file: &mut File, source_artifact_buf: &str) -> CacheEntry {
-    use std::io::Write;
-
-    let mut writer = BufWriter::new(file);
-    writer.write_all(source_artifact_buf.as_bytes())?;
-    let file = writer.into_inner().map_err(io::Error::from)?;
-    file.sync_all()?;
-
-    Ok(())
-}
-
 fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedSourceMapCache> {
     SelfCell::try_new(byteview, |p| unsafe {
         SourceMapCache::parse(&*p).map_err(CacheError::from_std_error)
@@ -1087,7 +1081,6 @@ fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedS
 /// Computes and writes the SourceMapCache.
 #[tracing::instrument(skip_all)]
 fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheEntry {
-    // TODO(sourcemap): maybe log *what* we are converting?
     tracing::debug!("Converting SourceMap cache");
 
     let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)
