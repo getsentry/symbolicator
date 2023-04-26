@@ -23,6 +23,11 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
     metric!(time_raw("objects.size") = metadata.len());
 
     file.rewind()?;
+    if metadata.len() < 4 {
+        // we don’t want to error for empty files here
+        return Ok(());
+    }
+
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
     file.read_exact(&mut magic_bytes)?;
     file.rewind()?;
