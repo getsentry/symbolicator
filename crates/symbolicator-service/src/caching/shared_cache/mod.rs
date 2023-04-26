@@ -669,6 +669,7 @@ impl SharedCacheService {
     /// shared cache was not found nothing will have been written to `writer`.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
+    #[tracing::instrument(name = "fetch_shared_cache", skip(self, file))]
     pub async fn fetch(&self, cache: CacheName, key: &str, mut file: tokio::fs::File) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();

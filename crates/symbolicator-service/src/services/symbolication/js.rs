@@ -136,7 +136,7 @@ async fn symbolicate_js_frame(
     tracing::trace!(
         abs_path = &raw_frame.abs_path,
         ?module,
-        "Found Module for `abs_path`"
+        "Module for `abs_path`"
     );
 
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible

@@ -45,10 +45,7 @@ pub use tempfile::TempDir;
 ///    and test server, and mutes all other logs.
 pub fn setup() {
     fmt()
-        .with_env_filter(EnvFilter::new(
-            "symbolicator_service=trace,tower_http=trace",
-        ))
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(EnvFilter::new("symbolicator=trace,tower_http=trace"))
         .with_target(false)
         .pretty()
         .with_test_writer()
