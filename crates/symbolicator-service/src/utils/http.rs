@@ -144,7 +144,7 @@ pub fn is_valid_origin(origin: &Url, allowed: &[String]) -> bool {
             continue;
         }
 
-        // Match the path: wildard, suffix, or exact
+        // Match the path: wildcard, suffix, or exact
         if path == "*" {
             return true;
         }
