@@ -30,7 +30,8 @@ pub struct JsSymbolicationRequestBody {
     pub release: Option<String>,
     #[serde(default)]
     pub dist: Option<String>,
-    // This is kept around for backwards compatibility
+    // This is kept around for backwards compatibility.
+    // For now, it overrides the `enabled` flag in the `scraping` field.
     #[serde(default = "default_allow_scraping")]
     pub allow_scraping: bool,
     #[serde(default)]
@@ -52,9 +53,12 @@ pub async fn handle_symbolication_request(
         modules,
         release,
         dist,
-        scraping,
-        ..
+        allow_scraping,
+        mut scraping,
     } = body;
+
+    // Turn off scraping if `allow_scraping` is false
+    scraping.enabled &= allow_scraping;
 
     let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
         scope: params.scope,
