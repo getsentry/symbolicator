@@ -22,7 +22,7 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sourcemap::locate_sourcemap_reference;
 use symbolic::common::{ByteView, DebugId, SelfCell};
@@ -49,6 +50,7 @@ use crate::caching::{
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
+use crate::utils::http::is_valid_origin;
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
@@ -58,6 +60,38 @@ use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
+
+/// Configuration for scraping of JS sources and sourcemaps from the web.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ScrapingConfig {
+    /// Whether scraping should happen at all.
+    pub enabled: bool,
+    // TODO: Can we even use this?
+    // pub verify_ssl: bool,
+    /// A list of "allowed origin patterns" that control what URLs we are
+    /// allowed to scrape from.
+    ///
+    /// Allowed origins may be defined in several ways:
+    /// - `http://domain.com[:port]`: Exact match for base URI (must include port).
+    /// - `*`: Allow any domain.
+    /// - `*.domain.com`: Matches domain.com and all subdomains, on any port.
+    /// - `domain.com`: Matches domain.com on any port.
+    /// - `*:port`: Wildcard on hostname, but explicit match on port.
+    pub allowed_origins: Vec<String>,
+    /// A map of headers to send with every HTTP request while scraping.
+    pub headers: BTreeMap<String, String>,
+}
+
+impl Default for ScrapingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            // verify_ssl: false,
+            allowed_origins: vec!["*".to_string()],
+            headers: Default::default(),
+        }
+    }
+}
 
 /// A JS-processing "Module".
 ///
@@ -131,7 +165,7 @@ impl SourceMapLookup {
             scope,
             source,
             modules,
-            allow_scraping,
+            scraping,
             release,
             dist,
             ..
@@ -172,7 +206,7 @@ impl SourceMapLookup {
 
             release,
             dist,
-            allow_scraping,
+            scraping,
 
             artifact_bundles: Default::default(),
             individual_artifacts: Default::default(),
@@ -547,7 +581,7 @@ struct ArtifactFetcher {
     // settings:
     release: Option<String>,
     dist: Option<String>,
-    allow_scraping: bool,
+    scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
@@ -655,49 +689,73 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, fall back to scraping from the Web.
-        if self.allow_scraping {
-            if let Some(abs_path) = key.abs_path() {
-                let url = match Url::parse(abs_path) {
-                    Ok(url) => url,
-                    Err(err) => {
-                        return CachedFileEntry {
-                            uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                            entry: Err(CacheError::DownloadError(err.to_string())),
-                        }
-                    }
-                };
-                self.scraped_files += 1;
-                let remote_file: RemoteFile = HttpRemoteFile::from_url(url.to_owned()).into();
-                let uri = CachedFileUri::ScrapedFile(remote_file.uri());
-                let scraped_file = self
-                    .sourcefiles_cache
-                    .fetch_file(&self.scope, remote_file)
-                    .await;
+        if self.scraping.enabled {
+            self.scrape(key).await
+        } else {
+            CachedFileEntry::empty()
+        }
+    }
 
+    /// Attempt to scrape a file from the web.
+    async fn scrape(&mut self, key: &FileKey) -> CachedFileEntry {
+        let Some(abs_path) = key.abs_path() else {
+            return CachedFileEntry::empty();
+        };
+
+        let url = match Url::parse(abs_path) {
+            Ok(url) => url,
+            Err(err) => {
                 return CachedFileEntry {
-                    uri,
-                    entry: scraped_file.map(|contents| {
-                        tracing::trace!(?key, "Found file by scraping the web");
-
-                        let sm_ref = locate_sourcemap_reference(contents.as_bytes())
-                            .ok()
-                            .flatten();
-                        let sourcemap_url = sm_ref.and_then(|sm_ref| {
-                            SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
-                                .ok()
-                                .map(Arc::new)
-                        });
-
-                        CachedFile {
-                            contents,
-                            sourcemap_url,
-                        }
-                    }),
-                };
+                    uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                    entry: Err(CacheError::DownloadError(err.to_string())),
+                }
             }
+        };
+
+        if !is_valid_origin(&url, &self.scraping.allowed_origins) {
+            return CachedFileEntry {
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError(format!(
+                    "{abs_path} is not an allowed download origin"
+                ))),
+            };
         }
 
-        CachedFileEntry::empty()
+        self.scraped_files += 1;
+        let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
+        remote_file.headers.extend(
+            self.scraping
+                .headers
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
+        let remote_file: RemoteFile = remote_file.into();
+        let uri = CachedFileUri::ScrapedFile(remote_file.uri());
+        let scraped_file = self
+            .sourcefiles_cache
+            .fetch_file(&self.scope, remote_file)
+            .await;
+
+        CachedFileEntry {
+            uri,
+            entry: scraped_file.map(|contents| {
+                tracing::trace!(?key, "Found file by scraping the web");
+
+                let sm_ref = locate_sourcemap_reference(contents.as_bytes())
+                    .ok()
+                    .flatten();
+                let sourcemap_url = sm_ref.and_then(|sm_ref| {
+                    SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
+                        .ok()
+                        .map(Arc::new)
+                });
+
+                CachedFile {
+                    contents,
+                    sourcemap_url,
+                }
+            }),
+        }
     }
 
     fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFileEntry> {

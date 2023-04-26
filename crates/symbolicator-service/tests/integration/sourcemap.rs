@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use reqwest::Url;
 use serde_json::json;
+use symbolicator_service::services::ScrapingConfig;
 use symbolicator_service::types::{JsFrame, RawObjectInfo, Scope};
 use symbolicator_service::{
     services::symbolication::SymbolicateJsStacktraces, types::JsStacktrace,
@@ -44,7 +45,10 @@ fn make_js_request(
         modules,
         release: release.into(),
         dist: dist.into(),
-        allow_scraping: false,
+        scraping: ScrapingConfig {
+            enabled: false,
+            ..Default::default()
+        },
     }
 }
 
@@ -365,7 +369,7 @@ async fn test_fetch_error() {
     );
 
     let mut request = make_js_request(source, &frames, "[]", String::from("release"), None);
-    request.allow_scraping = true;
+    request.scraping.enabled = true;
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response.unwrap());

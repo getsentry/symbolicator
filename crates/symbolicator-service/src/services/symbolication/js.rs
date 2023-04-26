@@ -37,7 +37,7 @@ use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap_lookup::{join_paths, CachedFile, SourceMapLookup};
+use crate::services::sourcemap_lookup::{join_paths, CachedFile, ScrapingConfig, SourceMapLookup};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     RawObjectInfo, Scope,
@@ -57,7 +57,7 @@ pub struct SymbolicateJsStacktraces {
     pub dist: Option<String>,
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
-    pub allow_scraping: bool,
+    pub scraping: ScrapingConfig,
 }
 
 impl SymbolicationActor {
