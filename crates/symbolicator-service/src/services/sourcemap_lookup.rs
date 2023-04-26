@@ -261,7 +261,7 @@ impl SourceMapLookup {
 /// Joins the `right` path to the `base` path, taking care of our special `~/` prefix that is treated just
 /// like an absolute url.
 pub fn join_paths(base: &str, right: &str) -> String {
-    if right.contains("://") {
+    if right.contains("://") || right.starts_with("webpack:") {
         return right.into();
     }
 
@@ -294,13 +294,15 @@ pub fn join_paths(base: &str, right: &str) -> String {
 
     let mut segments: Vec<_> = left_iter.collect();
     let is_http = scheme == "http" || scheme == "https";
+    let mut is_first_segment = true;
     for right_segment in right.split('/') {
         if right_segment == ".." && (segments.pop().is_some() || is_http) {
             continue;
         }
-        if right_segment == "." && is_http {
+        if right_segment == "." && (is_http || is_first_segment) {
             continue;
         }
+        is_first_segment = false;
 
         segments.push(right_segment);
     }
@@ -747,10 +749,19 @@ impl ArtifactFetcher {
 
         self.fetched_artifacts += 1;
 
-        let artifact_contents = self
+        let mut artifact_contents = self
             .sourcefiles_cache
             .fetch_file(&self.scope, artifact.remote_file.clone())
             .await;
+
+        if artifact_contents == Err(CacheError::NotFound) && !artifact.headers.is_empty() {
+            // We save (React Native) Hermes Bytecode files as empty 0-size files,
+            // in order to explicitly avoid applying any minified source-context from it.
+            // However the symbolicator cache layer treats 0-size files as `NotFound`.
+            // Work around that by reverting to an empty file on `NotFound`. As we are
+            // dealing with Sentry API-provided artifacts, we *do* expect these to be found.
+            artifact_contents = Ok(ByteViewString::from(String::new()));
+        }
 
         Some(CachedFileEntry {
             uri: CachedFileUri::IndividualFile(artifact.remote_file.uri()),
@@ -1233,6 +1244,24 @@ mod tests {
         assert_eq!(
             join_paths("/playground/öut path/rollup/entrypoint1.js", "~/0.js.map"),
             "/0.js.map"
+        );
+
+        // path with a leading dot
+        assert_eq!(
+            join_paths(
+                "app:///_next/static/chunks/pages/_app-569c402ef19f6d7b.js.map",
+                "./node_modules/@sentry/browser/esm/integrations/trycatch.js"
+            ),
+            "app:///_next/static/chunks/pages/node_modules/@sentry/browser/esm/integrations/trycatch.js"
+        );
+
+        // webpack with only a single slash
+        assert_eq!(
+            join_paths(
+                "app:///main-es2015.6216307eafb7335c4565.js.map",
+                "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
+            ),
+            "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
         );
     }
 

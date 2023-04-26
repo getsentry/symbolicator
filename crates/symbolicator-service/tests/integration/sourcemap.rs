@@ -463,6 +463,38 @@ async fn e2e_source_no_header() {
     assert_snapshot!(response.unwrap());
 }
 
+#[tokio::test]
+async fn e2e_react_native() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = symbolicator_test::sourcemap_server("e2e_react_native", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/index.android.bundle"),
+            "abs_path": "~/index.android.bundle",
+            "headers": { "Sourcemap": "index.android.bundle.map" }
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/index.android.bundle.map"),
+            "abs_path": "~/index.android.bundle.map",
+            "headers": {}
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "app:///index.android.bundle",
+        "lineno": 1,
+        "colno": 11940
+    }]"#;
+    let modules = r#"[]"#;
+
+    let request = make_js_request(source, frames, modules, String::from("some-release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
 // of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
 // JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
