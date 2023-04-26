@@ -1,13 +1,14 @@
 name: Lint Deployment Pipelines
 
 on:
-    pull_request:
-    push:
-        branches: [main, test-me-*]
+  pull_request:
+  push:
+    branches:
+      - master
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-    cancel-in-progress: true
+  group: ${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
     lint:
