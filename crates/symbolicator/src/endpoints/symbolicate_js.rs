@@ -4,6 +4,7 @@ use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
+use symbolicator_service::services::ScrapingConfig;
 use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SentrySourceConfig;
 
@@ -29,8 +30,11 @@ pub struct JsSymbolicationRequestBody {
     pub release: Option<String>,
     #[serde(default)]
     pub dist: Option<String>,
+    // This is kept around for backwards compatibility
     #[serde(default = "default_allow_scraping")]
     pub allow_scraping: bool,
+    #[serde(default)]
+    pub scraping: ScrapingConfig,
 }
 
 pub async fn handle_symbolication_request(
@@ -48,7 +52,8 @@ pub async fn handle_symbolication_request(
         modules,
         release,
         dist,
-        allow_scraping,
+        scraping,
+        ..
     } = body;
 
     let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
@@ -58,7 +63,7 @@ pub async fn handle_symbolication_request(
         modules,
         release,
         dist,
-        allow_scraping,
+        scraping,
     })?;
 
     match service.get_response(request_id, params.timeout).await {

@@ -43,6 +43,8 @@ use self::sourcemap::SourceMapService;
 use self::symbolication::SymbolicationActor;
 use self::symcaches::SymCacheActor;
 pub use fetch_file::fetch_file;
+// TODO: Not super happy about this
+pub use sourcemap_lookup::ScrapingConfig;
 
 pub fn create_service(
     config: &Config,

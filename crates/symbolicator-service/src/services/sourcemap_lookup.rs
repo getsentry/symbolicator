@@ -50,6 +50,7 @@ use crate::caching::{
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::types::{JsStacktrace, Scope};
+use crate::utils::http::is_valid_origin;
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{ByteViewString, SourceFilesCache};
@@ -164,7 +165,7 @@ impl SourceMapLookup {
             scope,
             source,
             modules,
-            allow_scraping,
+            scraping,
             release,
             dist,
             ..
@@ -205,7 +206,7 @@ impl SourceMapLookup {
 
             release,
             dist,
-            allow_scraping,
+            scraping,
 
             artifact_bundles: Default::default(),
             individual_artifacts: Default::default(),
@@ -572,7 +573,7 @@ struct ArtifactFetcher {
     // settings:
     release: Option<String>,
     dist: Option<String>,
-    allow_scraping: bool,
+    scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
     artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
@@ -680,7 +681,7 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, fall back to scraping from the Web.
-        if self.allow_scraping {
+        if self.scraping.enabled {
             if let Some(abs_path) = key.abs_path() {
                 let url = match Url::parse(abs_path) {
                     Ok(url) => url,
@@ -691,8 +692,25 @@ impl ArtifactFetcher {
                         }
                     }
                 };
+
+                if !is_valid_origin(&url, &self.scraping.allowed_origins) {
+                    return CachedFileEntry {
+                        uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                        entry: Err(CacheError::DownloadError(format!(
+                            "{abs_path} is not an allowed download origin"
+                        ))),
+                    };
+                }
+
                 self.scraped_files += 1;
-                let remote_file: RemoteFile = HttpRemoteFile::from_url(url.to_owned()).into();
+                let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
+                remote_file.headers.extend(
+                    self.scraping
+                        .headers
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone())),
+                );
+                let remote_file: RemoteFile = remote_file.into();
                 let uri = CachedFileUri::ScrapedFile(remote_file.uri());
                 let scraped_file = self
                     .sourcefiles_cache
