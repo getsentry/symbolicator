@@ -96,7 +96,6 @@ pub fn is_valid_origin(origin: &Url, allowed: &[String]) -> bool {
     }
 
     // Two quick checks
-    // TODO: Can we really not use `contains` here?
     if allowed.iter().any(|elem| elem == "*") {
         return true;
     }
