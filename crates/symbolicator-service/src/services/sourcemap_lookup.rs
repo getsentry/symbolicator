@@ -22,7 +22,7 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
@@ -30,6 +30,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sourcemap::locate_sourcemap_reference;
 use symbolic::common::{ByteView, DebugId, SelfCell};
@@ -58,6 +59,38 @@ use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
+
+/// Configuration for scraping of JS sources and sourcemaps from the web.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ScrapingConfig {
+    /// Whether scraping should happen at all.
+    pub enabled: bool,
+    // TODO: Can we even use this?
+    // pub verify_ssl: bool,
+    /// A list of "allowed origin patterns" that control what URLs we are
+    /// allowed to scrape from.
+    ///
+    /// Allowed origins may be defined in several ways:
+    /// - `http://domain.com[:port]`: Exact match for base URI (must include port).
+    /// - `*`: Allow any domain.
+    /// - `*.domain.com`: Matches domain.com and all subdomains, on any port.
+    /// - `domain.com`: Matches domain.com on any port.
+    /// - `*:port`: Wildcard on hostname, but explicit match on port.
+    pub allowed_origins: Vec<String>,
+    /// A map of headers to send with every HTTP request while scraping.
+    pub headers: BTreeMap<String, String>,
+}
+
+impl Default for ScrapingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            // verify_ssl: false,
+            allowed_origins: vec!["*".to_string()],
+            headers: Default::default(),
+        }
+    }
+}
 
 /// A JS-processing "Module".
 ///
