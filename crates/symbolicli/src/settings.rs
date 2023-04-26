@@ -194,6 +194,7 @@ impl Settings {
             Config {
                 sources: Arc::from(sources),
                 cache_dir,
+                connect_to_reserved_ips: true,
                 ..Default::default()
             }
         };
