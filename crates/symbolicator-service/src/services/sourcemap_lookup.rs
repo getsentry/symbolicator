@@ -689,11 +689,7 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, fall back to scraping from the Web.
-        if self.scraping.enabled {
-            self.scrape(key).await
-        } else {
-            CachedFileEntry::empty()
-        }
+        self.scrape(key).await
     }
 
     /// Attempt to scrape a file from the web.
@@ -701,6 +697,13 @@ impl ArtifactFetcher {
         let Some(abs_path) = key.abs_path() else {
             return CachedFileEntry::empty();
         };
+
+        if !self.scraping.enabled {
+            return CachedFileEntry {
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
+            };
+        }
 
         let url = match Url::parse(abs_path) {
             Ok(url) => url,

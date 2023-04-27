@@ -587,6 +587,7 @@ pub enum JsModuleErrorKind {
     MalformedSourcemap { url: String },
     MissingSourcemap,
     InvalidBase64Sourcemap,
+    ScrapingDisabled,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
