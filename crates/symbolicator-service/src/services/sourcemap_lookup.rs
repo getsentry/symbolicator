@@ -32,8 +32,8 @@ use futures::future::BoxFuture;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use sourcemap::locate_sourcemap_reference;
 use symbolic::common::{ByteView, DebugId, SelfCell};
+use symbolic::debuginfo::js::discover_sourcemaps_location;
 use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
@@ -741,14 +741,9 @@ impl ArtifactFetcher {
             entry: scraped_file.map(|contents| {
                 tracing::trace!(?key, "Found file by scraping the web");
 
-                let sm_ref = locate_sourcemap_reference(contents.as_bytes())
-                    .ok()
-                    .flatten();
-                let sourcemap_url = sm_ref.and_then(|sm_ref| {
-                    SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url())
-                        .ok()
-                        .map(Arc::new)
-                });
+                let sourcemap_url = discover_sourcemaps_location(&contents)
+                    .and_then(|sm_ref| SourceMapUrl::parse_with_prefix(abs_path, sm_ref).ok())
+                    .map(Arc::new);
 
                 CachedFile {
                     contents,
@@ -833,8 +828,7 @@ impl ArtifactFetcher {
                 tracing::trace!(?key, ?url, ?artifact, "Found file as individual artifact");
 
                 // Get the sourcemap reference from the artifact, either from metadata, or file contents
-                let sourcemap_url =
-                    resolve_sourcemap_url(abs_path, &artifact.headers, contents.as_bytes());
+                let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, &contents);
                 CachedFile {
                     contents,
                     sourcemap_url: sourcemap_url.map(Arc::new),
@@ -1096,15 +1090,15 @@ fn get_release_file_candidate_urls(url: &str) -> impl Iterator<Item = String> {
 fn resolve_sourcemap_url(
     abs_path: &str,
     artifact_headers: &ArtifactHeaders,
-    artifact_source: &[u8],
+    artifact_source: &str,
 ) -> Option<SourceMapUrl> {
     if let Some(header) = artifact_headers.get("Sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else if let Some(header) = artifact_headers.get("X-SourceMap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
-        let sm_ref = locate_sourcemap_reference(artifact_source).ok()??;
-        SourceMapUrl::parse_with_prefix(abs_path, sm_ref.get_url()).ok()
+        let sm_ref = discover_sourcemaps_location(artifact_source)?;
+        SourceMapUrl::parse_with_prefix(abs_path, sm_ref).ok()
     }
 }
 

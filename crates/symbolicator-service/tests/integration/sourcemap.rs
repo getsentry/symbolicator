@@ -499,6 +499,30 @@ async fn e2e_react_native() {
     assert_snapshot!(response.unwrap());
 }
 
+#[tokio::test]
+async fn e2e_multiple_smref_scraped() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (srv, source) =
+        symbolicator_test::sourcemap_server("e2e_multiple_smref_scraped", |_url, _query| json!([]));
+
+    let url = srv.url("/files/");
+    let frames = format!(
+        r#"[{{
+        "abs_path": "{url}app.js",
+        "lineno": 1,
+        "colno": 64
+    }}]"#
+    );
+    let modules = r#"[]"#;
+
+    let mut request = make_js_request(source, &frames, modules, None, None);
+    request.scraping.enabled = true;
+
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
 // of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
 // JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
