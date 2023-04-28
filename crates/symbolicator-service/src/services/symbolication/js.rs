@@ -36,8 +36,8 @@ use regex::Regex;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
-use crate::caching::{CacheEntry, CacheError};
-use crate::services::sourcemap_lookup::{join_paths, CachedFile, ScrapingConfig, SourceMapLookup};
+use crate::caching::CacheError;
+use crate::services::sourcemap_lookup::{join_paths, ScrapingConfig, SourceMapLookup};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     RawObjectInfo, Scope,
@@ -141,7 +141,13 @@ async fn symbolicate_js_frame(
 
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
-    apply_source_context_from_artifact(raw_frame, &module.minified_source.entry)?;
+    match &module.minified_source.entry {
+        Ok(minified_source) => apply_source_context(raw_frame, &minified_source.contents)?,
+        Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
+            return Err(JsModuleErrorKind::ScrapingDisabled);
+        }
+        Err(_) => return Err(JsModuleErrorKind::MissingSource),
+    }
 
     let sourcemap_label = &module
         .minified_source
@@ -159,6 +165,9 @@ async fn symbolicate_js_frame(
                 return Err(JsModuleErrorKind::MalformedSourcemap {
                     url: sourcemap_label.to_owned(),
                 })
+            }
+            Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
+                return Err(JsModuleErrorKind::ScrapingDisabled);
             }
             Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
         },
@@ -250,7 +259,12 @@ async fn symbolicate_js_frame(
                 None => &Err(CacheError::NotFound),
             };
 
-            if apply_source_context_from_artifact(&mut frame, source_file).is_err() {
+            if source_file
+                .as_ref()
+                .map_err(|_| JsModuleErrorKind::MissingSource)
+                .and_then(|file| apply_source_context(&mut frame, &file.contents))
+                .is_err()
+            {
                 // It's arguable whether we should collect it, but this is what monolith does now,
                 // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
                 errors.insert(JsModuleError {
@@ -267,17 +281,6 @@ async fn symbolicate_js_frame(
     }
 
     Ok(frame)
-}
-
-fn apply_source_context_from_artifact(
-    frame: &mut JsFrame,
-    file: &CacheEntry<CachedFile>,
-) -> Result<(), JsModuleErrorKind> {
-    if let Ok(file) = file {
-        apply_source_context(frame, &file.contents)
-    } else {
-        Err(JsModuleErrorKind::MissingSource)
-    }
 }
 
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {

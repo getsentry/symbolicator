@@ -689,11 +689,7 @@ impl ArtifactFetcher {
         }
 
         // Otherwise, fall back to scraping from the Web.
-        if self.scraping.enabled {
-            self.scrape(key).await
-        } else {
-            CachedFileEntry::empty()
-        }
+        self.scrape(key).await
     }
 
     /// Attempt to scrape a file from the web.
@@ -711,6 +707,13 @@ impl ArtifactFetcher {
                 }
             }
         };
+
+        if !self.scraping.enabled {
+            return CachedFileEntry {
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
+            };
+        }
 
         if !is_valid_origin(&url, &self.scraping.allowed_origins) {
             return CachedFileEntry {

@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 98
+assertion_line: 102
 expression: response.unwrap()
 ---
 stacktraces:
@@ -101,5 +101,5 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
 errors:
   - abs_path: "http://example.com/index.html"
-    type: missing_source
+    type: scraping_disabled
 
