@@ -698,13 +698,6 @@ impl ArtifactFetcher {
             return CachedFileEntry::empty();
         };
 
-        if !self.scraping.enabled {
-            return CachedFileEntry {
-                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
-            };
-        }
-
         let url = match Url::parse(abs_path) {
             Ok(url) => url,
             Err(err) => {
@@ -714,6 +707,13 @@ impl ArtifactFetcher {
                 }
             }
         };
+
+        if !self.scraping.enabled {
+            return CachedFileEntry {
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
+            };
+        }
 
         if !is_valid_origin(&url, &self.scraping.allowed_origins) {
             return CachedFileEntry {
