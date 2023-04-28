@@ -17,5 +17,5 @@ raw_stacktraces:
         colno: 1
 errors:
   - abs_path: http//example.com/test.min.js
-    type: scraping_disabled
+    type: missing_source
 
