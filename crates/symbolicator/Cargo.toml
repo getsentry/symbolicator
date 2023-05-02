@@ -16,7 +16,7 @@ axum-server = "0.4.0"
 console = "0.15.0"
 futures = "0.3.12"
 hostname = "0.3.1"
-sentry = { version = "0.30.0", features = ["anyhow", "debug-images", "tracing", "tower", "tower-http"] }
+sentry = { version = "0.31.0", features = ["anyhow", "debug-images", "tracing", "tower", "tower-http"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 structopt = "0.3.21"
