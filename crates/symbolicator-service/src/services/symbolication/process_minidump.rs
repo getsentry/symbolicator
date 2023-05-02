@@ -473,6 +473,7 @@ impl SymbolicationActor {
             origin: StacktraceOrigin::Minidump,
             signal: None,
             stacktraces,
+            apply_source_context: true,
         };
 
         Ok((request, minidump_state))

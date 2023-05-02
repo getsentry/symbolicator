@@ -78,6 +78,7 @@ impl SymbolicationActor {
             origin: StacktraceOrigin::AppleCrashReport,
             signal: None,
             stacktraces,
+            apply_source_context: true,
         };
 
         let mut system_info = SystemInfo {
