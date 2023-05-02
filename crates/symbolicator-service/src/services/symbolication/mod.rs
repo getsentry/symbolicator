@@ -210,7 +210,7 @@ impl SymbolicationActor {
             let cache = self.sourcefiles_cache.as_ref();
             let futures = remote_sources.into_iter().map(|(url, frames)| async {
                 if let Ok(source) = cache
-                    .fetch_file(&scope, HttpRemoteFile::from_url(url).into())
+                    .fetch_file(scope, HttpRemoteFile::from_url(url).into())
                     .await
                 {
                     for frame in frames {

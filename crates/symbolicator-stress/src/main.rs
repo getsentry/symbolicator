@@ -124,6 +124,7 @@ async fn main() -> Result<()> {
                         signal: None,
                         sources,
                         origin: StacktraceOrigin::Symbolicate,
+                        apply_source_context: true,
 
                         stacktraces,
                         modules,

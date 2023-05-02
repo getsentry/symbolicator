@@ -69,7 +69,7 @@ pub async fn symbolicate_frames(
             origin: StacktraceOrigin::Symbolicate,
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
-            apply_source_context: options.apply_source_context,
+            apply_source_context: body.options.apply_source_context,
         },
         body.options,
     )?;

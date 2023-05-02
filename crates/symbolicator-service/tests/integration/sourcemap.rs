@@ -49,6 +49,7 @@ fn make_js_request(
             enabled: false,
             ..Default::default()
         },
+        apply_source_context: true,
     }
 }
 
