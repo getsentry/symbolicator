@@ -5,6 +5,7 @@
 ### Features
 
 - Add single-file ZipArchive support to `maybe_decompress_file` ([#1139](https://github.com/getsentry/symbolicator/pull/1139))
+- Make source-context application optional. ([#1173](https://github.com/getsentry/symbolicator/pull/1173))
 
 ### Fixes
 
