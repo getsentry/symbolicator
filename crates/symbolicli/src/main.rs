@@ -597,6 +597,7 @@ mod event {
             origin: StacktraceOrigin::Symbolicate,
             stacktraces,
             modules,
+            apply_source_context: true,
         })
     }
 
