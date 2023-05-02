@@ -70,10 +70,16 @@ impl<T: CacheItemRequest> Clone for Cacher<T> {
 /// A struct implementing [`moka::Expiry`] that uses the [`InMemoryItem`] [`Instant`] as the explicit
 /// expiration time.
 struct CacheExpiration;
-fn saturating_duration_since(now: Instant, target: Instant) -> Option<Duration> {
-    // NOTE: the argument to `checked_duration_since` is the *earlier* instant.
-    // `target` is in the future, and `now` is the earlier one.
-    Some(target.checked_duration_since(now).unwrap_or_default())
+
+/// Returns the duration between the `current_time` and `target_time` in the future.
+/// In case the `target_time` is already elapsed (it is in the past relative to `current_time`), this
+/// will return `Some(ZERO)`.
+fn saturating_duration_since(current_time: Instant, target_time: Instant) -> Option<Duration> {
+    Some(
+        target_time
+            .checked_duration_since(current_time)
+            .unwrap_or_default(),
+    )
 }
 
 impl<T> moka::Expiry<CacheKey, InMemoryItem<T>> for CacheExpiration {
