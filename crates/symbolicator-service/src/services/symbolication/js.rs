@@ -58,6 +58,8 @@ pub struct SymbolicateJsStacktraces {
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
     pub scraping: ScrapingConfig,
+    /// Whether to apply source context for the stack frames.
+    pub apply_source_context: bool,
 }
 
 impl SymbolicationActor {
@@ -67,6 +69,7 @@ impl SymbolicationActor {
         mut request: SymbolicateJsStacktraces,
     ) -> anyhow::Result<CompletedJsSymbolicationResponse> {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
+        let apply_source_context = request.apply_source_context;
         let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
         lookup.prepare_modules(&raw_stacktraces);
 
@@ -88,6 +91,7 @@ impl SymbolicationActor {
                     raw_frame,
                     &mut errors,
                     std::mem::take(&mut callsite_fn_name),
+                    apply_source_context,
                     &mut missing_sourcescontent,
                 )
                 .await
@@ -129,6 +133,7 @@ async fn symbolicate_js_frame(
     raw_frame: &mut JsFrame,
     errors: &mut BTreeSet<JsModuleError>,
     callsite_fn_name: Option<String>,
+    should_apply_source_context: bool,
     missing_sourcescontent: &mut u64,
 ) -> Result<JsFrame, JsModuleErrorKind> {
     let module = lookup.get_module(&raw_frame.abs_path).await;
@@ -142,7 +147,11 @@ async fn symbolicate_js_frame(
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
     match &module.minified_source.entry {
-        Ok(minified_source) => apply_source_context(raw_frame, &minified_source.contents)?,
+        Ok(minified_source) => {
+            if should_apply_source_context {
+                apply_source_context(raw_frame, &minified_source.contents)?
+            }
+        }
         Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
             return Err(JsModuleErrorKind::ScrapingDisabled);
         }
@@ -236,6 +245,10 @@ async fn symbolicate_js_frame(
 
     frame.lineno = Some(token.line().saturating_add(1));
     frame.colno = Some(token.column().saturating_add(1));
+
+    if !should_apply_source_context {
+        return Ok(frame);
+    }
 
     if let Some(file) = token.file() {
         if let Some(file_source) = file.source() {

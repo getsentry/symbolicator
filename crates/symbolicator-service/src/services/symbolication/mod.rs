@@ -129,7 +129,7 @@ impl SymbolicationActor {
             signal,
             origin,
             modules,
-            ..
+            apply_source_context,
         } = request;
 
         let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules.into_iter());
@@ -155,8 +155,31 @@ impl SymbolicationActor {
             })
             .collect();
 
+        if apply_source_context {
+            self.apply_source_context(&scope, &mut module_lookup, &mut stacktraces)
+                .await
+        }
+
+        // bring modules back into the original order
+        let modules = module_lookup.into_inner();
+        record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+
+        Ok(CompletedSymbolicationResponse {
+            signal,
+            stacktraces,
+            modules,
+            ..Default::default()
+        })
+    }
+
+    async fn apply_source_context(
+        &self,
+        scope: &Scope,
+        module_lookup: &mut ModuleLookup,
+        stacktraces: &mut [CompleteStacktrace],
+    ) {
         module_lookup
-            .fetch_sources(self.objects.clone(), &stacktraces)
+            .fetch_sources(self.objects.clone(), stacktraces)
             .await;
 
         // Map collected source contexts to frames and collect URLs for remote source links.
@@ -164,7 +187,7 @@ impl SymbolicationActor {
         {
             let debug_sessions = module_lookup.prepare_debug_sessions();
 
-            for trace in &mut stacktraces {
+            for trace in stacktraces {
                 for frame in &mut trace.frames {
                     if let Some(url) =
                         module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw)
@@ -197,17 +220,6 @@ impl SymbolicationActor {
             });
             future::join_all(futures).await;
         }
-
-        // bring modules back into the original order
-        let modules = module_lookup.into_inner();
-        record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
-
-        Ok(CompletedSymbolicationResponse {
-            signal,
-            stacktraces,
-            modules,
-            ..Default::default()
-        })
     }
 }
 
@@ -238,6 +250,9 @@ pub struct SymbolicateStacktraces {
     /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
     /// be symbolicated as it is not clear which debug file to load.
     pub modules: Vec<CompleteObjectInfo>,
+
+    /// Whether to apply source context for the stack frames.
+    pub apply_source_context: bool,
 }
 
 fn symbolicate_frame(

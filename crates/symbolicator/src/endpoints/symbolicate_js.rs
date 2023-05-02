@@ -14,10 +14,6 @@ use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
 
-fn default_allow_scraping() -> bool {
-    true
-}
-
 #[derive(Serialize, Deserialize)]
 pub struct JsSymbolicationRequestBody {
     #[serde(default)]
@@ -36,6 +32,31 @@ pub struct JsSymbolicationRequestBody {
     pub allow_scraping: bool,
     #[serde(default)]
     pub scraping: ScrapingConfig,
+    #[serde(default)]
+    pub options: JsRequestOptions,
+}
+
+fn default_allow_scraping() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct JsRequestOptions {
+    /// Whether to apply source context for the stack frames.
+    #[serde(default = "default_apply_source_context")]
+    pub apply_source_context: bool,
+}
+
+fn default_apply_source_context() -> bool {
+    true
+}
+
+impl Default for JsRequestOptions {
+    fn default() -> Self {
+        Self {
+            apply_source_context: true,
+        }
+    }
 }
 
 pub async fn handle_symbolication_request(
@@ -55,6 +76,7 @@ pub async fn handle_symbolication_request(
         dist,
         allow_scraping,
         mut scraping,
+        options,
     } = body;
 
     // Turn off scraping if `allow_scraping` is false
@@ -68,6 +90,7 @@ pub async fn handle_symbolication_request(
         release,
         dist,
         scraping,
+        apply_source_context: options.apply_source_context,
     })?;
 
     match service.get_response(request_id, params.timeout).await {
