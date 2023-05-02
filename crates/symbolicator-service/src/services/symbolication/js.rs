@@ -410,7 +410,7 @@ fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
     if abs_path.starts_with("webpack:") {
         Some(filename.starts_with("./") && !filename.contains("/node_modules/"))
     } else if abs_path.starts_with("app:") {
-        Some(!NODE_MODULES_RE.is_match(filename))
+        Some(!filename.contains("/node_modules/"))
     } else if abs_path.contains("/node_modules/") {
         Some(false)
     } else {
