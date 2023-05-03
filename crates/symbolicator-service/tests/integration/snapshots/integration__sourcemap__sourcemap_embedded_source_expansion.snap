@@ -1,10 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-<<<<<<< HEAD
-assertion_line: 192
-=======
 assertion_line: 191
->>>>>>> cc4280b (Generate/override the `module` in JS symbolication)
 expression: response.unwrap()
 ---
 stacktraces:
