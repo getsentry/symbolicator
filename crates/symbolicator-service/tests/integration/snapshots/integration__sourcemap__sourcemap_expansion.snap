@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 102
+assertion_line: 103
 expression: response.unwrap()
 ---
 stacktraces:
@@ -12,6 +12,7 @@ stacktraces:
         colno: 7
       - function: test
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 20
         colno: 5
@@ -31,6 +32,7 @@ stacktraces:
           sourcemap: "http://example.com/test.min.js.map"
       - function: invoke
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 15
         colno: 5
@@ -51,6 +53,7 @@ stacktraces:
           sourcemap: "http://example.com/test.min.js.map"
       - function: onFailure
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 5
         colno: 11

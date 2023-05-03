@@ -37,7 +37,9 @@ use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::CacheError;
-use crate::services::sourcemap_lookup::{join_paths, ScrapingConfig, SourceMapLookup};
+use crate::services::sourcemap_lookup::{
+    join_paths, strip_hostname, ScrapingConfig, SourceMapLookup,
+};
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     RawObjectInfo, Scope,
@@ -242,6 +244,16 @@ async fn symbolicate_js_frame(
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
+            frame.module = Some(generate_module(&filename));
+        }
+
+        if frame.module.is_none()
+            && (frame.abs_path.starts_with("http:")
+                || frame.abs_path.starts_with("https:")
+                || frame.abs_path.starts_with("webpack:")
+                || frame.abs_path.starts_with("app:"))
+        {
+            frame.module = Some(generate_module(&frame.abs_path));
         }
 
         frame.filename = Some(filename);
@@ -430,6 +442,61 @@ fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
     }
 }
 
+// As a running joke, here you have a 8 year old comment from 2015:
+// TODO(dcramer): replace CLEAN_MODULE_RE with tokenizer completely
+static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r#"(?ix)
+^
+(?:/|  # Leading slashes
+(?:
+    (?:java)?scripts?|js|build|static|node_modules|bower_components|[_\.~].*?|  # common folder prefixes
+    v?(?:\d+\.)*\d+|   # version numbers, v1, 1.0.0
+    [a-f0-9]{7,8}|     # short sha
+    [a-f0-9]{32}|      # md5
+    [a-f0-9]{40}       # sha1
+)/)+|
+(?:[-\.][a-f0-9]{7,}$)  # Ending in a commitish
+"#,
+    ).unwrap()
+});
+
+/// Converts a url into a made-up module name by doing the following:
+/// * Extract just the path name ignoring querystrings
+/// * Trimming off the initial /
+/// * Trimming off the file extension
+/// * Removes off useless folder prefixes
+/// e.g. http://google.com/js/v1.0/foo/bar/baz.js -> foo/bar/baz
+fn generate_module(abs_path: &str) -> String {
+    let path = strip_hostname(abs_path);
+    let mut path = path.split(&['#', '?']).next().unwrap_or(path);
+
+    if let Some((idx, ".")) = path.rmatch_indices(&['.', '/']).next() {
+        path = &path[..idx];
+    }
+
+    let path = path.strip_suffix(".min").unwrap_or(path);
+
+    // return all the segments following a 32/40-char hash
+    let mut segments = path.split('/');
+    while let Some(segment) = segments.next() {
+        if segment.len() == 32
+            || segment.len() == 40 && segment.chars().all(|c| c.is_ascii_hexdigit())
+        {
+            let mut s = String::new();
+            for (i, seg) in segments.enumerate() {
+                if i > 0 {
+                    s.push('/');
+                }
+                s.push_str(seg);
+            }
+            return s;
+        }
+    }
+
+    CLEAN_MODULE_RE.replace_all(path, "").into_owned()
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -580,5 +647,109 @@ mod tests {
 
         assert_eq!(is_in_app(abs_path, filename), None);
         assert_eq!(is_in_app_faithful(abs_path, filename), None);
+    }
+
+    #[test]
+    fn test_generate_module() {
+        assert_eq!(generate_module("http://example.com/foo.js"), "foo");
+        assert_eq!(generate_module("http://example.com/foo/bar.js"), "foo/bar");
+        assert_eq!(
+            generate_module("http://example.com/js/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/javascript/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/1.0/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/v1/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/v1.0.0/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/_baz/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/1/2/3/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/abcdef0/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module(
+                "http://example.com/92cd589eca8235e7b373bf5ae94ebf898e3b949c/foo/bar.js"
+            ),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/7d6d00eae0ceccdc7ee689659585d95f/foo/bar.js"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/foo/bar.coffee"),
+            "foo/bar"
+        );
+        assert_eq!(
+            generate_module("http://example.com/foo/bar.js?v=1234"),
+            "foo/bar"
+        );
+        assert_eq!(generate_module("/foo/bar.js"), "foo/bar");
+        assert_eq!(generate_module("/foo/bar.ts"), "foo/bar");
+        assert_eq!(generate_module("../../foo/bar.js"), "foo/bar");
+        assert_eq!(generate_module("../../foo/bar.ts"), "foo/bar");
+        assert_eq!(generate_module("../../foo/bar.awesome"), "foo/bar");
+        assert_eq!(generate_module("../../foo/bar"), "foo/bar");
+        assert_eq!(
+            generate_module("/foo/bar-7d6d00eae0ceccdc7ee689659585d95f.js"),
+            "foo/bar"
+        );
+        assert_eq!(generate_module("/bower_components/foo/bar.js"), "foo/bar");
+        assert_eq!(generate_module("/node_modules/foo/bar.js"), "foo/bar");
+        assert_eq!(
+            generate_module(
+                "http://example.com/vendor.92cd589eca8235e7b373bf5ae94ebf898e3b949c.js",
+            ),
+            "vendor",
+        );
+        assert_eq!(
+            generate_module(
+                "/a/javascripts/application-bundle-149360d3414c26adac3febdf6832e25c.min.js"
+            ),
+            "a/javascripts/application-bundle"
+        );
+        assert_eq!(
+            generate_module("https://example.com/libs/libs-20150417171659.min.js"),
+            "libs/libs"
+        );
+        assert_eq!(
+            generate_module("webpack:///92cd589eca8235e7b373bf5ae94ebf898e3b949c/vendor.js"),
+            "vendor"
+        );
+        assert_eq!(
+            generate_module("webpack:///92cd589eca8235e7b373bf5ae94ebf898e3b949c/vendor.js"),
+            "vendor"
+        );
+        assert_eq!(
+            generate_module("app:///92cd589eca8235e7b373bf5ae94ebf898e3b949c/vendor.js"),
+            "vendor"
+        );
+        assert_eq!(
+            generate_module("app:///example/92cd589eca8235e7b373bf5ae94ebf898e3b949c/vendor.js"),
+            "vendor"
+        );
+        assert_eq!(
+            generate_module("~/app/components/projectHeader/projectSelector.jsx"),
+            "app/components/projectHeader/projectSelector"
+        );
     }
 }

@@ -1,12 +1,13 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 243
+assertion_line: 248
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
       - function: "<unknown>"
         filename: /test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 1
         colno: 1

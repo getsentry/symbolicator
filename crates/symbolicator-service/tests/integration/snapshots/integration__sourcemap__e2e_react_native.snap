@@ -1,12 +1,17 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
+<<<<<<< HEAD
 assertion_line: 501
+=======
+assertion_line: 500
+>>>>>>> cc4280b (Generate/override the `module` in JS symbolication)
 expression: response.unwrap()
 ---
 stacktraces:
   - frames:
       - function: foo
         filename: module.js
+        module: module
         abs_path: "app:///module.js"
         lineno: 2
         colno: 11
