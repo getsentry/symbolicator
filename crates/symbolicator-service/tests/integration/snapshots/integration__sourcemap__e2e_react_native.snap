@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 495
+assertion_line: 501
 expression: response.unwrap()
 ---
 stacktraces:
@@ -15,6 +15,7 @@ stacktraces:
         context_line: "    throw new Error(\"lets throw!\");"
         post_context:
           - "}"
+        in_app: true
         data:
           sourcemap: "app:///index.android.bundle.map"
 raw_stacktraces:

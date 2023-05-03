@@ -236,6 +236,10 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
+        frame.in_app = frame
+            .in_app
+            .or_else(|| is_in_app(&frame.abs_path, &filename));
+
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
         }
@@ -414,10 +418,51 @@ fn fixup_webpack_filename(filename: &str) -> String {
     }
 }
 
+fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
+    if abs_path.starts_with("webpack:") {
+        Some(filename.starts_with("./") && !filename.contains("/node_modules/"))
+    } else if abs_path.starts_with("app:") {
+        Some(!filename.contains("/node_modules/"))
+    } else if abs_path.contains("/node_modules/") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
+
+    static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
+
+    /// A faithful port of the monolith's in-app logic, for testing purposes.
+    fn is_in_app_faithful(abs_path: &str, filename: &str) -> Option<bool> {
+        let mut in_app = None;
+        if abs_path.starts_with("webpack:") {
+            if filename.starts_with("~/")
+                || filename.contains("/node_modules/")
+                || !filename.starts_with("./")
+            {
+                in_app = Some(false);
+            } else if filename.starts_with("./") {
+                in_app = Some(true);
+            }
+        } else if abs_path.contains("/node_modules/") {
+            in_app = Some(false);
+        }
+
+        if abs_path.starts_with("app:") {
+            if NODE_MODULES_RE.is_match(filename) {
+                in_app = Some(false);
+            } else {
+                in_app = Some(true);
+            }
+        }
+
+        in_app
+    }
 
     #[test]
     fn test_get_function_name_valid_name() {
@@ -484,5 +529,56 @@ mod tests {
             fixup_webpack_filename(filename),
             "./app/utils/requestError/createRequestError.tsx"
         );
+    }
+
+    #[test]
+    fn test_in_app_webpack() {
+        let abs_path = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "webpack:///~/@sentry/browser/esm/helpers.js";
+        let filename = "~/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "webpack:///./@sentry/browser/esm/helpers.js";
+        let filename = "./@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+    }
+
+    #[test]
+    fn test_in_app_app() {
+        let abs_path = "app:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "app:///../@sentry/browser/esm/helpers.js";
+        let filename = "../@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+    }
+
+    #[test]
+    fn test_in_app_general() {
+        let abs_path = "file:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "file:///../@sentry/browser/esm/helpers.js";
+        let filename = "../@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), None);
+        assert_eq!(is_in_app_faithful(abs_path, filename), None);
     }
 }
