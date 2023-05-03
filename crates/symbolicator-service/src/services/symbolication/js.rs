@@ -526,6 +526,12 @@ mod tests {
         assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
+        let abs_path = "webpack:///~/@sentry/browser/esm/helpers.js";
+        let filename = "~/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
         let abs_path = "webpack:///./@sentry/browser/esm/helpers.js";
         let filename = "./@sentry/browser/esm/helpers.js";
 
