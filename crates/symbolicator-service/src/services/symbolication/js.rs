@@ -48,7 +48,6 @@ use super::SymbolicationActor;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
-static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
@@ -418,47 +417,39 @@ fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
     }
 }
 
-fn is_in_app_faithful(abs_path: &str, filename: &str) -> Option<bool> {
-    let mut in_app = None;
-    if abs_path.starts_with("webpack:") {
-        // As noted above:
-        // * [js/node] '~/' means they're coming from node_modules, so these are not app dependencies
-        // * [node] sames goes for `./node_modules/` and '../node_modules/', which is used when bundling node apps
-        // * [node] and webpack, which includes it's own code to bootstrap all modules and its internals
-        //   eg. webpack:///webpack/bootstrap, webpack:///external
-        if filename.starts_with("~/")
-            || filename.contains("/node_modules/")
-            || !filename.starts_with("./")
-        {
-            in_app = Some(false);
-        }
-        // And conversely, local dependencies start with './'
-        else if filename.starts_with("./") {
-            in_app = Some(true);
-        }
-    }
-    // while you could technically use a subpath of 'node_modules' for your libraries,
-    // it would be an extremely complicated decision and we've not seen anyone do it
-    // so instead we assume if node_modules is in the path its part of the vendored code
-    else if abs_path.contains("/node_modules/") {
-        in_app = Some(false);
-    }
-
-    if abs_path.starts_with("app:") {
-        if NODE_MODULES_RE.is_match(filename) {
-            in_app = Some(false);
-        } else {
-            in_app = Some(true);
-        }
-    }
-
-    in_app
-}
-
 #[cfg(test)]
 mod tests {
 
     use super::*;
+
+    static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
+
+    /// A faithful port of the monolith's in-app logic, for testing purposes.
+    fn is_in_app_faithful(abs_path: &str, filename: &str) -> Option<bool> {
+        let mut in_app = None;
+        if abs_path.starts_with("webpack:") {
+            if filename.starts_with("~/")
+                || filename.contains("/node_modules/")
+                || !filename.starts_with("./")
+            {
+                in_app = Some(false);
+            } else if filename.starts_with("./") {
+                in_app = Some(true);
+            }
+        } else if abs_path.contains("/node_modules/") {
+            in_app = Some(false);
+        }
+
+        if abs_path.starts_with("app:") {
+            if NODE_MODULES_RE.is_match(filename) {
+                in_app = Some(false);
+            } else {
+                in_app = Some(true);
+            }
+        }
+
+        in_app
+    }
 
     #[test]
     fn test_get_function_name_valid_name() {
@@ -525,5 +516,50 @@ mod tests {
             fixup_webpack_filename(filename),
             "./app/utils/requestError/createRequestError.tsx"
         );
+    }
+
+    #[test]
+    fn test_in_app_webpack() {
+        let abs_path = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "webpack:///./@sentry/browser/esm/helpers.js";
+        let filename = "./@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+    }
+
+    #[test]
+    fn test_in_app_app() {
+        let abs_path = "app:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "app:///../@sentry/browser/esm/helpers.js";
+        let filename = "../@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+    }
+
+    #[test]
+    fn test_in_app_general() {
+        let abs_path = "file:///../node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "../node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "file:///../@sentry/browser/esm/helpers.js";
+        let filename = "../@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), None);
+        assert_eq!(is_in_app_faithful(abs_path, filename), None);
     }
 }
