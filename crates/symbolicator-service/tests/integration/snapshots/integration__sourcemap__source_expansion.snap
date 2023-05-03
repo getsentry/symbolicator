@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 152
+assertion_line: 222
 expression: response.unwrap()
 ---
 stacktraces:

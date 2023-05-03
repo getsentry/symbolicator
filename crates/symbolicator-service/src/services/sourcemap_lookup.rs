@@ -1038,7 +1038,7 @@ impl ArtifactFetcher {
 
 /// Strips the hostname (or leading tilde) from the `path` and returns the path following the
 /// hostname, with a leading `/`.
-fn strip_hostname(path: &str) -> &str {
+pub fn strip_hostname(path: &str) -> &str {
     if let Some(after_tilde) = path.strip_prefix('~') {
         return after_tilde;
     }
