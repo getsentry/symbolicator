@@ -50,6 +50,7 @@ use super::SymbolicationActor;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
+static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
@@ -238,9 +239,7 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
-        frame.in_app = frame
-            .in_app
-            .or_else(|| is_in_app(&frame.abs_path, &filename));
+        frame.in_app = is_in_app(&frame.abs_path, &filename);
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
@@ -434,7 +433,7 @@ fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
     if abs_path.starts_with("webpack:") {
         Some(filename.starts_with("./") && !filename.contains("/node_modules/"))
     } else if abs_path.starts_with("app:") {
-        Some(!filename.contains("/node_modules/"))
+        Some(!NODE_MODULES_RE.is_match(filename))
     } else if abs_path.contains("/node_modules/") {
         Some(false)
     } else {
@@ -501,8 +500,6 @@ fn generate_module(abs_path: &str) -> String {
 mod tests {
 
     use super::*;
-
-    static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
 
     /// A faithful port of the monolith's in-app logic, for testing purposes.
     fn is_in_app_faithful(abs_path: &str, filename: &str) -> Option<bool> {
@@ -617,6 +614,12 @@ mod tests {
 
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+
+        let abs_path = "webpack:///./node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "./node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
     #[test]
@@ -632,6 +635,12 @@ mod tests {
 
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+
+        let abs_path = "app:///node_modules/rxjs/internal/operators/switchMap.js";
+        let filename = "node_modules/rxjs/internal/operators/switchMap.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
     #[test]
