@@ -239,10 +239,7 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
-        let in_app = is_in_app(&frame.abs_path, &filename);
-        if in_app.is_some() {
-            frame.in_app = in_app;
-        }
+        frame.in_app = is_in_app(&frame.abs_path, &filename);
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
