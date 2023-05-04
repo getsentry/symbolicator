@@ -239,9 +239,10 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
-        frame.in_app = frame
-            .in_app
-            .or_else(|| is_in_app(&frame.abs_path, &filename));
+        let in_app = is_in_app(&frame.abs_path, &filename);
+        if in_app.is_some() {
+            frame.in_app = in_app;
+        }
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
@@ -616,6 +617,12 @@ mod tests {
 
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+
+        let abs_path = "webpack:///./node_modules/@sentry/browser/esm/helpers.js";
+        let filename = "./node_modules/@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(false));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
     #[test]
