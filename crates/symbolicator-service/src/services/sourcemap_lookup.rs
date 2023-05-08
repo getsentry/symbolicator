@@ -342,7 +342,10 @@ pub fn join_paths(base: &str, right: &str) -> String {
     }
 
     for seg in segments {
-        write!(final_path, "/{seg}").unwrap();
+        // FIXME: do we want to skip `.` even if we have a non-http scheme?
+        if !seg.is_empty() && seg != "." {
+            write!(final_path, "/{seg}").unwrap();
+        }
     }
     final_path
 }
@@ -1310,6 +1313,15 @@ mod tests {
                 "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
             ),
             "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
+        );
+
+        // double-slash in the middle
+        assert_eq!(
+            join_paths(
+                "https://foo.cloudfront.net/static//js/npm.sentry.d8b531aaf5202ddb7e90.js",
+                "npm.sentry.d8b531aaf5202ddb7e90.js.map"
+            ),
+            "https://foo.cloudfront.net/static/js/npm.sentry.d8b531aaf5202ddb7e90.js.map"
         );
     }
 
