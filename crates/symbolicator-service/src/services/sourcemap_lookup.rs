@@ -307,8 +307,12 @@ pub fn join_paths(base: &str, right: &str) -> String {
         if scheme == "file" {
             return right.into();
         }
-        let first_fragment = rest.split('/').next().unwrap_or(rest);
-        return format!("{scheme}://{first_fragment}{right}");
+        // a leading `//` means we are skipping the hostname
+        if let Some(right) = right.strip_prefix("//") {
+            return format!("{scheme}://{right}");
+        }
+        let hostname = rest.split('/').next().unwrap_or(rest);
+        return format!("{scheme}://{hostname}{right}");
     }
 
     let mut final_path = String::new();
@@ -342,7 +346,10 @@ pub fn join_paths(base: &str, right: &str) -> String {
     }
 
     for seg in segments {
-        write!(final_path, "/{seg}").unwrap();
+        // FIXME: do we want to skip all the `.` fragments as well?
+        if !seg.is_empty() {
+            write!(final_path, "/{seg}").unwrap();
+        }
     }
     final_path
 }
@@ -1310,6 +1317,50 @@ mod tests {
                 "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
             ),
             "webpack:/node_modules/@angular/core/__ivy_ngcc__/fesm2015/core.js"
+        );
+
+        // double-slash in the middle
+        assert_eq!(
+            join_paths(
+                "https://foo.cloudfront.net/static//js/npm.sentry.d8b531aaf5202ddb7e90.js",
+                "npm.sentry.d8b531aaf5202ddb7e90.js.map"
+            ),
+            "https://foo.cloudfront.net/static/js/npm.sentry.d8b531aaf5202ddb7e90.js.map"
+        );
+
+        // tests ported from python:
+        // <https://github.com/getsentry/sentry/blob/ae9c0d8a33d509d9719a5a03e06c9797741877e9/tests/sentry/utils/test_urls.py#L22>
+        assert_eq!(
+            join_paths("http://example.com/foo", "bar"),
+            "http://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("http://example.com/foo", "/bar"),
+            "http://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("https://example.com/foo", "/bar"),
+            "https://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("http://example.com/foo/baz", "bar"),
+            "http://example.com/foo/bar"
+        );
+        assert_eq!(
+            join_paths("http://example.com/foo/baz", "/bar"),
+            "http://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("aps://example.com/foo", "/bar"),
+            "aps://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("apsunknown://example.com/foo", "/bar"),
+            "apsunknown://example.com/bar"
+        );
+        assert_eq!(
+            join_paths("apsunknown://example.com/foo", "//aha/uhu"),
+            "apsunknown://aha/uhu"
         );
     }
 
