@@ -11,6 +11,12 @@
 
 - Allow symbolicli to connect to reserved IPs ([#1165](https://github.com/getsentry/symbolicator/pull/1165))
 
+### Dependencies
+
+- Bump Native SDK from v0.6.1 to v0.6.2 ([#1178](https://github.com/getsentry/symbolicator/pull/1178))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#062)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.1...0.6.2)
+
 ## 23.4.0
 
 ### Features
