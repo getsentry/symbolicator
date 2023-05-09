@@ -142,8 +142,8 @@ async fn symbolicate_js_frame(
     // we check for a valid line/col first, as we want to avoid resolving / scraping the minified
     // file in that case. we frequently saw 0 line/col values in combination with non-js files,
     // and we want to avoid scraping a bunch of html files in that case.
-    let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
-        (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
+    let (line, col) = match raw_frame.lineno {
+        Some(line) if line > 0 => (line, raw_frame.colno.unwrap_or_default()),
         _ => {
             return Err(JsModuleErrorKind::InvalidLocation {
                 line: raw_frame.lineno,
@@ -203,7 +203,7 @@ async fn symbolicate_js_frame(
     let mut frame = raw_frame.clone();
     frame.data.sourcemap = Some(sourcemap_label.clone());
 
-    let sp = SourcePosition::new(line - 1, col - 1);
+    let sp = SourcePosition::new(line - 1, col.saturating_sub(1));
     let token = smcache
         .get()
         .lookup(sp)
