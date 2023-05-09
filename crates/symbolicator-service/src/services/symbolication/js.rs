@@ -242,12 +242,12 @@ async fn symbolicate_js_frame(
             .map(|base| join_paths(base, &filename))
             .unwrap_or_else(|| filename.clone());
 
-        frame.in_app = is_in_app(&frame.abs_path, &filename);
-
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
             frame.module = Some(generate_module(&filename));
         }
+
+        frame.in_app = is_in_app(&frame.abs_path, &filename);
 
         if frame.module.is_none()
             && (frame.abs_path.starts_with("http:")
