@@ -139,6 +139,19 @@ async fn symbolicate_js_frame(
     should_apply_source_context: bool,
     missing_sourcescontent: &mut u64,
 ) -> Result<JsFrame, JsModuleErrorKind> {
+    // we check for a valid line/col first, as we want to avoid resolving / scraping the minified
+    // file in that case. we frequently saw 0 line/col values in combination with non-js files,
+    // and we want to avoid scraping a bunch of html files in that case.
+    let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
+        (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
+        _ => {
+            return Err(JsModuleErrorKind::InvalidLocation {
+                line: raw_frame.lineno,
+                col: raw_frame.colno,
+            })
+        }
+    };
+
     let module = lookup.get_module(&raw_frame.abs_path).await;
 
     tracing::trace!(
@@ -190,17 +203,7 @@ async fn symbolicate_js_frame(
     let mut frame = raw_frame.clone();
     frame.data.sourcemap = Some(sourcemap_label.clone());
 
-    let (line, col) = match (raw_frame.lineno, raw_frame.colno) {
-        (Some(line), Some(col)) if line > 0 && col > 0 => (line, col),
-        _ => {
-            return Err(JsModuleErrorKind::InvalidLocation {
-                line: raw_frame.lineno,
-                col: raw_frame.colno,
-            })
-        }
-    };
     let sp = SourcePosition::new(line - 1, col - 1);
-
     let token = smcache
         .get()
         .lookup(sp)
