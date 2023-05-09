@@ -5,11 +5,6 @@ expression: response.unwrap()
 ---
 stacktraces:
   - frames:
-      - function: produceStack
-        filename: index.html
-        abs_path: "http://example.com/index.html"
-        lineno: 6
-        colno: 7
       - function: test
         filename: "./src/components/CampaignContent.tsx"
         module: src/components/CampaignContent
@@ -54,11 +49,6 @@ stacktraces:
           sourcemap: "http://example.com/test2.min.js.map"
 raw_stacktraces:
   - frames:
-      - function: produceStack
-        filename: index.html
-        abs_path: "http://example.com/index.html"
-        lineno: 6
-        colno: 7
       - function: i
         filename: test1.min.js
         abs_path: "http://example.com/test1.min.js"
@@ -75,7 +65,3 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test2.min.js.map"
-errors:
-  - abs_path: "http://example.com/index.html"
-    type: scraping_disabled
-

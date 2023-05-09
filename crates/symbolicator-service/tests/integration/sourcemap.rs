@@ -436,12 +436,6 @@ async fn test_webpack() {
     });
 
     let frames = r#"[{
-        "abs_path": "http://example.com/index.html",
-        "filename": "index.html",
-        "lineno": 6,
-        "colno": 7,
-        "function": "produceStack"
-    }, {
         "abs_path": "http://example.com/test1.min.js",
         "filename": "test1.min.js",
         "lineno": 1,
