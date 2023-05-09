@@ -448,35 +448,11 @@ async fn test_webpack() {
         "colno": 183,
         "function": "i"
     }, {
-        "abs_path": "http://example.com/test1.min.js",
-        "filename": "test1.min.js",
-        "lineno": 1,
-        "colno": 136,
-        "function": "r"
-    }, {
-        "abs_path": "http://example.com/test1.min.js",
-        "filename": "test1.min.js",
-        "lineno": 1,
-        "colno": 64,
-        "function": "e"
-    }, {
         "abs_path": "http://example.com/test2.min.js",
         "filename": "test2.min.js",
         "lineno": 1,
         "colno": 183,
         "function": "i"
-    }, {
-        "abs_path": "http://example.com/test2.min.js",
-        "filename": "test2.min.js",
-        "lineno": 1,
-        "colno": 136,
-        "function": "r"
-    }, {
-        "abs_path": "http://example.com/test2.min.js",
-        "filename": "test2.min.js",
-        "lineno": 1,
-        "colno": 64,
-        "function": "e"
     }]"#;
 
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
