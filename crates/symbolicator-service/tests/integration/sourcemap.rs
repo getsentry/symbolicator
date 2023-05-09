@@ -409,6 +409,55 @@ async fn test_invalid_location() {
 }
 
 #[tokio::test]
+async fn test_webpack() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = symbolicator_test::sourcemap_server("09_webpack", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/test.min.js"),
+            "abs_path": "~/test.min.js",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/test.min.js.map"),
+            "abs_path": "~/test.min.js.map",
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/index.html",
+        "filename": "index.html",
+        "lineno": 6,
+        "colno": 7,
+        "function": "produceStack"
+    }, {
+        "abs_path": "http://example.com/test.min.js",
+        "filename": "test.min.js",
+        "lineno": 1,
+        "colno": 183,
+        "function": "i"
+    }, {
+        "abs_path": "http://example.com/test.min.js",
+        "filename": "test.min.js",
+        "lineno": 1,
+        "colno": 136,
+        "function": "r"
+    }, {
+        "abs_path": "http://example.com/test.min.js",
+        "filename": "test.min.js",
+        "lineno": 1,
+        "colno": 64,
+        "function": "e"
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response.unwrap());
+}
+
+#[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = symbolicator_test::sourcemap_server("e2e_node_debugid", |url, query| {
