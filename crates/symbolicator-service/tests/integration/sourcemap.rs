@@ -415,13 +415,23 @@ async fn test_webpack() {
         json!([{
             "type": "file",
             "id": "1",
-            "url": format!("{url}/test.min.js"),
-            "abs_path": "~/test.min.js",
+            "url": format!("{url}/test1.min.js"),
+            "abs_path": "~/test1.min.js",
         }, {
             "type": "file",
             "id": "2",
-            "url": format!("{url}/test.min.js.map"),
-            "abs_path": "~/test.min.js.map",
+            "url": format!("{url}/test1.min.js.map"),
+            "abs_path": "~/test1.min.js.map",
+        }, {
+            "type": "file",
+            "id": "3",
+            "url": format!("{url}/test2.min.js"),
+            "abs_path": "~/test2.min.js",
+        }, {
+            "type": "file",
+            "id": "4",
+            "url": format!("{url}/test2.min.js.map"),
+            "abs_path": "~/test2.min.js.map",
         }])
     });
 
@@ -432,20 +442,38 @@ async fn test_webpack() {
         "colno": 7,
         "function": "produceStack"
     }, {
-        "abs_path": "http://example.com/test.min.js",
-        "filename": "test.min.js",
+        "abs_path": "http://example.com/test1.min.js",
+        "filename": "test1.min.js",
         "lineno": 1,
         "colno": 183,
         "function": "i"
     }, {
-        "abs_path": "http://example.com/test.min.js",
-        "filename": "test.min.js",
+        "abs_path": "http://example.com/test1.min.js",
+        "filename": "test1.min.js",
         "lineno": 1,
         "colno": 136,
         "function": "r"
     }, {
-        "abs_path": "http://example.com/test.min.js",
-        "filename": "test.min.js",
+        "abs_path": "http://example.com/test1.min.js",
+        "filename": "test1.min.js",
+        "lineno": 1,
+        "colno": 64,
+        "function": "e"
+    }, {
+        "abs_path": "http://example.com/test2.min.js",
+        "filename": "test2.min.js",
+        "lineno": 1,
+        "colno": 183,
+        "function": "i"
+    }, {
+        "abs_path": "http://example.com/test2.min.js",
+        "filename": "test2.min.js",
+        "lineno": 1,
+        "colno": 136,
+        "function": "r"
+    }, {
+        "abs_path": "http://example.com/test2.min.js",
+        "filename": "test2.min.js",
         "lineno": 1,
         "colno": 64,
         "function": "e"

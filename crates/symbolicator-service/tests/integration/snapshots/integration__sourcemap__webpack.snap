@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 457
+assertion_line: 485
 expression: response.unwrap()
 ---
 stacktraces:
@@ -30,7 +30,7 @@ stacktraces:
           - "})();"
         in_app: true
         data:
-          sourcemap: "http://example.com/test.min.js.map"
+          sourcemap: "http://example.com/test1.min.js.map"
       - function: invoke
         filename: "./src/components/CampaignContent.tsx"
         module: src/components/CampaignContent
@@ -52,7 +52,7 @@ stacktraces:
           - "    invoke(data);"
         in_app: true
         data:
-          sourcemap: "http://example.com/test.min.js.map"
+          sourcemap: "http://example.com/test1.min.js.map"
       - function: onFailure
         filename: "./src/components/CampaignContent.tsx"
         module: src/components/CampaignContent
@@ -73,7 +73,71 @@ stacktraces:
           - "    if (data.failed) {"
         in_app: true
         data:
-          sourcemap: "http://example.com/test.min.js.map"
+          sourcemap: "http://example.com/test1.min.js.map"
+      - function: test
+        filename: "./src/node_modules/components/CampaignContent.tsx"
+        module: src/node_modules/components/CampaignContent
+        abs_path: "webpack:///./src/node_modules/components/CampaignContent.tsx"
+        lineno: 20
+        colno: 5
+        pre_context:
+          - "    cb(data);"
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+        context_line: "    invoke(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  return test;"
+          - "})();"
+        in_app: false
+        data:
+          sourcemap: "http://example.com/test2.min.js.map"
+      - function: invoke
+        filename: "./src/node_modules/components/CampaignContent.tsx"
+        module: src/node_modules/components/CampaignContent
+        abs_path: "webpack:///./src/node_modules/components/CampaignContent.tsx"
+        lineno: 15
+        colno: 5
+        pre_context:
+          - "    if (data.failed) {"
+          - "      cb = onFailure;"
+          - "    } else {"
+          - "      cb = onSuccess;"
+          - "    }"
+        context_line: "    cb(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+          - "    invoke(data);"
+        in_app: false
+        data:
+          sourcemap: "http://example.com/test2.min.js.map"
+      - function: onFailure
+        filename: "./src/node_modules/components/CampaignContent.tsx"
+        module: src/node_modules/components/CampaignContent
+        abs_path: "webpack:///./src/node_modules/components/CampaignContent.tsx"
+        lineno: 5
+        colno: 11
+        pre_context:
+          - "var makeAFailure = (function() {"
+          - "  function onSuccess(data) {}"
+          - ""
+          - "  function onFailure(data) {"
+        context_line: "    throw new Error('failed!');"
+        post_context:
+          - "  }"
+          - ""
+          - "  function invoke(data) {"
+          - "    var cb = null;"
+          - "    if (data.failed) {"
+        in_app: false
+        data:
+          sourcemap: "http://example.com/test2.min.js.map"
 raw_stacktraces:
   - frames:
       - function: produceStack
@@ -82,29 +146,53 @@ raw_stacktraces:
         lineno: 6
         colno: 7
       - function: i
-        filename: test.min.js
-        abs_path: "http://example.com/test.min.js"
+        filename: test1.min.js
+        abs_path: "http://example.com/test1.min.js"
         lineno: 1
         colno: 183
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
-          - "//# sourceMappingURL=test.min.js.map"
+          - "//# sourceMappingURL=test1.min.js.map"
       - function: r
-        filename: test.min.js
-        abs_path: "http://example.com/test.min.js"
+        filename: test1.min.js
+        abs_path: "http://example.com/test1.min.js"
         lineno: 1
         colno: 136
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
-          - "//# sourceMappingURL=test.min.js.map"
+          - "//# sourceMappingURL=test1.min.js.map"
       - function: e
-        filename: test.min.js
-        abs_path: "http://example.com/test.min.js"
+        filename: test1.min.js
+        abs_path: "http://example.com/test1.min.js"
         lineno: 1
         colno: 64
         context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
         post_context:
-          - "//# sourceMappingURL=test.min.js.map"
+          - "//# sourceMappingURL=test1.min.js.map"
+      - function: i
+        filename: test2.min.js
+        abs_path: "http://example.com/test2.min.js"
+        lineno: 1
+        colno: 183
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test2.min.js.map"
+      - function: r
+        filename: test2.min.js
+        abs_path: "http://example.com/test2.min.js"
+        lineno: 1
+        colno: 136
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test2.min.js.map"
+      - function: e
+        filename: test2.min.js
+        abs_path: "http://example.com/test2.min.js"
+        lineno: 1
+        colno: 64
+        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        post_context:
+          - "//# sourceMappingURL=test2.min.js.map"
 errors:
   - abs_path: "http://example.com/index.html"
     type: scraping_disabled
