@@ -16,8 +16,7 @@ use super::ResponseError;
 
 #[derive(Serialize, Deserialize)]
 pub struct JsSymbolicationRequestBody {
-    #[serde(default)]
-    pub source: Option<SentrySourceConfig>,
+    pub source: SentrySourceConfig,
     #[serde(default)]
     pub stacktraces: Vec<JsStacktrace>,
     #[serde(default)]
@@ -84,7 +83,7 @@ pub async fn handle_symbolication_request(
 
     let request_id = service.symbolicate_js_stacktraces(SymbolicateJsStacktraces {
         scope: params.scope,
-        source: Arc::new(source.unwrap()),
+        source: Arc::new(source),
         stacktraces,
         modules,
         release,

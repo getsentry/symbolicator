@@ -10,6 +10,7 @@
 ### Fixes
 
 - Allow symbolicli to connect to reserved IPs ([#1165](https://github.com/getsentry/symbolicator/pull/1165))
+- JS symbolication now requires a Sentry source ([#1180](https://github.com/getsentry/symbolicator/pull/1180))
 
 ### Dependencies
 
