@@ -208,12 +208,12 @@ async fn test_source_expansion() {
         "abs_path": "http://example.com/foo.js",
         "filename": "foo.js",
         "lineno": 1,
-        "colno": 0
+        "colno": 1
     }, {
         "abs_path": "http://example.com/foo.js",
         "filename": "foo.js",
         "lineno": 4,
-        "colno": 0
+        "colno": 1
     }]"#;
 
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
@@ -360,12 +360,12 @@ async fn test_fetch_error() {
             "abs_path": "{missing_asset_url_1}",
             "filename": "foo.js",
             "lineno": 1,
-            "colno": 0
+            "colno": 1
         }}, {{
             "abs_path": "{missing_asset_url_2}",
             "filename": "foo.js",
             "lineno": 4,
-            "colno": 0
+            "colno": 1
         }}]"#
     );
 

@@ -8,7 +8,7 @@ stacktraces:
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 1
-        colno: 0
+        colno: 1
         context_line: h
         post_context:
           - e
@@ -19,7 +19,7 @@ stacktraces:
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
-        colno: 0
+        colno: 1
         pre_context:
           - h
           - e
@@ -36,7 +36,7 @@ raw_stacktraces:
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 1
-        colno: 0
+        colno: 1
         context_line: h
         post_context:
           - e
@@ -47,7 +47,7 @@ raw_stacktraces:
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
-        colno: 0
+        colno: 1
         pre_context:
           - h
           - e
