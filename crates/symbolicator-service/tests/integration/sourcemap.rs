@@ -524,7 +524,7 @@ async fn e2e_react_native() {
             "id": "1",
             "url": format!("{url}/index.android.bundle"),
             "abs_path": "~/index.android.bundle",
-            "headers": { "Sourcemap": "index.android.bundle.map" }
+            "headers": { "SoUrCemAp": "index.android.bundle.map" }
         }, {
             "type": "file",
             "id": "2",

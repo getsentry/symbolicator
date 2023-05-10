@@ -918,6 +918,13 @@ impl ArtifactFetcher {
                         .entry(abs_path)
                         .or_insert_with(|| {
                             did_get_new_data = true;
+
+                            // lowercase all the header keys
+                            let headers = headers
+                                .into_iter()
+                                .map(|(k, v)| (k.to_lowercase(), v))
+                                .collect();
+
                             IndividualArtifact {
                                 remote_file,
                                 headers,
@@ -1102,9 +1109,9 @@ fn resolve_sourcemap_url(
     artifact_headers: &ArtifactHeaders,
     artifact_source: &str,
 ) -> Option<SourceMapUrl> {
-    if let Some(header) = artifact_headers.get("Sourcemap") {
+    if let Some(header) = artifact_headers.get("sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
-    } else if let Some(header) = artifact_headers.get("X-SourceMap") {
+    } else if let Some(header) = artifact_headers.get("x-sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
         let sm_ref = discover_sourcemaps_location(artifact_source)?;
