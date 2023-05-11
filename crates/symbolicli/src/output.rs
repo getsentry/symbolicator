@@ -209,29 +209,6 @@ fn print_pretty_native(response: CompletedSymbolicationResponse) {
     table.printstd();
 }
 
-// #[derive(Clone, Debug)]
-// struct JsFrameData {
-//     func: Option<String>,
-//     file: Option<(String, u32, u32)>,
-//     module: Option<String>,
-// }
-
-// #[derive(Clone, Debug)]
-// struct JsFrames {
-//     inner: Peekable<IntoIter<JsFrame>>,
-// }
-
-// impl Iterator for JsFrames {
-//     type Item = JsFrameData;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         let frame = self.inner.next()?;
-
-//         let func = frame.function;
-//         let filename = frame.filename;
-//     }
-// }
-
 fn print_compact_js(mut response: CompletedJsSymbolicationResponse) {
     if response.stacktraces.is_empty() {
         return;
