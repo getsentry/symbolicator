@@ -21,6 +21,9 @@ pub enum OutputFormat {
     /// Outputs the entire symbolication result as JSON.
     Json,
     /// Outputs the crashed thread as a detailed list of frames.
+    ///
+    /// For a JavaScript event, this will also print a list of errors
+    /// that occurred during symbolication.
     Pretty,
     /// Outputs the crashed thread as a table.
     Compact,
@@ -35,6 +38,7 @@ pub enum Mode {
         project: String,
         auth_token: String,
         base_url: reqwest::Url,
+        scraping_enabled: bool,
     },
 }
 
@@ -81,6 +85,7 @@ struct Cli {
     /// Run in offline mode, i.e., don't access the Sentry server.
     ///
     /// In offline mode symbolicli will still access manually configured symbol sources.
+    /// JavaScript symbolication is currently not supported in offline mode.
     #[arg(long)]
     offline: bool,
 
@@ -90,6 +95,13 @@ struct Cli {
     /// off, error, warn, info, debug, trace
     #[arg(long, value_enum, default_value = "info")]
     log_level: LevelFilter,
+
+    /// Disallow scraping of JavaScript source and sourcemap files
+    /// from the internet.
+    ///
+    /// This flag has no effect on native symbolication.
+    #[arg(long)]
+    no_scrape: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -176,6 +188,7 @@ impl Settings {
                 org,
                 project,
                 auth_token,
+                scraping_enabled: !cli.no_scrape,
             }
         };
 
