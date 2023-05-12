@@ -3,7 +3,7 @@ use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
 
-use event::{create_js_symbolication_request, create_native_symbolication_request, Platform};
+use event::{create_js_symbolication_request, create_native_symbolication_request};
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
     };
 
     let res = match payload {
-        Payload::Event(event) if event.platform == Platform::Javascript => {
+        Payload::Event(event) if event.is_js() => {
             let Mode::Online {
                 ref org,
                 ref project,
@@ -501,16 +501,17 @@ mod event {
 
     #[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
     #[serde(rename_all = "snake_case")]
-    pub enum Platform {
+    enum Platform {
         #[default]
         Native,
         Javascript,
+        Node,
     }
 
     #[derive(Debug, Deserialize)]
     pub struct Event {
         #[serde(default)]
-        pub platform: Platform,
+        platform: Platform,
         #[serde(default)]
         debug_meta: DebugMeta,
         exception: Option<Exceptions>,
@@ -518,6 +519,12 @@ mod event {
         signal: Option<Signal>,
         release: Option<String>,
         dist: Option<String>,
+    }
+
+    impl Event {
+        pub fn is_js(&self) -> bool {
+            matches!(self.platform, Platform::Javascript | Platform::Node)
+        }
     }
 
     #[derive(Debug, Deserialize, Default)]
