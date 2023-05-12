@@ -84,7 +84,7 @@ async fn test_sourcemap_expansion() {
         "colno": 183,
         "function": "i"
     }, {
-        "abs_path": "http://example.com/test.min.js",
+        "abs_path": "async http://example.com/test.min.js",
         "filename": "test.min.js",
         "lineno": 1,
         "colno": 136,
