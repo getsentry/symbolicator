@@ -74,7 +74,7 @@ impl SymbolicationActor {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
         let apply_source_context = request.apply_source_context;
         let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
-        lookup.prepare_modules(&raw_stacktraces);
+        lookup.prepare_modules(&mut raw_stacktraces[..]);
 
         let mut unsymbolicated_frames = 0;
         let mut missing_sourcescontent = 0;
