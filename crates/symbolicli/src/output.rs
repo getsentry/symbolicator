@@ -150,7 +150,7 @@ fn print_compact_native(response: CompletedSymbolicationResponse) {
         match func {
             Some((func, func_offset)) => {
                 row.add_cell(cell!(func));
-                row.add_cell(cell!(r->format!(" + {func_offset:#x}")));
+                row.add_cell(cell!(r->format!("+{func_offset:#x}")));
             }
             None => row.add_cell(cell!("").with_hspan(2)),
         }
@@ -197,7 +197,7 @@ fn print_pretty_native(response: CompletedSymbolicationResponse) {
         }
 
         if let Some((func, func_offset)) = func {
-            table.add_row(row![r->"  Function:", format!("{func} + {func_offset:#x}")]);
+            table.add_row(row![r->"  Function:", format!("{func} +{func_offset:#x}")]);
         }
 
         if let Some((name, line)) = file {

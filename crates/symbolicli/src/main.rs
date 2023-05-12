@@ -635,8 +635,6 @@ mod event {
         #[serde(default)]
         trust: FrameTrust,
 
-        token_name: Option<String>,
-
         #[serde(default)]
         data: JsFrameData,
     }
@@ -675,7 +673,7 @@ mod event {
             pre_context: value.pre_context,
             context_line: value.context_line,
             post_context: value.post_context,
-            token_name: value.token_name,
+            token_name: None,
             in_app: value.in_app,
             data: value.data,
         })
