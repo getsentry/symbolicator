@@ -226,9 +226,14 @@ impl SourceMapLookup {
     }
 
     /// Prepares the modules for processing
-    pub fn prepare_modules(&mut self, stacktraces: &[JsStacktrace]) {
+    pub fn prepare_modules(&mut self, stacktraces: &mut [JsStacktrace]) {
         for stacktrace in stacktraces {
-            for frame in &stacktrace.frames {
+            for frame in &mut stacktrace.frames {
+                // NOTE: some older JS SDK versions did not correctly strip a leading `async `
+                // prefix from the `abs_path`, which we will work around here.
+                if let Some(abs_path) = frame.abs_path.strip_prefix("async ") {
+                    frame.abs_path = abs_path.to_owned();
+                }
                 let abs_path = &frame.abs_path;
                 if self.modules_by_abs_path.contains_key(abs_path) {
                     continue;
@@ -918,6 +923,13 @@ impl ArtifactFetcher {
                         .entry(abs_path)
                         .or_insert_with(|| {
                             did_get_new_data = true;
+
+                            // lowercase all the header keys
+                            let headers = headers
+                                .into_iter()
+                                .map(|(k, v)| (k.to_lowercase(), v))
+                                .collect();
+
                             IndividualArtifact {
                                 remote_file,
                                 headers,
@@ -1102,9 +1114,9 @@ fn resolve_sourcemap_url(
     artifact_headers: &ArtifactHeaders,
     artifact_source: &str,
 ) -> Option<SourceMapUrl> {
-    if let Some(header) = artifact_headers.get("Sourcemap") {
+    if let Some(header) = artifact_headers.get("sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
-    } else if let Some(header) = artifact_headers.get("X-SourceMap") {
+    } else if let Some(header) = artifact_headers.get("x-sourcemap") {
         SourceMapUrl::parse_with_prefix(abs_path, header).ok()
     } else {
         let sm_ref = discover_sourcemaps_location(artifact_source)?;

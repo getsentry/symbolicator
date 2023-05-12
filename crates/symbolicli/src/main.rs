@@ -406,13 +406,13 @@ mod event {
 
         let mut stacktraces = vec![];
         if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.stacktrace.take()));
+            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.raw_stacktrace.take()));
         }
         if let Some(mut threads) = threads.map(|threads| threads.values) {
             stacktraces.extend(
                 threads
                     .iter_mut()
-                    .filter_map(|thread| thread.stacktrace.take()),
+                    .filter_map(|thread| thread.raw_stacktrace.take()),
             );
         }
 
@@ -458,13 +458,13 @@ mod event {
 
         let mut stacktraces = vec![];
         if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.stacktrace.take()));
+            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.raw_stacktrace.take()));
         }
         if let Some(mut threads) = threads.map(|threads| threads.values) {
             stacktraces.extend(
                 threads
                     .iter_mut()
-                    .filter_map(|thread| thread.stacktrace.take()),
+                    .filter_map(|thread| thread.raw_stacktrace.take()),
             );
         }
 
@@ -539,7 +539,7 @@ mod event {
 
     #[derive(Debug, Deserialize)]
     struct Exception {
-        stacktrace: Option<Stacktrace>,
+        raw_stacktrace: Option<Stacktrace>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -549,7 +549,7 @@ mod event {
 
     #[derive(Debug, Deserialize)]
     struct Thread {
-        stacktrace: Option<Stacktrace>,
+        raw_stacktrace: Option<Stacktrace>,
     }
 
     #[derive(Debug, Deserialize)]

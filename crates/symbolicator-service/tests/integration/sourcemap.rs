@@ -84,7 +84,7 @@ async fn test_sourcemap_expansion() {
         "colno": 183,
         "function": "i"
     }, {
-        "abs_path": "http://example.com/test.min.js",
+        "abs_path": "async http://example.com/test.min.js",
         "filename": "test.min.js",
         "lineno": 1,
         "colno": 136,
@@ -524,7 +524,7 @@ async fn e2e_react_native() {
             "id": "1",
             "url": format!("{url}/index.android.bundle"),
             "abs_path": "~/index.android.bundle",
-            "headers": { "Sourcemap": "index.android.bundle.map" }
+            "headers": { "SoUrCemAp": "index.android.bundle.map" }
         }, {
             "type": "file",
             "id": "2",
