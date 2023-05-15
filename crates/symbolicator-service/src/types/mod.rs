@@ -590,6 +590,38 @@ pub enum JsModuleErrorKind {
     ScrapingDisabled,
 }
 
+impl fmt::Display for JsModuleErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsModuleErrorKind::InvalidLocation { line, col } => {
+                write!(f, "Invalid source location")?;
+                match (line, col) {
+                    (None, None) => (),
+                    (None, Some(c)) => write!(f, ": col:{c}")?,
+                    (Some(l), None) => write!(f, ": line:{l}")?,
+                    (Some(l), Some(c)) => write!(f, ": line:{l}, col:{c}")?,
+                }
+                Ok(())
+            }
+            JsModuleErrorKind::InvalidAbsPath => write!(f, "Invalid absolute path"),
+            JsModuleErrorKind::NoColumn => write!(f, "No column information"),
+            JsModuleErrorKind::MissingSourceContent { source, sourcemap } => write!(
+                f,
+                "Missing source contents for source file {source} and sourcemap file {sourcemap}"
+            ),
+            JsModuleErrorKind::MissingSource => write!(f, "Missing source file"),
+            JsModuleErrorKind::MalformedSourcemap { url } => {
+                write!(f, "Sourcemap file at {url} is malformed")
+            }
+            JsModuleErrorKind::MissingSourcemap => write!(f, "Missing sourcemap file"),
+            JsModuleErrorKind::InvalidBase64Sourcemap => write!(f, "Invalid base64 sourcemap"),
+            JsModuleErrorKind::ScrapingDisabled => {
+                write!(f, "Could not download file because scraping is disabled")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct JsModuleError {
     pub abs_path: String,

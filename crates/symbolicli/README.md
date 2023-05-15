@@ -1,4 +1,4 @@
-`symbolicli` is a cli utility that lets you symbolicate native events and minidumps locally.
+`symbolicli` is a cli utility that lets you symbolicate native and JavaScript events and minidumps locally.
 
 By default, `symbolicli` will target https://sentry.io/. If you are hosting your own
 Sentry instance, you can override this with the `--url` option or the `url` config setting.
@@ -19,6 +19,8 @@ symbolicli --offline <EVENT>
 
 In offline mode `symbolicli` will not attempt to access a Sentry server, which means you can only
 process local events.
+
+*NB*: JavaScript symbolication is not supported in offline mode.
 
 # Configuration
 
