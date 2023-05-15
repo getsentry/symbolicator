@@ -19,6 +19,7 @@ use symbolicator_sources::{
 };
 
 use crate::caching::{CacheEntry, CacheError};
+use crate::utils::http::DownloadTimeouts;
 
 use super::content_length_timeout;
 
@@ -27,29 +28,22 @@ type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
     client_cache: ClientCache,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: DownloadTimeouts,
 }
 
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
-            .field("connect_timeout", &self.connect_timeout)
-            .field("streaming_timeout", &self.streaming_timeout)
+            .field("timeouts", &self.timeouts)
             .finish()
     }
 }
 
 impl S3Downloader {
-    pub fn new(
-        connect_timeout: Duration,
-        streaming_timeout: Duration,
-        s3_client_capacity: u64,
-    ) -> Self {
+    pub fn new(timeouts: DownloadTimeouts, s3_client_capacity: u64) -> Self {
         Self {
             client_cache: ClientCache::new(s3_client_capacity),
-            connect_timeout,
-            streaming_timeout,
+            timeouts,
         }
     }
 
@@ -125,12 +119,11 @@ impl S3Downloader {
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);
-        let request = tokio::time::timeout(self.connect_timeout, request);
+        let timeout = self.timeouts.head_timeout;
+        let request = tokio::time::timeout(timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = request
-            .await
-            .map_err(|_| CacheError::Timeout(self.connect_timeout))?; // Timeout
+        let response = request.await.map_err(|_| CacheError::Timeout(timeout))?; // Timeout
 
         let response = match response {
             Ok(response) => response,
@@ -190,7 +183,7 @@ impl S3Downloader {
 
         let timeout = Some(content_length_timeout(
             response.content_length(),
-            self.streaming_timeout,
+            self.timeouts.streaming_timeout,
         ));
 
         let stream = if response.content_length == 0 {
@@ -363,7 +356,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -389,7 +382,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -414,7 +407,7 @@ mod tests {
             secret_key: "".into(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

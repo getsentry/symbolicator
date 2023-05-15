@@ -27,9 +27,10 @@ use symbolicator_sources::{
 };
 
 use crate::caching::{CacheEntry, CacheError};
-use crate::config::{CacheConfigs, Config, InMemoryCacheConfig};
+use crate::config::Config;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
+use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 
 use self::sentry::JsLookupResult;
@@ -114,24 +115,19 @@ struct HostDenyList {
 
 impl HostDenyList {
     /// Creates an empty [`HostDenyList`].
-    fn new(
-        time_window: Duration,
-        bucket_size: Duration,
-        failure_threshold: usize,
-        block_time: Duration,
-    ) -> Self {
-        let time_window_millis = time_window.as_millis() as u64;
-        let bucket_size_millis = bucket_size.as_millis() as u64;
+    fn from_config(config: &Config) -> Self {
+        let time_window_millis = config.deny_list_time_window.as_millis() as u64;
+        let bucket_size_millis = config.deny_list_bucket_size.as_millis() as u64;
         Self {
             time_window_millis,
             bucket_size_millis,
-            failure_threshold,
-            block_time,
+            failure_threshold: config.deny_list_threshold,
+            block_time: config.deny_list_block_time,
             failures: moka::sync::Cache::builder()
-                .time_to_idle(time_window)
+                .time_to_idle(config.deny_list_time_window)
                 .build(),
             blocked_hosts: moka::sync::Cache::builder()
-                .time_to_live(block_time)
+                .time_to_live(config.deny_list_block_time)
                 .eviction_listener(|host, _, _| tracing::info!(%host, "Unblocking host"))
                 .build(),
         }
@@ -217,7 +213,7 @@ impl HostDenyList {
 #[derive(Debug)]
 pub struct DownloadService {
     runtime: tokio::runtime::Handle,
-    max_download_timeout: Duration,
+    timeouts: DownloadTimeouts,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -229,49 +225,20 @@ pub struct DownloadService {
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
-        let trusted_client = crate::utils::http::create_client(config, true);
-        let restricted_client = crate::utils::http::create_client(config, false);
+        let timeouts = DownloadTimeouts::from_config(config);
+        let trusted_client = crate::utils::http::create_client(config, &timeouts, true);
+        let restricted_client = crate::utils::http::create_client(config, &timeouts, false);
 
-        let Config {
-            connect_timeout,
-            streaming_timeout,
-            caches: CacheConfigs { ref in_memory, .. },
-            deny_list_time_window,
-            deny_list_bucket_size,
-            deny_list_threshold,
-            deny_list_block_time,
-            ..
-        } = *config;
-
-        let InMemoryCacheConfig {
-            gcs_token_capacity,
-            s3_client_capacity,
-            ..
-        } = in_memory;
-
+        let in_memory = &config.caches.in_memory;
         Arc::new(Self {
             runtime: runtime.clone(),
-            max_download_timeout: config.max_download_timeout,
-            sentry: sentry::SentryDownloader::new(trusted_client, runtime, config),
-            http: http::HttpDownloader::new(
-                restricted_client.clone(),
-                connect_timeout,
-                streaming_timeout,
-            ),
-            s3: s3::S3Downloader::new(connect_timeout, streaming_timeout, *s3_client_capacity),
-            gcs: gcs::GcsDownloader::new(
-                restricted_client,
-                connect_timeout,
-                streaming_timeout,
-                *gcs_token_capacity,
-            ),
+            timeouts,
+            sentry: sentry::SentryDownloader::new(trusted_client, runtime, timeouts, in_memory),
+            http: http::HttpDownloader::new(restricted_client.clone(), timeouts),
+            s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
+            gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
-            host_deny_list: HostDenyList::new(
-                deny_list_time_window,
-                deny_list_bucket_size,
-                deny_list_threshold,
-                deny_list_block_time,
-            ),
+            host_deny_list: HostDenyList::from_config(config),
         })
     }
 
@@ -338,16 +305,16 @@ impl DownloadService {
             ));
         }
 
+        let timeout = self.timeouts.max_download_timeout;
         let slf = self.clone();
-
         let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
-        let job = tokio::time::timeout(self.max_download_timeout, job);
+        let job = tokio::time::timeout(timeout, job);
         let job = measure("service.download", m::timed_result, job);
 
         let result = match job.await {
             // Timeout
-            Err(_) => Err(CacheError::Timeout(self.max_download_timeout)),
+            Err(_) => Err(CacheError::Timeout(timeout)),
             // Spawn error
             Ok(Err(_)) => Err(CacheError::InternalError),
             Ok(Ok(res)) => res,
@@ -526,16 +493,16 @@ async fn download_stream(
 async fn download_reqwest(
     source: &RemoteFile,
     builder: reqwest::RequestBuilder,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: &DownloadTimeouts,
     destination: &Path,
 ) -> CacheEntry {
     let request = builder.send();
 
-    let request = tokio::time::timeout(connect_timeout, request);
+    let timeout = timeouts.head_timeout;
+    let request = tokio::time::timeout(timeout, request);
     let request = measure_download_time(source.source_metric_key(), request);
 
-    let timeout_err = CacheError::Timeout(connect_timeout);
+    let timeout_err = CacheError::Timeout(timeout);
     let response = request.await.map_err(|_| timeout_err)??;
 
     let status = response.status();
@@ -548,7 +515,8 @@ async fn download_reqwest(
             .and_then(|hv| hv.to_str().ok())
             .and_then(|s| s.parse::<i64>().ok());
 
-        let timeout = content_length.map(|cl| content_length_timeout(cl, streaming_timeout));
+        let timeout =
+            content_length.map(|cl| content_length_timeout(cl, timeouts.streaming_timeout));
         let stream = response.bytes_stream().map_err(CacheError::from);
 
         download_stream(source, stream, destination, timeout).await
@@ -785,12 +753,14 @@ mod tests {
 
     #[test]
     fn test_host_deny_list() {
-        let deny_list = HostDenyList::new(
-            Duration::from_secs(5),
-            Duration::from_secs(1),
-            2,
-            Duration::from_millis(100),
-        );
+        let config = Config {
+            deny_list_time_window: Duration::from_secs(5),
+            deny_list_block_time: Duration::from_millis(100),
+            deny_list_bucket_size: Duration::from_secs(1),
+            deny_list_threshold: 2,
+            ..Default::default()
+        };
+        let deny_list = HostDenyList::from_config(&config);
         let host = String::from("test");
 
         deny_list.register_failure(host.clone());

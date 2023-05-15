@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::net::IpAddr;
+use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
 use reqwest::Url;
@@ -39,12 +40,55 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
     true
 }
 
-pub fn create_client(config: &Config, trusted: bool) -> reqwest::Client {
+/// Various timeouts for all the Downloaders
+#[derive(Copy, Clone, Debug)]
+pub struct DownloadTimeouts {
+    /// The timeout for establishing a connection.
+    pub connect_timeout: Duration,
+    /// The timeout for receiving the first headers.
+    pub head_timeout: Duration,
+    /// An adaptive timeout per 1GB of content.
+    pub streaming_timeout: Duration,
+    /// Global timeout for one download.
+    pub max_download_timeout: Duration,
+}
+
+impl DownloadTimeouts {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            connect_timeout: config.connect_timeout,
+            head_timeout: config.head_timeout,
+            streaming_timeout: config.streaming_timeout,
+            max_download_timeout: config.max_download_timeout,
+        }
+    }
+}
+
+impl Default for DownloadTimeouts {
+    fn default() -> Self {
+        Self {
+            connect_timeout: Duration::from_millis(500),
+            head_timeout: Duration::from_secs(5),
+            streaming_timeout: Duration::from_secs(250),
+            max_download_timeout: Duration::from_secs(315),
+        }
+    }
+}
+
+pub fn create_client(
+    config: &Config,
+    timeouts: &DownloadTimeouts,
+    trusted: bool,
+) -> reqwest::Client {
     let mut builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
 
     if !(trusted || config.connect_to_reserved_ips) {
         builder = builder.ip_filter(is_external_ip);
     }
+    builder = builder
+        .connect_timeout(timeouts.connect_timeout)
+        .timeout(timeouts.max_download_timeout)
+        .pool_idle_timeout(Duration::from_secs(30));
 
     builder.build().unwrap()
 }
@@ -172,7 +216,7 @@ mod tests {
             ..Config::default()
         };
 
-        let result = create_client(&config, false) // untrusted
+        let result = create_client(&config, &Default::default(), false) // untrusted
             .get(server.url("/"))
             .send()
             .await;
@@ -192,7 +236,7 @@ mod tests {
 
         let mut url = server.url("/");
         url.set_host(Some("127.0.0.1")).unwrap();
-        let result = create_client(&config, false) // untrusted
+        let result = create_client(&config, &Default::default(), false) // untrusted
             .get(url)
             .send()
             .await;
@@ -211,7 +255,7 @@ mod tests {
             ..Config::default()
         };
 
-        let response = create_client(&config, false) // untrusted
+        let response = create_client(&config, &Default::default(), false) // untrusted
             .get(server.url("/garbage_data/OK"))
             .send()
             .await
@@ -232,7 +276,7 @@ mod tests {
             ..Config::default()
         };
 
-        let response = create_client(&config, true) // trusted
+        let response = create_client(&config, &Default::default(), true) // trusted
             .get(server.url("/garbage_data/OK"))
             .send()
             .await

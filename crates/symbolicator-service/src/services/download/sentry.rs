@@ -20,8 +20,9 @@ use symbolicator_sources::{
 
 use super::{FileType, USER_AGENT};
 use crate::caching::{CacheEntry, CacheError};
-use crate::config::Config;
+use crate::config::InMemoryCacheConfig;
 use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::http::DownloadTimeouts;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,8 +129,7 @@ pub struct SentryDownloader {
     runtime: tokio::runtime::Handle,
     dif_cache: SentryDifCache,
     js_cache: SentryJsCache,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: DownloadTimeouts,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -142,22 +142,26 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        runtime: tokio::runtime::Handle,
+        timeouts: DownloadTimeouts,
+        in_memory: &InMemoryCacheConfig,
+    ) -> Self {
         let dif_cache = SentryDifCache::builder()
-            .max_capacity(config.caches.in_memory.sentry_index_capacity)
-            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .max_capacity(in_memory.sentry_index_capacity)
+            .time_to_live(in_memory.sentry_index_ttl)
             .build();
         let js_cache = SentryJsCache::builder()
-            .max_capacity(config.caches.in_memory.sentry_index_capacity)
-            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .max_capacity(in_memory.sentry_index_capacity)
+            .time_to_live(in_memory.sentry_index_ttl)
             .build();
         Self {
             client,
             runtime,
             dif_cache,
             js_cache,
-            connect_timeout: config.connect_timeout,
-            streaming_timeout: config.streaming_timeout,
+            timeouts,
         }
     }
 
@@ -396,14 +400,7 @@ impl SentryDownloader {
         }
         let source = RemoteFile::from(file_source);
 
-        super::download_reqwest(
-            &source,
-            request,
-            self.connect_timeout,
-            self.streaming_timeout,
-            destination,
-        )
-        .await
+        super::download_reqwest(&source, request, &self.timeouts, destination).await
     }
 }
 

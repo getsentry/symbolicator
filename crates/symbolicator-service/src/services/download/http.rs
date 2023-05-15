@@ -1,13 +1,13 @@
 //! Support to download from HTTP sources.
 
 use std::path::Path;
-use std::time::Duration;
 
 use reqwest::{header, Client};
 
 use symbolicator_sources::{HttpRemoteFile, RemoteFile};
 
 use crate::caching::{CacheEntry, CacheError};
+use crate::utils::http::DownloadTimeouts;
 
 use super::USER_AGENT;
 
@@ -15,17 +15,12 @@ use super::USER_AGENT;
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: DownloadTimeouts,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client, connect_timeout: Duration, streaming_timeout: Duration) -> Self {
-        Self {
-            client,
-            connect_timeout,
-            streaming_timeout,
-        }
+    pub fn new(client: Client, timeouts: DownloadTimeouts) -> Self {
+        Self { client, timeouts }
     }
 
     /// Downloads a source hosted on an HTTP server.
@@ -53,14 +48,7 @@ impl HttpDownloader {
         let request = builder.header(header::USER_AGENT, USER_AGENT);
 
         let source = RemoteFile::from(file_source);
-        super::download_reqwest(
-            &source,
-            request,
-            self.connect_timeout,
-            self.streaming_timeout,
-            destination,
-        )
-        .await
+        super::download_reqwest(&source, request, &self.timeouts, destination).await
     }
 }
 
@@ -87,11 +75,7 @@ mod tests {
         let loc = SourceLocation::new("hello.txt");
         let file_source = HttpRemoteFile::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(
-            Client::new(),
-            Duration::from_secs(30),
-            Duration::from_secs(30),
-        );
+        let downloader = HttpDownloader::new(Client::new(), Default::default());
         let download_status = downloader.download_source(file_source, dest).await;
 
         assert!(download_status.is_ok());
@@ -115,11 +99,7 @@ mod tests {
         let loc = SourceLocation::new("i-do-not-exist");
         let file_source = HttpRemoteFile::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(
-            Client::new(),
-            Duration::from_secs(30),
-            Duration::from_secs(30),
-        );
+        let downloader = HttpDownloader::new(Client::new(), Default::default());
         let download_status = downloader.download_source(file_source, dest).await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));

@@ -7,6 +7,7 @@
 - Add single-file ZipArchive support to `maybe_decompress_file` ([#1139](https://github.com/getsentry/symbolicator/pull/1139))
 - Make source-context application optional. ([#1173](https://github.com/getsentry/symbolicator/pull/1173))
 - `symbolicli` now supports JS symbolication. ([#1186](https://github.com/getsentry/symbolicator/pull/1186))
+- Tighten up download related timeouts and introduce new `head_timeout`. ([#1190](https://github.com/getsentry/symbolicator/pull/1190))
 
 ### Fixes
 
