@@ -305,7 +305,7 @@ impl DownloadService {
             ));
         }
 
-        let timeout = self.timeouts.max_download_timeout;
+        let timeout = self.timeouts.max_download;
         let slf = self.clone();
         let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
@@ -498,7 +498,7 @@ async fn download_reqwest(
 ) -> CacheEntry {
     let request = builder.send();
 
-    let timeout = timeouts.head_timeout;
+    let timeout = timeouts.head;
     let request = tokio::time::timeout(timeout, request);
     let request = measure_download_time(source.source_metric_key(), request);
 
@@ -515,8 +515,7 @@ async fn download_reqwest(
             .and_then(|hv| hv.to_str().ok())
             .and_then(|s| s.parse::<i64>().ok());
 
-        let timeout =
-            content_length.map(|cl| content_length_timeout(cl, timeouts.streaming_timeout));
+        let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
         let stream = response.bytes_stream().map_err(CacheError::from);
 
         download_stream(source, stream, destination, timeout).await

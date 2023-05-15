@@ -44,22 +44,22 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
 #[derive(Copy, Clone, Debug)]
 pub struct DownloadTimeouts {
     /// The timeout for establishing a connection.
-    pub connect_timeout: Duration,
+    pub connect: Duration,
     /// The timeout for receiving the first headers.
-    pub head_timeout: Duration,
+    pub head: Duration,
     /// An adaptive timeout per 1GB of content.
-    pub streaming_timeout: Duration,
+    pub streaming: Duration,
     /// Global timeout for one download.
-    pub max_download_timeout: Duration,
+    pub max_download: Duration,
 }
 
 impl DownloadTimeouts {
     pub fn from_config(config: &Config) -> Self {
         Self {
-            connect_timeout: config.connect_timeout,
-            head_timeout: config.head_timeout,
-            streaming_timeout: config.streaming_timeout,
-            max_download_timeout: config.max_download_timeout,
+            connect: config.connect_timeout,
+            head: config.head_timeout,
+            streaming: config.streaming_timeout,
+            max_download: config.max_download_timeout,
         }
     }
 }
@@ -67,10 +67,10 @@ impl DownloadTimeouts {
 impl Default for DownloadTimeouts {
     fn default() -> Self {
         Self {
-            connect_timeout: Duration::from_millis(500),
-            head_timeout: Duration::from_secs(5),
-            streaming_timeout: Duration::from_secs(250),
-            max_download_timeout: Duration::from_secs(315),
+            connect: Duration::from_millis(500),
+            head: Duration::from_secs(5),
+            streaming: Duration::from_secs(250),
+            max_download: Duration::from_secs(315),
         }
     }
 }
@@ -86,8 +86,8 @@ pub fn create_client(
         builder = builder.ip_filter(is_external_ip);
     }
     builder = builder
-        .connect_timeout(timeouts.connect_timeout)
-        .timeout(timeouts.max_download_timeout)
+        .connect_timeout(timeouts.connect)
+        .timeout(timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30));
 
     builder.build().unwrap()

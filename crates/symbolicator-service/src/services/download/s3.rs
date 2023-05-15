@@ -119,7 +119,7 @@ impl S3Downloader {
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);
-        let timeout = self.timeouts.head_timeout;
+        let timeout = self.timeouts.head;
         let request = tokio::time::timeout(timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
@@ -183,7 +183,7 @@ impl S3Downloader {
 
         let timeout = Some(content_length_timeout(
             response.content_length(),
-            self.timeouts.streaming_timeout,
+            self.timeouts.streaming,
         ));
 
         let stream = if response.content_length == 0 {
