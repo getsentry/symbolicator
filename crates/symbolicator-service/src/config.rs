@@ -515,7 +515,7 @@ impl Default for Config {
             connect_to_reserved_ips: false,
             // Allow a 4MB/s connection to download 2GB without timing out
             max_download_timeout: Duration::from_secs(315),
-            connect_timeout: Duration::from_millis(500),
+            connect_timeout: Duration::from_secs(1),
             head_timeout: Duration::from_secs(5),
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
