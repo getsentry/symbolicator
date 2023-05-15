@@ -53,23 +53,33 @@ fn make_js_request(
     }
 }
 
+fn sourcemap_server<L>(
+    fixtures_dir: &str,
+    lookup: L,
+) -> (symbolicator_test::Server, SentrySourceConfig)
+where
+    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + 'static,
+{
+    let fixtures_dir = symbolicator_test::fixture(format!("sourcemaps/{fixtures_dir}"));
+    symbolicator_test::sourcemap_server(fixtures_dir, lookup)
+}
+
 #[tokio::test]
 async fn test_sourcemap_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("01_sourcemap_expansion", |url, _query| {
-            json!([{
-                "type": "file",
-                "id": "1",
-                "url": format!("{url}/test.min.js"),
-                "abs_path": "~/test.min.js",
-            }, {
-                "type": "file",
-                "id": "2",
-                "url": format!("{url}/test.min.js.map"),
-                "abs_path": "~/test.min.js.map",
-            }])
-        });
+    let (_srv, source) = sourcemap_server("01_sourcemap_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/test.min.js"),
+            "abs_path": "~/test.min.js",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/test.min.js.map"),
+            "abs_path": "~/test.min.js.map",
+        }])
+    });
 
     let frames = r#"[{
         "abs_path": "http://example.com/index.html",
@@ -106,30 +116,29 @@ async fn test_sourcemap_expansion() {
 #[tokio::test]
 async fn test_sourcemap_source_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("02_sourcemap_source_expansion", |url, _query| {
-            json!([{
-                "type": "file",
-                "id": "1",
-                "url": format!("{url}/file.min.js"),
-                "abs_path": "~/file.min.js",
-            }, {
-                "type": "file",
-                "id": "2",
-                "url": format!("{url}/file.min.js.map"),
-                "abs_path": "~/file.min.js.map",
-            }, {
-                "type": "file",
-                "id": "3",
-                "url": format!("{url}/file1.js"),
-                "abs_path": "~/file1.js",
-            }, {
-                "type": "file",
-                "id": "4",
-                "url": format!("{url}/file2.js"),
-                "abs_path": "~/file2.js",
-            }])
-        });
+    let (_srv, source) = sourcemap_server("02_sourcemap_source_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/file.min.js"),
+            "abs_path": "~/file.min.js",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/file.min.js.map"),
+            "abs_path": "~/file.min.js.map",
+        }, {
+            "type": "file",
+            "id": "3",
+            "url": format!("{url}/file1.js"),
+            "abs_path": "~/file1.js",
+        }, {
+            "type": "file",
+            "id": "4",
+            "url": format!("{url}/file2.js"),
+            "abs_path": "~/file2.js",
+        }])
+    });
 
     let frames = r#"[{
         "function": "function: \"HTMLDocument.<anonymous>\"",
@@ -154,9 +163,8 @@ async fn test_sourcemap_source_expansion() {
 #[tokio::test]
 async fn test_sourcemap_embedded_source_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server(
-        "03_sourcemap_embedded_source_expansion",
-        |url, _query| {
+    let (_srv, source) =
+        sourcemap_server("03_sourcemap_embedded_source_expansion", |url, _query| {
             json!([{
                 "type": "file",
                 "id": "1",
@@ -168,8 +176,7 @@ async fn test_sourcemap_embedded_source_expansion() {
                 "url": format!("{url}/embedded.js.map"),
                 "abs_path": "~/embedded.js.map",
             }])
-        },
-    );
+        });
 
     let frames = r#"[{
         "function": "function: \"HTMLDocument.<anonymous>\"",
@@ -194,15 +201,14 @@ async fn test_sourcemap_embedded_source_expansion() {
 #[tokio::test]
 async fn test_source_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("04_source_expansion", |url, _query| {
-            json!([{
-                "type": "file",
-                "id": "1",
-                "url": format!("{url}/foo.js"),
-                "abs_path": "~/foo.js",
-            }])
-        });
+    let (_srv, source) = sourcemap_server("04_source_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/foo.js"),
+            "abs_path": "~/foo.js",
+        }])
+    });
 
     let frames = r#"[{
         "abs_path": "http://example.com/foo.js",
@@ -225,15 +231,14 @@ async fn test_source_expansion() {
 #[tokio::test]
 async fn test_inlined_sources() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("05_inlined_sources", |url, _query| {
-            json!([{
-                "type": "file",
-                "id": "1",
-                "url": format!("{url}/test.min.js"),
-                "abs_path": "~/test.min.js",
-            }])
-        });
+    let (_srv, source) = sourcemap_server("05_inlined_sources", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/test.min.js"),
+            "abs_path": "~/test.min.js",
+        }])
+    });
 
     let frames = r#"[{
         "abs_path": "http://example.com/test.min.js",
@@ -251,9 +256,8 @@ async fn test_inlined_sources() {
 #[tokio::test]
 async fn test_sourcemap_nofiles_source_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server(
-        "06_sourcemap_nofiles_source_expansion",
-        |url, _query| {
+    let (_srv, source) =
+        sourcemap_server("06_sourcemap_nofiles_source_expansion", |url, _query| {
             json!([{
                 "type": "file",
                 "id": "1",
@@ -265,8 +269,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
                 "url": format!("{url}/nofiles.js.map"),
                 "abs_path": "~/nofiles.js.map",
             }])
-        },
-    );
+        });
 
     let frames = r#"[{
         "abs_path": "app:///nofiles.js",
@@ -283,9 +286,8 @@ async fn test_sourcemap_nofiles_source_expansion() {
 #[tokio::test]
 async fn test_indexed_sourcemap_source_expansion() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server(
-        "07_indexed_sourcemap_source_expansion",
-        |url, _query| {
+    let (_srv, source) =
+        sourcemap_server("07_indexed_sourcemap_source_expansion", |url, _query| {
             json!([{
                 "type": "file",
                 "id": "1",
@@ -307,8 +309,7 @@ async fn test_indexed_sourcemap_source_expansion() {
                 "url": format!("{url}/file2.js"),
                 "abs_path": "~/file2.js",
             }])
-        },
-    );
+        });
 
     let frames = r#"[{
         "abs_path": "http://example.com/indexed.min.js",
@@ -331,7 +332,7 @@ async fn test_indexed_sourcemap_source_expansion() {
 #[tokio::test]
 async fn test_malformed_abs_path() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server("", |_url, _query| json!([]));
+    let (_srv, source) = sourcemap_server("", |_url, _query| json!([]));
 
     // Missing colon was removed on purpose.
     let frames = r#"[{
@@ -350,7 +351,7 @@ async fn test_malformed_abs_path() {
 #[tokio::test]
 async fn test_fetch_error() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (srv, source) = symbolicator_test::sourcemap_server("", |_url, _query| json!([]));
+    let (srv, source) = sourcemap_server("", |_url, _query| json!([]));
 
     let missing_asset_url_1 = srv.url("/assets/missing_foo.js");
     let missing_asset_url_2 = srv.url("/assets/missing_bar.js");
@@ -379,20 +380,19 @@ async fn test_fetch_error() {
 #[tokio::test]
 async fn test_invalid_location() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("08_sourcemap_invalid_location", |url, _query| {
-            json!([{
-                "type": "file",
-                "id": "1",
-                "url": format!("{url}/invalidlocation.js"),
-                "abs_path": "~/invalidlocation.js",
-            }, {
-                "type": "file",
-                "id": "2",
-                "url": format!("{url}/invalidlocation.js.map"),
-                "abs_path": "~/invalidlocation.js.map",
-            }])
-        });
+    let (_srv, source) = sourcemap_server("08_sourcemap_invalid_location", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/invalidlocation.js"),
+            "abs_path": "~/invalidlocation.js",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/invalidlocation.js.map"),
+            "abs_path": "~/invalidlocation.js.map",
+        }])
+    });
 
     let frames = r#"[{
         "abs_path": "http://example.com/invalidlocation.js",
@@ -411,7 +411,7 @@ async fn test_invalid_location() {
 #[tokio::test]
 async fn test_webpack() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server("09_webpack", |url, _query| {
+    let (_srv, source) = sourcemap_server("09_webpack", |url, _query| {
         json!([{
             "type": "file",
             "id": "1",
@@ -458,7 +458,7 @@ async fn test_webpack() {
 #[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server("e2e_node_debugid", |url, query| {
+    let (_srv, source) = sourcemap_server("e2e_node_debugid", |url, query| {
         assert_eq!(query, "debug_id=2f259f80-58b7-44cb-d7cd-de1505e7e718");
         json!([{
             "type": "bundle",
@@ -488,18 +488,17 @@ async fn e2e_node_debugid() {
 #[tokio::test]
 async fn e2e_source_no_header() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) =
-        symbolicator_test::sourcemap_server("e2e_source_no_header", |url, _query| {
-            // NOTE: this bundle was manually constructed and has a `"source"` file without a
-            // `Sourcemap` header, but with a `sourceMappingURL`.
-            // The test files are the same as in `01_sourcemap_expansion`, but with a different
-            // base url.
-            json!([{
-                "type": "bundle",
-                "id": "1",
-                "url": format!("{url}/bundle.zip"),
-            }])
-        });
+    let (_srv, source) = sourcemap_server("e2e_source_no_header", |url, _query| {
+        // NOTE: this bundle was manually constructed and has a `"source"` file without a
+        // `Sourcemap` header, but with a `sourceMappingURL`.
+        // The test files are the same as in `01_sourcemap_expansion`, but with a different
+        // base url.
+        json!([{
+            "type": "bundle",
+            "id": "1",
+            "url": format!("{url}/bundle.zip"),
+        }])
+    });
 
     let frames = r#"[{
         "abs_path": "app:///_next/server/pages/_error.js",
@@ -518,7 +517,7 @@ async fn e2e_source_no_header() {
 #[tokio::test]
 async fn e2e_react_native() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbolicator_test::sourcemap_server("e2e_react_native", |url, _query| {
+    let (_srv, source) = sourcemap_server("e2e_react_native", |url, _query| {
         json!([{
             "type": "file",
             "id": "1",
@@ -550,8 +549,7 @@ async fn e2e_react_native() {
 #[tokio::test]
 async fn e2e_multiple_smref_scraped() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (srv, source) =
-        symbolicator_test::sourcemap_server("e2e_multiple_smref_scraped", |_url, _query| json!([]));
+    let (srv, source) = sourcemap_server("e2e_multiple_smref_scraped", |_url, _query| json!([]));
 
     let url = srv.url("/files/");
     let frames = format!(

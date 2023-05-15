@@ -4548,6 +4548,7 @@ dependencies = [
  "serde_yaml",
  "structopt",
  "symbolicator-service",
+ "symbolicator-test",
  "tempfile",
  "tokio",
  "tracing-subscriber",
