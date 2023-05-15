@@ -1,22 +1,21 @@
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use humantime::parse_duration;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 use symbolicator_service::config::Config as SymbolicatorConfig;
 use symbolicator_service::services::download::SourceConfig;
 use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
+    StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces, SymbolicationActor,
 };
-use symbolicator_service::types::{
-    CompletedSymbolicationResponse, RawObjectInfo, RawStacktrace, Scope,
-};
+use symbolicator_service::types::{JsStacktrace, RawObjectInfo, RawStacktrace, Scope};
 use tokio::sync::Semaphore;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -36,11 +35,18 @@ struct Workload {
 enum Payload {
     Minidump(PathBuf),
     Event(PathBuf),
+    Js { source: PathBuf, event: PathBuf },
 }
 
 #[derive(Debug, Deserialize)]
 struct EventFile {
     stacktraces: Vec<RawStacktrace>,
+    modules: Vec<RawObjectInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JsEventFile {
+    stacktraces: Vec<JsStacktrace>,
     modules: Vec<RawObjectInfo>,
 }
 
@@ -51,10 +57,10 @@ struct MinidumpPayload {
     sources: Arc<[SourceConfig]>,
 }
 
-#[derive(Clone)]
 enum ParsedPayload {
     Minidump(MinidumpPayload),
     Event(SymbolicateStacktraces),
+    Js(symbolicator_test::Server, SymbolicateJsStacktraces),
 }
 
 /// Command line interface parser.
@@ -86,7 +92,8 @@ async fn main() -> Result<()> {
     let config_path = cli.config;
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
-    tracing_subscriber::fmt::init();
+    // TODO: we want to profile the effect of tracing without actually outputting stuff
+    // tracing_subscriber::fmt::init();
 
     // start symbolicator service
     let runtime = tokio::runtime::Handle::current();
@@ -103,35 +110,8 @@ async fn main() -> Result<()> {
         .map(|(i, workload)| {
             let scope = Scope::Scoped(i.to_string());
             let sources = service_config.sources.clone();
-            let parsed_payload = match workload.payload {
-                Payload::Minidump(path) => ParsedPayload::Minidump(MinidumpPayload {
-                    scope,
-                    sources,
-
-                    minidump_file: path,
-                }),
-                Payload::Event(path) => {
-                    let file = std::fs::File::open(path).unwrap();
-                    let reader = BufReader::new(file);
-                    let EventFile {
-                        stacktraces,
-                        modules,
-                    } = serde_json::from_reader(reader).unwrap();
-                    let modules = modules.into_iter().map(From::from).collect();
-
-                    ParsedPayload::Event(SymbolicateStacktraces {
-                        scope,
-                        signal: None,
-                        sources,
-                        origin: StacktraceOrigin::Symbolicate,
-                        apply_source_context: true,
-
-                        stacktraces,
-                        modules,
-                    })
-                }
-            };
-            (workload.concurrency, parsed_payload)
+            let payload = prepare_payload(scope, sources, workload.payload);
+            (workload.concurrency, Arc::new(payload))
         })
         .collect();
 
@@ -139,10 +119,11 @@ async fn main() -> Result<()> {
     {
         let start = Instant::now();
 
-        let futures = workloads.iter().cloned().map(|(_, workload)| {
+        let futures = workloads.iter().map(|(_, workload)| {
             let symbolication = Arc::clone(&symbolication);
+            let workload = Arc::clone(workload);
             tokio::spawn(async move {
-                process_payload(&symbolication, workload).await.unwrap();
+                process_payload(&symbolication, &workload).await;
             })
         });
 
@@ -159,6 +140,7 @@ async fn main() -> Result<()> {
         let duration = cli.duration;
         let deadline = tokio::time::Instant::from_std(start + duration);
         let symbolication = Arc::clone(&symbolication);
+        let workload = Arc::clone(&workload);
 
         let task = tokio::spawn(async move {
             let finished_tasks = Arc::new(AtomicUsize::new(0));
@@ -169,14 +151,17 @@ async fn main() -> Result<()> {
             tokio::pin!(sleep);
 
             loop {
+                if deadline.elapsed() > Duration::ZERO {
+                    break;
+                }
                 tokio::select! {
                     permit = semaphore.clone().acquire_owned() => {
-                        let workload = workload.clone();
+                        let workload = Arc::clone(&workload);
                         let symbolication = Arc::clone(&symbolication);
                         let finished_tasks = Arc::clone(&finished_tasks);
 
                         tokio::spawn(async move {
-                            process_payload(&symbolication, workload).await.unwrap();
+                            process_payload(&symbolication, &workload).await;
 
                             // TODO: maybe maintain a histogram?
                             finished_tasks.fetch_add(1, Ordering::Relaxed);
@@ -213,10 +198,80 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn process_payload(
-    symbolication: &SymbolicationActor,
-    workload: ParsedPayload,
-) -> Result<CompletedSymbolicationResponse> {
+fn prepare_payload(scope: Scope, sources: Arc<[SourceConfig]>, payload: Payload) -> ParsedPayload {
+    match payload {
+        Payload::Minidump(path) => ParsedPayload::Minidump(MinidumpPayload {
+            scope,
+            sources,
+
+            minidump_file: path,
+        }),
+        Payload::Event(path) => {
+            let EventFile {
+                stacktraces,
+                modules,
+            } = read_json(path);
+            let modules = modules.into_iter().map(From::from).collect();
+
+            ParsedPayload::Event(SymbolicateStacktraces {
+                scope,
+                signal: None,
+                sources,
+                origin: StacktraceOrigin::Symbolicate,
+                apply_source_context: true,
+
+                stacktraces,
+                modules,
+            })
+        }
+        Payload::Js { source, event } => {
+            let parent = source.parent().unwrap();
+            let source: serde_json::Value = read_json(&source);
+            let (srv, source) = symbolicator_test::sourcemap_server(parent, move |url, _query| {
+                let lookup = source
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|entry| {
+                        let mut entry = entry.clone();
+                        let map = entry.as_object_mut().unwrap();
+                        let url = map["url"].as_str().unwrap().replace("{url}", url);
+                        map["url"] = serde_json::Value::String(url);
+                        entry
+                    })
+                    .collect();
+                serde_json::Value::Array(lookup)
+            });
+
+            let JsEventFile {
+                stacktraces,
+                modules,
+            } = read_json(event);
+
+            ParsedPayload::Js(
+                srv,
+                SymbolicateJsStacktraces {
+                    scope,
+                    source: Arc::new(source),
+                    release: Some("some-release".into()),
+                    dist: None,
+                    stacktraces,
+                    modules,
+                    scraping: Default::default(),
+                    apply_source_context: true,
+                },
+            )
+        }
+    }
+}
+
+fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> T {
+    let file = std::fs::File::open(path).unwrap();
+    let reader = BufReader::new(file);
+    serde_json::from_reader(reader).unwrap()
+}
+
+async fn process_payload(symbolication: &SymbolicationActor, workload: &ParsedPayload) {
     match workload {
         ParsedPayload::Minidump(payload) => {
             let MinidumpPayload {
@@ -240,9 +295,15 @@ async fn process_payload(
                 .unwrap();
 
             symbolication
-                .process_minidump(scope, temp_path, sources)
+                .process_minidump(scope.clone(), temp_path, Arc::clone(sources))
                 .await
+                .unwrap();
         }
-        ParsedPayload::Event(payload) => symbolication.symbolicate(payload).await,
-    }
+        ParsedPayload::Event(payload) => {
+            symbolication.symbolicate(payload.clone()).await.unwrap();
+        }
+        ParsedPayload::Js(_srv, payload) => {
+            symbolication.symbolicate_js(payload.clone()).await.unwrap();
+        }
+    };
 }
