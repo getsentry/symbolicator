@@ -171,7 +171,7 @@ impl AllObjectCandidates {
         });
         match found_pos {
             Ok(index) => {
-                if let Some(mut candidate) = self.0.get_mut(index) {
+                if let Some(candidate) = self.0.get_mut(index) {
                     match candidate_status {
                         CandidateStatus::Debug => candidate.debug = info,
                         CandidateStatus::Unwind => candidate.unwind = info,
@@ -213,7 +213,7 @@ impl AllObjectCandidates {
                 .binary_search_by_key(&key, |candidate| (&candidate.source, &candidate.location));
             match found_pos {
                 Ok(index) => {
-                    if let Some(mut info) = self.0.get_mut(index) {
+                    if let Some(info) = self.0.get_mut(index) {
                         info.download = other_info.download.clone();
                         if other_info.unwind != ObjectUseInfo::None {
                             info.unwind = other_info.unwind.clone();
