@@ -151,6 +151,9 @@ async fn main() -> Result<()> {
             tokio::pin!(sleep);
 
             loop {
+                if deadline.elapsed() > Duration::ZERO {
+                    break;
+                }
                 tokio::select! {
                     permit = semaphore.clone().acquire_owned() => {
                         let workload = Arc::clone(&workload);
