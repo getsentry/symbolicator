@@ -549,11 +549,10 @@ impl CachedFile {
             None => None,
         };
 
-        // TODO(sourcemap): a `into_contents` would be nice, as we are creating a new copy right now
         let contents = descriptor
-            .contents()
+            .into_contents()
             .ok_or_else(|| CacheError::Malformed("descriptor should have `contents`".into()))?
-            .to_owned();
+            .into_owned();
         let contents = ByteViewString::from(contents);
 
         Ok(Self {
