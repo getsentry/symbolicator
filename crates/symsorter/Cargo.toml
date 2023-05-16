@@ -15,7 +15,7 @@ regex = "1.5.5"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
 structopt = "0.3.21"
-symbolic = { version = "12.1.4", features = ["debuginfo-serde"] }
+symbolic = { version = "12.1.5", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 # NOTE: zip:0.6 by default depends on a version of zstd which conflicts with our other dependencies
 zip = { version = "0.6.2", default-features = false, features = ["deflate", "bzip2"] }
