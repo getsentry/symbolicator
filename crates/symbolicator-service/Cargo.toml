@@ -43,7 +43,7 @@ serde_json = "1.0.81"
 serde_yaml = "0.9.14"
 sha2 = "0.10.6"
 sourcemap = "6.2.1"
-symbolic = { version = "12.1.4", features = ["cfi", "common-serde", "debuginfo", "demangle", "sourcemapcache", "symcache", "il2cpp", "ppdb"] }
+symbolic = { version = "12.1.5", features = ["cfi", "common-serde", "debuginfo", "demangle", "sourcemapcache", "symcache", "il2cpp", "ppdb"] }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
