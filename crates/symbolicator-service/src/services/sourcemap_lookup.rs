@@ -216,6 +216,9 @@ impl SourceMapLookup {
             fetched_artifacts: 0,
             queried_bundles: 0,
             scraped_files: 0,
+            found_via_bundle_debugid: 0,
+            found_via_bundle_url: 0,
+            found_via_scraping: 0,
         };
 
         Self {
@@ -605,6 +608,9 @@ struct ArtifactFetcher {
     fetched_artifacts: u64,
     queried_bundles: u64,
     scraped_files: u64,
+    found_via_bundle_url: i64,
+    found_via_bundle_debugid: i64,
+    found_via_scraping: i64,
 }
 
 impl ArtifactFetcher {
@@ -753,6 +759,7 @@ impl ArtifactFetcher {
         CachedFileEntry {
             uri,
             entry: scraped_file.map(|contents| {
+                self.found_via_scraping += 1;
                 tracing::trace!(?key, "Found file by scraping the web");
 
                 let sourcemap_url = discover_sourcemaps_location(&contents)
@@ -767,7 +774,7 @@ impl ArtifactFetcher {
         }
     }
 
-    fn try_get_file_from_bundles(&self, key: &FileKey) -> Option<CachedFileEntry> {
+    fn try_get_file_from_bundles(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
         if self.artifact_bundles.is_empty() {
             return None;
         }
@@ -779,6 +786,7 @@ impl ArtifactFetcher {
                 let Ok(bundle) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
+                    self.found_via_bundle_debugid += 1;
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
@@ -795,6 +803,7 @@ impl ArtifactFetcher {
                     let Ok(bundle) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
+                        self.found_via_bundle_url += 1;
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
                         return Some(CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
@@ -820,6 +829,8 @@ impl ArtifactFetcher {
                 .map(|artifact| (url, artifact))
         })?;
 
+        // NOTE: we have no separate `found_via_artifacts` metric, as we don't expect these to ever
+        // error, so one can use the `sum` of this metric:
         self.fetched_artifacts += 1;
 
         let mut artifact_contents = self
@@ -1051,6 +1062,9 @@ impl ArtifactFetcher {
         metric!(time_raw("js.queried_artifacts") = self.queried_artifacts);
         metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
         metric!(time_raw("js.scraped_files") = self.scraped_files);
+        metric!(counter("js.found_via_bundle_debugid") += self.found_via_bundle_debugid);
+        metric!(counter("js.found_via_bundle_url") += self.found_via_bundle_url);
+        metric!(counter("js.found_via_scraping") += self.found_via_scraping);
     }
 }
 
