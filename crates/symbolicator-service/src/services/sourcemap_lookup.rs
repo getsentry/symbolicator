@@ -49,7 +49,7 @@ use crate::caching::{
 };
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
-use crate::types::{JsStacktrace, Scope};
+use crate::types::{JsStacktrace, ResolvedWith, Scope};
 use crate::utils::http::is_valid_origin;
 
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
@@ -498,6 +498,7 @@ impl fmt::Display for CachedFileUri {
 pub struct CachedFileEntry<T = CachedFile> {
     pub uri: CachedFileUri,
     pub entry: CacheEntry<T>,
+    pub resolved_with: Option<ResolvedWith>,
 }
 
 impl<T> CachedFileEntry<T> {
@@ -506,6 +507,7 @@ impl<T> CachedFileEntry<T> {
         Self {
             uri: CachedFileUri::IndividualFile(uri),
             entry: Err(CacheError::NotFound),
+            resolved_with: None,
         }
     }
 }
@@ -579,6 +581,7 @@ impl CachedFile {
 struct IndividualArtifact {
     remote_file: RemoteFile,
     headers: ArtifactHeaders,
+    resolved_with: ResolvedWith,
 }
 
 struct ArtifactFetcher {
@@ -598,7 +601,7 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<ArtifactBundle>>,
+    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
@@ -651,6 +654,7 @@ impl ArtifactFetcher {
                     contents: data.clone(),
                     sourcemap_url: None,
                 }),
+                resolved_with: minified_source.resolved_with,
             },
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
@@ -721,6 +725,7 @@ impl ArtifactFetcher {
                 return CachedFileEntry {
                     uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
                     entry: Err(CacheError::DownloadError(err.to_string())),
+                    resolved_with: None,
                 }
             }
         };
@@ -729,6 +734,7 @@ impl ArtifactFetcher {
             return CachedFileEntry {
                 uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
                 entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
+                resolved_with: None,
             };
         }
 
@@ -738,6 +744,7 @@ impl ArtifactFetcher {
                 entry: Err(CacheError::DownloadError(format!(
                     "{abs_path} is not an allowed download origin"
                 ))),
+                resolved_with: None,
             };
         }
 
@@ -771,6 +778,7 @@ impl ArtifactFetcher {
                     sourcemap_url,
                 }
             }),
+            resolved_with: Some(ResolvedWith::Scraped),
         }
     }
 
@@ -783,7 +791,7 @@ impl ArtifactFetcher {
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
             for (bundle_uri, bundle) in &self.artifact_bundles {
-                let Ok(bundle) = bundle else { continue; };
+                let Ok((bundle, resolved_with)) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     self.found_via_bundle_debugid += 1;
@@ -791,6 +799,7 @@ impl ArtifactFetcher {
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
+                        resolved_with: Some(*resolved_with),
                     });
                 }
             }
@@ -800,7 +809,7 @@ impl ArtifactFetcher {
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
                 for (bundle_uri, bundle) in &self.artifact_bundles {
-                    let Ok(bundle) = bundle else { continue; };
+                    let Ok((bundle, resolved_with)) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         self.found_via_bundle_url += 1;
@@ -808,6 +817,7 @@ impl ArtifactFetcher {
                         return Some(CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                             entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
+                            resolved_with: Some(*resolved_with),
                         });
                     }
                 }
@@ -859,6 +869,7 @@ impl ArtifactFetcher {
                     sourcemap_url: sourcemap_url.map(Arc::new),
                 }
             }),
+            resolved_with: Some(artifact.resolved_with),
         })
     }
 
@@ -927,6 +938,7 @@ impl ArtifactFetcher {
                     remote_file,
                     abs_path,
                     headers,
+                    resolved_with,
                 } => {
                     self.queried_artifacts += 1;
                     self.individual_artifacts
@@ -943,10 +955,14 @@ impl ArtifactFetcher {
                             IndividualArtifact {
                                 remote_file,
                                 headers,
+                                resolved_with,
                             }
                         });
                 }
-                JsLookupResult::ArtifactBundle { remote_file } => {
+                JsLookupResult::ArtifactBundle {
+                    remote_file,
+                    resolved_with,
+                } => {
                     self.queried_bundles += 1;
                     let uri = remote_file.uri();
                     // clippy, you are wrong, as this would result in borrowing errors,
@@ -956,7 +972,8 @@ impl ArtifactFetcher {
                         // NOTE: This could potentially be done concurrently, but lets not
                         // prematurely optimize for now
                         let artifact_bundle = self.fetch_artifact_bundle(remote_file).await;
-                        self.artifact_bundles.insert(uri, artifact_bundle);
+                        self.artifact_bundles
+                            .insert(uri, artifact_bundle.map(|bundle| (bundle, resolved_with)));
 
                         did_get_new_data = true;
                     }
@@ -1052,6 +1069,7 @@ impl ArtifactFetcher {
         CachedFileEntry {
             uri: sourcemap.uri,
             entry: smcache,
+            resolved_with: sourcemap.resolved_with,
         }
     }
 
