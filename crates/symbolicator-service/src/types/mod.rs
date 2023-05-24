@@ -698,6 +698,16 @@ pub struct JsFrame {
 pub struct JsFrameData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sourcemap: Option<String>,
+    pub resolved_with: ResolvedWith,
+}
+
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResolvedWith {
+    DebugId,
+    #[default]
+    Release,
+    ReleaseOld,
 }
 
 impl JsFrameData {
