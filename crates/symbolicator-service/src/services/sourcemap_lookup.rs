@@ -581,7 +581,7 @@ impl CachedFile {
 struct IndividualArtifact {
     remote_file: RemoteFile,
     headers: ArtifactHeaders,
-    resolved_with: ResolvedWith,
+    resolved_with: Option<ResolvedWith>,
 }
 
 struct ArtifactFetcher {
@@ -601,7 +601,7 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>,
+    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
@@ -799,7 +799,7 @@ impl ArtifactFetcher {
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: Some(*resolved_with),
+                        resolved_with: *resolved_with,
                     });
                 }
             }
@@ -817,7 +817,7 @@ impl ArtifactFetcher {
                         return Some(CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                             entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
-                            resolved_with: Some(*resolved_with),
+                            resolved_with: *resolved_with,
                         });
                     }
                 }
@@ -869,7 +869,7 @@ impl ArtifactFetcher {
                     sourcemap_url: sourcemap_url.map(Arc::new),
                 }
             }),
-            resolved_with: Some(artifact.resolved_with),
+            resolved_with: artifact.resolved_with,
         })
     }
 
