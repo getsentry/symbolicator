@@ -10,7 +10,7 @@ https = []
 
 [dependencies]
 anyhow = "1.0.57"
-apple-crash-report-parser = "0.5.0"
+apple-crash-report-parser = "0.5.1"
 async-trait = "0.1.53"
 aws-config = "0.52.0"
 aws-sdk-s3 = "0.22.0"
@@ -18,7 +18,7 @@ aws-smithy-http = "0.52.0"
 aws-types = { version = "0.52.0", features = ["hardcoded-credentials"] }
 backtrace = "0.3.65"
 cadence = "0.29.0"
-chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"]  }
+chrono = { version = "0.4.19", features = ["serde"] }
 data-url = "0.2.0"
 filetime = "0.2.16"
 flate2 = "1.0.23"
