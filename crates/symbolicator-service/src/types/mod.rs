@@ -579,7 +579,7 @@ pub struct CompletedSymbolicationResponse {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum JsModuleErrorKind {
-    InvalidLocation { line: Option<u32>, col: Option<u32> },
+    InvalidLocation { line: u32, col: Option<u32> },
     InvalidAbsPath,
     NoColumn,
     MissingSourceContent { source: String, sourcemap: String },
@@ -596,10 +596,8 @@ impl fmt::Display for JsModuleErrorKind {
             JsModuleErrorKind::InvalidLocation { line, col } => {
                 write!(f, "Invalid source location")?;
                 match (line, col) {
-                    (None, None) => (),
-                    (None, Some(c)) => write!(f, ": col:{c}")?,
-                    (Some(l), None) => write!(f, ": line:{l}")?,
-                    (Some(l), Some(c)) => write!(f, ": line:{l}, col:{c}")?,
+                    (l, None) => write!(f, ": line:{l}")?,
+                    (l, Some(c)) => write!(f, ": line:{l}, col:{c}")?,
                 }
                 Ok(())
             }
@@ -669,8 +667,7 @@ pub struct JsFrame {
 
     pub abs_path: String,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lineno: Option<u32>,
+    pub lineno: u32,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub colno: Option<u32>,

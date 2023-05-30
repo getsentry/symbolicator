@@ -139,18 +139,19 @@ async fn symbolicate_js_frame(
     should_apply_source_context: bool,
     missing_sourcescontent: &mut u64,
 ) -> Result<JsFrame, JsModuleErrorKind> {
-    // we check for a valid line/col first, as we want to avoid resolving / scraping the minified
+    // we check for a valid line (i.e. >= 1) first, as we want to avoid resolving / scraping the minified
     // file in that case. we frequently saw 0 line/col values in combination with non-js files,
     // and we want to avoid scraping a bunch of html files in that case.
-    let (line, col) = match raw_frame.lineno {
-        Some(line) if line > 0 => (line, raw_frame.colno.unwrap_or_default()),
-        _ => {
-            return Err(JsModuleErrorKind::InvalidLocation {
-                line: raw_frame.lineno,
-                col: raw_frame.colno,
-            })
-        }
+    let line = if raw_frame.lineno > 0 {
+        raw_frame.lineno
+    } else {
+        return Err(JsModuleErrorKind::InvalidLocation {
+            line: raw_frame.lineno,
+            col: raw_frame.colno,
+        });
     };
+
+    let col = raw_frame.colno.unwrap_or_default();
 
     let module = lookup.get_module(&raw_frame.abs_path).await;
 
@@ -208,7 +209,7 @@ async fn symbolicate_js_frame(
         .get()
         .lookup(sp)
         .ok_or(JsModuleErrorKind::InvalidLocation {
-            line: Some(line),
+            line,
             col: Some(col),
         })?;
 
@@ -261,7 +262,7 @@ async fn symbolicate_js_frame(
         frame.filename = Some(filename);
     }
 
-    frame.lineno = Some(token.line().saturating_add(1));
+    frame.lineno = token.line().saturating_add(1);
     frame.colno = Some(token.column().saturating_add(1));
 
     if !should_apply_source_context {
@@ -315,13 +316,7 @@ async fn symbolicate_js_frame(
 }
 
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
-    let Some(lineno) = frame.lineno else {
-        return Err(JsModuleErrorKind::InvalidLocation {
-            line: frame.lineno,
-            col: frame.colno,
-        })
-    };
-    let lineno = lineno as usize;
+    let lineno = frame.lineno as usize;
     let column = frame.colno.map(|col| col as usize);
 
     if let Some((pre_context, context_line, post_context)) =

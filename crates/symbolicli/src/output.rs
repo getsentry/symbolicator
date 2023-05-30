@@ -234,8 +234,7 @@ fn print_compact_js(mut response: CompletedJsSymbolicationResponse) {
         let filename = filename.unwrap_or_default();
         row.add_cell(cell!(filename));
 
-        let line = lineno.map(|line| line.to_string()).unwrap_or_default();
-        row.add_cell(cell!(line));
+        row.add_cell(cell!(lineno));
 
         let col = colno.map(|col| col.to_string()).unwrap_or_default();
         row.add_cell(cell!(col));
@@ -285,8 +284,10 @@ fn print_pretty_js(mut response: CompletedJsSymbolicationResponse) {
             table.add_row(row![r->"  File:", name]);
         }
 
-        if let Some((line, col)) = lineno.zip(*colno) {
-            table.add_row(row![r->"  Line/Column:", format!("{line}:{col}")]);
+        if let Some(col) = *colno {
+            table.add_row(row![r->"  Line/Column:", format!("{lineno}:{col}")]);
+        } else {
+            table.add_row(row![r->"  Line:", format!("{lineno}")]);
         }
 
         table.add_empty_row();
