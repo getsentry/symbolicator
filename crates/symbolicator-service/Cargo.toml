@@ -18,7 +18,7 @@ aws-smithy-http = "0.52.0"
 aws-types = { version = "0.52.0", features = ["hardcoded-credentials"] }
 backtrace = "0.3.65"
 cadence = "0.29.0"
-chrono = { version = "0.4.19", features = ["serde"] }
+chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"]  }
 data-url = "0.2.0"
 filetime = "0.2.16"
 flate2 = "1.0.23"
