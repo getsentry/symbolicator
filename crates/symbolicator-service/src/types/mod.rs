@@ -708,7 +708,7 @@ pub enum ResolvedWith {
     DebugId,
     Release,
     ReleaseOld,
-    Scraped,
+    Scraping,
 }
 
 impl JsFrameData {

@@ -778,7 +778,7 @@ impl ArtifactFetcher {
                     sourcemap_url,
                 }
             }),
-            resolved_with: Some(ResolvedWith::Scraped),
+            resolved_with: Some(ResolvedWith::Scraping),
         }
     }
 
