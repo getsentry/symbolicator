@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 23.5.2
 
 - JsFrame::lineno is no longer optional ([#1203](https://github.com/getsentry/symbolicator/pull/1203))
 
