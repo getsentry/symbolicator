@@ -791,7 +791,7 @@ impl ArtifactFetcher {
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
             for (bundle_uri, bundle) in &self.artifact_bundles {
-                let Ok((bundle, resolved_with)) = bundle else { continue; };
+                let Ok((bundle, _)) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     self.found_via_bundle_debugid += 1;
@@ -799,7 +799,7 @@ impl ArtifactFetcher {
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: *resolved_with,
+                        resolved_with: Some(ResolvedWith::DebugId),
                     });
                 }
             }
