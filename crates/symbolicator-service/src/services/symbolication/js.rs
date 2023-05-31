@@ -198,7 +198,7 @@ async fn symbolicate_js_frame(
             Err(_) => return Err(JsModuleErrorKind::MissingSourcemap),
         },
         // In case it's just a source file, with no sourcemap reference or any debug id, we bail.
-        None => return Ok(raw_frame.clone()),
+        None => return Err(JsModuleErrorKind::MissingSourcemap),
     };
 
     let mut frame = raw_frame.clone();
