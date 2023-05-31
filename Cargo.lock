@@ -140,9 +140,9 @@ dependencies = [
 
 [[package]]
 name = "apple-crash-report-parser"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77a93af7a900a542a9c20da77e19dc81f374e8f42a2969d833c8766692d5f291"
+checksum = "8fc62d1d734597ddedd2ba0673780ee0a57b4de9a6e05f8731f2361d90b9c3e3"
 dependencies = [
  "chrono",
  "lazy_static",
