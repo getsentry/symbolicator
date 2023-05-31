@@ -73,11 +73,13 @@ async fn test_sourcemap_expansion() {
             "id": "1",
             "url": format!("{url}/test.min.js"),
             "abs_path": "~/test.min.js",
+            "resolved_with": "release",
         }, {
             "type": "file",
             "id": "2",
             "url": format!("{url}/test.min.js.map"),
             "abs_path": "~/test.min.js.map",
+            "resolved_with": "release",
         }])
     });
 
@@ -122,21 +124,25 @@ async fn test_sourcemap_source_expansion() {
             "id": "1",
             "url": format!("{url}/file.min.js"),
             "abs_path": "~/file.min.js",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "2",
             "url": format!("{url}/file.min.js.map"),
             "abs_path": "~/file.min.js.map",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "3",
             "url": format!("{url}/file1.js"),
             "abs_path": "~/file1.js",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "4",
             "url": format!("{url}/file2.js"),
             "abs_path": "~/file2.js",
+            "resolved_with": "release-old",
         }])
     });
 
@@ -170,11 +176,13 @@ async fn test_sourcemap_embedded_source_expansion() {
                 "id": "1",
                 "url": format!("{url}/embedded.js"),
                 "abs_path": "~/embedded.js",
+                "resolved_with": "release",
             }, {
                 "type": "file",
                 "id": "2",
                 "url": format!("{url}/embedded.js.map"),
                 "abs_path": "~/embedded.js.map",
+                "resolved_with": "release",
             }])
         });
 
@@ -207,6 +215,7 @@ async fn test_source_expansion() {
             "id": "1",
             "url": format!("{url}/foo.js"),
             "abs_path": "~/foo.js",
+            "resolved_with": "release-old",
         }])
     });
 
@@ -237,6 +246,7 @@ async fn test_inlined_sources() {
             "id": "1",
             "url": format!("{url}/test.min.js"),
             "abs_path": "~/test.min.js",
+            "resolved_with": "release",
         }])
     });
 
@@ -263,11 +273,13 @@ async fn test_sourcemap_nofiles_source_expansion() {
                 "id": "1",
                 "url": format!("{url}/nofiles.js"),
                 "abs_path": "~/nofiles.js",
+                "resolved_with": "release",
             }, {
                 "type": "file",
                 "id": "2",
                 "url": format!("{url}/nofiles.js.map"),
                 "abs_path": "~/nofiles.js.map",
+                "resolved_with": "release",
             }])
         });
 
@@ -293,21 +305,25 @@ async fn test_indexed_sourcemap_source_expansion() {
                 "id": "1",
                 "url": format!("{url}/indexed.min.js"),
                 "abs_path": "~/indexed.min.js",
+                "resolved_with": "release-old",
             }, {
                 "type": "file",
                 "id": "2",
                 "url": format!("{url}/indexed.min.js.map"),
                 "abs_path": "~/indexed.min.js.map",
+                "resolved_with": "release-old",
             }, {
                 "type": "file",
                 "id": "3",
                 "url": format!("{url}/file1.js"),
                 "abs_path": "~/file1.js",
+                "resolved_with": "release-old",
             }, {
                 "type": "file",
                 "id": "4",
                 "url": format!("{url}/file2.js"),
                 "abs_path": "~/file2.js",
+                "resolved_with": "release-old",
             }])
         });
 
@@ -386,11 +402,13 @@ async fn test_invalid_location() {
             "id": "1",
             "url": format!("{url}/invalidlocation.js"),
             "abs_path": "~/invalidlocation.js",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "2",
             "url": format!("{url}/invalidlocation.js.map"),
             "abs_path": "~/invalidlocation.js.map",
+            "resolved_with": "release-old",
         }])
     });
 
@@ -417,21 +435,25 @@ async fn test_webpack() {
             "id": "1",
             "url": format!("{url}/test1.min.js"),
             "abs_path": "~/test1.min.js",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "2",
             "url": format!("{url}/test1.min.js.map"),
             "abs_path": "~/test1.min.js.map",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "3",
             "url": format!("{url}/test2.min.js"),
             "abs_path": "~/test2.min.js",
+            "resolved_with": "release-old",
         }, {
             "type": "file",
             "id": "4",
             "url": format!("{url}/test2.min.js.map"),
             "abs_path": "~/test2.min.js.map",
+            "resolved_with": "release-old",
         }])
     });
 
@@ -464,6 +486,7 @@ async fn e2e_node_debugid() {
             "type": "bundle",
             "id": "1",
             "url": format!("{url}/bundle.zip"),
+            "resolved_with": "debug-id",
         }])
     });
 
@@ -497,6 +520,7 @@ async fn e2e_source_no_header() {
             "type": "bundle",
             "id": "1",
             "url": format!("{url}/bundle.zip"),
+            "resolved_with": "release",
         }])
     });
 
@@ -523,13 +547,15 @@ async fn e2e_react_native() {
             "id": "1",
             "url": format!("{url}/index.android.bundle"),
             "abs_path": "~/index.android.bundle",
-            "headers": { "SoUrCemAp": "index.android.bundle.map" }
+            "headers": { "SoUrCemAp": "index.android.bundle.map" },
+            "resolved_with": "release",
         }, {
             "type": "file",
             "id": "2",
             "url": format!("{url}/index.android.bundle.map"),
             "abs_path": "~/index.android.bundle.map",
-            "headers": {}
+            "headers": {},
+            "resolved_with": "release",
         }])
     });
 

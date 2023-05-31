@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 500
+assertion_line: 572
 expression: response.unwrap()
 ---
 stacktraces:
@@ -19,6 +19,7 @@ stacktraces:
         in_app: true
         data:
           sourcemap: "app:///index.android.bundle.map"
+          resolved_with: release
 raw_stacktraces:
   - frames:
       - abs_path: "app:///index.android.bundle"

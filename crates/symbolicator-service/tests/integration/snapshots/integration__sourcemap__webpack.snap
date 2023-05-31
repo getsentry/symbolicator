@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 461
+assertion_line: 477
 expression: response.unwrap()
 ---
 stacktraces:
@@ -26,6 +26,7 @@ stacktraces:
         in_app: true
         data:
           sourcemap: "http://example.com/test1.min.js.map"
+          resolved_with: release-old
       - function: test
         filename: "./src/node_modules/components/CampaignContent.tsx"
         module: src/node_modules/components/CampaignContent
@@ -47,6 +48,7 @@ stacktraces:
         in_app: false
         data:
           sourcemap: "http://example.com/test2.min.js.map"
+          resolved_with: release-old
 raw_stacktraces:
   - frames:
       - function: i
@@ -65,3 +67,4 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test2.min.js.map"
+

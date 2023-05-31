@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 438
+assertion_line: 508
 expression: response.unwrap()
 ---
 stacktraces:
@@ -19,6 +19,7 @@ stacktraces:
         context_line: "Sentry.captureException(new Error(\"Errör\"));"
         data:
           sourcemap: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js.map
+          resolved_with: debug-id
 raw_stacktraces:
   - frames:
       - function: Object.<anonymous>

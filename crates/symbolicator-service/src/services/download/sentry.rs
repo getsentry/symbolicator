@@ -21,6 +21,7 @@ use symbolicator_sources::{
 use super::{FileType, USER_AGENT};
 use crate::caching::{CacheEntry, CacheError};
 use crate::config::InMemoryCacheConfig;
+use crate::types::ResolvedWith;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::http::DownloadTimeouts;
 
@@ -81,6 +82,7 @@ enum RawJsLookupResult {
     Bundle {
         id: SentryFileId,
         url: Url,
+        resolved_with: Option<ResolvedWith>,
     },
     File {
         id: SentryFileId,
@@ -88,6 +90,7 @@ enum RawJsLookupResult {
         abs_path: String,
         #[serde(default)]
         headers: ArtifactHeaders,
+        resolved_with: Option<ResolvedWith>,
     },
 }
 
@@ -100,6 +103,7 @@ pub enum JsLookupResult {
     ArtifactBundle {
         /// The [`RemoteFile`] to download this bundle from.
         remote_file: RemoteFile,
+        resolved_with: Option<ResolvedWith>,
     },
     /// This is an individual artifact file.
     IndividualArtifact {
@@ -109,6 +113,7 @@ pub enum JsLookupResult {
         abs_path: String,
         /// Arbitrary headers of this file, such as a `Sourcemap` reference.
         headers: ArtifactHeaders,
+        resolved_with: Option<ResolvedWith>,
     },
 }
 
@@ -365,18 +370,25 @@ impl SentryDownloader {
         let results = entries
             .iter()
             .map(|raw| match raw {
-                RawJsLookupResult::Bundle { id, url } => JsLookupResult::ArtifactBundle {
+                RawJsLookupResult::Bundle {
+                    id,
+                    url,
+                    resolved_with,
+                } => JsLookupResult::ArtifactBundle {
                     remote_file: make_remote_file(&source, id, url),
+                    resolved_with: *resolved_with,
                 },
                 RawJsLookupResult::File {
                     id,
                     url,
                     abs_path,
                     headers,
+                    resolved_with,
                 } => JsLookupResult::IndividualArtifact {
                     remote_file: make_remote_file(&source, id, url),
                     abs_path: abs_path.clone(),
                     headers: headers.clone(),
+                    resolved_with: *resolved_with,
                 },
             })
             .collect();
