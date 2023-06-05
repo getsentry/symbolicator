@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump Native SDK from v0.6.2 to v0.6.3 ([#1207](https://github.com/getsentry/symbolicator/pull/1207))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#063)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.2...0.6.3)
+
 ## 23.5.2
 
 - JsFrame::lineno is no longer optional ([#1203](https://github.com/getsentry/symbolicator/pull/1203))
