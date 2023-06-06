@@ -25,5 +25,6 @@ nav:
     - api/minidump.md
     - api/symbolication.md
     - api/applecrashreport.md
+    - api/sourcemaps.md
     - api/response.md
     - api/proxy.md

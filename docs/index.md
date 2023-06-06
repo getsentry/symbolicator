@@ -8,8 +8,8 @@ title: Introduction
 </p>
 
 Symbolicator is a standalone service that resolves function names, file location
-and source context in native stack traces. It can process Minidumps and Apple
-Crash Reports. Additionally, Symbolicator can act as a proxy to symbol servers
+and source context in Native and JavaScript stack traces. It can process Minidumps, Apple
+Crash Reports and Source Maps. Additionally, Symbolicator can act as a proxy to symbol servers
 supporting multiple formats, such as Microsoft's symbol server or Breakpad
 symbol repositories.
 

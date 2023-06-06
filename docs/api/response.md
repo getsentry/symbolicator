@@ -4,7 +4,9 @@ title: Symbolication Response
 
 # Symbolication Response
 
-The response to a symbolication request is a JSON object which contains
+## Native Response
+
+The response to a native symbolication request is a JSON object which contains
 different data depending on the status of the symbolication job:
 
 - `pending`: Symbolication has not finished yet; try again later. This is only
@@ -14,7 +16,7 @@ different data depending on the status of the symbolication job:
 - `error`: Something went wrong during symbolication, and details are in the
   payload.
 
-## Success Response
+### Success Response
 
 Symbol server responds with _200 OK_ and the response payload listed below if
 symbolication succeeds within a configured timeframe (around 20 seconds):
@@ -73,7 +75,7 @@ occurred during symbolication, such as missing symbol files or unresolvable
 addresses within symbols are reported as values for `status` in both modules and
 frames.
 
-## Note on Addresses
+### Note on Addresses
 
 Addresses (`instruction_addr` and `sym_addr`) can come in two versions. They
 can be absolute or relative. Symbolicator will always try to make addresses
@@ -82,7 +84,7 @@ not have absolute addresses in which case the addresses stay relative. This is
 identified by the `addr_mode` property. When it's set to `"abs"` it means
 the addresses are absolute, when `"rel:X"` it's relative to module index `X`.
 
-## Backoff Response
+### Backoff Response
 
 If symbolication takes longer than the threshold `timeout`, the server instead
 responds with a backoff response. It will then continue to fetch symbols and
@@ -105,7 +107,7 @@ guarantee. The request may be repeated at any time:
 
     GET /requests/deadbeef?timeout=123
 
-## Invalid Request Response
+### Invalid Request Response
 
 If the user provided a non-existent request ID, the server responds with _404
 Not Found_.
@@ -115,3 +117,71 @@ deploy. Clients must expect that 404 is returned even for valid request IDs and
 then re-schedule symbolication
 
 On a related note, state on the server is generally ephemeral.
+
+
+## JavaScript Response
+
+The response to a JavaScript symbolication request is a JSON object which contains
+a list of original raw stack traces, corresponding list of processed stack traces
+and an optional list of errors that happened during symbolication.
+
+```javascript
+{
+  "stacktraces": [
+    {
+      "frames": [
+        {
+          "function": "onFailure",
+          "filename": "test.js",
+          "module": "files/test",
+          "abs_path": "http://localhost:<port>/files/test.js",
+          "lineno": 5,
+          "colno": 11,
+          "pre_context": [
+            "var makeAFailure = (function() {",
+            "  function onSuccess(data) {}",
+            "",
+            "  function onFailure(data) {"
+          ],
+          "context_line": "    throw new Error('failed!');",
+          "post_context": [
+            "  }",
+            "",
+            "  function invoke(data) {",
+            "    var cb = null;",
+            "    if (data.failed) {"
+          ],
+          "data": {
+            "sourcemap": "http://localhost:<port>/files/app.js.map"
+          }
+        }
+      ]
+    }
+  ],
+  "raw_stacktraces": [
+    {
+      "frames": [
+        {
+          "abs_path": "http://localhost:<port>/files/app.js",
+          "lineno": 1,
+          "colno": 64,
+          "context_line": "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}",
+          "post_context": [
+            "",
+            "",
+            "//# sourceMappingURL=a.different.map",
+            "",
+            "//@ sourceMappingURL=another.different.map"
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "abs_path": "http://localhost:<port>/assets/missing_bar.js",
+      "type": "missing_source"
+    }
+  ]
+}
+```

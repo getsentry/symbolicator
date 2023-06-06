@@ -5,13 +5,14 @@ title: Overview
 # API
 
 Symbolicator exposes a HTTP API to allow symbolication of raw native stack
-traces and minidumps. All information necessary for symbolication needs to be
-part of the request, such as external buckets and their auth tokens or full
-stack traces. There are the following endpoints:
+traces, minidumps, and JavaScript stack traces. All information necessary for symbolication
+needs to be part of the request, such as external buckets and their auth tokens
+or full stack traces. There are the following endpoints:
 
 - `POST /symbolicate`: Symbolicate raw native stacktrace
 - `POST /minidump`: Symbolicate a minidump and extract information
 - `POST /applecrashreport`: Symbolicate an Apple Crash Report
+- `POST /symbolicate-js`: Symbolicate JavaScript stacktrace
 - `GET /requests/:id`: Status update on running symbolication jobs
 - `GET /healthcheck`: System status and health monitoring
 
