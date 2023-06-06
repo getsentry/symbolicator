@@ -7,10 +7,10 @@
     clippy::all
 )]
 
+use clap::Parser;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
-use structopt::StructOpt;
 use uuid::Uuid;
 use wasmbin::sections::{CustomSection, Section};
 use wasmbin::Module;
@@ -25,34 +25,34 @@ use wasmbin::Module;
 /// calculate offsets.
 ///
 /// This prints the embedded build_id in hexadecimal format to stdout.
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub struct Cli {
     /// path to the wasm file
     input: PathBuf,
     /// path to the output wasm file.
     ///
     /// If not provided the same file is modified in place.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     out: Option<PathBuf>,
     /// path to the output debug wasm file.
     ///
     /// If not provided the debug data stays in the input file.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     debug_out: Option<PathBuf>,
     /// strip the file of debug info.
-    #[structopt(long)]
+    #[arg(long)]
     strip: bool,
     /// strip the file of symbol names.
-    #[structopt(long)]
+    #[arg(long)]
     strip_names: bool,
     /// do not print the build id.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     quiet: bool,
     /// explicit build id to provide
-    #[structopt(long)]
+    #[arg(long)]
     build_id: Option<Uuid>,
     /// URL for browsers to fetch the separate dwarf debug symbol file
-    #[structopt(long)]
+    #[arg(long)]
     external_dwarf_url: Option<String>,
 }
 
@@ -69,7 +69,7 @@ fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
 }
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::from_args();
+    let cli = Cli::parse();
 
     let mut module = Module::decode_from(BufReader::new(File::open(&cli.input)?))?;
     let mut should_write_main_module = false;

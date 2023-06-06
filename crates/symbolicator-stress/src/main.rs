@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use clap::Parser;
 use humantime::parse_duration;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use structopt::StructOpt;
 
 use symbolicator_service::config::Config as SymbolicatorConfig;
 use symbolicator_service::services::download::SourceConfig;
@@ -64,24 +64,24 @@ enum ParsedPayload {
 }
 
 /// Command line interface parser.
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Cli {
     /// Path to your configuration file.
-    #[structopt(long = "config", short = "c", value_name = "FILE")]
+    #[arg(long = "config", short = 'c', value_name = "FILE")]
     config: Option<PathBuf>,
 
     /// Path to the workload definition file.
-    #[structopt(long = "workloads", short = "w", value_name = "FILE")]
+    #[arg(long = "workloads", short = 'w', value_name = "FILE")]
     workloads: PathBuf,
 
     /// Duration of the stresstest.
-    #[structopt(long = "duration", short = "d", parse(try_from_str = parse_duration))]
+    #[arg(long = "duration", short = 'd', value_parser = parse_duration)]
     duration: Duration,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cli = Cli::from_args();
+    let cli = Cli::parse();
 
     // parse configs
     let workloads_file =
