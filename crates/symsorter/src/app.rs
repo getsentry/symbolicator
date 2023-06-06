@@ -6,10 +6,10 @@ use std::sync::Mutex;
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use clap::Parser;
 use console::style;
 use rayon::prelude::*;
 use serde::Serialize;
-use structopt::StructOpt;
 use symbolic::common::{Arch, ByteView};
 use symbolic::debuginfo::{Archive, FileFormat, ObjectKind};
 use walkdir::WalkDir;
@@ -22,48 +22,47 @@ use crate::utils::{
 };
 
 /// Sorts debug symbols into the right structure for symbolicator.
-#[derive(PartialEq, Eq, PartialOrd, Ord, StructOpt, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Parser, Debug)]
 struct Cli {
     /// Path to the output folder structure
-    #[structopt(long = "output", short = "o", value_name = "PATH")]
+    #[arg(long = "output", short = 'o', value_name = "PATH")]
     pub output: PathBuf,
 
     /// The prefix to use.
-    #[structopt(long = "prefix", short = "p", value_name = "PREFIX")]
+    #[arg(long = "prefix", short = 'p', value_name = "PREFIX")]
     pub prefix: Option<String>,
 
     /// The bundle ID to use.
-    #[structopt(long = "bundle-id", short = "b", value_name = "BUNDLE_ID")]
+    #[arg(long = "bundle-id", short = 'b', value_name = "BUNDLE_ID")]
     pub bundle_id: Option<String>,
 
     /// Derive the bundle ID from the first folder.
-    #[structopt(long = "multiple-bundles", conflicts_with = "bundle-id")]
+    #[arg(long = "multiple-bundles", conflicts_with = "bundle_id")]
     pub multiple_bundles: bool,
 
     /// If enable the system will attempt to create source bundles
-    #[structopt(long = "with-sources")]
+    #[arg(long = "with-sources")]
     pub with_sources: bool,
 
     /// If enabled debug symbols will be zstd compressed (repeat to increase compression)
-    #[structopt(
+    #[arg(
         long = "compress",
-        short = "z",
-        multiple = true,
-        parse(from_occurrences),
-        takes_value(false)
+        short = 'z',
+        action = clap::ArgAction::Count,
+        value_parser = clap::value_parser!(u8)
     )]
     pub compression_level: usize,
 
     /// Ignore broken archives.
-    #[structopt(long = "ignore-errors", short = "I")]
+    #[arg(long = "ignore-errors", short = 'I')]
     pub ignore_errors: bool,
 
     /// If enabled output will be suppressed
-    #[structopt(long = "quiet", short = "q")]
+    #[arg(long = "quiet", short = 'q')]
     pub quiet: bool,
 
     /// Path to input files.
-    #[structopt(index = 1)]
+    #[arg(index = 1)]
     pub input: Vec<PathBuf>,
 }
 
@@ -276,7 +275,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 }
 
 fn execute() -> Result<()> {
-    let cli = Cli::from_args();
+    let cli = Cli::parse();
     RunConfig::configure(|cfg| {
         cfg.ignore_errors = cli.ignore_errors;
         cfg.quiet = cli.quiet;
