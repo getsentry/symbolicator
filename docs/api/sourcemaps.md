@@ -60,13 +60,13 @@ Content-Type: application/json
 A JSON payload describing the stack traces and code modules for symbolication,
 as well as configuration for scraping sources from external servers:
 
-- `source`: A descriptors for Sentry source to be used for symbolication. See
+- `source`: A descriptor for the Sentry source to be used for symbolication. See
   [Sentry](index.md) source.
 - `modules`: A list of source code files with a corresponding debug id that
   were loaded during JS code execution. The list is handled by the Sentry source.
 - `stacktrace`: A list of stacktraces to symbolicate.
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
-    and `colno`, as well as minified `function` name.
+    and other optional fields like `colno` or minified `function` name.
 - `release`: Name of Sentry `release` for the processed request.
 - `dist`: Name of Sentry `dist` for the processed request.
 - `scraping`: Configuration for scraping of JS sources and sourcemaps from the web.
