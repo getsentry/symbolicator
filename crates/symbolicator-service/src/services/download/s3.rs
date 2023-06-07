@@ -6,11 +6,11 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
-use aws_sdk_s3::types::SdkError;
+use aws_credential_types::provider::ProvideCredentials;
+use aws_credential_types::Credentials;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
-use aws_sdk_s3::{Client, Endpoint};
-use aws_types::credentials::{Credentials, ProvideCredentials};
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 
@@ -47,6 +47,14 @@ impl S3Downloader {
         }
     }
 
+    fn make_static_provider(&self, key: &Arc<S3SourceKey>) -> impl ProvideCredentials {
+        Credentials::from_keys(key.access_key.clone(), key.secret_key.clone(), None)
+    }
+
+    fn make_ecs_provider(&self) -> impl ProvideCredentials {
+        aws_config::ecs::EcsCredentialsProvider::builder().build()
+    }
+
     async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<Client> {
         metric!(counter("source.s3.client.access") += 1);
         let init = Box::pin(async {
@@ -58,18 +66,12 @@ impl S3Downloader {
             );
             Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    let provider = LazyCachingCredentialsProvider::builder()
-                        .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
-                        .build();
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(self.make_ecs_provider(), &key.region)
+                        .await
                 }
                 AwsCredentialsProvider::Static => {
-                    let provider = Credentials::from_keys(
-                        key.access_key.clone(),
-                        key.secret_key.clone(),
-                        None,
-                    );
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(self.make_static_provider(&key), &key.region)
+                        .await
                 }
             })
         });
@@ -90,15 +92,9 @@ impl S3Downloader {
             .credentials_provider(provider)
             .region(region.region.clone());
 
-        if let Some(endpoint) = region.endpoint.as_ref() {
-            match Endpoint::immutable(endpoint) {
-                Ok(endpoint) => config_loader = config_loader.endpoint_resolver(endpoint),
-                Err(err) => {
-                    let error: &dyn std::error::Error = &err;
-                    tracing::error!(error, "Failed creating custom `Endpoint`",);
-                }
-            };
-        }
+        if let Some(endpoint_url) = &region.endpoint {
+            config_loader = config_loader.endpoint_url(endpoint_url);
+        };
 
         let config = config_loader.load().await;
         Client::new(&config)
