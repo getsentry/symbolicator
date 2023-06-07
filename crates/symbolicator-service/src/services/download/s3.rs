@@ -215,7 +215,7 @@ mod tests {
     use crate::test;
 
     use aws_sdk_s3::client::Client;
-    use aws_smithy_http::byte_stream::ByteStream;
+    use aws_sdk_s3::primitives::ByteStream;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
