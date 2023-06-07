@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use aws_config::ecs::EcsCredentialsProvider;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::error::ProvideErrorMetadata;
@@ -48,14 +49,6 @@ impl S3Downloader {
         }
     }
 
-    fn make_static_provider(&self, key: &Arc<S3SourceKey>) -> impl ProvideCredentials {
-        Credentials::from_keys(key.access_key.clone(), key.secret_key.clone(), None)
-    }
-
-    fn make_ecs_provider(&self) -> impl ProvideCredentials {
-        aws_config::ecs::EcsCredentialsProvider::builder().build()
-    }
-
     async fn get_s3_client(&self, key: &Arc<S3SourceKey>) -> Arc<Client> {
         metric!(counter("source.s3.client.access") += 1);
         let init = Box::pin(async {
@@ -67,12 +60,24 @@ impl S3Downloader {
             );
             Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    self.create_s3_client(self.make_ecs_provider(), &key.region)
-                        .await
+                    self.create_s3_client(
+                        (|| EcsCredentialsProvider::builder().build())(),
+                        &key.region,
+                    )
+                    .await
                 }
                 AwsCredentialsProvider::Static => {
-                    self.create_s3_client(self.make_static_provider(&key), &key.region)
-                        .await
+                    self.create_s3_client(
+                        (|| {
+                            Credentials::from_keys(
+                                key.access_key.clone(),
+                                key.secret_key.clone(),
+                                None,
+                            )
+                        })(),
+                        &key.region,
+                    )
+                    .await
                 }
             })
         });
