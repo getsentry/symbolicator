@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use aws_credential_types::provider::ProvideCredentials;
 use aws_credential_types::Credentials;
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
