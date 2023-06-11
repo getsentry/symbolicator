@@ -60,21 +60,16 @@ impl S3Downloader {
             );
             Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    self.create_s3_client(
-                        (|| EcsCredentialsProvider::builder().build())(),
-                        &key.region,
-                    )
-                    .await
+                    self.create_s3_client(EcsCredentialsProvider::builder().build(), &key.region)
+                        .await
                 }
                 AwsCredentialsProvider::Static => {
                     self.create_s3_client(
-                        (|| {
-                            Credentials::from_keys(
-                                key.access_key.clone(),
-                                key.secret_key.clone(),
-                                None,
-                            )
-                        })(),
+                        Credentials::from_keys(
+                            key.access_key.clone(),
+                            key.secret_key.clone(),
+                            None,
+                        ),
                         &key.region,
                     )
                     .await
