@@ -10,20 +10,20 @@
         <meta name="author" content="Sentry">
       
       
-        <link rel="canonical" href="https://getsentry.github.io/symbolicator/advanced/background-and-principles/">
+        <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/sourcemaps/">
       
       
-        <link rel="prev" href="../..">
+        <link rel="prev" href="../applecrashreport/">
       
       
-        <link rel="next" href="../system-architecture/">
+        <link rel="next" href="../response/">
       
       <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.4.3, mkdocs-material-9.1.15">
     
     
       
-        <title>Background and Principles - Sentry Symbolicator</title>
+        <title>POST /symbolicate-js - Sentry Symbolicator</title>
       
     
     
@@ -67,7 +67,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#background-and-principles" class="md-skip">
+        <a href="#symbolication-request" class="md-skip">
           Skip to content
         </a>
       
@@ -101,7 +101,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Background and Principles
+              POST /symbolicate-js
             
           </span>
         </div>
@@ -223,16 +223,14 @@
 
   
   
-    
-  
   
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
       
       
       
@@ -241,7 +239,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
         <label class="md-nav__title" for="__nav_2">
           <span class="md-nav__icon md-icon"></span>
           Advanced
@@ -252,79 +250,11 @@
               
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          Background and Principles
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../advanced/background-and-principles/" class="md-nav__link">
         Background and Principles
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#symbolicator-principles" class="md-nav__link">
-    Symbolicator Principles
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#issues-symbolicator-solves" class="md-nav__link">
-    Issues Symbolicator Solves
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#terminology" class="md-nav__link">
-    Terminology
-  </a>
-  
-    <nav class="md-nav" aria-label="Terminology">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#debug-information-files" class="md-nav__link">
-    Debug Information Files
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -336,7 +266,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../system-architecture/" class="md-nav__link">
+      <a href="../../advanced/system-architecture/" class="md-nav__link">
         System Architecture
       </a>
     </li>
@@ -350,7 +280,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../caching/" class="md-nav__link">
+      <a href="../../advanced/caching/" class="md-nav__link">
         Caching
       </a>
     </li>
@@ -364,7 +294,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../shared-cache/" class="md-nav__link">
+      <a href="../../advanced/shared-cache/" class="md-nav__link">
         Shared Cache
       </a>
     </li>
@@ -378,7 +308,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../symbol-lookup/" class="md-nav__link">
+      <a href="../../advanced/symbol-lookup/" class="md-nav__link">
         Lookup Strategy
       </a>
     </li>
@@ -392,7 +322,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../symbol-server-compatibility/" class="md-nav__link">
+      <a href="../../advanced/symbol-server-compatibility/" class="md-nav__link">
         Symbol Server Compatibility
       </a>
     </li>
@@ -406,7 +336,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../source-bundles/" class="md-nav__link">
+      <a href="../../advanced/source-bundles/" class="md-nav__link">
         Source Bundles
       </a>
     </li>
@@ -426,14 +356,16 @@
 
   
   
+    
+  
   
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
       
       
       
-      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
       
       
       
@@ -442,7 +374,7 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
         <label class="md-nav__title" for="__nav_3">
           <span class="md-nav__icon md-icon"></span>
           API
@@ -455,7 +387,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/" class="md-nav__link">
+      <a href="../" class="md-nav__link">
         Overview
       </a>
     </li>
@@ -469,7 +401,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/minidump/" class="md-nav__link">
+      <a href="../minidump/" class="md-nav__link">
         POST /minidump
       </a>
     </li>
@@ -483,7 +415,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/symbolication/" class="md-nav__link">
+      <a href="../symbolication/" class="md-nav__link">
         POST /symbolicate
       </a>
     </li>
@@ -497,7 +429,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/applecrashreport/" class="md-nav__link">
+      <a href="../applecrashreport/" class="md-nav__link">
         POST /applecrashreport
       </a>
     </li>
@@ -509,11 +441,66 @@
               
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../../api/sourcemaps/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          POST /symbolicate-js
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         POST /symbolicate-js
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#query-parameters" class="md-nav__link">
+    Query Parameters
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#request-body" class="md-nav__link">
+    Request Body
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#response" class="md-nav__link">
+    Response
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -525,7 +512,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/response/" class="md-nav__link">
+      <a href="../response/" class="md-nav__link">
         Symbolication Response
       </a>
     </li>
@@ -539,7 +526,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../api/proxy/" class="md-nav__link">
+      <a href="../proxy/" class="md-nav__link">
         Symbol Server Proxy
       </a>
     </li>
@@ -580,36 +567,23 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#symbolicator-principles" class="md-nav__link">
-    Symbolicator Principles
+  <a href="#query-parameters" class="md-nav__link">
+    Query Parameters
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#issues-symbolicator-solves" class="md-nav__link">
-    Issues Symbolicator Solves
+  <a href="#request-body" class="md-nav__link">
+    Request Body
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#terminology" class="md-nav__link">
-    Terminology
+  <a href="#response" class="md-nav__link">
+    Response
   </a>
-  
-    <nav class="md-nav" aria-label="Terminology">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#debug-information-files" class="md-nav__link">
-    Debug Information Files
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -631,80 +605,88 @@
   
 
 
-<h1 id="background-and-principles">Background and Principles</h1>
-<p>This page describes reasoning behind the design of Symbolicator.</p>
-<h2 id="symbolicator-principles">Symbolicator Principles</h2>
-<p>Symbolicator is a service that unifies symbolication for all kinds of native
-frames and allows us to add more features or improve performance more easily
-than in the former setup. Goals of Symbolicator are:</p>
+<h1 id="symbolication-request">Symbolication Request</h1>
+<div class="codehilite"><pre><span></span><code><span class="nf">POST</span> <span class="nn">/symbolicate-js?timeout=123&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
+<span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
+
+<span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://sentry.io/api/0/projects/sentry-org/sentry-project/artifact-lookup/&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret&quot;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">&quot;stacktraces&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;function&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;module&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;filename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;abs_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;lineno&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;colno&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;in_app&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;modules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;code_file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-code-file&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;debug_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;debug_id&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;dist&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;release&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.33.1&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;scraping&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;allowed_origins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.domain.com&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="query-parameters">Query Parameters</h2>
 <ul>
-<li><strong>Symbolicate entire stack traces at once</strong>, referencing both system and
-  customer images. Thanks to this, heuristics for detecting system images are no
-  longer necessary.</li>
-<li><strong>Fetch DIFs from external sources.</strong> These could be third-party servers like
-  the online Microsoft Symbol Server or buckets of DIFs hosted by our customers.
-  This removes the need to proactively upload files to Sentry that will never be
-  used.</li>
-<li><strong>Treat SymCaches and Debug Files as transient.</strong> All files are put in a local
-  file system cache for faster access, but there is no persistent storage for
-  symcaches or files retrieved from an external resources. This also simplifies
-  upgrades (simply wipe the cache).</li>
-<li><strong>Avoid one-hit wonders.</strong> SymCaches only need to be generated for debug files
-  that are hit multiple times within a time frame. For all other symbols, using
-  the original debug file is sufficiently fast — especially since it only needs
-  to be loaded once per symbolication request.</li>
-<li><strong>Improve processing of minidumps.</strong> Potentially use multiple debug files or
-  cache files at once to run stackwalking and symbolication in a single run.
-  This reduces resource allocation and gets rid of our hacks in the breakpad
-  processor.</li>
+<li><code>timeout</code>: If given, a response status of <code>pending</code> might be sent by the
+  server.</li>
+<li><code>scope</code>: An optional scope which will be used to isolate cached files from
+  each other</li>
 </ul>
-<h2 id="issues-symbolicator-solves">Issues Symbolicator Solves</h2>
-<p>Symbolicator was developed at [Sentry] to allow for faster iteration speeds and
-improve symboilcation performance. There were a couple of general issues with
-native event processing:</p>
+<h2 id="request-body">Request Body</h2>
+<div class="codehilite"><pre><span></span><code>pub scraping: ScrapingConfig,
+pub options: JsRequestOptions,
+</code></pre></div>
+
+<p>A JSON payload describing the stack traces and code modules for symbolication,
+as well as configuration for scraping sources from external servers:</p>
 <ul>
-<li>Matching of system symbol paths sometimes yields false positives</li>
-<li>SymbolServer only handles iOS system symbols and cannot resolve line numbers</li>
-<li>Handling of DIFs in Sentry causes a lot of overhead in the blob storage and is
-  prone to race conditions</li>
-<li>Customers are starting to hit the maximum file size limit of 2GB</li>
-<li>DIFs always need to be uploaded before events, whether they are used or not</li>
-<li>Minidump processing requires multiple debug files at once, which required
-  hacks in Sentry.</li>
+<li><code>source</code>: A descriptor for the Sentry source to be used for symbolication. See
+  <a href="../">Sentry</a> source.</li>
+<li><code>modules</code>: A list of source code files with a corresponding debug id that
+  were loaded during JS code execution. The list is handled by the Sentry source.</li>
+<li><code>stacktrace</code>: A list of stacktraces to symbolicate.</li>
+<li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
+    and other optional fields like <code>colno</code> or minified <code>function</code> name.</li>
+<li><code>release</code>: Name of Sentry <code>release</code> for the processed request.</li>
+<li><code>dist</code>: Name of Sentry <code>dist</code> for the processed request.</li>
+<li><code>scraping</code>: Configuration for scraping of JS sources and sourcemaps from the web.</li>
+<li><code>enabled</code>: Whether scraping should happen at all.</li>
+<li><code>allowed_origins</code>: A list of "allowed origin patterns" that control what
+    URLs we are allowed to scrape from. Allowed origins may be defined in several ways:<ul>
+<li><code>http://domain.com[:port]</code>: Exact match for base URI (must include port).</li>
+<li><code>*</code>: Allow any domain.</li>
+<li><code>*.domain.com</code>: Matches domain.com and all subdomains, on any port.</li>
+<li><code>domain.com</code>: Matches domain.com on any port.</li>
+<li><code>*:port</code>: Wildcard on hostname, but explicit match on port.</li>
 </ul>
-<p>Additionally, there were issues around the upload of debug information files.</p>
-<ol>
-<li>SymCaches and CFI caches are computed ahead of time and persisted. This
-   creates inherent race conditions and also requires computation, even if the
-   symbols are never used.</li>
-<li>Debug file models only store the debug identifier. This works for Breakpad
-   minidumps and custom SDKs, but will never be compatible to native debuggers
-   or other systems.</li>
-<li>The old logic for choosing files based on debug ids is based on the upload
-   time. This was done to reduce the amount of fetching from the file storage
-   onto workers. However, this might choose a suboptimal file.</li>
-<li>During symbol upload, older "redundant" files are deleted. A file is
-   considered redundant, if it only provides a subset of the features of all
-   newer files combined. Since this does not consider the file type, this might
-   throw away better debug information in favor of a newer, worse file (e.g.
-   when a breakpad file is uploaded after the original debug file).</li>
-</ol>
-<h2 id="terminology">Terminology</h2>
-<h3 id="debug-information-files">Debug Information Files</h3>
-<p><strong>DIFs</strong> contain "debug information" to resolve function names and file
-locations from raw memory addresses in native crash reports. These files can get
-quite large, and we have encountered first customers with files over 2GB.</p>
-<p>Additionally, DIFs come in various different formats depending on the operating
-system and build process. In some scenarios, a combination of multiple files
-might be needed to successfully symbolicate a native crash. This has first been
-encountered in minidumps, which require the executable to extract stack traces,
-but a separate debug file to symbolicate its addresses.</p>
-<p>To mitigate issues with file size and platform differences, we created
-<strong>SymCaches</strong>. These are custom binary files that store an essential subset of
-the original debug information in a uniform format. The file format is optimized
-for direct mapping into memory and fast lookups of addresses. SymCaches are
-created for every DIF uploaded by customers that contains valid debug
-information.</p>
+</li>
+<li><code>headers</code>: A map of headers to send with every HTTP request while scraping.</li>
+<li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
+<li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
+</ul>
+<h2 id="response">Response</h2>
+<p>See <a href="../response/">Symbolication Response</a>.</p>
 
 
 

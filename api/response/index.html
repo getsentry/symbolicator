@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/response/">
       
       
-        <link rel="prev" href="../applecrashreport/">
+        <link rel="prev" href="../sourcemaps/">
       
       
         <link rel="next" href="../proxy/">
@@ -441,6 +441,20 @@
               
   
   
+  
+    <li class="md-nav__item">
+      <a href="../sourcemaps/" class="md-nav__link">
+        POST /symbolicate-js
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
     
   
   
@@ -477,29 +491,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#native-response" class="md-nav__link">
+    Native Response
+  </a>
+  
+    <nav class="md-nav" aria-label="Native Response">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#success-response" class="md-nav__link">
     Success Response
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#note-on-addresses" class="md-nav__link">
     Note on Addresses
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#backoff-response" class="md-nav__link">
     Backoff Response
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#invalid-request-response" class="md-nav__link">
     Invalid Request Response
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#javascript-response" class="md-nav__link">
+    JavaScript Response
   </a>
   
 </li>
@@ -560,29 +594,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#native-response" class="md-nav__link">
+    Native Response
+  </a>
+  
+    <nav class="md-nav" aria-label="Native Response">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#success-response" class="md-nav__link">
     Success Response
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#note-on-addresses" class="md-nav__link">
     Note on Addresses
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#backoff-response" class="md-nav__link">
     Backoff Response
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#invalid-request-response" class="md-nav__link">
     Invalid Request Response
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#javascript-response" class="md-nav__link">
+    JavaScript Response
   </a>
   
 </li>
@@ -606,7 +660,8 @@
 
 
 <h1 id="symbolication-response">Symbolication Response</h1>
-<p>The response to a symbolication request is a JSON object which contains
+<h2 id="native-response">Native Response</h2>
+<p>The response to a native symbolication request is a JSON object which contains
 different data depending on the status of the symbolication job:</p>
 <ul>
 <li><code>pending</code>: Symbolication has not finished yet; try again later. This is only
@@ -616,7 +671,7 @@ different data depending on the status of the symbolication job:</p>
 <li><code>error</code>: Something went wrong during symbolication, and details are in the
   payload.</li>
 </ul>
-<h2 id="success-response">Success Response</h2>
+<h3 id="success-response">Success Response</h3>
 <p>Symbol server responds with <em>200 OK</em> and the response payload listed below if
 symbolication succeeds within a configured timeframe (around 20 seconds):</p>
 <div class="codehilite"><pre><span></span><code><span class="p">{</span>
@@ -671,14 +726,14 @@ request. Additional properties passed in the request are discarded. Errors that
 occurred during symbolication, such as missing symbol files or unresolvable
 addresses within symbols are reported as values for <code>status</code> in both modules and
 frames.</p>
-<h2 id="note-on-addresses">Note on Addresses</h2>
+<h3 id="note-on-addresses">Note on Addresses</h3>
 <p>Addresses (<code>instruction_addr</code> and <code>sym_addr</code>) can come in two versions. They
 can be absolute or relative. Symbolicator will always try to make addresses
 absolute but in some cases this cannot be done. For instance WASM modules do
 not have absolute addresses in which case the addresses stay relative. This is
 identified by the <code>addr_mode</code> property. When it's set to <code>"abs"</code> it means
 the addresses are absolute, when <code>"rel:X"</code> it's relative to module index <code>X</code>.</p>
-<h2 id="backoff-response">Backoff Response</h2>
+<h3 id="backoff-response">Backoff Response</h3>
 <p>If symbolication takes longer than the threshold <code>timeout</code>, the server instead
 responds with a backoff response. It will then continue to fetch symbols and
 symbolication. The response indicates the estimated time for symbol retrieval,
@@ -697,13 +752,76 @@ guarantee. The request may be repeated at any time:</p>
 <div class="codehilite"><pre><span></span><code><span class="err">GET /requests/deadbeef?timeout=123</span>
 </code></pre></div>
 
-<h2 id="invalid-request-response">Invalid Request Response</h2>
+<h3 id="invalid-request-response">Invalid Request Response</h3>
 <p>If the user provided a non-existent request ID, the server responds with <em>404
 Not Found</em>.</p>
 <p>Requests should always be treated transient as they might disappear during a
 deploy. Clients must expect that 404 is returned even for valid request IDs and
 then re-schedule symbolication</p>
 <p>On a related note, state on the server is generally ephemeral.</p>
+<h2 id="javascript-response">JavaScript Response</h2>
+<p>The response to a JavaScript symbolication request is a JSON object which contains
+a list of original raw stack traces, corresponding list of processed stack traces
+and an optional list of errors that happened during symbolication.</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="s2">&quot;stacktraces&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;frames&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="s2">&quot;function&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;onFailure&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;filename&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;test.js&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;module&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;files/test&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;abs_path&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:&lt;port&gt;/files/test.js&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;lineno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">5</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;colno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">11</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;pre_context&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;var makeAFailure = (function() {&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;  function onSuccess(data) {}&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;  function onFailure(data) {&quot;</span>
+<span class="w">          </span><span class="p">],</span>
+<span class="w">          </span><span class="s2">&quot;context_line&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;    throw new Error(&#39;failed!&#39;);&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;post_context&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;  }&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;  function invoke(data) {&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;    var cb = null;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;    if (data.failed) {&quot;</span>
+<span class="w">          </span><span class="p">],</span>
+<span class="w">          </span><span class="s2">&quot;data&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="s2">&quot;sourcemap&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:&lt;port&gt;/files/app.js.map&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="s2">&quot;raw_stacktraces&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;frames&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="s2">&quot;abs_path&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:&lt;port&gt;/files/app.js&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;lineno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">1</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;colno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">64</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;context_line&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;var makeAFailure=function(){function n(n){}function e(n){throw new Error(\&quot;failed!\&quot;)}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;post_context&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;//# sourceMappingURL=a.different.map&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;//@ sourceMappingURL=another.different.map&quot;</span>
+<span class="w">          </span><span class="p">]</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="s2">&quot;errors&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;abs_path&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http://localhost:&lt;port&gt;/assets/missing_bar.js&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;type&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;missing_source&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
 
 
 

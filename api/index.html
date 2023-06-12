@@ -512,6 +512,20 @@
   
   
     <li class="md-nav__item">
+      <a href="sourcemaps/" class="md-nav__link">
+        POST /symbolicate-js
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
       <a href="response/" class="md-nav__link">
         Symbolication Response
       </a>
@@ -621,13 +635,14 @@
 
 <h1 id="api">API</h1>
 <p>Symbolicator exposes a HTTP API to allow symbolication of raw native stack
-traces and minidumps. All information necessary for symbolication needs to be
-part of the request, such as external buckets and their auth tokens or full
-stack traces. There are the following endpoints:</p>
+traces, minidumps, and JavaScript stack traces. All information necessary for symbolication
+needs to be part of the request, such as external buckets and their auth tokens
+or full stack traces. There are the following endpoints:</p>
 <ul>
 <li><code>POST /symbolicate</code>: Symbolicate raw native stacktrace</li>
 <li><code>POST /minidump</code>: Symbolicate a minidump and extract information</li>
 <li><code>POST /applecrashreport</code>: Symbolicate an Apple Crash Report</li>
+<li><code>POST /symbolicate-js</code>: Symbolicate JavaScript stacktrace</li>
 <li><code>GET /requests/:id</code>: Status update on running symbolication jobs</li>
 <li><code>GET /healthcheck</code>: System status and health monitoring</li>
 </ul>
