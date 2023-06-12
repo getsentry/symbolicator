@@ -6,11 +6,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
-use aws_sdk_s3::types::SdkError;
+use aws_config::ecs::EcsCredentialsProvider;
+use aws_credential_types::provider::ProvideCredentials;
+use aws_credential_types::Credentials;
+use aws_sdk_s3::error::ProvideErrorMetadata;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
-use aws_sdk_s3::{Client, Endpoint};
-use aws_types::credentials::{Credentials, ProvideCredentials};
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 
@@ -58,18 +60,19 @@ impl S3Downloader {
             );
             Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    let provider = LazyCachingCredentialsProvider::builder()
-                        .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
-                        .build();
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(EcsCredentialsProvider::builder().build(), &key.region)
+                        .await
                 }
                 AwsCredentialsProvider::Static => {
-                    let provider = Credentials::from_keys(
-                        key.access_key.clone(),
-                        key.secret_key.clone(),
-                        None,
-                    );
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(
+                        Credentials::from_keys(
+                            key.access_key.clone(),
+                            key.secret_key.clone(),
+                            None,
+                        ),
+                        &key.region,
+                    )
+                    .await
                 }
             })
         });
@@ -90,15 +93,9 @@ impl S3Downloader {
             .credentials_provider(provider)
             .region(region.region.clone());
 
-        if let Some(endpoint) = region.endpoint.as_ref() {
-            match Endpoint::immutable(endpoint) {
-                Ok(endpoint) => config_loader = config_loader.endpoint_resolver(endpoint),
-                Err(err) => {
-                    let error: &dyn std::error::Error = &err;
-                    tracing::error!(error, "Failed creating custom `Endpoint`",);
-                }
-            };
-        }
+        if let Some(endpoint_url) = &region.endpoint {
+            config_loader = config_loader.endpoint_url(endpoint_url);
+        };
 
         let config = config_loader.load().await;
         Client::new(&config)
@@ -213,7 +210,7 @@ mod tests {
     use crate::test;
 
     use aws_sdk_s3::client::Client;
-    use aws_smithy_http::byte_stream::ByteStream;
+    use aws_sdk_s3::primitives::ByteStream;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.

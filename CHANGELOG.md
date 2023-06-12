@@ -7,6 +7,7 @@
 - Bump Native SDK from v0.6.2 to v0.6.3 ([#1207](https://github.com/getsentry/symbolicator/pull/1207))
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#063)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.6.2...0.6.3)
+- Bump `aws-sdk-rust` from 0.52.0 to 0.55.3. ([#1211](https://github.com/getsentry/symbolicator/pull/1211))
 
 ## 23.5.2
 
