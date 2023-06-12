@@ -54,9 +54,6 @@ Content-Type: application/json
 
 ## Request Body
 
-    pub scraping: ScrapingConfig,
-    pub options: JsRequestOptions,
-
 A JSON payload describing the stack traces and code modules for symbolication,
 as well as configuration for scraping sources from external servers:
 
