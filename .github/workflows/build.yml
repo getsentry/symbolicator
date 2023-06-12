@@ -124,30 +124,3 @@ jobs:
         with:
           name: ${{ github.sha }}
           path: target/release/*-Windows-x86_64.exe
-
-  docs:
-    name: Build Docs
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-
-      - name: Setup python dependencies
-        run: pip install --upgrade mkdocs mkdocs-material pygments
-
-      - name: Build Docs
-        run: |
-          mkdocs build
-          touch site/.nojekyll
-          cd site && zip -r gh-pages .
-
-      - uses: actions/upload-artifact@v3.1.1
-        with:
-          name: ${{ github.sha }}
-          path: site/gh-pages.zip
