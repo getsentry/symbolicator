@@ -1,0 +1,34 @@
+name: Publish Docs
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  docs:
+    name: Publish Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+
+      - name: Setup python dependencies
+        run: pip install --upgrade mkdocs mkdocs-material pygments
+
+      - name: Build Docs
+        run: |
+          mkdocs build
+          touch site/.nojekyll
+
+      - name: Publish
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
