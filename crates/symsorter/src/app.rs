@@ -51,7 +51,7 @@ struct Cli {
         action = clap::ArgAction::Count,
         value_parser = clap::value_parser!(u8)
     )]
-    pub compression_level: usize,
+    pub compression_level: u8,
 
     /// Ignore broken archives.
     #[arg(long = "ignore-errors", short = 'I')]
