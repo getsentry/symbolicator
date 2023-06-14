@@ -749,6 +749,19 @@ impl ArtifactFetcher {
         }
 
         self.scraped_files += 1;
+
+        let span = sentry::configure_scope(|scope| scope.get_span());
+        let ctx = sentry::TransactionContext::continue_from_span(
+            "scrape_js_file",
+            "scrape_js_file",
+            span,
+        );
+        let transaction = sentry::start_transaction(ctx);
+        sentry::configure_scope(|scope| {
+            scope.set_span(Some(transaction.clone().into()));
+            scope.set_tag("host", url.host_str().unwrap_or("<unknown>"));
+        });
+
         let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
         remote_file.headers.extend(
             self.scraping
@@ -763,6 +776,7 @@ impl ArtifactFetcher {
             .fetch_file(&self.scope, remote_file)
             .await;
 
+        transaction.finish();
         CachedFileEntry {
             uri,
             entry: scraped_file.map(|contents| {
