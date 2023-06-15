@@ -23,6 +23,7 @@ use crate::utils::{
 
 /// Sorts debug symbols into the right structure for symbolicator.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Parser, Debug)]
+#[command(version)]
 struct Cli {
     /// Path to the output folder structure
     #[arg(long = "output", short = 'o', value_name = "PATH")]
