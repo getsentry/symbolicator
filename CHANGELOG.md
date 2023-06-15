@@ -1,5 +1,9 @@
 # Changelog
 
+## 23.6.1
+
+- No documented changes.
+
 ## 23.6.0
 
 ### Dependencies
