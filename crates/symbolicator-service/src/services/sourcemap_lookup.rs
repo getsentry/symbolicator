@@ -730,6 +730,18 @@ impl ArtifactFetcher {
             }
         };
 
+        // If there's no host string or it points to the local machine, we can stop immediately.
+        let host_string = match url.host_str() {
+            None | Some("localhost" | "127.0.0.1") => {
+                return CachedFileEntry {
+                    uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                    entry: Err(CacheError::DownloadError("Invalid host string".to_string())),
+                    resolved_with: None,
+                }
+            }
+            Some(host) => host,
+        };
+
         if !self.scraping.enabled {
             return CachedFileEntry {
                 uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
@@ -759,7 +771,7 @@ impl ArtifactFetcher {
         let transaction = sentry::start_transaction(ctx);
         sentry::configure_scope(|scope| {
             scope.set_span(Some(transaction.clone().into()));
-            scope.set_tag("host", url.host_str().unwrap_or("<unknown>"));
+            scope.set_tag("host", host_string);
         });
 
         let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
