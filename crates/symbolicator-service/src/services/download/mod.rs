@@ -220,6 +220,7 @@ pub struct DownloadService {
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
     host_deny_list: HostDenyList,
+    connect_to_reserved_ips: bool,
 }
 
 impl DownloadService {
@@ -239,6 +240,7 @@ impl DownloadService {
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: HostDenyList::from_config(config),
+            connect_to_reserved_ips: config.connect_to_reserved_ips,
         })
     }
 
@@ -420,6 +422,11 @@ impl DownloadService {
         self.sentry
             .lookup_js_artifacts(source, debug_ids, file_stems, release, dist)
             .await
+    }
+
+    /// Whether this download service is allowed to connect to reserved ip addresses.
+    pub fn can_connect_to_reserved_ips(&self) -> bool {
+        self.connect_to_reserved_ips
     }
 }
 

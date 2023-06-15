@@ -730,13 +730,23 @@ impl ArtifactFetcher {
             }
         };
 
-        // If there's no host string or it points to the local machine, we can stop immediately.
         let host_string = match url.host_str() {
-            None | Some("localhost" | "127.0.0.1") => {
+            None => {
                 return CachedFileEntry {
                     uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
                     entry: Err(CacheError::DownloadError("Invalid host string".to_string())),
                     resolved_with: None,
+                }
+            }
+            Some(host @ ("localhost" | "127.0.0.1")) => {
+                if self.download_svc.can_connect_to_reserved_ips() {
+                    host
+                } else {
+                    return CachedFileEntry {
+                        uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                        entry: Err(CacheError::DownloadError("Invalid host string".to_string())),
+                        resolved_with: None,
+                    };
                 }
             }
             Some(host) => host,
