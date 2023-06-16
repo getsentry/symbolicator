@@ -26,6 +26,7 @@ use wasmbin::Module;
 ///
 /// This prints the embedded build_id in hexadecimal format to stdout.
 #[derive(Debug, Parser)]
+#[command(version)]
 pub struct Cli {
     /// path to the wasm file
     input: PathBuf,
