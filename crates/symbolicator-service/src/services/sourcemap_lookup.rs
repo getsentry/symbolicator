@@ -748,6 +748,28 @@ impl ArtifactFetcher {
             };
         }
 
+        let host_string = match url.host_str() {
+            None => {
+                return CachedFileEntry {
+                    uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                    entry: Err(CacheError::DownloadError("Invalid host".to_string())),
+                    resolved_with: None,
+                }
+            }
+            Some(host @ ("localhost" | "127.0.0.1")) => {
+                if self.download_svc.can_connect_to_reserved_ips() {
+                    host
+                } else {
+                    return CachedFileEntry {
+                        uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                        entry: Err(CacheError::DownloadError("Invalid host".to_string())),
+                        resolved_with: None,
+                    };
+                }
+            }
+            Some(host) => host,
+        };
+
         self.scraped_files += 1;
 
         let span = sentry::configure_scope(|scope| scope.get_span());
@@ -759,7 +781,7 @@ impl ArtifactFetcher {
         let transaction = sentry::start_transaction(ctx);
         sentry::configure_scope(|scope| {
             scope.set_span(Some(transaction.clone().into()));
-            scope.set_tag("host", url.host_str().unwrap_or("<unknown>"));
+            scope.set_tag("host", host_string);
         });
 
         let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
