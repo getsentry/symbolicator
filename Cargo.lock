@@ -3062,7 +3062,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4280,7 +4280,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4315,7 +4315,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "bindgen",
  "cmake",
@@ -4323,7 +4323,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -4378,7 +4378,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -4393,7 +4393,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4411,7 +4411,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "axum",
  "humantime",
@@ -4429,7 +4429,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5234,7 +5234,7 @@ checksum = "ed9d5b4305409d1fc9482fee2d7f9bcbf24b3972bf59817ef757e23982242a93"
 
 [[package]]
 name = "wasm-split"
-version = "23.6.0"
+version = "23.6.1"
 dependencies = [
  "anyhow",
  "clap",
