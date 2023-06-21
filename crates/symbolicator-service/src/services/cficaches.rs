@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use minidump_processor::SymbolFile;
+use minidump_unwind::SymbolFile;
 use tempfile::NamedTempFile;
 
 use symbolic::cfi::CfiCache;

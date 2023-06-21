@@ -9,9 +9,9 @@ use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
-use minidump_processor::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
-    SymbolProvider,
+use minidump_processor::ProcessState;
+use minidump_unwind::{
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider,
 };
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};

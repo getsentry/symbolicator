@@ -195,16 +195,16 @@ pub enum FrameTrust {
     Context,
 }
 
-impl From<minidump_processor::FrameTrust> for FrameTrust {
-    fn from(source: minidump_processor::FrameTrust) -> Self {
+impl From<minidump_unwind::FrameTrust> for FrameTrust {
+    fn from(source: minidump_unwind::FrameTrust) -> Self {
         match source {
-            minidump_processor::FrameTrust::None => FrameTrust::None,
-            minidump_processor::FrameTrust::Scan => FrameTrust::Scan,
-            minidump_processor::FrameTrust::CfiScan => FrameTrust::CfiScan,
-            minidump_processor::FrameTrust::FramePointer => FrameTrust::Fp,
-            minidump_processor::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
-            minidump_processor::FrameTrust::PreWalked => FrameTrust::PreWalked,
-            minidump_processor::FrameTrust::Context => FrameTrust::Context,
+            minidump_unwind::FrameTrust::None => FrameTrust::None,
+            minidump_unwind::FrameTrust::Scan => FrameTrust::Scan,
+            minidump_unwind::FrameTrust::CfiScan => FrameTrust::CfiScan,
+            minidump_unwind::FrameTrust::FramePointer => FrameTrust::Fp,
+            minidump_unwind::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
+            minidump_unwind::FrameTrust::PreWalked => FrameTrust::PreWalked,
+            minidump_unwind::FrameTrust::Context => FrameTrust::Context,
         }
     }
 }
