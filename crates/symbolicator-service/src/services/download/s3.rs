@@ -165,6 +165,10 @@ impl S3Downloader {
                     S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
                         Err(CacheError::NotFound)
                     }
+                    S3Error::Unhandled(unhandled) => {
+                        let details = unhandled.to_string();
+                        Err(CacheError::DownloadError(details))
+                    }
                     _ => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,
