@@ -36,11 +36,20 @@ mod test {
     use crate::endpoints;
 
     pub fn server_with_default_service() -> Server {
+        server_with_config(|_| ())
+    }
+
+    pub fn server_with_config<F>(f: F) -> Server
+    where
+        F: FnOnce(&mut Config),
+    {
         let handle = tokio::runtime::Handle::current();
-        let config = Config {
+        let mut config = Config {
             connect_to_reserved_ips: true,
             ..Config::default()
         };
+        f(&mut config);
+
         let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         Server::with_router(endpoints::create_app(service))

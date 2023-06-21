@@ -463,9 +463,7 @@ pub fn get_directory_paths(
 
 /// Parses a symstore path into a possible [`FileType`] and an [`ObjectId`].
 pub fn parse_symstore_path(path: &str) -> Option<(&'static [FileType], ObjectId)> {
-    let mut split = path.splitn(4, '/');
-    // Skip the leading / that the path contains
-    split.next()?;
+    let mut split = path.splitn(3, '/');
     let leading_fn = split.next()?;
     let signature = split.next()?;
     let trailing_fn = split.next()?;
@@ -766,5 +764,77 @@ mod tests {
             },
             &[pattern("d:/windows/**")]
         ));
+    }
+
+    #[test]
+    fn test_parsing_symstore_paths() {
+        let (types, id) = parse_symstore_path("foo.exe/542D574Ec2000/foo.exe").unwrap();
+        assert_eq!(types, [FileType::Pe]);
+        assert_eq!(id.code_id.unwrap().as_str(), "542d574ec2000");
+
+        let (types, id) =
+            parse_symstore_path("foo.pdb/497b72f6390a44fc878e5a2d63b6cc4b1/foo.pdb").unwrap();
+        assert_eq!(types, [FileType::Pdb]);
+        assert_eq!(
+            id.debug_id.unwrap().to_string(),
+            "497b72f6-390a-44fc-878e-5a2d63b6cc4b-1"
+        );
+
+        let (types, id) =
+            parse_symstore_path("foo.pdb/497b72f6390a44fc878e5a2d63b6cc4bFFFFFFFF/foo.pdb")
+                .unwrap();
+        assert_eq!(types, [FileType::Pdb]);
+        assert_eq!(
+            id.debug_id.unwrap().to_string(),
+            "497b72f6-390a-44fc-878e-5a2d63b6cc4b-ffffffff"
+        );
+
+        let (types, id) = parse_symstore_path(
+            "foo.so/elf-buildid-180a373d6afbabf0eb1f09be1bc45bd796a71085/foo.so",
+        )
+        .unwrap();
+        assert_eq!(types, [FileType::ElfCode]);
+        assert_eq!(
+            id.code_id.unwrap().as_str(),
+            "180a373d6afbabf0eb1f09be1bc45bd796a71085"
+        );
+
+        let (types, id) = parse_symstore_path(
+            "_.debug/elf-buildid-sym-180a373d6afbabf0eb1f09be1bc45bd796a71085/_.debug",
+        )
+        .unwrap();
+        assert_eq!(types, [FileType::ElfDebug]);
+        assert_eq!(
+            id.code_id.unwrap().as_str(),
+            "180a373d6afbabf0eb1f09be1bc45bd796a71085"
+        );
+
+        let (types, id) = parse_symstore_path(
+            "_.debug/elf-buildid-sym-180a373d6afbabf0eb1f09be1bc45bd700000000/_.debug",
+        )
+        .unwrap();
+        assert_eq!(types, [FileType::ElfDebug]);
+        assert_eq!(
+            id.code_id.unwrap().as_str(),
+            "180a373d6afbabf0eb1f09be1bc45bd700000000"
+        );
+
+        let (types, id) =
+            parse_symstore_path("foo.dylib/mach-uuid-497b72f6390a44fc878e5a2d63b6cc4b/foo.dylib")
+                .unwrap();
+        assert_eq!(types, [FileType::MachCode]);
+        assert_eq!(
+            id.code_id.unwrap().as_str(),
+            "497b72f6390a44fc878e5a2d63b6cc4b"
+        );
+
+        let (types, id) =
+            parse_symstore_path("_.dwarf/mach-uuid-sym-497b72f6390a44fc878e5a2d63b6cc4b/_.dwarf")
+                .unwrap();
+        assert_eq!(types, [FileType::MachDebug]);
+        assert_eq!(
+            id.code_id.unwrap().as_str(),
+            "497b72f6390a44fc878e5a2d63b6cc4b"
+        );
     }
 }

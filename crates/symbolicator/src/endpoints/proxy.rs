@@ -19,6 +19,8 @@ async fn load_object(service: RequestService, path: String) -> CacheEntry<Arc<Ob
         return Err(CacheError::NotFound);
     }
 
+    tracing::trace!("Resolving symstore proxy path `{path:?}`");
+
     let (filetypes, object_id) = parse_symstore_path(&path).ok_or(CacheError::NotFound)?;
 
     tracing::debug!("Searching for {:?} ({:?})", object_id, filetypes);
@@ -74,4 +76,40 @@ pub async fn proxy_symstore_request(
 
     let bytes = Cursor::new(data);
     Ok(response.body(Body::wrap_stream(tokio_util::io::ReaderStream::new(bytes)))?)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use reqwest::{Client, StatusCode};
+
+    use crate::test;
+
+    #[tokio::test]
+    async fn test_proxy_works() {
+        test::setup();
+
+        let (_srv, source) = test::symbol_server();
+        let server = test::server_with_config(|config| {
+            config.symstore_proxy = true;
+            config.sources = Arc::from([source]);
+        });
+
+        let response = Client::new()
+            .get(server.url(
+                "/proxy/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.pdb",
+            ))
+            .send()
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let bytes = response.bytes().await.unwrap();
+        let file_contents = test::read_fixture(
+            "symbols/integration.pdb/0C1033F78632492E91C6C314B72E1920ffffffff/integration.pdb",
+        );
+        assert_eq!(bytes, file_contents);
+    }
 }
