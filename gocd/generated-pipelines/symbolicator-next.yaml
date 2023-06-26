@@ -1,0 +1,20 @@
+format_version: 10
+pipelines:
+  deploy-symbolicator-next:
+    group: symbolicator-next
+    lock_behavior: unlockWhenFinished
+    materials:
+      init_repo:
+        branch: master
+        destination: init
+        git: git@github.com:getsentry/super-big-consumers.git
+        shallow_clone: true
+    stages:
+      - pipeline-complete:
+          approval:
+            type: manual
+          jobs:
+            pipeline-complete:
+              tasks:
+                - exec:
+                    command: true

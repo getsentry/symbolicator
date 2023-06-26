@@ -20,3 +20,5 @@ site
 
 # New test snapshots
 *.snap.new
+
+./gocd/templates/vendor/
