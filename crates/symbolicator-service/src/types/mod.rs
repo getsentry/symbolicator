@@ -697,6 +697,7 @@ pub struct JsFrameData {
     pub sourcemap: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_with: Option<ResolvedWith>,
+    pub symbolicated: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
