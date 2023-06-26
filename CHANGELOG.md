@@ -6,6 +6,12 @@
 
 - Reintroduce `--version` option to `symsorter` and `wasm-split` ([#1219](https://github.com/getsentry/symbolicator/pull/1219))
 
+### Dependencies
+
+- Bump Native SDK from v0.6.3 to v0.6.4 ([#1224](https://github.com/getsentry/symbolicator/pull/1224))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#064)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.3...0.6.4)
+
 ## 23.6.1
 
 - No documented changes.
