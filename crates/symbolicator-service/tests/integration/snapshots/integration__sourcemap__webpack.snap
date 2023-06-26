@@ -27,6 +27,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test1.min.js.map"
           resolved_with: release-old
+          symbolicated: true
       - function: test
         filename: "./src/node_modules/components/CampaignContent.tsx"
         module: src/node_modules/components/CampaignContent
@@ -49,6 +50,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test2.min.js.map"
           resolved_with: release-old
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - function: i

@@ -266,6 +266,8 @@ async fn symbolicate_js_frame(
     frame.lineno = token.line().saturating_add(1);
     frame.colno = Some(token.column().saturating_add(1));
 
+    frame.data.symbolicated = true;
+
     if !should_apply_source_context {
         return Ok(frame);
     }

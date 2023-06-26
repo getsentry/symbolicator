@@ -15,6 +15,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test.min.js"
           resolved_with: release
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - filename: test.js

@@ -31,6 +31,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test.min.js.map"
           resolved_with: release
+          symbolicated: true
       - function: invoke
         filename: test.js
         module: test
@@ -53,6 +54,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test.min.js.map"
           resolved_with: release
+          symbolicated: true
       - function: onFailure
         filename: test.js
         module: test
@@ -74,6 +76,7 @@ stacktraces:
         data:
           sourcemap: "http://example.com/test.min.js.map"
           resolved_with: release
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - function: produceStack

@@ -20,6 +20,7 @@ stacktraces:
         data:
           sourcemap: "app:///index.android.bundle.map"
           resolved_with: release
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - abs_path: "app:///index.android.bundle"
