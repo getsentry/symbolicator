@@ -214,6 +214,10 @@ async fn symbolicate_js_frame(
             col: Some(col),
         })?;
 
+    // We consider the frame successfully symbolicated if we can resolve the minified source position
+    // to a token.
+    frame.data.symbolicated = true;
+
     // Store the resolved token name, which can be used for function name resolution in next frame.
     // Refer to https://blog.sentry.io/2022/11/30/how-we-made-javascript-stack-traces-awesome/
     // for more details about "caller naming".
@@ -265,8 +269,6 @@ async fn symbolicate_js_frame(
 
     frame.lineno = token.line().saturating_add(1);
     frame.colno = Some(token.column().saturating_add(1));
-
-    frame.data.symbolicated = true;
 
     if !should_apply_source_context {
         return Ok(frame);
