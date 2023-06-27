@@ -7,11 +7,11 @@ local pipedream_config = {
 
   // The materials you'd like the pipelines to watch for changes
   materials: {
-    init_repo: {
+    symbolicator_repo: {
       git: 'git@github.com:getsentry/symbolicator.git',
       shallow_clone: true,
       branch: 'master',
-      destination: 'init',
+      destination: 'symbolicator',
     },
   },
 

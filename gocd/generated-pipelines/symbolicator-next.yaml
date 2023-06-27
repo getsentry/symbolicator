@@ -4,9 +4,9 @@ pipelines:
     group: symbolicator-next
     lock_behavior: unlockWhenFinished
     materials:
-      init_repo:
+      symbolicator_repo:
         branch: master
-        destination: init
+        destination: symbolicator
         git: git@github.com:getsentry/symbolicator.git
         shallow_clone: true
     stages:
