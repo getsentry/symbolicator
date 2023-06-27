@@ -4,7 +4,6 @@ function(region) {
   environment_variables: {
     SENTRY_REGION: region,
   },
-  group: 'symbolicator',
   lock_behavior: 'unlockWhenFinished',
   materials: {
     symbolicator_repo: {
@@ -17,9 +16,6 @@ function(region) {
   stages: [
     {
       checks: {
-        approval: {
-          type: 'manual',
-        },
         fetch_materials: true,
         environment_variables: {
           // Required for checkruns.

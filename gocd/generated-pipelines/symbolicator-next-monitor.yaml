@@ -16,8 +16,6 @@ pipelines:
         shallow_clone: true
     stages:
       - checks:
-          approval:
-            type: manual
           environment_variables:
             GITHUB_TOKEN: '{{SECRET:[devinfra-github][token]}}'
           fetch_materials: true
