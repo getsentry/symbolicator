@@ -61,8 +61,11 @@ function(region) {
           deploy: {
             timeout: 1200,
             elastic_profile_id: 'symbolicator',
+            environment_variables: {
+              LABEL_SELECTOR: 'service=symbolicator,deploy_if_canary=true',
+            },
             tasks: [
-              gocdtasks.script(importstr '../bash/deploy-canary.sh'),
+              gocdtasks.script(importstr '../bash/deploy.sh'),
             ],
           },
         },
@@ -92,8 +95,11 @@ function(region) {
           deploy: {
             timeout: 1200,
             elastic_profile_id: 'symbolicator',
+            environment_variables: {
+              LABEL_SELECTOR: 'service=symbolicator',
+            },
             tasks: [
-              gocdtasks.script(importstr '../bash/deploy-primary.sh'),
+              gocdtasks.script(importstr '../bash/deploy.sh'),
             ],
           },
         },

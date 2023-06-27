@@ -1,9 +1,9 @@
 format_version: 10
 pipelines:
-  region-deploy-symbolicator-next-us:
+  deploy-symbolicator-next-us:
     environment_variables:
       SENTRY_REGION: us
-    group: symbolicator-next-region-deployments
+    group: symbolicator-next-regions
     lock_behavior: unlockWhenFinished
     materials:
       deploy-symbolicator-next-pipeline-complete:
@@ -74,6 +74,8 @@ pipelines:
               timeout: 1200
             deploy:
               elastic_profile_id: symbolicator
+              environment_variables:
+                LABEL_SELECTOR: service=symbolicator,deploy_if_canary=true
               tasks:
                 - script: |
                     ##!/bin/bash
@@ -82,7 +84,7 @@ pipelines:
                     /devinfra/scripts/k8s/k8stunnel
                     /devinfra/scripts/k8s/k8sdeploy.py \
                       --type="statefulset" \
-                      --label-selector="service=symbolicator,deploy_if_canary=true" \
+                      --label-selector="${LABEL_SELECTOR}" \
                       --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                       --container-name="symbolicator" \
                       --container-name="cleanup"
@@ -106,6 +108,8 @@ pipelines:
               timeout: 1200
             deploy:
               elastic_profile_id: symbolicator
+              environment_variables:
+                LABEL_SELECTOR: service=symbolicator
               tasks:
                 - script: |
                     ##!/bin/bash
@@ -114,7 +118,7 @@ pipelines:
                     /devinfra/scripts/k8s/k8stunnel
                     /devinfra/scripts/k8s/k8sdeploy.py \
                       --type="statefulset" \
-                      --label-selector="service=symbolicator" \
+                      --label-selector="${LABEL_SELECTOR}" \
                       --image="us.gcr.io/sentryio/symbolicator:${GO_REVISION_SYMBOLICATOR_REPO}" \
                       --container-name="symbolicator" \
                       --container-name="cleanup"
