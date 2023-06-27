@@ -1,6 +1,7 @@
 format_version: 10
 pipelines:
   deploy-symbolicator-next:
+    display_order: 0
     group: symbolicator-next
     lock_behavior: unlockWhenFinished
     materials:

@@ -1,9 +1,10 @@
 format_version: 10
 pipelines:
   deploy-symbolicator-next-monitor:
+    display_order: 2
     environment_variables:
       SENTRY_REGION: monitor
-    group: symbolicator-next-regions
+    group: symbolicator-next
     lock_behavior: unlockWhenFinished
     materials:
       deploy-symbolicator-next-us-pipeline-complete:
