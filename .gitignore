@@ -21,4 +21,4 @@ site
 # New test snapshots
 *.snap.new
 
-./gocd/templates/vendor/
+gocd/templates/vendor/

@@ -6,14 +6,14 @@ pipelines:
     group: symbolicator-next-region-deployments
     lock_behavior: unlockWhenFinished
     materials:
+      region-deploy-symbolicator-next-us-pipeline-complete:
+        pipeline: region-deploy-symbolicator-next-us
+        stage: pipeline-complete
       symbolicator_repo:
         branch: master
         destination: symbolicator
         git: git@github.com:getsentry/symbolicator.git
         shallow_clone: true
-      upstream_pipeline:
-        pipeline: region-deploy-symbolicator-next-us
-        stage: pipeline-complete
     stages:
       - ready:
           jobs:
@@ -78,6 +78,7 @@ pipelines:
                 - script: |
                     ##!/bin/bash
 
+                    eval $(/devinfra/scripts/regions/project_env_vars.py --region="${SENTRY_REGION}")
                     /devinfra/scripts/k8s/k8stunnel
                     /devinfra/scripts/k8s/k8sdeploy.py \
                       --type="statefulset" \
@@ -109,6 +110,7 @@ pipelines:
                 - script: |
                     ##!/bin/bash
 
+                    eval $(/devinfra/scripts/regions/project_env_vars.py --region="${SENTRY_REGION}")
                     /devinfra/scripts/k8s/k8stunnel
                     /devinfra/scripts/k8s/k8sdeploy.py \
                       --type="statefulset" \

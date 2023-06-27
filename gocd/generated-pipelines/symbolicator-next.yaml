@@ -7,7 +7,7 @@ pipelines:
       init_repo:
         branch: master
         destination: init
-        git: git@github.com:getsentry/super-big-consumers.git
+        git: git@github.com:getsentry/symbolicator.git
         shallow_clone: true
     stages:
       - pipeline-complete:
