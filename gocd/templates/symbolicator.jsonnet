@@ -17,8 +17,6 @@ local pipedream_config = {
 
   // Set to true to auto-deploy changes (defaults to true)
   auto_deploy: false,
-  // Set to true if you want each pipeline to require manual approval
-  auto_pipeline_progression: false,
 };
 
 // Then call pipedream.render() to generate the set of pipelines for
