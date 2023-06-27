@@ -15,20 +15,6 @@ pipelines:
         git: git@github.com:getsentry/symbolicator.git
         shallow_clone: true
     stages:
-      - ready:
-          jobs:
-            ready:
-              tasks:
-                - exec:
-                    command: true
-      - wait:
-          approval:
-            type: manual
-          jobs:
-            wait:
-              tasks:
-                - exec:
-                    command: true
       - checks:
           approval:
             type: manual
