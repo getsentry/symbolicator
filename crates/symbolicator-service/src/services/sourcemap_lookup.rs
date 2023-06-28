@@ -744,7 +744,7 @@ impl ArtifactFetcher {
             return CachedFileEntry {
                 uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
                 entry: Err(CacheError::DownloadError(format!(
-                    "{scheme} is not an allowed download scheme"
+                    "`{scheme}` is not an allowed download scheme"
                 ))),
                 resolved_with: None,
             };
