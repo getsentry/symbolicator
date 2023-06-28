@@ -738,6 +738,18 @@ impl ArtifactFetcher {
             };
         }
 
+        // Only scrape from http sources
+        let scheme = url.scheme();
+        if !["http", "https"].contains(&scheme) {
+            return CachedFileEntry {
+                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+                entry: Err(CacheError::DownloadError(format!(
+                    "{scheme} is not an allowed download scheme"
+                ))),
+                resolved_with: None,
+            };
+        }
+
         if !is_valid_origin(&url, &self.scraping.allowed_origins) {
             return CachedFileEntry {
                 uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
