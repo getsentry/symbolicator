@@ -406,14 +406,18 @@ mod event {
 
         let mut stacktraces = vec![];
         if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.raw_stacktrace.take()));
+            stacktraces.extend(
+                excs.iter_mut()
+                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
+            );
         }
         if let Some(mut threads) = threads.map(|threads| threads.values) {
-            stacktraces.extend(
-                threads
-                    .iter_mut()
-                    .filter_map(|thread| thread.raw_stacktrace.take()),
-            );
+            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
+                thread
+                    .raw_stacktrace
+                    .take()
+                    .or_else(|| thread.stacktrace.take())
+            }));
         }
 
         let stacktraces: Vec<_> = stacktraces
@@ -458,14 +462,18 @@ mod event {
 
         let mut stacktraces = vec![];
         if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.raw_stacktrace.take()));
+            stacktraces.extend(
+                excs.iter_mut()
+                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
+            );
         }
         if let Some(mut threads) = threads.map(|threads| threads.values) {
-            stacktraces.extend(
-                threads
-                    .iter_mut()
-                    .filter_map(|thread| thread.raw_stacktrace.take()),
-            );
+            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
+                thread
+                    .raw_stacktrace
+                    .take()
+                    .or_else(|| thread.stacktrace.take())
+            }));
         }
 
         let stacktraces: Vec<_> = stacktraces
@@ -540,6 +548,7 @@ mod event {
     #[derive(Debug, Deserialize)]
     struct Exception {
         raw_stacktrace: Option<Stacktrace>,
+        stacktrace: Option<Stacktrace>,
     }
 
     #[derive(Debug, Deserialize)]
@@ -550,6 +559,7 @@ mod event {
     #[derive(Debug, Deserialize)]
     struct Thread {
         raw_stacktrace: Option<Stacktrace>,
+        stacktrace: Option<Stacktrace>,
     }
 
     #[derive(Debug, Deserialize)]
