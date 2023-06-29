@@ -188,9 +188,12 @@ async fn symbolicate_js_frame(
         Some(smcache) => match &smcache.entry {
             Ok(entry) => (entry, smcache.resolved_with),
             Err(CacheError::Malformed(_)) => {
+                // If we succesfully resolved the sourcemap but it's broken somehow,
+                // We should still record that we resolved it.
+                raw_frame.data.resolved_with = smcache.resolved_with;
                 return Err(JsModuleErrorKind::MalformedSourcemap {
                     url: sourcemap_label.to_owned(),
-                })
+                });
             }
             Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
                 return Err(JsModuleErrorKind::ScrapingDisabled);
