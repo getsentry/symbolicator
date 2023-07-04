@@ -249,12 +249,12 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
 fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObjectCandidates {
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();
-    let mut candidates: Vec<ObjectCandidate> = Vec::with_capacity(lookups.len() + source_ids.len());
+    let mut candidates = BTreeSet::new();
 
     for meta_lookup in lookups.iter() {
         let source_id = meta_lookup.file_source.source_id();
         source_ids.take(source_id);
-        candidates.push(create_candidate_info(meta_lookup));
+        candidates.insert(create_candidate_info(meta_lookup));
     }
 
     // Create a NotFound entry for each source from which we did not try and fetch anything.
@@ -266,7 +266,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
             unwind: Default::default(),
             debug: Default::default(),
         };
-        candidates.push(info);
+        candidates.insert(info);
     }
 
     candidates.into()

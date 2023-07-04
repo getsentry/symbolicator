@@ -1,5 +1,7 @@
 //! Implementations for the types describing DIF object files.
 
+use std::collections::BTreeSet;
+
 use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
@@ -47,6 +49,18 @@ pub struct ObjectCandidate {
     /// symbolication request.
     #[serde(skip_serializing_if = "ObjectUseInfo::is_none", default)]
     pub debug: ObjectUseInfo,
+}
+
+impl Ord for ObjectCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (&self.source, &self.location).cmp(&(&other.source, &other.location))
+    }
+}
+
+impl PartialOrd for ObjectCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Information about downloading of a DIF object.
@@ -126,22 +140,6 @@ impl ObjectUseInfo {
     }
 }
 
-impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
-    fn from(mut source: Vec<ObjectCandidate>) -> Self {
-        source
-            .sort_by_cached_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
-        Self(source)
-    }
-}
-
-/// Newtype around a collection of [`ObjectCandidate`] structs.
-///
-/// This abstracts away some common operations needed on this collection.
-///
-/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
-
 /// The candidate cache status that we want to set
 #[derive(Eq, PartialEq)]
 pub enum CandidateStatus {
@@ -149,6 +147,12 @@ pub enum CandidateStatus {
     Unwind,
     None,
 }
+
+/// Newtype around a collection of [`ObjectCandidate`] structs.
+///
+/// This abstracts away some common operations needed on this collection.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
 
 impl AllObjectCandidates {
     /// Sets the `debug` or `unwind` status field for the specified DIF object.
@@ -228,6 +232,21 @@ impl AllObjectCandidates {
                 }
             }
         }
+    }
+}
+
+impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
+    fn from(mut source: Vec<ObjectCandidate>) -> Self {
+        source
+            .sort_by_cached_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
+        source.dedup_by_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
+        Self(source)
+    }
+}
+
+impl From<BTreeSet<ObjectCandidate>> for AllObjectCandidates {
+    fn from(source: BTreeSet<ObjectCandidate>) -> Self {
+        Self(source.into_iter().collect())
     }
 }
 
