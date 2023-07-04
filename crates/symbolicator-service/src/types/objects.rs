@@ -49,18 +49,6 @@ pub struct ObjectCandidate {
     pub debug: ObjectUseInfo,
 }
 
-impl Ord for ObjectCandidate {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (&self.source, &self.location).cmp(&(&other.source, &other.location))
-    }
-}
-
-impl PartialOrd for ObjectCandidate {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 /// Information about downloading of a DIF object.
 ///
 /// This is part of the larger [`ObjectCandidate`] struct.
