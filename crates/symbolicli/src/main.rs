@@ -1,7 +1,7 @@
-use std::fmt;
 use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
+use std::{fmt, io};
 
 use event::{create_js_symbolication_request, create_native_symbolication_request};
 use output::{print_compact, print_pretty};
@@ -36,7 +36,7 @@ async fn main() -> Result<()> {
     ]);
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(io::stderr))
         .with(filter)
         .init();
 
