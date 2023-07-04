@@ -22,7 +22,6 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::fs::File;
@@ -602,8 +601,7 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles:
-        BTreeMap<Reverse<RemoteFileUri>, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
+    artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
@@ -840,14 +838,14 @@ impl ArtifactFetcher {
         // If we have a `DebugId`, we try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
-            for (bundle_uri, bundle) in &self.artifact_bundles {
+            for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
                 let Ok((bundle, _)) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     self.found_via_bundle_debugid += 1;
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                     return Some(CachedFileEntry {
-                        uri: CachedFileUri::Bundled(bundle_uri.0.clone(), key.clone()),
+                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
                         resolved_with: Some(ResolvedWith::DebugId),
                     });
@@ -858,14 +856,14 @@ impl ArtifactFetcher {
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
-                for (bundle_uri, bundle) in &self.artifact_bundles {
+                for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
                     let Ok((bundle, resolved_with)) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         self.found_via_bundle_url += 1;
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
                         return Some(CachedFileEntry {
-                            uri: CachedFileUri::Bundled(bundle_uri.0.clone(), key.clone()),
+                            uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                             entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
                             resolved_with: *resolved_with,
                         });
@@ -1014,7 +1012,7 @@ impl ArtifactFetcher {
                     resolved_with,
                 } => {
                     self.queried_bundles += 1;
-                    let uri = Reverse(remote_file.uri());
+                    let uri = remote_file.uri();
                     // clippy, you are wrong, as this would result in borrowing errors,
                     // because we are calling a `self` method while borrowing from self
                     #[allow(clippy::map_entry)]
