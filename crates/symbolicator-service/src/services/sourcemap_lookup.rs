@@ -839,7 +839,7 @@ impl ArtifactFetcher {
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
             for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
-                let Ok((bundle, _)) = bundle else { continue; };
+                let Ok((bundle, _)) = bundle else { continue };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
                     self.found_via_bundle_debugid += 1;
@@ -857,7 +857,9 @@ impl ArtifactFetcher {
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
                 for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
-                    let Ok((bundle, resolved_with)) = bundle else { continue; };
+                    let Ok((bundle, resolved_with)) = bundle else {
+                        continue;
+                    };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
                         self.found_via_bundle_url += 1;

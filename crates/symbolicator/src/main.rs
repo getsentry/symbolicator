@@ -27,6 +27,16 @@ mod logging;
 mod server;
 mod service;
 
+fn main() {
+    match cli::execute() {
+        Ok(()) => std::process::exit(0),
+        Err(error) => {
+            logging::ensure_log_error(&error);
+            std::process::exit(1);
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::config::Config;
@@ -53,15 +63,5 @@ mod test {
         let service = RequestService::create(config, handle.clone(), handle).unwrap();
 
         Server::with_router(endpoints::create_app(service))
-    }
-}
-
-fn main() {
-    match cli::execute() {
-        Ok(()) => std::process::exit(0),
-        Err(error) => {
-            logging::ensure_log_error(&error);
-            std::process::exit(1);
-        }
     }
 }
