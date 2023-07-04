@@ -601,7 +601,7 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: HashMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
+    artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
@@ -838,7 +838,7 @@ impl ArtifactFetcher {
         // If we have a `DebugId`, we try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
-            for (bundle_uri, bundle) in &self.artifact_bundles {
+            for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
                 let Ok((bundle, _)) = bundle else { continue; };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
@@ -856,7 +856,7 @@ impl ArtifactFetcher {
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
         if let Some(abs_path) = key.abs_path() {
             for url in get_release_file_candidate_urls(abs_path) {
-                for (bundle_uri, bundle) in &self.artifact_bundles {
+                for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
                     let Ok((bundle, resolved_with)) = bundle else { continue; };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {

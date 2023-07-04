@@ -595,6 +595,41 @@ async fn e2e_multiple_smref_scraped() {
     assert_snapshot!(response.unwrap());
 }
 
+#[tokio::test]
+async fn sorted_bundles() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+
+    let (_srv, source) = sourcemap_server("sorted_bundles", |url, _query| {
+        json!([{
+            "type": "bundle",
+            "id": "1",
+            "url": format!("{url}/01_wrong.zip"),
+        }, {
+            "type": "bundle",
+            "id": "2",
+            "url": format!("{url}/02_correct.zip"),
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/test.min.js",
+        "lineno": 1,
+        "colno": 183
+    }]"#;
+    let modules = r#"[]"#;
+
+    let request = make_js_request(source, frames, modules, String::from("some-release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_eq!(
+        response.unwrap().stacktraces[0].frames[0].function,
+        // The `01_wrong` bundle would yield `thisIsWrong` here.
+        // We want to assert that bundles have stable sort order according to their `url`.
+        // The `url` contains their `id` as it comes from sentry. This is the best we can do right now.
+        Some("test".into())
+    );
+}
+
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
 // of frames, modules, release/dist pair and valid token, which can all be obtained from the event's
 // JSON payload. We can modify this util to pull the data from JSON API directly if we use it more often.
