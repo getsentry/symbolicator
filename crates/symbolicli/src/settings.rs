@@ -166,7 +166,8 @@ impl Settings {
                 .auth_token
                 .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
                 .or_else(|| project_config_file.auth_token.take())
-                .or_else(|| global_config_file.auth_token.take()) else {
+                .or_else(|| global_config_file.auth_token.take())
+            else {
                 bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
             };
 
@@ -180,15 +181,19 @@ impl Settings {
             let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
             let url = sentry_url.join("/api/0/").unwrap();
 
-            let Some(org) = cli.org
+            let Some(org) = cli
+                .org
                 .or_else(|| project_config_file.org.take())
-                .or_else(|| global_config_file.org.take()) else {
+                .or_else(|| global_config_file.org.take())
+            else {
                 bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
             };
 
-            let Some(project) = cli.project
+            let Some(project) = cli
+                .project
                 .or_else(|| project_config_file.project.take())
-                .or_else(|| global_config_file.project.take()) else {
+                .or_else(|| global_config_file.project.take())
+            else {
                 bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
             };
 

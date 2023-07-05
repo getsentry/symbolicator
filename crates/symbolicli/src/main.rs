@@ -59,7 +59,14 @@ async fn main() -> Result<()> {
 
         None => {
             tracing::info!("event not found in local file system");
-            let Mode::Online { ref base_url, ref org,ref  project,ref  auth_token, .. } = mode else {
+            let Mode::Online {
+                ref base_url,
+                ref org,
+                ref project,
+                ref auth_token,
+                ..
+            } = mode
+            else {
                 anyhow::bail!("Event not found in local file system and `symbolicli` is in offline mode. Stopping.");
             };
 
@@ -92,7 +99,8 @@ async fn main() -> Result<()> {
                 ref base_url,
                 ref auth_token,
                 scraping_enabled,
-            } = mode else {
+            } = mode
+            else {
                 anyhow::bail!("JavaScript symbolication is not supported in offline mode.");
             };
 
@@ -312,8 +320,9 @@ mod remote {
         let Some(minidump_id) = attachments
             .iter()
             .find(|attachment| attachment.r#type == "event.minidump")
-            .map(|attachment| &attachment.id) else {
-                return Ok(None);
+            .map(|attachment| &attachment.id)
+        else {
+            return Ok(None);
         };
 
         let mut download_url = attachments_url.join(&format!("{minidump_id}/")).unwrap();
