@@ -3,8 +3,8 @@
 //! This provides the [`RemoteFile`] type which provides a unified way of dealing with a file
 //! which may exist on a source.
 
+use std::fmt;
 use std::path::Path;
-use std::{collections::HashSet, fmt};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -95,9 +95,6 @@ pub struct SourceLocationIter<'a> {
 
     /// Remaining locations to iterate.
     next: Vec<String>,
-
-    /// Paths that were previously returned.
-    previously_returned: HashSet<String>,
 }
 
 impl<'a> SourceLocationIter<'a> {
@@ -113,7 +110,6 @@ impl<'a> SourceLocationIter<'a> {
             object_id,
             layout: config.layout,
             next: vec![],
-            previously_returned: HashSet::new(),
         }
     }
 }
@@ -133,14 +129,7 @@ impl Iterator for SourceLocationIter<'_> {
             }
         }
 
-        self.next.pop().and_then(|next| {
-            if !self.previously_returned.contains(&next) {
-                self.previously_returned.insert(next.clone());
-                Some(SourceLocation::new(next))
-            } else {
-                None
-            }
-        })
+        self.next.pop().map(SourceLocation::new)
     }
 }
 
