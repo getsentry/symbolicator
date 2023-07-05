@@ -147,7 +147,7 @@ impl Settings {
         let global_config_path = find_global_config_file()?;
         let mut global_config_file = ConfigFile::parse(&global_config_path)?;
         let mut project_config_file = match find_project_config_file() {
-            Some(path) if path != global_config_path => ConfigFile::parse(dbg!(&path))?,
+            Some(path) if path != global_config_path => ConfigFile::parse(&path)?,
             _ => ConfigFile::default(),
         };
 
