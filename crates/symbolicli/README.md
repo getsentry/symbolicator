@@ -41,7 +41,7 @@ The available options are:
 * `sources`: A list of debug file sources that will be queried in addition to the project's uploaded
   files. See [Sources documentation](../../docs/api/index.md#sources).
 
-See `symboliclirc.example` for an exapmle `symboliclirc` file.
+See `symboliclirc.example` for an exapmle `.symboliclirc` file.
 
 # Logging
 You can control the level of logging output by passing the desired log level to the `--log-level` option.
