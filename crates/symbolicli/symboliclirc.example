@@ -15,6 +15,9 @@
 # id = "microsoft"
 # type = "http"
 # url = "https://msdl.microsoft.com/download/symbols"
+# layout = { type = "ssqp" }
+# filters = { filetypes = ["pe", "pdb", "portablepdb"] }
+# is_public = true
 
 # The public Electron symbol server
 # [[sources]]
