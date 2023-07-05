@@ -9,7 +9,10 @@ use remote::EventKey;
 
 use settings::Mode;
 use symbolicator_service::types::{CompletedResponse, Scope};
-use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
+use symbolicator_sources::{
+    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
+    SentrySourceConfig, SourceConfig, SourceId,
+};
 
 use anyhow::{Context, Result};
 use reqwest::header;
@@ -28,6 +31,7 @@ async fn main() -> Result<()> {
         output_format,
         log_level,
         mode,
+        symbols,
     } = settings::Settings::get()?;
 
     let filter = filter::Targets::new().with_targets(vec![
@@ -133,6 +137,21 @@ async fn main() -> Result<()> {
             }
 
             dsym_sources.extend(symbolicator_config.sources.iter().cloned());
+            if let Some(path) = symbols {
+                let local_source = FilesystemSourceConfig {
+                    id: SourceId::new("local:cli"),
+                    path,
+                    files: CommonSourceConfig {
+                        filters: Default::default(),
+                        layout: DirectoryLayout {
+                            ty: DirectoryLayoutType::Unified,
+                            casing: Default::default(),
+                        },
+                        is_public: false,
+                    },
+                };
+                dsym_sources.push(SourceConfig::Filesystem(local_source.into()));
+            }
             let dsym_sources = Arc::from(dsym_sources.into_boxed_slice());
 
             match payload {

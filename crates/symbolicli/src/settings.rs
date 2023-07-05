@@ -102,6 +102,13 @@ struct Cli {
     /// This flag has no effect on native symbolication.
     #[arg(long)]
     no_scrape: bool,
+
+    /// An additional directory containing native symbols.
+    ///
+    /// The symbols must conform to the `unified` symbol server
+    /// layout, as produced by `symsorter`.
+    #[arg(long)]
+    symbols: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -138,6 +145,7 @@ pub struct Settings {
     pub output_format: OutputFormat,
     pub log_level: LevelFilter,
     pub mode: Mode,
+    pub symbols: Option<PathBuf>,
 }
 
 impl Settings {
@@ -219,6 +227,7 @@ impl Settings {
             output_format: cli.format,
             log_level: cli.log_level,
             mode,
+            symbols: cli.symbols,
         };
 
         Ok(args)
