@@ -139,11 +139,11 @@ mod tests {
 
         assert_eq!(
             &key.cache_path(0),
-            "v0/6f/200788/bd4e6760d55bf6bd50c6d6e98b52379e194f9989fb788b4d37796427"
+            "v0/f5/e08b92/a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
         );
         assert_eq!(
             key.metadata(),
-            "scope: global\n\nsource: foo\nlocation: file:///bar.baz\n"
+            "scope: global\n\nsource: foo\nlocation: file://bar.baz\n"
         );
 
         let built_key = CacheKey::from_scoped_file(&scope, &file);
@@ -161,11 +161,11 @@ mod tests {
 
         assert_eq!(
             &key.cache_path(0),
-            "v0/07/e89036/d56878a462eb7949a744afa0a4deb5ed1b7a8154be16f7dd3b220518"
+            "v0/d9/40ba75/07d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
         );
         assert_eq!(
             key.metadata(),
-            "scope: global\n\nsource: foo\nlocation: file:///bar.baz\n\nsecond_source:\nsource: foo\nlocation: file:///bar.quux\n"
+            "scope: global\n\nsource: foo\nlocation: file://bar.baz\n\nsecond_source:\nsource: foo\nlocation: file://bar.quux\n"
         );
     }
 }
