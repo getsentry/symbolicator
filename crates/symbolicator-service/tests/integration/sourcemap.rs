@@ -478,6 +478,44 @@ async fn test_webpack() {
 }
 
 #[tokio::test]
+async fn test_dart_async_name() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("10_dart_async_name", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/main.dart.js"),
+            "abs_path": "~/main.dart.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/main.dart.js.map"),
+            "abs_path": "~/main.dart.js.map",
+            "resolved_with": "release",
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/main.dart.js",
+        "filename": "main.dart.js",
+        "lineno": 56371,
+        "colno": 16,
+        "function": "<fn>"
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_eq!(
+        response.unwrap().stacktraces[0].frames[0].function,
+        // Without implemented workaround, it would yield `$async$$0` here.
+        // We want to assert that it uses token name instead of scope name in case of async rewrite.
+        Some("MainApp.build.<anonymous function>".into())
+    );
+}
+
+#[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = sourcemap_server("e2e_node_debugid", |url, query| {

@@ -227,7 +227,17 @@ async fn symbolicate_js_frame(
     frame.token_name = token.name().map(|n| n.to_owned());
 
     let function_name = match token.scope() {
-        ScopeLookupResult::NamedScope(name) => name.to_string(),
+        ScopeLookupResult::NamedScope(name) => {
+            let scope_name = name.to_string();
+            // Special case for Dart async function rewrites
+            // https://github.com/dart-lang/sdk/blob/fab753ea277c96c7699920852dabf977a7065fa5/pkg/compiler/lib/src/js_backend/namer.dart#L1845-L1866
+            // ref: https://github.com/getsentry/symbolic/issues/791
+            if name.starts_with("$async$") {
+                token.name().map_or_else(|| scope_name, |n| n.to_owned())
+            } else {
+                scope_name
+            }
+        }
         ScopeLookupResult::AnonymousScope => "<anonymous>".to_string(),
         ScopeLookupResult::Unknown => {
             // Fallback to minified function name
