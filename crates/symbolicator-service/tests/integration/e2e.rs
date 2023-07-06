@@ -96,8 +96,8 @@ async fn test_path_patterns() {
         let request = request_fixture(vec![source]);
         let mut response = symbolication.symbolicate(request).await.unwrap();
 
-        let mut module = response.modules.pop().unwrap();
-        let candidate = module.candidates.0.pop().unwrap();
+        let module = response.modules.pop().unwrap();
+        let candidate = module.candidates.into_inner().pop().unwrap();
 
         if should_be_found {
             assert!(candidate
@@ -148,7 +148,7 @@ async fn test_no_permission() {
 
     let request = example_request(sources);
     let mut response = symbolication.symbolicate(request).await.unwrap();
-    let candidates = response.modules.pop().unwrap().candidates.0;
+    let candidates = response.modules.pop().unwrap().candidates.into_inner();
 
     // NOTE: every second candidate is a "No object files listed on this source" one for the
     // source bundle lookup
@@ -224,7 +224,7 @@ async fn test_reserved_ip_addresses() {
 
     let request = example_request(sources);
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
-    let candidates = response.modules.pop().unwrap().candidates.0;
+    let candidates = response.modules.pop().unwrap().candidates.into_inner();
 
     assert_eq!(hitcounter.accesses(), 3);
 
@@ -258,7 +258,7 @@ async fn test_reserved_ip_addresses() {
         cfg.connect_to_reserved_ips = false;
     });
     let mut response = symbolication.symbolicate(request.clone()).await.unwrap();
-    let candidates = response.modules.pop().unwrap().candidates.0;
+    let candidates = response.modules.pop().unwrap().candidates.into_inner();
 
     assert_eq!(hitcounter.accesses(), 0);
 
@@ -302,8 +302,8 @@ async fn test_redirects() {
     let request = request_fixture(vec![source]);
     let mut response = symbolication.symbolicate(request).await.unwrap();
 
-    let mut module = response.modules.pop().unwrap();
-    let candidate = module.candidates.0.pop().unwrap();
+    let module = response.modules.pop().unwrap();
+    let candidate = module.candidates.into_inner().pop().unwrap();
     let expected_url = hitcounter
         .url("/redirect/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb");
     assert_eq!(candidate.location, RemoteFileUri::from(expected_url));
@@ -339,8 +339,8 @@ async fn test_unreachable_bucket() {
             let request = request_fixture(vec![source]);
             let mut response = symbolication.symbolicate(request).await.unwrap();
 
-            let mut module = response.modules.pop().unwrap();
-            let candidate = module.candidates.0.pop().unwrap();
+            let module = response.modules.pop().unwrap();
+            let candidate = module.candidates.into_inner().pop().unwrap();
             let statuses = (module.debug_status, candidate.download);
 
             if ty == "http" && code == "500" {

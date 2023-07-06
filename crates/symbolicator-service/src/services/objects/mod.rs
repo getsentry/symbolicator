@@ -254,19 +254,31 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
     for meta_lookup in lookups.iter() {
         let source_id = meta_lookup.file_source.source_id();
         source_ids.take(source_id);
-        candidates.push(create_candidate_info(meta_lookup));
+        let location = meta_lookup.file_source.uri();
+        if let Err(idx) =
+            candidates.binary_search_by_key(&(source_id, &location), |c| (&c.source, &c.location))
+        {
+            let info = create_candidate_info(meta_lookup);
+            candidates.insert(idx, info);
+        }
     }
 
     // Create a NotFound entry for each source from which we did not try and fetch anything.
     for source_id in source_ids {
-        let info = ObjectCandidate {
-            source: source_id,
-            location: RemoteFileUri::new("No object files listed on this source"),
-            download: ObjectDownloadInfo::NotFound,
-            unwind: Default::default(),
-            debug: Default::default(),
-        };
-        candidates.push(info);
+        let location = RemoteFileUri::new("No object files listed on this source");
+
+        if let Err(idx) =
+            candidates.binary_search_by_key(&(&source_id, &location), |c| (&c.source, &c.location))
+        {
+            let info = ObjectCandidate {
+                source: source_id,
+                location,
+                download: ObjectDownloadInfo::NotFound,
+                unwind: Default::default(),
+                debug: Default::default(),
+            };
+            candidates.insert(idx, info);
+        }
     }
 
     candidates.into()
