@@ -1,0 +1,54 @@
+# The directory where downloads are cached.
+# If this is not set, caching is disabled.
+# cache_dir = "/home/USERNAME/.symbolicli/cache"
+
+# The Sentry server to access in online mode. Defaults to "https://sentry.io/".
+# url = "https://sentry.io/"
+
+# The default auth token to use for accessing Sentry.
+# auth_token = ""
+
+### Example symbol sources
+
+# The public Microsoft symbol server
+# [[sources]]
+# id = "microsoft"
+# type = "http"
+# url = "https://msdl.microsoft.com/download/symbols"
+# layout = { type = "ssqp" }
+# filters = { filetypes = ["pe", "pdb", "portablepdb"] }
+# is_public = true
+
+# The public Electron symbol server
+# [[sources]]
+# id = "sentry:electron"
+# type = "http"
+# url = "https://symbols.electronjs.org/"
+# layout = { type = "native" }
+# filters = { filetypes = ["pdb", "breakpad", "sourcebundle"] }
+# is_public = true
+
+# The public Ubuntu symbol server
+# [[sources]]
+# id = "sentry:ubuntu"
+# type = "http"
+# url = "https://debuginfod.ubuntu.com/buildid/"
+# layout = { type = "debuginfod" }
+# filters = { filetypes = ["elf_code", "elf_debug"] }
+# is_public = true
+
+# An example symbol directory in the local filesystem.
+# Sort your symbols into it using `symsorter`.
+# [[sources]]
+# id = "local"
+# type = "filesystem"
+# path = "/path/to/symbols"
+# layout = { type = "unified", casing = "default" }
+
+# An example http symbol server.
+# [[sources]]
+# id = "company-symbol-server"
+# type = "http"
+# url = "https://symbols.company.com/symbols-home"
+# # Configure this to the layout and case sensitivity of your symbol server
+# layout = { type = "symstore_index2", casing = "default" }

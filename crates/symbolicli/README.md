@@ -41,24 +41,7 @@ The available options are:
 * `sources`: A list of debug file sources that will be queried in addition to the project's uploaded
   files. See [Sources documentation](../../docs/api/index.md#sources).
 
-Below follows an example ~/.symboliclirc suitable for using symbolicli in offline mode to analyze
-Windows Minidumps:
-
-```
-cache_dir = "/home/username/.symbolicli/cache"
-
-[[sources]]
-id = "company-symbol-server"
-type = "http"
-url = "https://symbols.company.com/symbols-home"
-# Configure this to the layout and case sensitivity of your symbol server
-layout = { type = "symstore_index2", casing = "default" }
-
-[[sources]]
-id = "microsoft"
-type = "http"
-url = "https://msdl.microsoft.com/download/symbols"
-```
+See `symboliclirc.example` for an exapmle `.symboliclirc` file.
 
 # Logging
 You can control the level of logging output by passing the desired log level to the `--log-level` option.
