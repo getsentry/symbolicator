@@ -9,6 +9,7 @@
 ### Fixes
 
 - Reintroduce `--version` option to `symsorter` and `wasm-split` ([#1219](https://github.com/getsentry/symbolicator/pull/1219))
+- Add special case for extracting name of rewritten async functions in Dart lang ([#1246](https://github.com/getsentry/symbolicator/pull/1246))
 
 ### Dependencies
 
