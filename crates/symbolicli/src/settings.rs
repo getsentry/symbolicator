@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use symbolicator_service::config::Config;
+use symbolicator_service::config::{CacheConfigs, Config};
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -218,10 +219,15 @@ impl Settings {
                 std::fs::create_dir_all(path)?;
             }
 
+            let mut caches = CacheConfigs::default();
+            caches.downloaded.retry_misses_after = Some(Duration::ZERO);
+            caches.derived.retry_misses_after = Some(Duration::ZERO);
+
             Config {
                 sources: Arc::from(sources),
                 cache_dir,
                 connect_to_reserved_ips: true,
+                caches,
                 ..Default::default()
             }
         };
