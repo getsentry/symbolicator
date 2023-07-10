@@ -705,6 +705,7 @@ pub struct JsFrameData {
 #[serde(rename_all = "kebab-case")]
 pub enum ResolvedWith {
     DebugId,
+    Index,
     Release,
     ReleaseOld,
     Scraping,
