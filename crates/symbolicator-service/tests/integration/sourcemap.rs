@@ -484,22 +484,22 @@ async fn test_dart_async_name() {
         json!([{
             "type": "file",
             "id": "1",
-            "url": format!("{url}/main.dart.js"),
-            "abs_path": "~/main.dart.js",
+            "url": format!("{url}/out.js"),
+            "abs_path": "~/out.js",
             "resolved_with": "release",
         }, {
             "type": "file",
             "id": "2",
-            "url": format!("{url}/main.dart.js.map"),
-            "abs_path": "~/main.dart.js.map",
+            "url": format!("{url}/out.js.map"),
+            "abs_path": "~/out.js.map",
             "resolved_with": "release",
         }])
     });
 
     let frames = r#"[{
-        "abs_path": "http://example.com/main.dart.js",
-        "filename": "main.dart.js",
-        "lineno": 56371,
+        "abs_path": "http://example.com/out.js",
+        "filename": "out.js",
+        "lineno": 1314,
         "colno": 16,
         "function": "<fn>"
     }]"#;
@@ -509,9 +509,9 @@ async fn test_dart_async_name() {
 
     assert_eq!(
         response.unwrap().stacktraces[0].frames[0].function,
-        // Without implemented workaround, it would yield `$async$$0` here.
+        // Without implemented workaround, it would yield `$async$be` here.
         // We want to assert that it uses token name instead of scope name in case of async rewrite.
-        Some("MainApp.build.<anonymous function>".into())
+        Some("main".into())
     );
 }
 
