@@ -1,0 +1,57 @@
+format_version: 10
+pipelines:
+  rollback-symbolicator-next:
+    display_order: 1
+    environment_variables:
+      ALL_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-next-monitor" --pipeline="deploy-symbolicator-next-us" --pipeline="deploy-symbolicator-next"
+      GOCD_ACCESS_TOKEN: '{{SECRET:[devinfra][gocd_access_token]}}'
+      REGION_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-next-monitor" --pipeline="deploy-symbolicator-next-us"
+      ROLLBACK_MATERIAL_NAME: symbolicator_repo
+      ROLLBACK_STAGE: deploy_primary
+    group: symbolicator-next
+    lock_behavior: unlockWhenFinished
+    materials:
+      deploy-symbolicator-next-us-pipeline-complete:
+        pipeline: deploy-symbolicator-next-us
+        stage: pipeline-complete
+    stages:
+      - pause_pipelines:
+          approval:
+            type: manual
+          jobs:
+            rollback:
+              tasks:
+                - script: |
+                    ##!/bin/bash
+
+                    ## Note: $ALL_PIPELINE_FLAGS has no quoting, for word expansion
+                    ## shellcheck disable=SC2086
+                    if [[ "${ALL_PIPELINE_FLAGS:-}" ]]; then
+                      set -- $ALL_PIPELINE_FLAGS
+                    fi
+
+                    ## Pause all pipelines in the pipedream
+                    gocd-pause-and-cancel-pipelines \
+                      --pause-message="This pipeline is being rolled back, please check with team before un-pausing." \
+                      "$@"
+        start_rollback:
+          jobs:
+            rollback:
+              tasks:
+                - script: |
+                    ##!/bin/bash
+
+                    ## Note: $REGION_PIPELINE_FLAGS has no quoting, for word expansion
+                    ## shellcheck disable=SC2086
+                    if [[ "${REGION_PIPELINE_FLAGS:-}" ]]; then
+                      set -- $REGION_PIPELINE_FLAGS
+                    fi
+
+                    ## Get sha from the given pipeline run to deploy to all pipedream pipelines.
+                    sha=$(gocd-sha-for-pipeline --material-name="${ROLLBACK_MATERIAL_NAME}")
+
+                    gocd-emergency-deploy \
+                      --commit-sha="${sha}" \
+                      --deploy-stage="${ROLLBACK_STAGE}" \
+                      --pause-message="This pipeline was rolled back, please check with team before un-pausing." \
+                      "$@"

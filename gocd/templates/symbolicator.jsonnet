@@ -1,5 +1,5 @@
 local symbolicator = import './pipelines/symbolicator.libsonnet';
-local pipedream = import 'github.com/getsentry/gocd-jsonnet/v1.0.0/pipedream.libsonnet';
+local pipedream = import 'github.com/getsentry/gocd-jsonnet/libs/pipedream.libsonnet';
 
 local pipedream_config = {
   // Name of your service
@@ -13,6 +13,12 @@ local pipedream_config = {
       branch: 'master',
       destination: 'symbolicator',
     },
+  },
+
+  // Add rollback
+  rollback: {
+    material_name: 'symbolicator_repo',
+    stage: 'deploy_primary',
   },
 
   // Set to true to auto-deploy changes (defaults to true)
