@@ -674,6 +674,18 @@ as well as external sources to pull symbols from:</p>
 <li><code>frames</code>: A list of frames with addresses. Arbitrary additional properties
     may be passed with frames, but are discarded. The <code>addr_mode</code> property
     defines the beahvior of <code>instruction_addr</code>.</li>
+<li><code>scraping</code>: Configuration for authenticating scraping requests via http headers.</li>
+<li><code>enabled</code>: Whether authentication should happen at all.</li>
+<li><code>allowed_origins</code>: A list of "allowed origin patterns" that control what
+    URLs we are authenticating. Allowed origins may be defined in several ways:<ul>
+<li><code>http://domain.com[:port]</code>: Exact match for base URI (must include port).</li>
+<li><code>*</code>: Allow any domain.</li>
+<li><code>*.domain.com</code>: Matches domain.com and all subdomains, on any port.</li>
+<li><code>domain.com</code>: Matches domain.com on any port.</li>
+<li><code>*:port</code>: Wildcard on hostname, but explicit match on port.</li>
+</ul>
+</li>
+<li><code>headers</code>: A map of headers to send with every HTTP request while scraping.</li>
 </ul>
 <h2 id="response">Response</h2>
 <p>See <a href="../response/">Symbolication Response</a>.</p>
