@@ -582,6 +582,7 @@ mod tests {
             sources: Arc::new([]),
             scope: Default::default(),
             apply_source_context: true,
+            scraping: Default::default(),
         };
 
         let request_id = service
@@ -622,6 +623,7 @@ mod tests {
                 debug_checksum: None,
             })],
             apply_source_context: true,
+            scraping: Default::default(),
         }
     }
 

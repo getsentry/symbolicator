@@ -532,6 +532,7 @@ mod event {
             stacktraces,
             modules,
             apply_source_context: true,
+            scraping: Default::default(),
         })
     }
 

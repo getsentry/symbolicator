@@ -74,6 +74,16 @@ as well as external sources to pull symbols from:
   - `frames`: A list of frames with addresses. Arbitrary additional properties
     may be passed with frames, but are discarded. The `addr_mode` property
     defines the beahvior of `instruction_addr`.
+- `scraping`: Configuration for authenticating scraping requests via http headers.
+  - `enabled`: Whether authentication should happen at all.
+  - `allowed_origins`: A list of "allowed origin patterns" that control what
+    URLs we are authenticating. Allowed origins may be defined in several ways:
+    - `http://domain.com[:port]`: Exact match for base URI (must include port).
+    - `*`: Allow any domain.
+    - `*.domain.com`: Matches domain.com and all subdomains, on any port.
+    - `domain.com`: Matches domain.com on any port.
+    - `*:port`: Wildcard on hostname, but explicit match on port.
+  - `headers`: A map of headers to send with every HTTP request while scraping.
 
 ## Response
 

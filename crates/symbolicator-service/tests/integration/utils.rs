@@ -59,6 +59,7 @@ pub fn make_symbolication_request(
         sources: Arc::from(sources),
         scope: Default::default(),
         apply_source_context: true,
+        scraping: Default::default(),
     }
 }
 

@@ -474,6 +474,7 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
+            scraping: Default::default(),
         };
 
         Ok((request, minidump_state))

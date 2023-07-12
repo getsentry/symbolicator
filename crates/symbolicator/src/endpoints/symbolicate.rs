@@ -2,6 +2,7 @@ use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
+use symbolicator_service::services::ScrapingConfig;
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{
@@ -45,6 +46,8 @@ pub struct SymbolicationRequestBody {
     pub modules: Vec<RawObjectInfo>,
     #[serde(default)]
     pub options: RequestOptions,
+    #[serde(default)]
+    pub scraping: ScrapingConfig,
 }
 
 pub async fn symbolicate_frames(
@@ -70,6 +73,7 @@ pub async fn symbolicate_frames(
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
             apply_source_context: body.options.apply_source_context,
+            scraping: body.scraping,
         },
         body.options,
     )?;
