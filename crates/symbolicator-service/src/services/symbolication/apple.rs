@@ -79,6 +79,7 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
+            scraping: Default::default(),
         };
 
         let mut system_info = SystemInfo {

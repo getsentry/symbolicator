@@ -219,7 +219,7 @@ fn prepare_payload(scope: Scope, sources: Arc<[SourceConfig]>, payload: Payload)
                 sources,
                 origin: StacktraceOrigin::Symbolicate,
                 apply_source_context: true,
-
+                scraping: Default::default(),
                 stacktraces,
                 modules,
             })

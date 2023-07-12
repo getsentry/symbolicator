@@ -1,5 +1,9 @@
 # Changelog
 
+## 23.7.0
+
+- Add authentication to Source Context fetching via scraping config ([#1250](https://github.com/getsentry/symbolicator/pull/1250))
+
 ## 23.6.2
 
 ### Features

@@ -1,5 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
 
 use futures::future;
 use symbolic::common::{split_path, DebugId, InstructionInfo, Language, Name};
@@ -22,6 +24,7 @@ use crate::types::{
     SymbolicatedFrame,
 };
 use crate::utils::hex::HexValue;
+use crate::utils::http::is_valid_origin;
 
 mod apple;
 mod js;
@@ -130,6 +133,7 @@ impl SymbolicationActor {
             origin,
             modules,
             apply_source_context,
+            scraping,
         } = request;
 
         let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules.into_iter());
@@ -156,7 +160,7 @@ impl SymbolicationActor {
             .collect();
 
         if apply_source_context {
-            self.apply_source_context(&scope, &mut module_lookup, &mut stacktraces)
+            self.apply_source_context(&scope, &mut module_lookup, &mut stacktraces, &scraping)
                 .await
         }
 
@@ -177,6 +181,7 @@ impl SymbolicationActor {
         scope: &Scope,
         module_lookup: &mut ModuleLookup,
         stacktraces: &mut [CompleteStacktrace],
+        scraping: &ScrapingConfig,
     ) {
         module_lookup
             .fetch_sources(self.objects.clone(), stacktraces)
@@ -209,10 +214,19 @@ impl SymbolicationActor {
         if !remote_sources.is_empty() {
             let cache = self.sourcefiles_cache.as_ref();
             let futures = remote_sources.into_iter().map(|(url, frames)| async {
-                if let Ok(source) = cache
-                    .fetch_file(scope, HttpRemoteFile::from_url(url).into())
-                    .await
-                {
+                let url = url;
+                let mut remote_file = HttpRemoteFile::from_url(url.clone());
+
+                if scraping.enabled && is_valid_origin(&url, &scraping.allowed_origins) {
+                    remote_file.headers.extend(
+                        scraping
+                            .headers
+                            .iter()
+                            .map(|(key, value)| (key.clone(), value.clone())),
+                    );
+                }
+
+                if let Ok(source) = cache.fetch_file(scope, remote_file.into()).await {
                     for frame in frames {
                         ModuleLookup::set_source_context(&source, frame);
                     }
@@ -253,6 +267,9 @@ pub struct SymbolicateStacktraces {
 
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
+
+    /// Scraping configuration controling authenticated requests.
+    pub scraping: ScrapingConfig,
 }
 
 fn symbolicate_frame(
@@ -504,6 +521,39 @@ fn demangle_symbol(cache: &DemangleCache, func: &Function) -> (String, String) {
     let entry = cache.entry_by_ref(&key).or_insert_with(init);
 
     (key.0, entry.into_value())
+}
+
+/// Configuration for scraping of JS Sources, Source Maps and Source Context from the web.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ScrapingConfig {
+    /// Whether scraping should happen at all.
+    pub enabled: bool,
+    // TODO: Can we even use this?
+    // pub verify_ssl: bool,
+    /// A list of "allowed origin patterns" that control:
+    /// - for sourcemaps: what URLs we are allowed to scrape from.
+    /// - for source context: which URLs should be authenticated using attached headers
+    ///
+    /// Allowed origins may be defined in several ways:
+    /// - `http://domain.com[:port]`: Exact match for base URI (must include port).
+    /// - `*`: Allow any domain.
+    /// - `*.domain.com`: Matches domain.com and all subdomains, on any port.
+    /// - `domain.com`: Matches domain.com on any port.
+    /// - `*:port`: Wildcard on hostname, but explicit match on port.
+    pub allowed_origins: Vec<String>,
+    /// A map of headers to send with every HTTP request while scraping.
+    pub headers: BTreeMap<String, String>,
+}
+
+impl Default for ScrapingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            // verify_ssl: false,
+            allowed_origins: vec!["*".to_string()],
+            headers: Default::default(),
+        }
+    }
 }
 
 /// Stacktrace related Metrics

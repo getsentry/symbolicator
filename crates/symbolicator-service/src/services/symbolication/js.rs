@@ -37,9 +37,8 @@ use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::caching::CacheError;
-use crate::services::sourcemap_lookup::{
-    join_paths, strip_hostname, ScrapingConfig, SourceMapLookup,
-};
+use crate::services::sourcemap_lookup::{join_paths, strip_hostname, SourceMapLookup};
+use crate::services::ScrapingConfig;
 use crate::types::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     RawObjectInfo, Scope,
