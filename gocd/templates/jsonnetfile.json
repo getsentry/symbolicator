@@ -5,10 +5,10 @@
       "source": {
         "git": {
           "remote": "https://github.com/getsentry/gocd-jsonnet.git",
-          "subdir": "v1.0.0"
+          "subdir": "libs"
         }
       },
-      "version": "main"
+      "version": "v1.1.4"
     }
   ],
   "legacyImports": true

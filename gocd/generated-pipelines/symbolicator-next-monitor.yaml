@@ -7,8 +7,8 @@ pipelines:
     group: symbolicator-next
     lock_behavior: unlockWhenFinished
     materials:
-      deploy-symbolicator-next-us-pipeline-complete:
-        pipeline: deploy-symbolicator-next-us
+      deploy-symbolicator-next-pipeline-complete:
+        pipeline: deploy-symbolicator-next
         stage: pipeline-complete
       symbolicator_repo:
         branch: master

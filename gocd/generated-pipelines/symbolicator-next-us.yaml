@@ -1,14 +1,14 @@
 format_version: 10
 pipelines:
   deploy-symbolicator-next-us:
-    display_order: 1
+    display_order: 3
     environment_variables:
       SENTRY_REGION: us
     group: symbolicator-next
     lock_behavior: unlockWhenFinished
     materials:
-      deploy-symbolicator-next-pipeline-complete:
-        pipeline: deploy-symbolicator-next
+      deploy-symbolicator-next-monitor-pipeline-complete:
+        pipeline: deploy-symbolicator-next-monitor
         stage: pipeline-complete
       symbolicator_repo:
         branch: master
