@@ -7,6 +7,7 @@ use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
 use symbolicator_service::services::ScrapingConfig;
 use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SentrySourceConfig;
+use url::Url;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::{JsStacktrace, RequestService, SymbolicationResponse};
@@ -25,6 +26,10 @@ pub struct JsSymbolicationRequestBody {
     pub release: Option<String>,
     #[serde(default)]
     pub dist: Option<String>,
+    #[serde(default)]
+    pub debug_id_index: Option<Url>,
+    #[serde(default)]
+    pub url_index: Option<Url>,
     // This is kept around for backwards compatibility.
     // For now, it overrides the `enabled` flag in the `scraping` field.
     #[serde(default = "default_allow_scraping")]
@@ -76,6 +81,8 @@ pub async fn handle_symbolication_request(
         allow_scraping,
         mut scraping,
         options,
+        debug_id_index,
+        url_index,
     } = body;
 
     // Turn off scraping if `allow_scraping` is false
@@ -88,6 +95,8 @@ pub async fn handle_symbolication_request(
         modules,
         release,
         dist,
+        debug_id_index,
+        url_index,
         scraping,
         apply_source_context: options.apply_source_context,
     })?;

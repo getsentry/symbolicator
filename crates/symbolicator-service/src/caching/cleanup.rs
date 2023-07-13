@@ -45,6 +45,7 @@ impl Caches {
             ppdb_caches,
             sourcemap_caches,
             sourcefiles,
+            bundle_index,
             diagnostics,
         } = &self;
 
@@ -65,6 +66,7 @@ impl Caches {
             ppdb_caches,
             sourcemap_caches,
             sourcefiles,
+            bundle_index,
             diagnostics,
         ];
         let mut rng = thread_rng();

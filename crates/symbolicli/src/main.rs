@@ -465,13 +465,16 @@ mod event {
             source,
             release,
             dist,
-            stacktraces,
-            modules,
+            debug_id_index: None,
+            url_index: None,
             scraping: ScrapingConfig {
                 enabled: scraping_enabled,
                 ..Default::default()
             },
             apply_source_context: true,
+
+            stacktraces,
+            modules,
         })
     }
 

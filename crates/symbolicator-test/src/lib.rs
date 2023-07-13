@@ -362,6 +362,12 @@ where
                 get(move |extract::RawQuery(raw_query): extract::RawQuery| {
                     let files_url = files_url.get().unwrap().as_str();
                     let query = &raw_query.as_deref().unwrap_or_default();
+                    // Its a bit unfortunate, but we went full circle back to constructing URLs
+                    // by appending query parameters
+                    if let Some((_, download_id)) = query.rsplit_once("download=") {
+                        dbg!(download_id);
+                        // TODO: serve a file from `/files`
+                    }
                     let res = lookup(files_url, query);
                     async move { Json(res) }
                 }),
