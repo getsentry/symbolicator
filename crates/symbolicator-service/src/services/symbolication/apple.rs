@@ -135,7 +135,7 @@ impl SymbolicationActor {
 
 lazy_static::lazy_static! {
     /// Format sent by Unreal Engine on macOS
-    static ref OS_MACOS_REGEX: Regex = Regex::new(r#"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$"#).unwrap();
+    static ref OS_MACOS_REGEX: Regex = Regex::new(r"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$").unwrap();
 }
 
 #[derive(Debug)]
