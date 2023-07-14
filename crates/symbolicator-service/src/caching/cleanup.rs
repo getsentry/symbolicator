@@ -72,7 +72,7 @@ impl Caches {
 
         // Collect results so we can fail the entire function.  But we do not want to early
         // return since we should at least attempt to clean up all caches.
-        let results = caches.into_iter().map(|c| c.cleanup()).collect();
+        let results: Vec<_> = caches.into_iter().map(|c| c.cleanup()).collect();
 
         let mut first_error = None;
         for result in results {
