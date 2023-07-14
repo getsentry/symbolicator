@@ -136,7 +136,7 @@ impl SymbolicationActor {
             scraping,
         } = request;
 
-        let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules.into_iter());
+        let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules);
         module_lookup
             .fetch_caches(
                 self.symcaches.clone(),

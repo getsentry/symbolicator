@@ -57,7 +57,7 @@ mod tests {
         let server = test::server_with_default_service();
         let hitcounter = test::Server::new();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
               "frames": [{"instruction_addr": "0x749e8630"}]
@@ -72,7 +72,7 @@ mod tests {
             }],
             "options": {"dif_candidates":true},
             "sources": []
-        }"##;
+        }"#;
 
         let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
         let config = test::source_config(DirectoryLayoutType::Symstore, vec![FileType::Pdb]);

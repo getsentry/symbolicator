@@ -48,8 +48,8 @@ use super::source_context::get_context_lines;
 use super::SymbolicationActor;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"^webpack://[a-zA-Z0-9_\-@\.]+/\./"#).unwrap());
-static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\bnode_modules/"#).unwrap());
+    Lazy::new(|| Regex::new(r"^webpack://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
+static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bnode_modules/").unwrap());
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
@@ -460,7 +460,7 @@ fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
 // TODO(dcramer): replace CLEAN_MODULE_RE with tokenizer completely
 static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
-        r#"(?ix)
+        r"(?ix)
 ^
 (?:/|  # Leading slashes
 (?:
@@ -471,7 +471,7 @@ static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
     [a-f0-9]{40}       # sha1
 )/)+|
 (?:[-\.][a-f0-9]{7,}$)  # Ending in a commitish
-"#,
+",
     ).unwrap()
 });
 

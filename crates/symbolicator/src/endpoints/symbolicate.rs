@@ -135,12 +135,12 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [],
             "modules": [],
             "sources": [],
             "unknown": "value"
-        }"##;
+        }"#;
 
         let response = Client::new()
             .post(server.url("/symbolicate"))
@@ -160,7 +160,7 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
               "frames": [{"instruction_addr": "0x749e8630"}]
@@ -174,7 +174,7 @@ mod tests {
               "image_size": 851968
             }],
             "sources": []
-        }"##;
+        }"#;
         let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
         payload.sources = Some(vec![test::microsoft_symsrv()]);
 
@@ -201,7 +201,7 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
               "frames": [{"instruction_addr": "0x749e8630"}]
@@ -224,7 +224,7 @@ mod tests {
               "not-a-field": "more unknown fields"
             }],
             "options": {"dif_candidates": true}
-        }"##;
+        }"#;
 
         let response = Client::new()
             .post(server.url("/symbolicate"))
