@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator"
-version = "23.6.2"
+version = "23.7.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
