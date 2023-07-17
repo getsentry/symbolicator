@@ -3,14 +3,14 @@
 # - https://www.notion.so/sentry/GoCD-New-Service-Quickstart-6d8db7a6964049b3b0e78b8a4b52e25d
 format_version: 10
 pipelines:
-    deploy-symbolicator:
+    deploy-symbolicator-old:
         environment_variables:
             GCP_PROJECT: internal-sentry
             GKE_CLUSTER: zdpwkxst
             GKE_REGION: us-central1
             GKE_CLUSTER_ZONE: b
             GKE_BASTION_ZONE: b
-        group: symbolicator
+        group: symbolicator-old
         lock_behavior: unlockWhenFinished
         materials:
             symbolicator_repo:
