@@ -675,10 +675,8 @@ async fn sorted_bundles() {
 async fn bundle_index() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
 
-    let (_srv, source) = sourcemap_server("bundle_index", |url, query| {
-        // TODO: we get a `?download=bundle_id` request, we need to serve that…
-        dbg!(url, query);
-        json!([])
+    let (_srv, source) = sourcemap_server("bundle_index", |_url, _query| {
+        unreachable!("we should never ask the API")
     });
 
     let frames = r#"[{
@@ -692,7 +690,8 @@ async fn bundle_index() {
     request.url_index = Some(_srv.url("files/bundle_index.json"));
 
     let response = symbolication.symbolicate_js(request).await;
-    dbg!(response);
+
+    assert_snapshot!(response.unwrap());
 }
 
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
