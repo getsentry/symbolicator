@@ -6,9 +6,9 @@ use std::io::{Read, Seek};
 use std::path::PathBuf;
 
 use ::reqwest::blocking::multipart;
+use clap::Parser;
 use reqwest::blocking as reqwest;
 use serde_json::{to_string, Map, Value};
-use structopt::StructOpt;
 use symbolic_common::split_path;
 
 #[path = "../../symbolicator-service/src/utils/hex.rs"]
@@ -17,7 +17,7 @@ mod hex;
 use hex::HexValue;
 
 /// Runs Minidumps or Sentry Events through Symbolicator.
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct Cli {
     /// Path to the input Minidump or Event JSON.
     input: PathBuf,
@@ -25,15 +25,15 @@ struct Cli {
     /// The URL of the Symbolicator to use.
     ///
     /// Defaults to `http://127.0.0.1:3021` if not provided.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     symbolicator: Option<String>,
 
     /// Whether to include DIF candidate information.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     dif_candidates: bool,
 
     /// Pretty-print the crashing thread in a human readable format.
-    #[structopt(short, long)]
+    #[arg(short, long)]
     pretty: bool,
 }
 
@@ -43,7 +43,7 @@ fn main() -> anyhow::Result<()> {
         symbolicator,
         dif_candidates,
         pretty,
-    } = Cli::from_args();
+    } = Cli::parse();
 
     let client = reqwest::Client::new();
     let symbolicator = symbolicator.as_deref().unwrap_or("http://127.0.0.1:3021");

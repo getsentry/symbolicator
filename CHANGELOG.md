@@ -1,5 +1,68 @@
 # Changelog
 
+## 23.7.0
+
+- Add authentication to Source Context fetching via scraping config ([#1250](https://github.com/getsentry/symbolicator/pull/1250))
+
+## 23.6.2
+
+### Features
+
+- Add `--symbols` argument to `symbolicli` ([#1241](https://github.com/getsentry/symbolicator/pull/1241))
+
+### Fixes
+
+- Reintroduce `--version` option to `symsorter` and `wasm-split` ([#1219](https://github.com/getsentry/symbolicator/pull/1219))
+- Add special case for extracting name of rewritten async functions in Dart lang ([#1246](https://github.com/getsentry/symbolicator/pull/1246))
+
+### Dependencies
+
+- Bump Native SDK from v0.6.3 to v0.6.4 ([#1224](https://github.com/getsentry/symbolicator/pull/1224))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#064)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.3...0.6.4)
+
+## 23.6.1
+
+- No documented changes.
+
+## 23.6.0
+
+### Dependencies
+
+- Bump Native SDK from v0.6.2 to v0.6.3 ([#1207](https://github.com/getsentry/symbolicator/pull/1207))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#063)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.2...0.6.3)
+- Bump `aws-sdk-rust` from 0.52.0 to 0.55.3. ([#1211](https://github.com/getsentry/symbolicator/pull/1211))
+
+## 23.5.2
+
+- JsFrame::lineno is no longer optional ([#1203](https://github.com/getsentry/symbolicator/pull/1203))
+
+## 23.5.1
+
+- No documented changes.
+
+## 23.5.0
+
+### Features
+
+- Add single-file ZipArchive support to `maybe_decompress_file` ([#1139](https://github.com/getsentry/symbolicator/pull/1139))
+- Make source-context application optional. ([#1173](https://github.com/getsentry/symbolicator/pull/1173))
+- `symbolicli` now supports JS symbolication. ([#1186](https://github.com/getsentry/symbolicator/pull/1186))
+- Tighten up download related timeouts and introduce new `head_timeout`. ([#1190](https://github.com/getsentry/symbolicator/pull/1190))
+
+### Fixes
+
+- Allow symbolicli to connect to reserved IPs ([#1165](https://github.com/getsentry/symbolicator/pull/1165))
+- JS symbolication now requires a Sentry source ([#1180](https://github.com/getsentry/symbolicator/pull/1180))
+- `symbolicli` now uses the right stacktraces for symbolication. ([#1189](https://github.com/getsentry/symbolicator/pull/1189))
+
+### Dependencies
+
+- Bump Native SDK from v0.6.1 to v0.6.2 ([#1178](https://github.com/getsentry/symbolicator/pull/1178))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#062)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.1...0.6.2)
+
 ## 23.4.0
 
 ### Features
@@ -13,7 +76,6 @@
 - Add support for in-memory caching. ([#1028](https://github.com/getsentry/symbolicator/pull/1028))
 - Add --log-level argument to `symbolicli`. ([#1074](https://github.com/getsentry/symbolicator/pull/1074))
 - Resolve source context from embedded source links (mainly in Portable PDBs) ([#1103](https://github.com/getsentry/symbolicator/pull/1103), [#1108](https://github.com/getsentry/symbolicator/pull/1108))
-- Add single-file ZipArchive support to `maybe_decompress_file` ([#1139](https://github.com/getsentry/symbolicator/pull/1139))
 
 ### Fixes
 

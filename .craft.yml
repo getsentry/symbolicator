@@ -2,7 +2,6 @@ minVersion: 0.23.1
 changelogPolicy: auto
 targets:
   - name: github
-  - name: gh-pages
   - name: registry
     apps:
       app:symbolicator:
@@ -28,7 +27,6 @@ targets:
     target: getsentry/symbolicator
     targetFormat: '{{{target}}}:latest'
 requireNames:
-  - /^gh-pages.zip$/
   - /^symbolicator-Darwin-universal$/
   - /^symbolicator-Linux-x86_64$/
   - /^symbolicator-Linux-x86_64-debug.zip$/

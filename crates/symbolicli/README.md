@@ -1,4 +1,4 @@
-`symbolicli` is a cli utility that lets you symbolicate native events and minidumps locally.
+`symbolicli` is a cli utility that lets you symbolicate native and JavaScript events and minidumps locally.
 
 By default, `symbolicli` will target https://sentry.io/. If you are hosting your own
 Sentry instance, you can override this with the `--url` option or the `url` config setting.
@@ -20,6 +20,8 @@ symbolicli --offline <EVENT>
 In offline mode `symbolicli` will not attempt to access a Sentry server, which means you can only
 process local events.
 
+*NB*: JavaScript symbolication is not supported in offline mode.
+
 # Configuration
 
 `symbolicli` can be configured via the `~/.symboliclirc` config file, written in the TOML format.
@@ -37,7 +39,9 @@ The available options are:
 * `project`: The default project for which to process events. This can be overridden with the `--project`
   command line option.
 * `sources`: A list of debug file sources that will be queried in addition to the project's uploaded
-  files.
+  files. See [Sources documentation](../../docs/api/index.md#sources).
+
+See `symboliclirc.example` for an exapmle `.symboliclirc` file.
 
 # Logging
 You can control the level of logging output by passing the desired log level to the `--log-level` option.

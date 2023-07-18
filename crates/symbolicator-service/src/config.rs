@@ -385,12 +385,19 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub max_download_timeout: Duration,
 
-    /// The timeout for the initial HEAD request in a download.
+    /// The timeout for establishing a connection in a download.
     ///
     /// This timeout applies to each individual attempt to establish a
     /// connection with a symbol source if retries take place.
     #[serde(with = "humantime_serde")]
     pub connect_timeout: Duration,
+
+    /// The timeout for the initial HEAD request in a download.
+    ///
+    /// This timeout applies to each individual attempt to establish a
+    /// connection with a symbol source if retries take place.
+    #[serde(with = "humantime_serde")]
+    pub head_timeout: Duration,
 
     /// The time window for the host deny list.
     ///
@@ -508,7 +515,8 @@ impl Default for Config {
             connect_to_reserved_ips: false,
             // Allow a 4MB/s connection to download 2GB without timing out
             max_download_timeout: Duration::from_secs(315),
-            connect_timeout: Duration::from_secs(15),
+            connect_timeout: Duration::from_secs(1),
+            head_timeout: Duration::from_secs(5),
             // Allow a 4MB/s connection to download 1GB without timing out
             streaming_timeout: Duration::from_secs(250),
             deny_list_time_window: Duration::from_secs(60),

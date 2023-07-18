@@ -44,6 +44,12 @@ impl AsRef<[u8]> for ByteViewString {
     }
 }
 
+impl PartialEq for ByteViewString {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
 /// Provides cached access to source files, with UTF-8 validating contents.
 #[derive(Debug, Clone)]
 pub struct SourceFilesCache {

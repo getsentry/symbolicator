@@ -9,9 +9,9 @@ use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
-use minidump_processor::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, ProcessState,
-    SymbolProvider,
+use minidump_processor::ProcessState;
+use minidump_unwind::{
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider,
 };
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
@@ -473,6 +473,8 @@ impl SymbolicationActor {
             origin: StacktraceOrigin::Minidump,
             signal: None,
             stacktraces,
+            apply_source_context: true,
+            scraping: Default::default(),
         };
 
         Ok((request, minidump_state))

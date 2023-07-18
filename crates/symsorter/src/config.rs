@@ -44,5 +44,5 @@ pub struct SortConfig {
 
     /// If enabled debug symbols will be zstd compressed
     /// (repeat to increase compression)
-    pub compression_level: usize,
+    pub compression_level: u8,
 }

@@ -44,12 +44,6 @@ docserver: .venv/bin/python
 	.venv/bin/mkdocs serve
 .PHONY: doc
 
-travis-upload-docs: docs
-	cd site && zip -r gh-pages .
-	zeus upload -t "application/zip+docs" site/gh-pages.zip \
-		|| [[ ! "$(TRAVIS_BRANCH)" =~ ^release/ ]]
-.PHONY: travis-upload-docs
-
 # Style checking
 
 style:
@@ -76,3 +70,15 @@ format:
 .venv/bin/python: Makefile
 	rm -rf .venv
 	$$SYMBOLICATOR_PYTHON_VERSION -m venv .venv
+
+# Build GoCD pipelines
+
+gocd:
+	@ rm -rf ./gocd/generated-pipelines
+	@ mkdir -p ./gocd/generated-pipelines
+	@ cd ./gocd/templates && jb install && jb update
+	@ find . -type f \( -name '*.libsonnet' -o -name '*.jsonnet' \) -print0 | xargs -n 1 -0 jsonnetfmt -i
+	@ find . -type f \( -name '*.libsonnet' -o -name '*.jsonnet' \) -print0 | xargs -n 1 -0 jsonnet-lint -J ./gocd/templates/vendor
+	@ cd ./gocd/templates && jsonnet -J vendor -m ../generated-pipelines ./symbolicator.jsonnet
+	@ cd ./gocd/generated-pipelines && find . -type f \( -name '*.yaml' \) -print0 | xargs -n 1 -0 yq -p json -o yaml -i
+.PHONY: gocd

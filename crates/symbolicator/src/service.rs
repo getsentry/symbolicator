@@ -104,7 +104,7 @@ pub enum SymbolicationResponse {
 ///
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
@@ -116,6 +116,23 @@ pub struct RequestOptions {
     /// for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,
+
+    /// Whether to apply source context for the stack frames.
+    #[serde(default = "default_apply_source_context")]
+    pub apply_source_context: bool,
+}
+
+fn default_apply_source_context() -> bool {
+    true
+}
+
+impl Default for RequestOptions {
+    fn default() -> Self {
+        Self {
+            dif_candidates: false,
+            apply_source_context: true,
+        }
+    }
 }
 
 /// Clears out all the information about the DIF object candidates in the modules list.
@@ -564,6 +581,8 @@ mod tests {
             origin: StacktraceOrigin::Symbolicate,
             sources: Arc::new([]),
             scope: Default::default(),
+            apply_source_context: true,
+            scraping: Default::default(),
         };
 
         let request_id = service
@@ -603,6 +622,8 @@ mod tests {
                 debug_file: None,
                 debug_checksum: None,
             })],
+            apply_source_context: true,
+            scraping: Default::default(),
         }
     }
 

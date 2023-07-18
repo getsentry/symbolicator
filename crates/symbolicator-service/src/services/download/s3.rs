@@ -6,11 +6,13 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aws_config::meta::credentials::lazy_caching::LazyCachingCredentialsProvider;
-use aws_sdk_s3::types::SdkError;
+use aws_config::ecs::EcsCredentialsProvider;
+use aws_credential_types::provider::ProvideCredentials;
+use aws_credential_types::Credentials;
+use aws_sdk_s3::error::ProvideErrorMetadata;
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
-use aws_sdk_s3::{Client, Endpoint};
-use aws_types::credentials::{Credentials, ProvideCredentials};
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 
@@ -19,6 +21,7 @@ use symbolicator_sources::{
 };
 
 use crate::caching::{CacheEntry, CacheError};
+use crate::utils::http::DownloadTimeouts;
 
 use super::content_length_timeout;
 
@@ -27,29 +30,22 @@ type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
     client_cache: ClientCache,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: DownloadTimeouts,
 }
 
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct(type_name::<Self>())
-            .field("connect_timeout", &self.connect_timeout)
-            .field("streaming_timeout", &self.streaming_timeout)
+            .field("timeouts", &self.timeouts)
             .finish()
     }
 }
 
 impl S3Downloader {
-    pub fn new(
-        connect_timeout: Duration,
-        streaming_timeout: Duration,
-        s3_client_capacity: u64,
-    ) -> Self {
+    pub fn new(timeouts: DownloadTimeouts, s3_client_capacity: u64) -> Self {
         Self {
             client_cache: ClientCache::new(s3_client_capacity),
-            connect_timeout,
-            streaming_timeout,
+            timeouts,
         }
     }
 
@@ -64,18 +60,19 @@ impl S3Downloader {
             );
             Arc::new(match key.aws_credentials_provider {
                 AwsCredentialsProvider::Container => {
-                    let provider = LazyCachingCredentialsProvider::builder()
-                        .load(aws_config::ecs::EcsCredentialsProvider::builder().build())
-                        .build();
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(EcsCredentialsProvider::builder().build(), &key.region)
+                        .await
                 }
                 AwsCredentialsProvider::Static => {
-                    let provider = Credentials::from_keys(
-                        key.access_key.clone(),
-                        key.secret_key.clone(),
-                        None,
-                    );
-                    self.create_s3_client(provider, &key.region).await
+                    self.create_s3_client(
+                        Credentials::from_keys(
+                            key.access_key.clone(),
+                            key.secret_key.clone(),
+                            None,
+                        ),
+                        &key.region,
+                    )
+                    .await
                 }
             })
         });
@@ -96,15 +93,9 @@ impl S3Downloader {
             .credentials_provider(provider)
             .region(region.region.clone());
 
-        if let Some(endpoint) = region.endpoint.as_ref() {
-            match Endpoint::immutable(endpoint) {
-                Ok(endpoint) => config_loader = config_loader.endpoint_resolver(endpoint),
-                Err(err) => {
-                    let error: &dyn std::error::Error = &err;
-                    tracing::error!(error, "Failed creating custom `Endpoint`",);
-                }
-            };
-        }
+        if let Some(endpoint_url) = &region.endpoint {
+            config_loader = config_loader.endpoint_url(endpoint_url);
+        };
 
         let config = config_loader.load().await;
         Client::new(&config)
@@ -125,12 +116,11 @@ impl S3Downloader {
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);
-        let request = tokio::time::timeout(self.connect_timeout, request);
+        let timeout = self.timeouts.head;
+        let request = tokio::time::timeout(timeout, request);
         let request = super::measure_download_time(source.source_metric_key(), request);
 
-        let response = request
-            .await
-            .map_err(|_| CacheError::Timeout(self.connect_timeout))?; // Timeout
+        let response = request.await.map_err(|_| CacheError::Timeout(timeout))?; // Timeout
 
         let response = match response {
             Ok(response) => response,
@@ -175,6 +165,10 @@ impl S3Downloader {
                     S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
                         Err(CacheError::NotFound)
                     }
+                    S3Error::Unhandled(unhandled) => {
+                        let details = unhandled.to_string();
+                        Err(CacheError::DownloadError(details))
+                    }
                     _ => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,
@@ -190,7 +184,7 @@ impl S3Downloader {
 
         let timeout = Some(content_length_timeout(
             response.content_length(),
-            self.streaming_timeout,
+            self.timeouts.streaming,
         ));
 
         let stream = if response.content_length == 0 {
@@ -220,7 +214,7 @@ mod tests {
     use crate::test;
 
     use aws_sdk_s3::client::Client;
-    use aws_smithy_http::byte_stream::ByteStream;
+    use aws_sdk_s3::primitives::ByteStream;
     use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
@@ -363,7 +357,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -389,7 +383,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -414,7 +408,7 @@ mod tests {
             secret_key: "".into(),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Duration::from_secs(30), Duration::from_secs(30), 100);
+        let downloader = S3Downloader::new(Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");

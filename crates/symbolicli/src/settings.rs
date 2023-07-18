@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
-use symbolicator_service::config::Config;
+use symbolicator_service::config::{CacheConfigs, Config};
 use symbolicator_sources::SourceConfig;
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -21,6 +22,9 @@ pub enum OutputFormat {
     /// Outputs the entire symbolication result as JSON.
     Json,
     /// Outputs the crashed thread as a detailed list of frames.
+    ///
+    /// For a JavaScript event, this will also print a list of errors
+    /// that occurred during symbolication.
     Pretty,
     /// Outputs the crashed thread as a table.
     Compact,
@@ -35,6 +39,7 @@ pub enum Mode {
         project: String,
         auth_token: String,
         base_url: reqwest::Url,
+        scraping_enabled: bool,
     },
 }
 
@@ -81,6 +86,7 @@ struct Cli {
     /// Run in offline mode, i.e., don't access the Sentry server.
     ///
     /// In offline mode symbolicli will still access manually configured symbol sources.
+    /// JavaScript symbolication is currently not supported in offline mode.
     #[arg(long)]
     offline: bool,
 
@@ -90,6 +96,20 @@ struct Cli {
     /// off, error, warn, info, debug, trace
     #[arg(long, value_enum, default_value = "info")]
     log_level: LevelFilter,
+
+    /// Disallow scraping of JavaScript source and sourcemap files
+    /// from the internet.
+    ///
+    /// This flag has no effect on native symbolication.
+    #[arg(long)]
+    no_scrape: bool,
+
+    /// An additional directory containing native symbols.
+    ///
+    /// The symbols must conform to the `unified` symbol server
+    /// layout, as produced by `symsorter`.
+    #[arg(long)]
+    symbols: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -126,16 +146,18 @@ pub struct Settings {
     pub output_format: OutputFormat,
     pub log_level: LevelFilter,
     pub mode: Mode,
+    pub symbols: Option<PathBuf>,
 }
 
 impl Settings {
     pub fn get() -> Result<Self> {
         let cli = Cli::parse();
 
-        let mut global_config_file = ConfigFile::parse(&find_global_config_file()?)?;
+        let global_config_path = find_global_config_file()?;
+        let mut global_config_file = ConfigFile::parse(&global_config_path)?;
         let mut project_config_file = match find_project_config_file() {
-            Some(path) => ConfigFile::parse(&path)?,
-            None => ConfigFile::default(),
+            Some(path) if path != global_config_path => ConfigFile::parse(&path)?,
+            _ => ConfigFile::default(),
         };
 
         let mode = if cli.offline {
@@ -145,7 +167,8 @@ impl Settings {
                 .auth_token
                 .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
                 .or_else(|| project_config_file.auth_token.take())
-                .or_else(|| global_config_file.auth_token.take()) else {
+                .or_else(|| global_config_file.auth_token.take())
+            else {
                 bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
             };
 
@@ -159,15 +182,19 @@ impl Settings {
             let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
             let url = sentry_url.join("/api/0/").unwrap();
 
-            let Some(org) = cli.org
+            let Some(org) = cli
+                .org
                 .or_else(|| project_config_file.org.take())
-                .or_else(|| global_config_file.org.take()) else {
+                .or_else(|| global_config_file.org.take())
+            else {
                 bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
             };
 
-            let Some(project) = cli.project
+            let Some(project) = cli
+                .project
                 .or_else(|| project_config_file.project.take())
-                .or_else(|| global_config_file.project.take()) else {
+                .or_else(|| global_config_file.project.take())
+            else {
                 bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
             };
 
@@ -176,6 +203,7 @@ impl Settings {
                 org,
                 project,
                 auth_token,
+                scraping_enabled: !cli.no_scrape,
             }
         };
 
@@ -191,9 +219,15 @@ impl Settings {
                 std::fs::create_dir_all(path)?;
             }
 
+            let mut caches = CacheConfigs::default();
+            caches.downloaded.retry_misses_after = Some(Duration::ZERO);
+            caches.derived.retry_misses_after = Some(Duration::ZERO);
+
             Config {
                 sources: Arc::from(sources),
                 cache_dir,
+                connect_to_reserved_ips: true,
+                caches,
                 ..Default::default()
             }
         };
@@ -204,6 +238,7 @@ impl Settings {
             output_format: cli.format,
             log_level: cli.log_level,
             mode,
+            symbols: cli.symbols,
         };
 
         Ok(args)

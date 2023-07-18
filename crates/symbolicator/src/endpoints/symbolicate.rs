@@ -2,6 +2,7 @@ use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
+use symbolicator_service::services::ScrapingConfig;
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{
@@ -45,6 +46,8 @@ pub struct SymbolicationRequestBody {
     pub modules: Vec<RawObjectInfo>,
     #[serde(default)]
     pub options: RequestOptions,
+    #[serde(default)]
+    pub scraping: ScrapingConfig,
 }
 
 pub async fn symbolicate_frames(
@@ -69,6 +72,8 @@ pub async fn symbolicate_frames(
             origin: StacktraceOrigin::Symbolicate,
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
+            apply_source_context: body.options.apply_source_context,
+            scraping: body.scraping,
         },
         body.options,
     )?;
@@ -130,12 +135,12 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [],
             "modules": [],
             "sources": [],
             "unknown": "value"
-        }"##;
+        }"#;
 
         let response = Client::new()
             .post(server.url("/symbolicate"))
@@ -155,7 +160,7 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
               "frames": [{"instruction_addr": "0x749e8630"}]
@@ -169,7 +174,7 @@ mod tests {
               "image_size": 851968
             }],
             "sources": []
-        }"##;
+        }"#;
         let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
         payload.sources = Some(vec![test::microsoft_symsrv()]);
 
@@ -196,7 +201,7 @@ mod tests {
 
         let server = test::server_with_default_service();
 
-        let payload = r##"{
+        let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
               "frames": [{"instruction_addr": "0x749e8630"}]
@@ -219,7 +224,7 @@ mod tests {
               "not-a-field": "more unknown fields"
             }],
             "options": {"dif_candidates": true}
-        }"##;
+        }"#;
 
         let response = Client::new()
             .post(server.url("/symbolicate"))

@@ -64,6 +64,8 @@ fn trim_context_line(line: &str, column: usize) -> String {
         start = end.saturating_sub(140);
     }
 
+    start = floor_char_boundary(line, start);
+    end = floor_char_boundary(line, end);
     let line = &line[start..end];
 
     let mut line = if start > 0 {
@@ -81,6 +83,23 @@ fn trim_context_line(line: &str, column: usize) -> String {
     line
 }
 
+// This is a copy from the std lib, as the fn is nightly-only:
+// <https://github.com/rust-lang/rust/blob/5fe3528be5ef12be3d12c7a9ee1b0bff9e3b35e4/library/core/src/str/mod.rs#L258>
+fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        s.len()
+    } else {
+        let lower_bound = index.saturating_sub(3);
+        let new_index = s.as_bytes()[lower_bound..=index]
+            .iter()
+            // This is bit magic equivalent to: b < 128 || b >= 192
+            .rposition(|b| (*b as i8) >= -0x40);
+
+        // SAFETY: we know that the character boundary will be within four bytes
+        unsafe { lower_bound + new_index.unwrap_unchecked() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,5 +113,11 @@ mod tests {
         assert_eq!(trim_context_line(long_line, 66), "{snip} blic is more familiar with bad design than good design. It is, in effect, conditioned to prefer bad design, because that is what it lives wi {snip}".to_string());
         assert_eq!(trim_context_line(long_line, 190), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
         assert_eq!(trim_context_line(long_line, 9999), "{snip} gn. It is, in effect, conditioned to prefer bad design, because that is what it lives with. The new becomes threatening, the old reassuring.".to_string());
+
+        let long_line_with_unicode = ".❤️🧡💛💚💙💜".repeat(10);
+        assert_eq!(
+            trim_context_line(&long_line_with_unicode, 70),
+            "{snip} 🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛 {snip}"
+        );
     }
 }

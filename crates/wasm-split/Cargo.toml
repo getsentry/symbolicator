@@ -1,13 +1,13 @@
 [package]
 name = "wasm-split"
-version = "23.4.0"
+version = "23.7.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
 
 [dependencies]
 anyhow = "1.0.57"
+clap = { version = "4.3.2", features = ["derive"] }
 hex = "0.4.2"
-structopt = "0.3.21"
 uuid = { version = "1.0.0", features = ["v4"] }
 wasmbin = "0.6.0"

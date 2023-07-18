@@ -1,15 +1,18 @@
-use std::fmt;
 use std::io::{Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
+use std::{fmt, io};
 
+use event::{create_js_symbolication_request, create_native_symbolication_request};
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
 use settings::Mode;
-use symbolicator_service::services::symbolication::SymbolicationActor;
-use symbolicator_service::types::{CompletedSymbolicationResponse, Scope};
-use symbolicator_sources::{SentrySourceConfig, SourceConfig, SourceId};
+use symbolicator_service::types::{CompletedResponse, Scope};
+use symbolicator_sources::{
+    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
+    SentrySourceConfig, SourceConfig, SourceId,
+};
 
 use anyhow::{Context, Result};
 use reqwest::header;
@@ -17,6 +20,7 @@ use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
+mod output;
 mod settings;
 
 #[tokio::main]
@@ -27,6 +31,7 @@ async fn main() -> Result<()> {
         output_format,
         log_level,
         mode,
+        symbols,
     } = settings::Settings::get()?;
 
     let filter = filter::Targets::new().with_targets(vec![
@@ -35,7 +40,7 @@ async fn main() -> Result<()> {
     ]);
 
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(io::stderr))
         .with(filter)
         .init();
 
@@ -44,40 +49,24 @@ async fn main() -> Result<()> {
         symbolicator_service::services::create_service(&symbolicator_config, runtime)
             .context("failed to start symbolication service")?;
 
-    let mut sources = vec![];
-    if let Mode::Online {
-        ref org,
-        ref project,
-        ref base_url,
-        ref auth_token,
-    } = mode
-    {
-        let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
-            id: SourceId::new("sentry:project"),
-            token: auth_token.clone(),
-            url: base_url
-                .join(&format!("projects/{org}/{project}/files/dsyms/"))
-                .unwrap(),
-        }));
-
-        sources.push(project_source);
-    }
-    sources.extend(symbolicator_config.sources.iter().cloned());
-    let sources = Arc::from(sources.into_boxed_slice());
-
     let scope = match mode {
         Mode::Online { ref project, .. } => Scope::Scoped(project.clone()),
         Mode::Offline => Scope::Global,
     };
 
-    let res = match Payload::parse(&event_id)? {
-        Some(local) => {
-            tracing::info!("successfully parsed local event");
-            local.process(&symbolication, scope, sources).await?
-        }
+    let payload = match Payload::parse(&event_id)? {
+        Some(local) => local,
+
         None => {
             tracing::info!("event not found in local file system");
-            let Mode::Online { base_url, org, project, auth_token } = mode else {
+            let Mode::Online {
+                ref base_url,
+                ref org,
+                ref project,
+                ref auth_token,
+                ..
+            } = mode
+            else {
                 anyhow::bail!("Event not found in local file system and `symbolicli` is in offline mode. Stopping.");
             };
 
@@ -93,18 +82,118 @@ async fn main() -> Result<()> {
                 .unwrap();
 
             let key = EventKey {
-                base_url: &base_url,
-                org: &org,
-                project: &project,
+                base_url,
+                org,
+                project,
                 event_id: &event_id,
             };
-            let remote = Payload::get_remote(&client, key).await?;
-            remote.process(&symbolication, scope, sources).await?
+            Payload::get_remote(&client, key).await?
+        }
+    };
+
+    let res = match payload {
+        Payload::Event(event) if event.is_js() => {
+            let Mode::Online {
+                ref org,
+                ref project,
+                ref base_url,
+                ref auth_token,
+                scraping_enabled,
+            } = mode
+            else {
+                anyhow::bail!("JavaScript symbolication is not supported in offline mode.");
+            };
+
+            let source = Arc::new(SentrySourceConfig {
+                id: SourceId::new("sentry:project"),
+                token: auth_token.clone(),
+                url: base_url
+                    .join(&format!("projects/{org}/{project}/artifact-lookup/"))
+                    .unwrap(),
+            });
+
+            let request = create_js_symbolication_request(scope, source, event, scraping_enabled)
+                .context("Event cannot be symbolicated")?;
+
+            tracing::info!("symbolicating event");
+
+            symbolication
+                .symbolicate_js(request)
+                .await
+                .map(CompletedResponse::from)?
+        }
+
+        _ => {
+            let mut dsym_sources = vec![];
+            if let Mode::Online {
+                ref org,
+                ref project,
+                ref base_url,
+                ref auth_token,
+                ..
+            } = mode
+            {
+                let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
+                    id: SourceId::new("sentry:project"),
+                    token: auth_token.clone(),
+                    url: base_url
+                        .join(&format!("projects/{org}/{project}/files/dsyms/"))
+                        .unwrap(),
+                }));
+
+                dsym_sources.push(project_source);
+            }
+
+            dsym_sources.extend(symbolicator_config.sources.iter().cloned());
+            if let Some(path) = symbols {
+                let local_source = FilesystemSourceConfig {
+                    id: SourceId::new("local:cli"),
+                    path,
+                    files: CommonSourceConfig {
+                        filters: Default::default(),
+                        layout: DirectoryLayout {
+                            ty: DirectoryLayoutType::Unified,
+                            casing: Default::default(),
+                        },
+                        is_public: false,
+                    },
+                };
+                dsym_sources.push(SourceConfig::Filesystem(local_source.into()));
+            }
+            let dsym_sources = Arc::from(dsym_sources.into_boxed_slice());
+
+            match payload {
+                Payload::Event(event) => {
+                    let request = create_native_symbolication_request(scope, dsym_sources, event)
+                        .context("Event cannot be symbolicated")?;
+
+                    tracing::info!("symbolicating event");
+
+                    symbolication
+                        .symbolicate(request)
+                        .await
+                        .map(CompletedResponse::from)?
+                }
+                Payload::Minidump(minidump_path) => {
+                    tracing::info!("symbolicating minidump");
+                    symbolication
+                        .process_minidump(scope, minidump_path, dsym_sources)
+                        .await
+                        .map(CompletedResponse::from)?
+                }
+            }
         }
     };
 
     match output_format {
-        settings::OutputFormat::Json => println!("{}", serde_json::to_string(&res).unwrap()),
+        settings::OutputFormat::Json => match res {
+            CompletedResponse::NativeSymbolication(res) => {
+                println!("{}", serde_json::to_string(&res).unwrap())
+            }
+            CompletedResponse::JsSymbolication(res) => {
+                println!("{}", serde_json::to_string(&res).unwrap())
+            }
+        },
         settings::OutputFormat::Compact => print_compact(res),
         settings::OutputFormat::Pretty => print_pretty(res),
     }
@@ -119,30 +208,6 @@ enum Payload {
 }
 
 impl Payload {
-    async fn process(
-        self,
-        symbolication: &SymbolicationActor,
-        scope: Scope,
-        sources: Arc<[SourceConfig]>,
-    ) -> Result<CompletedSymbolicationResponse> {
-        match self {
-            Payload::Event(event) => {
-                let symbolication_request =
-                    event::create_symbolication_request(scope, sources, event)
-                        .context("Event cannot be symbolicated")?;
-
-                tracing::info!("symbolicating event");
-                symbolication.symbolicate(symbolication_request).await
-            }
-            Payload::Minidump(minidump_path) => {
-                tracing::info!("symbolicating minidump");
-                symbolication
-                    .process_minidump(scope, minidump_path, sources)
-                    .await
-            }
-        }
-    }
-
     fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> Result<Option<Self>> {
         match std::fs::File::open(path) {
             Ok(mut file) => {
@@ -186,204 +251,6 @@ impl Payload {
                 Ok(Self::Event(event))
             }
         }
-    }
-}
-
-mod output {
-    use std::{collections::HashMap, iter::Peekable, vec::IntoIter};
-
-    use prettytable::{cell, format::consts::FORMAT_CLEAN, row, Row, Table};
-    use symbolic::common::split_path;
-    use symbolicator_service::types::{
-        CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust, SymbolicatedFrame,
-    };
-
-    #[derive(Clone, Debug)]
-    struct FrameData {
-        instruction_addr: u64,
-        trust: &'static str,
-        module: Option<(String, u64)>,
-        func: Option<(String, u64)>,
-        file: Option<(String, u32)>,
-    }
-
-    #[derive(Clone, Debug)]
-    struct Frames {
-        inner: Peekable<IntoIter<SymbolicatedFrame>>,
-        modules: HashMap<String, CompleteObjectInfo>,
-    }
-
-    impl Iterator for Frames {
-        type Item = FrameData;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            let frame = self.inner.next()?;
-            let is_inline = Some(frame.raw.instruction_addr)
-                == self
-                    .inner
-                    .peek()
-                    .map(|next_frame| next_frame.raw.instruction_addr);
-
-            let trust = if is_inline {
-                "inline"
-            } else {
-                match frame.raw.trust {
-                    FrameTrust::None => "none",
-                    FrameTrust::Scan => "scan",
-                    FrameTrust::CfiScan => "cfiscan",
-                    FrameTrust::Fp => "fp",
-                    FrameTrust::Cfi => "cfi",
-                    FrameTrust::PreWalked => "prewalked",
-                    FrameTrust::Context => "context",
-                }
-            };
-
-            let instruction_addr = frame.raw.instruction_addr.0;
-
-            let module = frame.raw.package.map(|module_file| {
-                let module_addr = self.modules[&module_file].raw.image_addr.0;
-                let module_file = split_path(&module_file).1.into();
-                let module_rel_addr = instruction_addr - module_addr;
-
-                (module_file, module_rel_addr)
-            });
-
-            let func = frame.raw.function.or(frame.raw.symbol).map(|func| {
-                let sym_rel_addr = frame
-                    .raw
-                    .sym_addr
-                    .map(|sym_addr| instruction_addr - sym_addr.0)
-                    .unwrap_or_default();
-
-                (func, sym_rel_addr)
-            });
-
-            let file = frame.raw.filename.map(|file| {
-                let line = frame.raw.lineno.unwrap_or(0);
-
-                (file, line)
-            });
-
-            Some(FrameData {
-                instruction_addr,
-                trust,
-                module,
-                func,
-                file,
-            })
-        }
-    }
-
-    fn get_crashing_thread_frames(mut response: CompletedSymbolicationResponse) -> Frames {
-        let modules: HashMap<_, _> = response
-            .modules
-            .into_iter()
-            .filter_map(|module| Some((module.raw.code_file.clone()?, module)))
-            .collect();
-
-        let crashing_thread_idx = response
-            .stacktraces
-            .iter()
-            .position(|s| s.is_requesting.unwrap_or(false))
-            .unwrap_or(0);
-
-        let crashing_thread = response.stacktraces.swap_remove(crashing_thread_idx);
-        Frames {
-            inner: crashing_thread.frames.into_iter().peekable(),
-            modules,
-        }
-    }
-
-    pub fn print_compact(response: CompletedSymbolicationResponse) {
-        if response.stacktraces.is_empty() {
-            return;
-        }
-
-        let mut table = Table::new();
-        table.set_format(*FORMAT_CLEAN);
-        table.set_titles(
-            row![b => "Trust", "Instruction", "Module File", "", "Function", "", "File"],
-        );
-
-        for frame in get_crashing_thread_frames(response) {
-            let mut row = Row::empty();
-            let FrameData {
-                instruction_addr,
-                trust,
-                module,
-                func,
-                file,
-            } = frame;
-
-            row.add_cell(cell!(trust));
-            row.add_cell(cell!(r->format!("{instruction_addr:#x}")));
-
-            match module {
-                Some((module_file, module_offset)) => {
-                    row.add_cell(cell!(module_file));
-                    row.add_cell(cell!(r->format!("+{module_offset:#x}")));
-                }
-                None => row.add_cell(cell!("").with_hspan(2)),
-            }
-
-            match func {
-                Some((func, func_offset)) => {
-                    row.add_cell(cell!(func));
-                    row.add_cell(cell!(r->format!(" + {func_offset:#x}")));
-                }
-                None => row.add_cell(cell!("").with_hspan(2)),
-            }
-
-            match file {
-                Some((name, line)) => row.add_cell(cell!(format!("{name}:{line}"))),
-                None => row.add_cell(cell!("")),
-            }
-
-            table.add_row(row);
-        }
-
-        table.printstd();
-    }
-
-    pub fn print_pretty(response: CompletedSymbolicationResponse) {
-        if response.stacktraces.is_empty() {
-            return;
-        }
-
-        let mut table = Table::new();
-        table.set_format(*prettytable::format::consts::FORMAT_CLEAN);
-
-        for (i, frame) in get_crashing_thread_frames(response).enumerate() {
-            let FrameData {
-                instruction_addr,
-                trust,
-                module,
-                func,
-                file,
-            } = frame;
-
-            let title_cell = cell!(lb->format!("Frame #{i}")).with_hspan(2);
-            table.add_row(Row::new(vec![title_cell]));
-
-            table.add_row(row![r->"  Trust:", trust]);
-            table.add_row(row![r->"  Instruction:", format!("{instruction_addr:#0x}")]);
-
-            if let Some((module_file, module_offset)) = module {
-                table.add_row(row![
-                    r->"  Module:",
-                    format!("{module_file} +{module_offset:#0x}")
-                ]);
-            }
-
-            if let Some((func, func_offset)) = func {
-                table.add_row(row![r->"  Function:", format!("{func} + {func_offset:#x}")]);
-            }
-
-            if let Some((name, line)) = file {
-                table.add_row(row![r->"  File:", format!("{name}:{line}")]);
-            }
-        }
-        table.printstd();
     }
 }
 
@@ -453,8 +320,9 @@ mod remote {
         let Some(minidump_id) = attachments
             .iter()
             .find(|attachment| attachment.r#type == "event.minidump")
-            .map(|attachment| &attachment.id) else {
-                return Ok(None);
+            .map(|attachment| &attachment.id)
+        else {
+            return Ok(None);
         };
 
         let mut download_url = attachments_url.join(&format!("{minidump_id}/")).unwrap();
@@ -538,14 +406,76 @@ mod event {
     use anyhow::bail;
     use serde::Deserialize;
     use symbolic::common::Language;
-    use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
+    use symbolicator_service::services::symbolication::{
+        StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
+    };
+    use symbolicator_service::services::ScrapingConfig;
     use symbolicator_service::types::{
-        CompleteObjectInfo, FrameTrust, RawFrame, RawObjectInfo, RawStacktrace, Scope, Signal,
+        CompleteObjectInfo, FrameTrust, JsFrame, JsFrameData, JsStacktrace, RawFrame,
+        RawObjectInfo, RawStacktrace, Scope, Signal,
     };
     use symbolicator_service::utils::{addr::AddrMode, hex::HexValue};
-    use symbolicator_sources::SourceConfig;
+    use symbolicator_sources::{SentrySourceConfig, SourceConfig};
 
-    pub fn create_symbolication_request(
+    pub fn create_js_symbolication_request(
+        scope: Scope,
+        source: Arc<SentrySourceConfig>,
+        event: Event,
+        scraping_enabled: bool,
+    ) -> anyhow::Result<SymbolicateJsStacktraces> {
+        let Event {
+            debug_meta,
+            exception,
+            threads,
+            release,
+            dist,
+            ..
+        } = event;
+
+        let mut stacktraces = vec![];
+        if let Some(mut excs) = exception.map(|excs| excs.values) {
+            stacktraces.extend(
+                excs.iter_mut()
+                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
+            );
+        }
+        if let Some(mut threads) = threads.map(|threads| threads.values) {
+            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
+                thread
+                    .raw_stacktrace
+                    .take()
+                    .or_else(|| thread.stacktrace.take())
+            }));
+        }
+
+        let stacktraces: Vec<_> = stacktraces
+            .into_iter()
+            .map(JsStacktrace::from)
+            .filter(|stacktrace| !stacktrace.frames.is_empty())
+            .collect();
+
+        let modules: Vec<_> = debug_meta.images.into_iter().collect();
+
+        if stacktraces.is_empty() {
+            bail!("Event has no usable frames");
+        };
+
+        Ok(SymbolicateJsStacktraces {
+            scope,
+            source,
+            release,
+            dist,
+            stacktraces,
+            modules,
+            scraping: ScrapingConfig {
+                enabled: scraping_enabled,
+                ..Default::default()
+            },
+            apply_source_context: true,
+        })
+    }
+
+    pub fn create_native_symbolication_request(
         scope: Scope,
         sources: Arc<[SourceConfig]>,
         event: Event,
@@ -560,14 +490,18 @@ mod event {
 
         let mut stacktraces = vec![];
         if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(excs.iter_mut().filter_map(|exc| exc.stacktrace.take()));
+            stacktraces.extend(
+                excs.iter_mut()
+                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
+            );
         }
         if let Some(mut threads) = threads.map(|threads| threads.values) {
-            stacktraces.extend(
-                threads
-                    .iter_mut()
-                    .filter_map(|thread| thread.stacktrace.take()),
-            );
+            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
+                thread
+                    .raw_stacktrace
+                    .take()
+                    .or_else(|| thread.stacktrace.take())
+            }));
         }
 
         let stacktraces: Vec<_> = stacktraces
@@ -597,16 +531,37 @@ mod event {
             origin: StacktraceOrigin::Symbolicate,
             stacktraces,
             modules,
+            apply_source_context: true,
+            scraping: Default::default(),
         })
+    }
+
+    #[derive(Debug, Clone, Copy, Deserialize, Default, PartialEq, Eq)]
+    #[serde(rename_all = "snake_case")]
+    enum Platform {
+        #[default]
+        Native,
+        Javascript,
+        Node,
     }
 
     #[derive(Debug, Deserialize)]
     pub struct Event {
         #[serde(default)]
+        platform: Platform,
+        #[serde(default)]
         debug_meta: DebugMeta,
         exception: Option<Exceptions>,
         threads: Option<Threads>,
         signal: Option<Signal>,
+        release: Option<String>,
+        dist: Option<String>,
+    }
+
+    impl Event {
+        pub fn is_js(&self) -> bool {
+            matches!(self.platform, Platform::Javascript | Platform::Node)
+        }
     }
 
     #[derive(Debug, Deserialize, Default)]
@@ -621,6 +576,7 @@ mod event {
 
     #[derive(Debug, Deserialize)]
     struct Exception {
+        raw_stacktrace: Option<Stacktrace>,
         stacktrace: Option<Stacktrace>,
     }
 
@@ -631,6 +587,7 @@ mod event {
 
     #[derive(Debug, Deserialize)]
     struct Thread {
+        raw_stacktrace: Option<Stacktrace>,
         stacktrace: Option<Stacktrace>,
     }
 
@@ -655,6 +612,19 @@ mod event {
                 frames,
                 ..Default::default()
             }
+        }
+    }
+
+    impl From<Stacktrace> for JsStacktrace {
+        fn from(stacktrace: Stacktrace) -> Self {
+            let frames = stacktrace
+                .frames
+                .into_iter()
+                .filter_map(to_js_frame)
+                .rev()
+                .collect();
+
+            Self { frames }
         }
     }
 
@@ -685,6 +655,8 @@ mod event {
 
         lineno: Option<u32>,
 
+        colno: Option<u32>,
+
         #[serde(default)]
         pre_context: Vec<String>,
 
@@ -693,12 +665,17 @@ mod event {
         #[serde(default)]
         post_context: Vec<String>,
 
+        module: Option<String>,
+
         source_link: Option<String>,
 
         in_app: Option<bool>,
 
         #[serde(default)]
         trust: FrameTrust,
+
+        #[serde(default)]
+        data: JsFrameData,
     }
 
     fn to_raw_frame(value: Frame) -> Option<RawFrame> {
@@ -721,6 +698,23 @@ mod event {
             source_link: value.source_link,
             in_app: value.in_app,
             trust: value.trust,
+        })
+    }
+
+    fn to_js_frame(value: Frame) -> Option<JsFrame> {
+        Some(JsFrame {
+            function: value.function,
+            filename: value.filename,
+            module: value.module,
+            abs_path: value.abs_path?,
+            lineno: value.lineno?,
+            colno: value.colno,
+            pre_context: value.pre_context,
+            context_line: value.context_line,
+            post_context: value.post_context,
+            token_name: None,
+            in_app: value.in_app,
+            data: value.data,
         })
     }
 }

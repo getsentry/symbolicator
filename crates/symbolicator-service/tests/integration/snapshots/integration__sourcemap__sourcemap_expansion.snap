@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 100
+assertion_line: 115
 expression: response.unwrap()
 ---
 stacktraces:
@@ -12,6 +12,7 @@ stacktraces:
         colno: 7
       - function: test
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 20
         colno: 5
@@ -27,8 +28,13 @@ stacktraces:
           - ""
           - "  return test;"
           - "})();"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
+          resolved_with: release
+          symbolicated: true
       - function: invoke
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 15
         colno: 5
@@ -45,8 +51,13 @@ stacktraces:
           - "  function test() {"
           - "    var data = {failed: true, value: 42};"
           - "    invoke(data);"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
+          resolved_with: release
+          symbolicated: true
       - function: onFailure
         filename: test.js
+        module: test
         abs_path: "http://example.com/test.js"
         lineno: 5
         colno: 11
@@ -62,6 +73,10 @@ stacktraces:
           - "  function invoke(data) {"
           - "    var cb = null;"
           - "    if (data.failed) {"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
+          resolved_with: release
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - function: produceStack
@@ -95,5 +110,5 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
 errors:
   - abs_path: "http://example.com/index.html"
-    type: missing_source
+    type: scraping_disabled
 

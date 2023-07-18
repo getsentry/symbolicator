@@ -3,6 +3,8 @@ use std::io;
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 use crate::config::Config;
 
@@ -46,20 +48,31 @@ impl Caches {
             diagnostics,
         } = &self;
 
+        // We want to clean up the caches in a random order. Ideally, this should not matter at all,
+        // but we have seen some cleanup jobs getting stuck or dying reproducibly on certain types
+        // of caches. A random shuffle increases the chance that the cleanup will make progress on
+        // other caches.
+        // The cleanup job dying on specific caches is a very bad thing and should definitely be
+        // fixed, but in the meantime a random shuffle should provide more head room for a proper
+        // fix in this case.
+        let mut caches = vec![
+            objects,
+            object_meta,
+            auxdifs,
+            il2cpp,
+            symcaches,
+            cficaches,
+            ppdb_caches,
+            sourcemap_caches,
+            sourcefiles,
+            diagnostics,
+        ];
+        let mut rng = thread_rng();
+        caches.as_mut_slice().shuffle(&mut rng);
+
         // Collect results so we can fail the entire function.  But we do not want to early
         // return since we should at least attempt to clean up all caches.
-        let results = vec![
-            objects.cleanup(),
-            object_meta.cleanup(),
-            symcaches.cleanup(),
-            cficaches.cleanup(),
-            diagnostics.cleanup(),
-            auxdifs.cleanup(),
-            il2cpp.cleanup(),
-            ppdb_caches.cleanup(),
-            sourcemap_caches.cleanup(),
-            sourcefiles.cleanup(),
-        ];
+        let results: Vec<_> = caches.into_iter().map(|c| c.cleanup()).collect();
 
         let mut first_error = None;
         for result in results {

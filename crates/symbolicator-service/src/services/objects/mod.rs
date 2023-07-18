@@ -269,6 +269,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
         candidates.push(info);
     }
 
+    // NOTE: This `into()` (or rather the `From` impl) does `sort` and `dedupe` these candidates.
     candidates.into()
 }
 

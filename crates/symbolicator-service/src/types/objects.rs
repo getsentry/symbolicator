@@ -126,22 +126,6 @@ impl ObjectUseInfo {
     }
 }
 
-impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
-    fn from(mut source: Vec<ObjectCandidate>) -> Self {
-        source
-            .sort_by_cached_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
-        Self(source)
-    }
-}
-
-/// Newtype around a collection of [`ObjectCandidate`] structs.
-///
-/// This abstracts away some common operations needed on this collection.
-///
-/// [`CacheItemRequest`]: ../actors/common/cache/trait.CacheItemRequest.html
-#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
-pub struct AllObjectCandidates(pub Vec<ObjectCandidate>);
-
 /// The candidate cache status that we want to set
 #[derive(Eq, PartialEq)]
 pub enum CandidateStatus {
@@ -149,6 +133,15 @@ pub enum CandidateStatus {
     Unwind,
     None,
 }
+
+/// Newtype around a collection of [`ObjectCandidate`] structs.
+///
+/// This abstracts away some common operations needed on this collection.
+///
+/// Invariant: The `ObjectCandidate`s contained in this collection are always
+/// sorted and unique by `(source, location)`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct AllObjectCandidates(Vec<ObjectCandidate>);
 
 impl AllObjectCandidates {
     /// Sets the `debug` or `unwind` status field for the specified DIF object.
@@ -171,7 +164,7 @@ impl AllObjectCandidates {
         });
         match found_pos {
             Ok(index) => {
-                if let Some(mut candidate) = self.0.get_mut(index) {
+                if let Some(candidate) = self.0.get_mut(index) {
                     match candidate_status {
                         CandidateStatus::Debug => candidate.debug = info,
                         CandidateStatus::Unwind => candidate.unwind = info,
@@ -213,7 +206,7 @@ impl AllObjectCandidates {
                 .binary_search_by_key(&key, |candidate| (&candidate.source, &candidate.location));
             match found_pos {
                 Ok(index) => {
-                    if let Some(mut info) = self.0.get_mut(index) {
+                    if let Some(info) = self.0.get_mut(index) {
                         info.download = other_info.download.clone();
                         if other_info.unwind != ObjectUseInfo::None {
                             info.unwind = other_info.unwind.clone();
@@ -228,6 +221,20 @@ impl AllObjectCandidates {
                 }
             }
         }
+    }
+
+    /// Returns the vector of `ObjectCandidate`s backing this collection.
+    pub fn into_inner(self) -> Vec<ObjectCandidate> {
+        self.0
+    }
+}
+
+impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
+    fn from(mut source: Vec<ObjectCandidate>) -> Self {
+        source
+            .sort_by_cached_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
+        source.dedup_by_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
+        Self(source)
     }
 }
 

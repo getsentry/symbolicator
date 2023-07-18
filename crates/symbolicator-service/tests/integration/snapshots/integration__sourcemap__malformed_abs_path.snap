@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 231
+assertion_line: 347
 expression: response.unwrap()
 ---
 stacktraces:
@@ -17,5 +17,5 @@ raw_stacktraces:
         colno: 1
 errors:
   - abs_path: http//example.com/test.min.js
-    type: invalid_abs_path
+    type: missing_source
 

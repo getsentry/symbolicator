@@ -1,0 +1,21 @@
+format_version: 10
+pipelines:
+  deploy-symbolicator-next:
+    display_order: 0
+    group: symbolicator-next
+    lock_behavior: unlockWhenFinished
+    materials:
+      symbolicator_repo:
+        branch: master
+        destination: symbolicator
+        git: git@github.com:getsentry/symbolicator.git
+        shallow_clone: true
+    stages:
+      - pipeline-complete:
+          approval:
+            type: manual
+          jobs:
+            pipeline-complete:
+              tasks:
+                - exec:
+                    command: true

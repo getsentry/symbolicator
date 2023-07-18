@@ -195,16 +195,16 @@ pub enum FrameTrust {
     Context,
 }
 
-impl From<minidump_processor::FrameTrust> for FrameTrust {
-    fn from(source: minidump_processor::FrameTrust) -> Self {
+impl From<minidump_unwind::FrameTrust> for FrameTrust {
+    fn from(source: minidump_unwind::FrameTrust) -> Self {
         match source {
-            minidump_processor::FrameTrust::None => FrameTrust::None,
-            minidump_processor::FrameTrust::Scan => FrameTrust::Scan,
-            minidump_processor::FrameTrust::CfiScan => FrameTrust::CfiScan,
-            minidump_processor::FrameTrust::FramePointer => FrameTrust::Fp,
-            minidump_processor::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
-            minidump_processor::FrameTrust::PreWalked => FrameTrust::PreWalked,
-            minidump_processor::FrameTrust::Context => FrameTrust::Context,
+            minidump_unwind::FrameTrust::None => FrameTrust::None,
+            minidump_unwind::FrameTrust::Scan => FrameTrust::Scan,
+            minidump_unwind::FrameTrust::CfiScan => FrameTrust::CfiScan,
+            minidump_unwind::FrameTrust::FramePointer => FrameTrust::Fp,
+            minidump_unwind::FrameTrust::CallFrameInfo => FrameTrust::Cfi,
+            minidump_unwind::FrameTrust::PreWalked => FrameTrust::PreWalked,
+            minidump_unwind::FrameTrust::Context => FrameTrust::Context,
         }
     }
 }
@@ -579,7 +579,7 @@ pub struct CompletedSymbolicationResponse {
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "type")]
 pub enum JsModuleErrorKind {
-    InvalidLocation { line: Option<u32>, col: Option<u32> },
+    InvalidLocation { line: u32, col: Option<u32> },
     InvalidAbsPath,
     NoColumn,
     MissingSourceContent { source: String, sourcemap: String },
@@ -587,6 +587,37 @@ pub enum JsModuleErrorKind {
     MalformedSourcemap { url: String },
     MissingSourcemap,
     InvalidBase64Sourcemap,
+    ScrapingDisabled,
+}
+
+impl fmt::Display for JsModuleErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsModuleErrorKind::InvalidLocation { line, col } => {
+                write!(f, "Invalid source location")?;
+                match (line, col) {
+                    (l, None) => write!(f, ": line:{l}")?,
+                    (l, Some(c)) => write!(f, ": line:{l}, col:{c}")?,
+                }
+                Ok(())
+            }
+            JsModuleErrorKind::InvalidAbsPath => write!(f, "Invalid absolute path"),
+            JsModuleErrorKind::NoColumn => write!(f, "No column information"),
+            JsModuleErrorKind::MissingSourceContent { source, sourcemap } => write!(
+                f,
+                "Missing source contents for source file {source} and sourcemap file {sourcemap}"
+            ),
+            JsModuleErrorKind::MissingSource => write!(f, "Missing source file"),
+            JsModuleErrorKind::MalformedSourcemap { url } => {
+                write!(f, "Sourcemap file at {url} is malformed")
+            }
+            JsModuleErrorKind::MissingSourcemap => write!(f, "Missing sourcemap file"),
+            JsModuleErrorKind::InvalidBase64Sourcemap => write!(f, "Invalid base64 sourcemap"),
+            JsModuleErrorKind::ScrapingDisabled => {
+                write!(f, "Could not download file because scraping is disabled")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -631,10 +662,12 @@ pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub module: Option<String>,
+
     pub abs_path: String,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lineno: Option<u32>,
+    pub lineno: u32,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub colno: Option<u32>,
@@ -650,6 +683,38 @@ pub struct JsFrame {
 
     #[serde(skip_serializing)]
     pub token_name: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub in_app: Option<bool>,
+
+    #[serde(default, skip_serializing_if = "JsFrameData::is_empty")]
+    pub data: JsFrameData,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct JsFrameData {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sourcemap: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resolved_with: Option<ResolvedWith>,
+    #[serde(default)]
+    pub symbolicated: bool,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ResolvedWith {
+    DebugId,
+    Index,
+    Release,
+    ReleaseOld,
+    Scraping,
+}
+
+impl JsFrameData {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

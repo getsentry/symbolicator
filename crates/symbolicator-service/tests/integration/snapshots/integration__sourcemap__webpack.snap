@@ -1,0 +1,72 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 477
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - function: test
+        filename: "./src/components/CampaignContent.tsx"
+        module: src/components/CampaignContent
+        abs_path: "webpack:///./src/components/CampaignContent.tsx"
+        lineno: 20
+        colno: 5
+        pre_context:
+          - "    cb(data);"
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+        context_line: "    invoke(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  return test;"
+          - "})();"
+        in_app: true
+        data:
+          sourcemap: "http://example.com/test1.min.js.map"
+          resolved_with: release-old
+          symbolicated: true
+      - function: test
+        filename: "./src/node_modules/components/CampaignContent.tsx"
+        module: src/node_modules/components/CampaignContent
+        abs_path: "webpack:///./src/node_modules/components/CampaignContent.tsx"
+        lineno: 20
+        colno: 5
+        pre_context:
+          - "    cb(data);"
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+        context_line: "    invoke(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  return test;"
+          - "})();"
+        in_app: false
+        data:
+          sourcemap: "http://example.com/test2.min.js.map"
+          resolved_with: release-old
+          symbolicated: true
+raw_stacktraces:
+  - frames:
+      - function: i
+        filename: test1.min.js
+        abs_path: "http://example.com/test1.min.js"
+        lineno: 1
+        colno: 183
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test1.min.js.map"
+      - function: i
+        filename: test2.min.js
+        abs_path: "http://example.com/test2.min.js"
+        lineno: 1
+        colno: 183
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test2.min.js.map"
+

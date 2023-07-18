@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use structopt::StructOpt;
+use clap::{arg, Parser};
 
 use symbolicator_service::caching;
 use symbolicator_service::metrics;
@@ -26,30 +26,30 @@ fn get_long_crate_version() -> &'static str {
 }
 
 /// Symbolicator commands.
-#[derive(StructOpt)]
-#[structopt(bin_name = "symbolicator")]
+#[derive(Parser)]
+#[command(bin_name = "symbolicator")]
 enum Command {
     /// Run the web server.
-    #[structopt(name = "run")]
+    #[command(name = "run")]
     Run,
 
     /// Clean local caches.
-    #[structopt(name = "cleanup")]
+    #[command(name = "cleanup")]
     Cleanup,
 }
 
 /// Command line interface parser.
-#[derive(StructOpt)]
-#[structopt(
+#[derive(Parser)]
+#[command(
     version = get_crate_version(),
     long_version = get_long_crate_version(),
 )]
 struct Cli {
     /// Path to your configuration file.
-    #[structopt(long = "config", short = "c", global(true), value_name = "FILE")]
+    #[arg(long = "config", short = 'c', global(true), value_name = "FILE")]
     pub config: Option<PathBuf>,
 
-    #[structopt(subcommand)]
+    #[command(subcommand)]
     command: Command,
 }
 
@@ -62,7 +62,7 @@ impl Cli {
 
 /// Runs the main application.
 pub fn execute() -> Result<()> {
-    let cli = Cli::from_args();
+    let cli = Cli::parse();
     let config = Config::get(cli.config()).context("failed loading config")?;
 
     let release = Some(env!("SYMBOLICATOR_RELEASE").into());

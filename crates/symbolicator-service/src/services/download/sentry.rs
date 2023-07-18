@@ -15,13 +15,15 @@ use serde::Deserialize;
 use url::Url;
 
 use symbolicator_sources::{
-    HttpRemoteFile, ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
+    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
 
 use super::{FileType, USER_AGENT};
 use crate::caching::{CacheEntry, CacheError};
-use crate::config::Config;
-use crate::utils::futures::CancelOnDrop;
+use crate::config::InMemoryCacheConfig;
+use crate::types::ResolvedWith;
+use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::http::DownloadTimeouts;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -80,6 +82,7 @@ enum RawJsLookupResult {
     Bundle {
         id: SentryFileId,
         url: Url,
+        resolved_with: Option<ResolvedWith>,
     },
     File {
         id: SentryFileId,
@@ -87,6 +90,7 @@ enum RawJsLookupResult {
         abs_path: String,
         #[serde(default)]
         headers: ArtifactHeaders,
+        resolved_with: Option<ResolvedWith>,
     },
 }
 
@@ -99,6 +103,7 @@ pub enum JsLookupResult {
     ArtifactBundle {
         /// The [`RemoteFile`] to download this bundle from.
         remote_file: RemoteFile,
+        resolved_with: Option<ResolvedWith>,
     },
     /// This is an individual artifact file.
     IndividualArtifact {
@@ -108,6 +113,7 @@ pub enum JsLookupResult {
         abs_path: String,
         /// Arbitrary headers of this file, such as a `Sourcemap` reference.
         headers: ArtifactHeaders,
+        resolved_with: Option<ResolvedWith>,
     },
 }
 
@@ -128,8 +134,7 @@ pub struct SentryDownloader {
     runtime: tokio::runtime::Handle,
     dif_cache: SentryDifCache,
     js_cache: SentryJsCache,
-    connect_timeout: Duration,
-    streaming_timeout: Duration,
+    timeouts: DownloadTimeouts,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -142,22 +147,26 @@ impl fmt::Debug for SentryDownloader {
 }
 
 impl SentryDownloader {
-    pub fn new(client: reqwest::Client, runtime: tokio::runtime::Handle, config: &Config) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        runtime: tokio::runtime::Handle,
+        timeouts: DownloadTimeouts,
+        in_memory: &InMemoryCacheConfig,
+    ) -> Self {
         let dif_cache = SentryDifCache::builder()
-            .max_capacity(config.caches.in_memory.sentry_index_capacity)
-            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .max_capacity(in_memory.sentry_index_capacity)
+            .time_to_live(in_memory.sentry_index_ttl)
             .build();
         let js_cache = SentryJsCache::builder()
-            .max_capacity(config.caches.in_memory.sentry_index_capacity)
-            .time_to_live(config.caches.in_memory.sentry_index_ttl)
+            .max_capacity(in_memory.sentry_index_capacity)
+            .time_to_live(in_memory.sentry_index_ttl)
             .build();
         Self {
             client,
             runtime,
             dif_cache,
             js_cache,
-            connect_timeout: config.connect_timeout,
-            streaming_timeout: config.streaming_timeout,
+            timeouts,
         }
     }
 
@@ -242,7 +251,14 @@ impl SentryDownloader {
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            let result = future.await.map_err(|_| CacheError::InternalError)?;
+            let timeout = Duration::from_secs(30);
+            let future = tokio::time::timeout(timeout, future);
+            let future = measure("service.download.list_files", m::timed_result, future);
+
+            let result = future
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?
+                .map_err(|_| CacheError::InternalError)?;
 
             if let Ok(result) = &result {
                 // TODO(flub): These queries do not handle pagination.  But sentry only starts to
@@ -265,7 +281,7 @@ impl SentryDownloader {
         let file_ids = entries
             .iter()
             .filter(|file| file.symbol_type.matches(file_types))
-            .map(|file| SentryRemoteFile::new(source.clone(), file.id.clone(), None).into())
+            .map(|file| SentryRemoteFile::new(source.clone(), true, file.id.clone(), None).into())
             .collect();
         Ok(file_ids)
     }
@@ -300,6 +316,13 @@ impl SentryDownloader {
             }
         }
 
+        // NOTE: `http::Uri` has a hard limit defined, and reqwest unconditionally unwraps such
+        // errors, when converting between `Url` to `Uri`. To avoid a panic in that case, we
+        // duplicate the check here to gracefully error out.
+        if lookup_url.as_str().len() > (u16::MAX - 1) as usize {
+            return Err(CacheError::DownloadError("uri too long".into()));
+        }
+
         let query = SearchQuery {
             index_url: lookup_url,
             token: source.token.clone(),
@@ -323,7 +346,18 @@ impl SentryDownloader {
             let future =
                 CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())));
 
-            future.await.map_err(|_| CacheError::InternalError)?
+            let timeout = Duration::from_secs(30);
+            let future = tokio::time::timeout(timeout, future);
+            let future = measure(
+                "service.download.lookup_js_artifacts",
+                m::timed_result,
+                future,
+            );
+
+            future
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?
+                .map_err(|_| CacheError::InternalError)?
         });
 
         let entries = self
@@ -336,18 +370,25 @@ impl SentryDownloader {
         let results = entries
             .iter()
             .map(|raw| match raw {
-                RawJsLookupResult::Bundle { id, url } => JsLookupResult::ArtifactBundle {
+                RawJsLookupResult::Bundle {
+                    id,
+                    url,
+                    resolved_with,
+                } => JsLookupResult::ArtifactBundle {
                     remote_file: make_remote_file(&source, id, url),
+                    resolved_with: *resolved_with,
                 },
                 RawJsLookupResult::File {
                     id,
                     url,
                     abs_path,
                     headers,
+                    resolved_with,
                 } => JsLookupResult::IndividualArtifact {
                     remote_file: make_remote_file(&source, id, url),
                     abs_path: abs_path.clone(),
                     headers: headers.clone(),
+                    resolved_with: *resolved_with,
                 },
             })
             .collect();
@@ -362,28 +403,21 @@ impl SentryDownloader {
     ) -> CacheEntry {
         tracing::debug!("Fetching Sentry artifact from {}", file_source.url());
 
-        let request = self
+        let mut request = self
             .client
             .get(file_source.url())
-            .header("User-Agent", USER_AGENT)
-            .bearer_auth(&file_source.source.token);
+            .header("User-Agent", USER_AGENT);
+        if file_source.use_credentials() {
+            request = request.bearer_auth(&file_source.source.token);
+        }
         let source = RemoteFile::from(file_source);
 
-        super::download_reqwest(
-            &source,
-            request,
-            self.connect_timeout,
-            self.streaming_timeout,
-            destination,
-        )
-        .await
+        super::download_reqwest(&source, request, &self.timeouts, destination).await
     }
 }
 
 /// Transforms the given `url` into a [`RemoteFile`].
 ///
-/// Depending on the `source`, this creates either a [`SentryRemoteFile`], or a
-/// [`HttpRemoteFile`].
 /// The problem here is being forward-compatible to a future in which the Sentry API returns
 /// pre-authenticated Urls on some external file storage service.
 /// Whereas right now, these files are still being served from a Sentry API endpoint, which
@@ -394,11 +428,14 @@ fn make_remote_file(
     file_id: &SentryFileId,
     url: &Url,
 ) -> RemoteFile {
-    if url.as_str().starts_with(source.url.as_str()) {
-        SentryRemoteFile::new(Arc::clone(source), file_id.clone(), Some(url.clone())).into()
-    } else {
-        HttpRemoteFile::from_url(url.clone()).into()
-    }
+    let use_credentials = url.as_str().starts_with(source.url.as_str());
+    SentryRemoteFile::new(
+        Arc::clone(source),
+        use_credentials,
+        file_id.clone(),
+        Some(url.clone()),
+    )
+    .into()
 }
 
 #[cfg(test)]
@@ -415,7 +452,7 @@ mod tests {
             token: "token".into(),
         };
         let file_source =
-            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
+            SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
         let url = file_source.url();
         assert_eq!(url.as_str(), "https://example.net/endpoint/?id=abc123");
     }
@@ -428,7 +465,7 @@ mod tests {
             token: "token".into(),
         };
         let file_source =
-            SentryRemoteFile::new(Arc::new(source), SentryFileId("abc123".into()), None);
+            SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
         let uri = file_source.uri();
         assert_eq!(
             uri,

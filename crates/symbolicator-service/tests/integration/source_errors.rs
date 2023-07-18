@@ -24,8 +24,8 @@ async fn test_download_errors() {
     // )
     let get_statuses = |mut res: CompletedSymbolicationResponse| {
         let frame = &res.stacktraces[0].frames[0];
-        let mut module = res.modules.pop().unwrap();
-        let candidate = module.candidates.0.pop().unwrap();
+        let module = res.modules.pop().unwrap();
+        let candidate = module.candidates.into_inner().pop().unwrap();
         (
             frame.status,
             module.debug_status,
@@ -146,8 +146,8 @@ async fn test_deny_list() {
     // )
     let get_statuses = |mut res: CompletedSymbolicationResponse| {
         let frame = &res.stacktraces[0].frames[0];
-        let mut module = res.modules.pop().unwrap();
-        let candidate = module.candidates.0.pop().unwrap();
+        let module = res.modules.pop().unwrap();
+        let candidate = module.candidates.into_inner().pop().unwrap();
         (
             frame.status,
             module.debug_status,

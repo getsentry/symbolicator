@@ -16,7 +16,7 @@ pipelines:
             symbolicator_repo:
                 git: git@github.com:getsentry/symbolicator.git
                 shallow_clone: true
-                branch: master
+                branch: canary
                 destination: symbolicator
         stages:
             - checks:

@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator-test"
-version = "23.4.0"
+version = "23.7.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
@@ -17,4 +17,4 @@ symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 tokio = { version = "1.26.0", features = ["rt", "macros", "fs"] }
 tower-http = { version = "0.4.0", features = ["fs", "trace"] }
-tracing-subscriber = { version = "0.3.11", features = ["tracing-log", "local-time", "env-filter", "json"] }
+tracing-subscriber = { version = "0.3.17", features = ["tracing-log", "local-time", "env-filter", "json"] }

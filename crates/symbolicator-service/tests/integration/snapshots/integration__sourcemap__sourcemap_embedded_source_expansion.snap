@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 188
+assertion_line: 206
 expression: response.unwrap()
 ---
 stacktraces:
@@ -10,8 +10,10 @@ stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
+        in_app: false
       - function: add
         filename: file1.js
+        module: file1
         abs_path: "http://example.com/file1.js"
         lineno: 3
         colno: 9
@@ -21,6 +23,10 @@ stacktraces:
         context_line: "\treturn a + b; // fôo"
         post_context:
           - "}"
+        data:
+          sourcemap: "http://example.com/embedded.js.map"
+          resolved_with: release
+          symbolicated: true
 raw_stacktraces:
   - frames:
       - function: "function: \"HTMLDocument.<anonymous>\""
@@ -28,6 +34,7 @@ raw_stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
+        in_app: false
       - filename: embedded.js
         abs_path: "http://example.com/embedded.js"
         lineno: 1
@@ -37,5 +44,5 @@ raw_stacktraces:
           - "//# sourceMappingURL=embedded.js.map"
 errors:
   - abs_path: "http://example.com/index.html"
-    type: missing_source
+    type: scraping_disabled
 

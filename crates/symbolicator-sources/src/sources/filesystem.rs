@@ -49,7 +49,7 @@ impl FilesystemRemoteFile {
     /// not provide a hostname nor percent-encode.  Use this only for diagnostics and use
     /// [`FilesystemRemoteFile::path`] if the actual file location is needed.
     pub(crate) fn uri(&self) -> RemoteFileUri {
-        format!("file:///{}", self.path().display()).into()
+        format!("file://{}", self.path().display()).into()
     }
 
     pub(crate) fn host(&self) -> String {

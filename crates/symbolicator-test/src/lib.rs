@@ -45,10 +45,7 @@ pub use tempfile::TempDir;
 ///    and test server, and mutes all other logs.
 pub fn setup() {
     fmt()
-        .with_env_filter(EnvFilter::new(
-            "symbolicator_service=trace,tower_http=trace",
-        ))
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(EnvFilter::new("symbolicator=trace,tower_http=trace"))
         .with_target(false)
         .pretty()
         .with_test_writer()
@@ -345,18 +342,20 @@ pub fn symbol_server() -> (Server, SourceConfig) {
     (server, source)
 }
 
-pub fn sourcemap_server<L>(fixtures_dir: &str, lookup: L) -> (Server, SentrySourceConfig)
+pub fn sourcemap_server<L>(
+    fixtures_dir: impl AsRef<Path>,
+    lookup: L,
+) -> (Server, SentrySourceConfig)
 where
     L: Fn(&str, &str) -> serde_json::Value + Clone + Send + 'static,
 {
-    let tracing_layer = TraceLayer::new_for_http().on_response(());
-
-    let serve_dir = get_service(ServeDir::new(fixture(format!("sourcemaps/{fixtures_dir}"))));
-
     let files_url = Arc::new(OnceCell::<Url>::new());
 
     let router = {
         let files_url = files_url.clone();
+
+        let tracing_layer = TraceLayer::new_for_http().on_response(());
+        let serve_dir = get_service(ServeDir::new(fixtures_dir));
         Router::new()
             .route(
                 "/lookup",
@@ -370,7 +369,6 @@ where
             .nest_service("/files", serve_dir)
             .layer(tracing_layer)
     };
-
     let server = Server::with_router(router);
 
     files_url.set(server.url("/files")).unwrap();
@@ -522,7 +520,10 @@ macro_rules! assert_snapshot {
             ),
             ".**.abs_path" => ::insta::dynamic_redaction(
                 $crate::redact_localhost_port
-            )
+            ),
+            ".**.data.sourcemap" => ::insta::dynamic_redaction(
+                $crate::redact_localhost_port
+            ),
         });
     }
 }
