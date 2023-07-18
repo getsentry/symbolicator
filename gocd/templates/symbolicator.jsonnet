@@ -3,7 +3,7 @@ local pipedream = import 'github.com/getsentry/gocd-jsonnet/libs/pipedream.libso
 
 local pipedream_config = {
   // Name of your service
-  name: 'symbolicator-next',
+  name: 'symbolicator',
 
   // The materials you'd like the pipelines to watch for changes
   materials: {

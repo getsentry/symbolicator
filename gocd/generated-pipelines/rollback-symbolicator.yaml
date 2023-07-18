@@ -1,18 +1,18 @@
 format_version: 10
 pipelines:
-  rollback-symbolicator-next:
+  rollback-symbolicator:
     display_order: 1
     environment_variables:
-      ALL_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-next-monitor" --pipeline="deploy-symbolicator-next-us" --pipeline="deploy-symbolicator-next"
+      ALL_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-monitor" --pipeline="deploy-symbolicator-us" --pipeline="deploy-symbolicator"
       GOCD_ACCESS_TOKEN: '{{SECRET:[devinfra][gocd_access_token]}}'
-      REGION_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-next-monitor" --pipeline="deploy-symbolicator-next-us"
+      REGION_PIPELINE_FLAGS: --pipeline="deploy-symbolicator-monitor" --pipeline="deploy-symbolicator-us"
       ROLLBACK_MATERIAL_NAME: symbolicator_repo
       ROLLBACK_STAGE: deploy_primary
-    group: symbolicator-next
+    group: symbolicator
     lock_behavior: unlockWhenFinished
     materials:
-      deploy-symbolicator-next-us-pipeline-complete:
-        pipeline: deploy-symbolicator-next-us
+      deploy-symbolicator-us-pipeline-complete:
+        pipeline: deploy-symbolicator-us
         stage: pipeline-complete
     stages:
       - pause_pipelines:
