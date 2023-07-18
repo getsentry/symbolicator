@@ -408,10 +408,6 @@ impl DownloadService {
             }
         }
         remote_files
-            .sort_by_cached_key(|remote_file| (remote_file.source_id().clone(), remote_file.uri()));
-        remote_files
-            .dedup_by_key(|remote_file| (remote_file.source_id().clone(), remote_file.uri()));
-        remote_files
     }
 
     /// Look up a list of bundles or individual artifact files covering the
