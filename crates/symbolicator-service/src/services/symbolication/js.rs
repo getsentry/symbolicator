@@ -33,6 +33,7 @@ use std::sync::Arc;
 
 use once_cell::sync::Lazy;
 use regex::Regex;
+use reqwest::Url;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_sources::SentrySourceConfig;
 
@@ -57,6 +58,8 @@ pub struct SymbolicateJsStacktraces {
     pub source: Arc<SentrySourceConfig>,
     pub release: Option<String>,
     pub dist: Option<String>,
+    pub debug_id_index: Option<Url>,
+    pub url_index: Option<Url>,
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
     pub scraping: ScrapingConfig,
@@ -72,7 +75,7 @@ impl SymbolicationActor {
     ) -> anyhow::Result<CompletedJsSymbolicationResponse> {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
         let apply_source_context = request.apply_source_context;
-        let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request);
+        let mut lookup = SourceMapLookup::new(self.sourcemaps.clone(), request).await;
         lookup.prepare_modules(&mut raw_stacktraces[..]);
 
         let mut unsymbolicated_frames = 0;

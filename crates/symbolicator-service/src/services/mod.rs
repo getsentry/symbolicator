@@ -17,6 +17,7 @@ use crate::caching::{Caches, SharedCacheService};
 use crate::config::Config;
 
 pub mod bitcode;
+mod bundle_index;
 pub mod caches;
 pub mod cficaches;
 pub mod derived;
@@ -33,7 +34,7 @@ pub mod symbolication;
 pub mod symcaches;
 
 use self::bitcode::BitcodeService;
-use self::caches::SourceFilesCache;
+use self::caches::{BundleIndexCache, SourceFilesCache};
 use self::cficaches::CfiCacheActor;
 use self::download::DownloadService;
 use self::il2cpp::Il2cppService;
@@ -89,9 +90,16 @@ pub fn create_service(
     let ppdb_caches =
         PortablePdbCacheActor::new(caches.ppdb_caches, shared_cache.clone(), objects.clone());
 
+    let bundle_index_cache = BundleIndexCache::new(
+        caches.bundle_index,
+        shared_cache.clone(),
+        downloader.clone(),
+    );
+
     let sourcemaps = SourceMapService::new(
         objects.clone(),
         sourcefiles_cache.clone(),
+        bundle_index_cache,
         caches.sourcemap_caches,
         shared_cache,
         downloader,

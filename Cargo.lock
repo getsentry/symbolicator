@@ -4324,6 +4324,7 @@ dependencies = [
  "tower-service",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
 ]
 

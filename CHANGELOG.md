@@ -9,6 +9,7 @@
 ### Features
 
 - Add `--symbols` argument to `symbolicli` ([#1241](https://github.com/getsentry/symbolicator/pull/1241))
+- Add a new `BundleIndex` for SourceMap processing. ([#1251](https://github.com/getsentry/symbolicator/pull/1251))
 
 ### Fixes
 

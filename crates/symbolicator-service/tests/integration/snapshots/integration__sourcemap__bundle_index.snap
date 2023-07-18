@@ -1,0 +1,38 @@
+---
+source: crates/symbolicator-service/tests/integration/sourcemap.rs
+assertion_line: 694
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - function: test
+        filename: test.js
+        module: test
+        abs_path: "http://example.com/test.js"
+        lineno: 20
+        colno: 5
+        pre_context:
+          - "    cb(data);"
+          - "  }"
+          - ""
+          - "  function test() {"
+          - "    var data = {failed: true, value: 42};"
+        context_line: "    invoke(data);"
+        post_context:
+          - "  }"
+          - ""
+          - "  return test;"
+          - "})();"
+        data:
+          sourcemap: "http://example.com/test.min.js.map"
+          resolved_with: index
+          symbolicated: true
+raw_stacktraces:
+  - frames:
+      - abs_path: "http://example.com/test.min.js"
+        lineno: 1
+        colno: 183
+        context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
+        post_context:
+          - "//# sourceMappingURL=test.min.js.map"
+
