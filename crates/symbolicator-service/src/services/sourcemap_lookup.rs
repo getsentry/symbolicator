@@ -22,6 +22,7 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::fs::File;
@@ -118,12 +119,11 @@ async fn maybe_fetch_bundle_index(
     url: Option<Url>,
 ) -> Option<Arc<BundleIndex>> {
     let url = url?;
-    // We expect the url to look like `?download=foo-bar`, so split by the `=`.
+    // We expect the url to have a parameter like `?download=foo-bar`.
     let file_id = url
-        .as_str()
-        .rsplit_once('=')
-        .map(|(_, id)| id)
-        .unwrap_or(url.as_str());
+        .query_pairs()
+        .find_map(|(k, v)| (k == "download").then_some(v))
+        .unwrap_or(Cow::Borrowed(url.as_str()));
 
     let file = SentryRemoteFile::new(
         Arc::clone(source),
@@ -748,10 +748,10 @@ impl ArtifactFetcher {
         // NOTE: we ideally wanted to move away from hardcoded URLs,
         // but now we are back to square one -_-
         let mut download_url = self.source.url.clone();
-        {
-            let mut query = download_url.query_pairs_mut();
-            query.append_pair("download", &bundle_id);
-        }
+        download_url
+            .query_pairs_mut()
+            .append_pair("download", &bundle_id);
+
         let sentry_file = SentryRemoteFile::new(
             Arc::clone(&self.source),
             true,
