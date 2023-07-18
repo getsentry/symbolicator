@@ -322,14 +322,15 @@ impl DownloadService {
             Ok(Ok(res)) => res,
         };
 
-        if source_is_external
-            && matches!(
-                result,
-                Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
-            )
-        {
+        if matches!(
+            result,
+            Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
+        ) {
             metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
-            self.host_deny_list.register_failure(host);
+
+            if source_is_external {
+                self.host_deny_list.register_failure(host);
+            }
         }
 
         result
