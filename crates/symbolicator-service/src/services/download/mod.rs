@@ -326,6 +326,7 @@ impl DownloadService {
             metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
 
             if source_metric_key == "sentry:project" {
+                ::sentry::configure_scope(|scope| scope.set_tag("host", host.clone()));
                 ::sentry::capture_error(e);
             }
 
