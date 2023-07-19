@@ -19,6 +19,7 @@ local pipedream_config = {
   rollback: {
     material_name: 'symbolicator_repo',
     stage: 'deploy_primary',
+    elastic_profile_id: 'symbolicator',
   },
 
   // Set to true to auto-deploy changes (defaults to true)
