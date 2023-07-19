@@ -322,11 +322,13 @@ impl DownloadService {
             Ok(Ok(res)) => res,
         };
 
-        if matches!(
-            result,
-            Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
-        ) {
+        if let Err(ref e @ (CacheError::DownloadError(_) | CacheError::Timeout(_))) = result {
             metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
+
+            if source_metric_key == "sentry:project" {
+                ::sentry::configure_scope(|scope| scope.set_tag("host", host.clone()));
+                ::sentry::capture_error(e);
+            }
 
             if source_is_external {
                 self.host_deny_list.register_failure(host);
