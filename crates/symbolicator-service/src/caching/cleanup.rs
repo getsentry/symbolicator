@@ -93,34 +93,66 @@ impl Caches {
     }
 }
 
+#[derive(Default)]
+struct CleanupStats {
+    removed_dirs: usize,
+    removed_files: usize,
+    removed_bytes: u64,
+
+    retained_dirs: usize,
+    retained_files: usize,
+    retained_bytes: u64,
+}
+
 impl Cache {
     pub fn cleanup(&self) -> Result<()> {
-        tracing::info!("Cleaning up cache: {}", self.name);
+        tracing::info!("Cleaning up `{}` cache", self.name);
         let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
 
-        self.cleanup_directory_recursive(cache_dir)?;
+        let mut stats = CleanupStats::default();
+        self.cleanup_directory_recursive(cache_dir, &mut stats)?;
+
+        tracing::info!("Cleaning up `{}` complete", self.name);
+        tracing::info!(
+            "Retained {} directories and {} files, totaling {} bytes",
+            stats.retained_dirs,
+            stats.retained_files,
+            stats.retained_bytes,
+        );
+        tracing::info!(
+            "Removed {} directories and {} files, totaling {} bytes",
+            stats.removed_dirs,
+            stats.removed_files,
+            stats.removed_bytes
+        );
 
         Ok(())
     }
 
     /// Cleans up the directory recursively, returning `true` if the directory is left empty after cleanup.
-    fn cleanup_directory_recursive(&self, directory: &Path) -> Result<bool> {
+    fn cleanup_directory_recursive(
+        &self,
+        directory: &Path,
+        stats: &mut CleanupStats,
+    ) -> Result<bool> {
         let entries = match catch_not_found(|| read_dir(directory))? {
             Some(x) => x,
             None => {
-                tracing::warn!("Directory not found: {}", directory.display());
+                tracing::warn!("Directory not found: `{}`", directory.display());
                 return Ok(true);
             }
         };
+        tracing::debug!("Cleaning directory `{}`", directory.display());
 
         let mut is_empty = true;
         for entry in entries {
             let path = entry?.path();
             if path.is_dir() {
-                let mut dir_is_empty = self.cleanup_directory_recursive(&path)?;
+                let mut dir_is_empty = self.cleanup_directory_recursive(&path, stats)?;
                 if dir_is_empty {
+                    tracing::debug!("Removing directory `{}`", directory.display());
                     if let Err(e) = remove_dir(&path) {
                         sentry::with_scope(
                             |scope| scope.set_extra("path", path.display().to_string().into()),
@@ -129,9 +161,14 @@ impl Cache {
                         dir_is_empty = false;
                     }
                 }
+                if dir_is_empty {
+                    stats.removed_dirs += 1;
+                } else {
+                    stats.retained_dirs += 1;
+                }
                 is_empty &= dir_is_empty;
             } else {
-                match self.try_cleanup_path(&path) {
+                match self.try_cleanup_path(&path, stats) {
                     Err(e) => {
                         sentry::with_scope(
                             |scope| scope.set_extra("path", path.display().to_string().into()),
@@ -147,15 +184,23 @@ impl Cache {
     }
 
     /// Tries to clean up the file at `path`, returning `true` if it was removed.
-    fn try_cleanup_path(&self, path: &Path) -> Result<bool> {
-        tracing::trace!("Checking {}", path.display());
-        anyhow::ensure!(path.is_file(), "not a file");
+    fn try_cleanup_path(&self, path: &Path, stats: &mut CleanupStats) -> Result<bool> {
+        tracing::trace!("Checking file `{}`", path.display());
+        let Some(metadata) = catch_not_found(|| path.metadata())? else { return Ok(true) };
+        anyhow::ensure!(metadata.is_file(), "not a file");
+        let size = metadata.len();
+
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
-            tracing::debug!("Removing {}", path.display());
+            tracing::debug!("Removing file `{}`", path.display());
             catch_not_found(|| remove_file(path))?;
+
+            stats.removed_bytes += size;
+            stats.removed_files += 1;
 
             return Ok(true);
         }
+        stats.retained_bytes += size;
+        stats.retained_files += 1;
 
         Ok(false)
     }

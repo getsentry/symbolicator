@@ -119,7 +119,7 @@ impl Cache {
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
         let metadata = path.metadata()?;
-        tracing::trace!("File length: {}", metadata.len());
+        tracing::trace!("File `{}` length: {}", path.display(), metadata.len());
 
         let bv = ByteView::open(path)?;
         let mtime = metadata.modified()?;
