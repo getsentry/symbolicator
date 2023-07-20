@@ -766,7 +766,7 @@ impl ArtifactFetcher {
             .await;
 
         let bundle = self.artifact_bundles.get(&bundle_uri)?;
-        let Ok((bundle,_)) = bundle else { return None};
+        let Ok((bundle, _)) = bundle else { return None };
         let bundle = bundle.get();
 
         // by now we have a bundle, and we *know* the file should be included in the

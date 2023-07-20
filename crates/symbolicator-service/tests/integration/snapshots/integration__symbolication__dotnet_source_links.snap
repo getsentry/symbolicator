@@ -28,7 +28,6 @@ stacktraces:
           - "        }"
           - ""
         source_link: "https://raw.githubusercontent.com/dotnet/runtime/d099f075e45d2aa6007a22b71b45a08758559f80/src/libraries/Common/src/System/ThrowHelper.cs"
-        in_app: true
 modules:
   - debug_status: found
     features:

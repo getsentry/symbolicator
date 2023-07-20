@@ -15,6 +15,19 @@ stacktraces:
         filename: TZConvert.cs
         abs_path: /_/src/TimeZoneConverter/TZConvert.cs
         lineno: 115
+        pre_context:
+          - "        if (TryIanaToWindows(ianaTimeZoneName, out var windowsTimeZoneId))"
+          - "        {"
+          - "            return windowsTimeZoneId;"
+          - "        }"
+          - ""
+        context_line: "        throw new InvalidTimeZoneException("
+        post_context:
+          - "            $\"\\\"{ianaTimeZoneName}\\\" was not recognized as a valid IANA time zone name, or has no equivalent Windows time zone.\");"
+          - "    }"
+          - ""
+          - "    /// <summary>"
+          - "    /// Attempts to convert an IANA time zone name to the equivalent Windows time zone ID."
         source_link: "https://raw.githubusercontent.com/mattjohnsonpint/TimeZoneConverter/dab355a1e878bfbfd4c659ddb568ca69961d579e/src/TimeZoneConverter/TZConvert.cs"
 modules:
   - debug_status: found

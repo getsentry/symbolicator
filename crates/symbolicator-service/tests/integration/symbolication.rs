@@ -177,33 +177,7 @@ async fn test_dotnet_embedded_sources() {
 }
 
 #[tokio::test]
-async fn test_dotnet_source_links_in_app() {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbol_server();
-
-    let request = make_symbolication_request(
-        vec![source],
-        r#"[{
-          "type":"pe_dotnet",
-          "debug_file":"source-links.pdb",
-          "debug_id":"37e9e8a6-1a8e-404e-b93c-6902e277ff55-a09672e1"
-        }]"#,
-        r#"[{
-          "frames":[{
-            "instruction_addr": 1,
-            "function_id": 7,
-            "addr_mode":"rel:0",
-            "in_app":true
-          }]
-        }]"#,
-    );
-    let response = symbolication.symbolicate(request).await;
-
-    assert_snapshot!(response.unwrap());
-}
-
-#[tokio::test]
-async fn test_dotnet_source_links_3rd_party() {
+async fn test_dotnet_source_links() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = symbol_server();
 
@@ -228,33 +202,7 @@ async fn test_dotnet_source_links_3rd_party() {
 }
 
 #[tokio::test]
-async fn test_dotnet_only_source_links_in_app() {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbol_server();
-
-    let request = make_symbolication_request(
-        vec![source],
-        r#"[{
-          "type":"pe_dotnet",
-          "debug_file":"source-links.pdb",
-          "debug_id":"0c380a12-8221-4069-8565-bee6b3ac196e-a596286e"
-        }]"#,
-        r#"[{
-          "frames":[{
-            "instruction_addr": "0x2f",
-            "function_id": "0x5",
-            "addr_mode":"rel:0",
-            "in_app":true
-          }]
-        }]"#,
-    );
-    let response = symbolication.symbolicate(request).await;
-
-    assert_snapshot!(response.unwrap());
-}
-
-#[tokio::test]
-async fn test_dotnet_only_source_links_3rd_party() {
+async fn test_dotnet_only_source_links() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = symbol_server();
 

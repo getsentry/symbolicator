@@ -160,7 +160,7 @@ impl SymbolicationActor {
             .collect();
 
         if apply_source_context {
-            self.apply_source_context(&scope, &mut module_lookup, &mut stacktraces, &scraping)
+            self.apply_source_context(&mut module_lookup, &mut stacktraces, &scraping)
                 .await
         }
 
@@ -178,7 +178,6 @@ impl SymbolicationActor {
 
     async fn apply_source_context(
         &self,
-        scope: &Scope,
         module_lookup: &mut ModuleLookup,
         stacktraces: &mut [CompleteStacktrace],
         scraping: &ScrapingConfig,
@@ -188,23 +187,21 @@ impl SymbolicationActor {
             .await;
 
         // Map collected source contexts to frames and collect URLs for remote source links.
-        let mut remote_sources: HashMap<url::Url, Vec<&mut RawFrame>> = HashMap::new();
+        let mut remote_sources: HashMap<(Scope, url::Url), Vec<&mut RawFrame>> = HashMap::new();
         {
             let debug_sessions = module_lookup.prepare_debug_sessions();
 
             for trace in stacktraces {
                 for frame in &mut trace.frames {
-                    if let Some(url) =
+                    let Some(url) =
                         module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw)
-                    {
-                        // Only resolve source context from URLs if the frame is "in-app".
-                        if frame.raw.in_app.unwrap_or(false) {
-                            if let Some(vec) = remote_sources.get_mut(&url) {
-                                vec.push(&mut frame.raw)
-                            } else {
-                                remote_sources.insert(url, vec![&mut frame.raw]);
-                            }
-                        }
+                    else {
+                        continue;
+                    };
+                    if let Some(vec) = remote_sources.get_mut(&url) {
+                        vec.push(&mut frame.raw)
+                    } else {
+                        remote_sources.insert(url, vec![&mut frame.raw]);
                     }
                 }
             }
@@ -213,25 +210,29 @@ impl SymbolicationActor {
         // Download remote sources and update contexts.
         if !remote_sources.is_empty() {
             let cache = self.sourcefiles_cache.as_ref();
-            let futures = remote_sources.into_iter().map(|(url, frames)| async {
-                let url = url;
-                let mut remote_file = HttpRemoteFile::from_url(url.clone());
+            let futures =
+                remote_sources
+                    .into_iter()
+                    .map(|((source_scope, url), frames)| async move {
+                        let mut remote_file = HttpRemoteFile::from_url(url.clone());
 
-                if scraping.enabled && is_valid_origin(&url, &scraping.allowed_origins) {
-                    remote_file.headers.extend(
-                        scraping
-                            .headers
-                            .iter()
-                            .map(|(key, value)| (key.clone(), value.clone())),
-                    );
-                }
+                        if scraping.enabled && is_valid_origin(&url, &scraping.allowed_origins) {
+                            remote_file.headers.extend(
+                                scraping
+                                    .headers
+                                    .iter()
+                                    .map(|(key, value)| (key.clone(), value.clone())),
+                            );
+                        }
 
-                if let Ok(source) = cache.fetch_file(scope, remote_file.into()).await {
-                    for frame in frames {
-                        ModuleLookup::set_source_context(&source, frame);
-                    }
-                }
-            });
+                        if let Ok(source) =
+                            cache.fetch_file(&source_scope, remote_file.into()).await
+                        {
+                            for frame in frames {
+                                ModuleLookup::set_source_context(&source, frame);
+                            }
+                        }
+                    });
             future::join_all(futures).await;
         }
     }

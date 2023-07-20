@@ -108,7 +108,7 @@ async fn main() -> Result<()> {
         .into_iter()
         .enumerate()
         .map(|(i, workload)| {
-            let scope = Scope::Scoped(i.to_string());
+            let scope = Scope::Scoped(i.to_string().into());
             let sources = service_config.sources.clone();
             let payload = prepare_payload(scope, sources, workload.payload);
             (workload.concurrency, Arc::new(payload))

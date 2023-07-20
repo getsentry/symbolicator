@@ -110,6 +110,8 @@ pub struct ModuleLookup {
     sources: Arc<[SourceConfig]>,
 }
 
+type DebugSessions<'a> = HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a>)>>;
+
 impl ModuleLookup {
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
     pub fn new<I>(scope: Scope, sources: Arc<[SourceConfig]>, iter: I) -> Self
@@ -367,16 +369,20 @@ impl ModuleLookup {
     /// This returns a separate HashMap purely to avoid self-referential borrowing issues.
     /// The [`ObjectDebugSession`] borrows from the `source_object` and thus they can't live within
     /// the same mutable [`ModuleLookup`].
-    pub fn prepare_debug_sessions(&self) -> HashMap<usize, Option<ObjectDebugSession<'_>>> {
+    pub fn prepare_debug_sessions(&self) -> DebugSessions<'_> {
         self.modules
             .iter()
             .map(|entry| {
                 // FIXME(swatinem): we should log these errors here
-                let debug_session = entry
-                    .source_object
-                    .as_ref()
-                    .ok()
-                    .and_then(|o| o.object().debug_session().ok());
+                let debug_session = if let Ok(source_object) = entry.source_object.as_ref() {
+                    source_object
+                        .object()
+                        .debug_session()
+                        .ok()
+                        .map(|session| (&source_object.scope, session))
+                } else {
+                    None
+                };
 
                 (entry.module_index, debug_session)
             })
@@ -387,9 +393,9 @@ impl ModuleLookup {
     /// Returns an `Url` in case the source code has to be fetched.
     pub(crate) fn try_set_source_context(
         &self,
-        debug_sessions: &HashMap<usize, Option<ObjectDebugSession<'_>>>,
+        debug_sessions: &DebugSessions<'_>,
         frame: &mut RawFrame,
-    ) -> Option<url::Url> {
+    ) -> Option<(Scope, url::Url)> {
         let abs_path = frame.abs_path.as_ref()?;
 
         // Short-circuit here before accessing the source. Line number is required to resolve the context.
@@ -399,7 +405,7 @@ impl ModuleLookup {
 
         let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
         let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
-        let source_descriptor = session.source_by_path(abs_path).ok()??;
+        let source_descriptor = session.1.source_by_path(abs_path).ok()??;
 
         // Always set the source link URL if available (and it passes a simple validation).
         let filtered_url = source_descriptor.url().and_then(|url| {
@@ -420,7 +426,7 @@ impl ModuleLookup {
             None
         } else {
             // Let caller know this source code may be resolved from a remote URL.
-            filtered_url
+            filtered_url.map(|url| (session.0.clone(), url))
         }
     }
 
