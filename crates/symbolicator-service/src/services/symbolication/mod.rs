@@ -194,7 +194,10 @@ impl SymbolicationActor {
             for trace in stacktraces {
                 for frame in &mut trace.frames {
                     let Some(url) =
-                        module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw) else {continue};
+                        module_lookup.try_set_source_context(&debug_sessions, &mut frame.raw)
+                    else {
+                        continue;
+                    };
                     if let Some(vec) = remote_sources.get_mut(&url) {
                         vec.push(&mut frame.raw)
                     } else {

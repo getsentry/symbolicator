@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
             .context("failed to start symbolication service")?;
 
     let scope = match mode {
-        Mode::Online { ref project, .. } => Scope::Scoped(project.clone()),
+        Mode::Online { ref project, .. } => Scope::Scoped(Arc::from(project.as_str())),
         Mode::Offline => Scope::Global,
     };
 
