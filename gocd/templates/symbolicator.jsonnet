@@ -3,7 +3,7 @@ local pipedream = import 'github.com/getsentry/gocd-jsonnet/libs/pipedream.libso
 
 local pipedream_config = {
   // Name of your service
-  name: 'symbolicator-next',
+  name: 'symbolicator',
 
   // The materials you'd like the pipelines to watch for changes
   materials: {
@@ -19,6 +19,7 @@ local pipedream_config = {
   rollback: {
     material_name: 'symbolicator_repo',
     stage: 'deploy_primary',
+    elastic_profile_id: 'symbolicator',
   },
 
   // Set to true to auto-deploy changes (defaults to true)

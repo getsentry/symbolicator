@@ -194,6 +194,8 @@ pub struct Caches {
     pub sourcemap_caches: Cache,
     /// Source files.
     pub sourcefiles: Cache,
+    /// Bundle Indexes.
+    pub bundle_index: Cache,
     /// Store for diagnostics data symbolicator failed to process, used by
     /// [`crate::services::symbolication::SymbolicationActor`].
     pub diagnostics: Cache,
@@ -280,8 +282,15 @@ impl Caches {
                 CacheName::SourceFiles,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads,
+                max_lazy_redownloads.clone(),
                 default_cap,
+            )?,
+            bundle_index: Cache::from_config(
+                CacheName::BundleIndex,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads,
+                in_memory.bundle_index_capacity,
             )?,
             diagnostics: Cache::from_config(
                 CacheName::Diagnostics,

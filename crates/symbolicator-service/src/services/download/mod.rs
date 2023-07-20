@@ -322,14 +322,17 @@ impl DownloadService {
             Ok(Ok(res)) => res,
         };
 
-        if source_is_external
-            && matches!(
-                result,
-                Err(CacheError::DownloadError(_) | CacheError::Timeout(_))
-            )
-        {
+        if let Err(ref e @ (CacheError::DownloadError(_) | CacheError::Timeout(_))) = result {
             metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
-            self.host_deny_list.register_failure(host);
+
+            if source_metric_key == "sentry:project" {
+                ::sentry::configure_scope(|scope| scope.set_tag("host", host.clone()));
+                ::sentry::capture_error(e);
+            }
+
+            if source_is_external {
+                self.host_deny_list.register_failure(host);
+            }
         }
 
         result
@@ -406,10 +409,6 @@ impl DownloadService {
                 SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
             }
         }
-        remote_files
-            .sort_by_cached_key(|remote_file| (remote_file.source_id().clone(), remote_file.uri()));
-        remote_files
-            .dedup_by_key(|remote_file| (remote_file.source_id().clone(), remote_file.uri()));
         remote_files
     }
 

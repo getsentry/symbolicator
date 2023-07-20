@@ -255,10 +255,12 @@ fn prepare_payload(scope: Scope, sources: Arc<[SourceConfig]>, payload: Payload)
                     source: Arc::new(source),
                     release: Some("some-release".into()),
                     dist: None,
-                    stacktraces,
-                    modules,
+                    debug_id_index: None,
+                    url_index: None,
                     scraping: Default::default(),
                     apply_source_context: true,
+                    stacktraces,
+                    modules,
                 },
             )
         }

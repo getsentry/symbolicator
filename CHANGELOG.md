@@ -8,6 +8,13 @@
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#065)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.6.4...0.6.5)
 
+## 23.7.1
+
+### Various fixes & improvements
+
+- Add a new `BundleIndex` for SourceMap processing (#1251) by @Swatinem
+
+
 ## 23.7.0
 
 - Add authentication to Source Context fetching via scraping config ([#1250](https://github.com/getsentry/symbolicator/pull/1250))
@@ -17,6 +24,7 @@
 ### Features
 
 - Add `--symbols` argument to `symbolicli` ([#1241](https://github.com/getsentry/symbolicator/pull/1241))
+- Add a new `BundleIndex` for SourceMap processing. ([#1251](https://github.com/getsentry/symbolicator/pull/1251))
 
 ### Fixes
 

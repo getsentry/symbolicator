@@ -21,6 +21,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, get_service};
 use axum::{extract, Json};
 use axum::{middleware, Router};
@@ -360,10 +361,17 @@ where
             .route(
                 "/lookup",
                 get(move |extract::RawQuery(raw_query): extract::RawQuery| {
-                    let files_url = files_url.get().unwrap().as_str();
-                    let query = &raw_query.as_deref().unwrap_or_default();
-                    let res = lookup(files_url, query);
-                    async move { Json(res) }
+                    async move {
+                        let files_url = files_url.get().unwrap().as_str();
+                        let query = &raw_query.as_deref().unwrap_or_default();
+                        // Its a bit unfortunate, but we went full circle back to constructing URLs
+                        // by appending query parameters
+                        if let Some((_, download_id)) = query.rsplit_once("download=") {
+                            return Redirect::to(&format!("/files/{download_id}")).into_response();
+                        }
+                        let res = lookup(files_url, query);
+                        Json(res).into_response()
+                    }
                 }),
             )
             .nest_service("/files", serve_dir)
