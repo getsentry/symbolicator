@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -38,7 +39,7 @@ pub enum Scope {
     #[serde(rename = "global")]
     #[default]
     Global,
-    Scoped(String),
+    Scoped(Arc<str>),
 }
 
 impl AsRef<str> for Scope {

@@ -67,8 +67,7 @@ pub struct ObjectHandle {
 
     object: OwnedObject,
 
-    // FIXME(swatinem): the scope is only ever used for sentry events/scope
-    scope: Scope,
+    pub scope: Scope,
 
     // FIXME(swatinem): the cache_key is only ever used for debug logging
     pub cache_key: CacheKey,
