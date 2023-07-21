@@ -1289,10 +1289,34 @@ fn extract_file_stem(path: &str) -> String {
 
     path.rsplit_once('/')
         .map(|(prefix, name)| {
-            let name = name.split_once('.').map(|(stem, _)| stem).unwrap_or(name);
+            // trim query strings and fragments
+            let name = name.split_once('?').map(|(name, _)| name).unwrap_or(name);
+            let name = name.split_once('#').map(|(name, _)| name).unwrap_or(name);
+
+            // then, trim all the suffixes as often as they occurr
+            let name = trim_all_end_matches(name, FILE_SUFFIX_PATTERNS);
+
             format!("{prefix}/{name}")
         })
         .unwrap_or(path.to_owned())
+}
+
+const FILE_SUFFIX_PATTERNS: &[&str] = &[
+    ".min", ".js", ".map", ".cjs", ".mjs", ".ts", ".d", ".jsx", ".tsx",
+];
+
+/// Trims the different `patterns` from the end of the `input` string as often as possible.
+fn trim_all_end_matches<'a>(mut input: &'a str, patterns: &[&str]) -> &'a str {
+    loop {
+        let mut trimmed = input;
+        for pattern in patterns {
+            trimmed = trimmed.trim_end_matches(pattern);
+        }
+        if trimmed == input {
+            return trimmed;
+        }
+        input = trimmed;
+    }
 }
 
 /// Transforms a full absolute url into 2 or 4 generalized options.
@@ -1468,7 +1492,7 @@ mod tests {
         );
         assert_eq!(
             extract_file_stem("app:///polyfills.e9f8f1606b76a9c9.js"),
-            "/polyfills"
+            "/polyfills.e9f8f1606b76a9c9"
         );
     }
 
