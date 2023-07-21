@@ -1,10 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump Native SDK from v0.6.4 to v0.6.5 ([#1247](https://github.com/getsentry/symbolicator/pull/1247))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#065)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.6.4...0.6.5)
+
 ## 23.7.1
 
 ### Various fixes & improvements
 
 - Add a new `BundleIndex` for SourceMap processing (#1251) by @Swatinem
+
 
 ## 23.7.0
 
