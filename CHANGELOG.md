@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 23.7.2
 
 ### Dependencies
 
