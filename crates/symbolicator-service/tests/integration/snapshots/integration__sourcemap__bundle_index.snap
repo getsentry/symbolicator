@@ -35,4 +35,6 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+used_artifact_bundles:
+  - 02_correct.zip
 

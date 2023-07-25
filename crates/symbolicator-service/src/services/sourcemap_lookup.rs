@@ -23,7 +23,7 @@
 //! and web scraping should trend to `0` with time.
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
@@ -223,6 +223,8 @@ impl SourceMapLookup {
             artifact_bundles: Default::default(),
             individual_artifacts: Default::default(),
 
+            used_artifact_bundles: Default::default(),
+
             api_requests: 0,
             queried_artifacts: 0,
             fetched_artifacts: 0,
@@ -311,6 +313,10 @@ impl SourceMapLookup {
     /// Records various metrics for this Event, such as number of API requests.
     pub fn record_metrics(&self) {
         self.fetcher.record_metrics();
+    }
+
+    pub fn into_used_artifact_bundles(self) -> HashSet<SentryFileId> {
+        self.fetcher.used_artifact_bundles
     }
 }
 
@@ -615,6 +621,7 @@ struct ArtifactFetcher {
     scope: Scope,
     source: Arc<SentrySourceConfig>,
 
+    // the two lookup indices
     debug_id_index: Option<Arc<BundleIndex>>,
     url_index: Option<Arc<BundleIndex>>,
 
@@ -627,6 +634,8 @@ struct ArtifactFetcher {
     artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
+
+    used_artifact_bundles: HashSet<SentryFileId>,
 
     // various metrics:
     api_requests: u64,
@@ -744,18 +753,19 @@ impl ArtifactFetcher {
 
     async fn try_get_file_using_index(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
         let (bundle_id, lookup_key) = self.try_get_bundle_from_index(key)?;
+        self.used_artifact_bundles.insert(bundle_id.clone());
 
         // NOTE: we ideally wanted to move away from hardcoded URLs,
         // but now we are back to square one -_-
         let mut download_url = self.source.url.clone();
         download_url
             .query_pairs_mut()
-            .append_pair("download", &bundle_id);
+            .append_pair("download", &bundle_id.0);
 
         let sentry_file = SentryRemoteFile::new(
             Arc::clone(&self.source),
             true,
-            SentryFileId(bundle_id),
+            bundle_id,
             Some(download_url),
         );
 
@@ -803,12 +813,15 @@ impl ArtifactFetcher {
         None
     }
 
-    fn try_get_bundle_from_index(&mut self, key: &FileKey) -> Option<(String, IndexLookupKey)> {
+    fn try_get_bundle_from_index(
+        &mut self,
+        key: &FileKey,
+    ) -> Option<(SentryFileId, IndexLookupKey)> {
         if let Some(debug_id) = key.debug_id() {
             if let Some(debug_id_index) = self.debug_id_index.as_ref() {
                 if let Some(bundle_id) = debug_id_index.get_bundle_id_by_debug_id(debug_id) {
                     let lookup_key = IndexLookupKey::DebugId(debug_id);
-                    return Some((bundle_id.into(), lookup_key));
+                    return Some((SentryFileId(bundle_id.into()), lookup_key));
                 }
             }
         }
@@ -818,7 +831,7 @@ impl ArtifactFetcher {
                 for url in get_release_file_candidate_urls(abs_path) {
                     if let Some(bundle_id) = url_index.get_bundle_id_by_url(&url) {
                         let lookup_key = IndexLookupKey::Url(url);
-                        return Some((bundle_id.into(), lookup_key));
+                        return Some((SentryFileId(bundle_id.into()), lookup_key));
                     }
                 }
             }
