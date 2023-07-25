@@ -1,9 +1,9 @@
 format_version: 10
 pipelines:
-  deploy-symbolicator-monitor:
+  deploy-symbolicator-s4s:
     display_order: 2
     environment_variables:
-      SENTRY_REGION: monitor
+      SENTRY_REGION: s4s
     group: symbolicator
     lock_behavior: unlockWhenFinished
     materials:
