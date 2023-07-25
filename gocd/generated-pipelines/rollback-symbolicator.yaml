@@ -3,16 +3,16 @@ pipelines:
   rollback-symbolicator:
     display_order: 1
     environment_variables:
-      ALL_PIPELINE_FLAGS: --pipeline=deploy-symbolicator-s4s --pipeline=deploy-symbolicator-us --pipeline=deploy-symbolicator-customer-1 --pipeline=deploy-symbolicator
+      ALL_PIPELINE_FLAGS: --pipeline=deploy-symbolicator-s4s --pipeline=deploy-symbolicator-us --pipeline=deploy-symbolicator-customer-1 --pipeline=deploy-symbolicator-customer-2 --pipeline=deploy-symbolicator
       GOCD_ACCESS_TOKEN: '{{SECRET:[devinfra][gocd_access_token]}}'
-      REGION_PIPELINE_FLAGS: --pipeline=deploy-symbolicator-s4s --pipeline=deploy-symbolicator-us --pipeline=deploy-symbolicator-customer-1
+      REGION_PIPELINE_FLAGS: --pipeline=deploy-symbolicator-s4s --pipeline=deploy-symbolicator-us --pipeline=deploy-symbolicator-customer-1 --pipeline=deploy-symbolicator-customer-2
       ROLLBACK_MATERIAL_NAME: symbolicator_repo
       ROLLBACK_STAGE: deploy_primary
     group: symbolicator
     lock_behavior: unlockWhenFinished
     materials:
-      deploy-symbolicator-customer-1-pipeline-complete:
-        pipeline: deploy-symbolicator-customer-1
+      deploy-symbolicator-customer-2-pipeline-complete:
+        pipeline: deploy-symbolicator-customer-2
         stage: pipeline-complete
     stages:
       - pause_pipelines:
