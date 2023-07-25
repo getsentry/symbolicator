@@ -87,8 +87,8 @@ impl SentryRemoteFile {
 }
 
 /// An identifier for a file retrievable from a [`SentrySourceConfig`].
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct SentryFileId(pub String);
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub struct SentryFileId(pub Arc<str>);
 
 impl fmt::Display for SentryFileId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

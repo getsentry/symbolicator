@@ -4,14 +4,14 @@
 //! HTTP API.  Its messy and things probably need a better place and different way to signal
 //! they are part of the public API.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
-use symbolicator_sources::ObjectType;
+use symbolicator_sources::{ObjectType, SentryFileId};
 
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
@@ -634,6 +634,8 @@ pub struct CompletedJsSymbolicationResponse {
     pub raw_stacktraces: Vec<JsStacktrace>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<JsModuleError>,
+    #[serde(skip_serializing_if = "HashSet::is_empty")]
+    pub used_artifact_bundles: HashSet<SentryFileId>,
 }
 
 /// Information about the operating system.

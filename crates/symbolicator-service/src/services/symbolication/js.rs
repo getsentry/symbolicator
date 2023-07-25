@@ -125,10 +125,13 @@ impl SymbolicationActor {
         metric!(time_raw("js.unsymbolicated_frames") = unsymbolicated_frames);
         metric!(time_raw("js.missing_sourcescontent") = missing_sourcescontent);
 
+        let used_artifact_bundles = lookup.into_used_artifact_bundles();
+
         Ok(CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
             errors: errors.into_iter().collect(),
+            used_artifact_bundles,
         })
     }
 }
