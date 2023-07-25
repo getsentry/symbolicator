@@ -11,6 +11,7 @@ pipelines:
             GKE_CLUSTER_ZONE: b
             GKE_BASTION_ZONE: b
         group: symbolicator
+        display_order: 100 # Ensure it's last pipeline in UI
         lock_behavior: unlockWhenFinished
         materials:
             symbolicator_repo:
