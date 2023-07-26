@@ -117,23 +117,18 @@ async fn maybe_fetch_bundle_index(
     scope: &Scope,
     source: &Arc<SentrySourceConfig>,
     url: Option<Url>,
-) -> Option<Arc<BundleIndex>> {
+) -> Option<(SentryFileId, Arc<BundleIndex>)> {
     let url = url?;
     // We expect the url to have a parameter like `?download=foo-bar`.
     let file_id = url
         .query_pairs()
         .find_map(|(k, v)| (k == "download").then_some(v))
         .unwrap_or(Cow::Borrowed(url.as_str()));
+    let file_id = SentryFileId(file_id.into());
 
-    let file = SentryRemoteFile::new(
-        Arc::clone(source),
-        true,
-        SentryFileId(file_id.into()),
-        Some(url),
-    )
-    .into();
+    let file = SentryRemoteFile::new(Arc::clone(source), true, file_id.clone(), Some(url)).into();
     match cache.fetch_index(scope, file).await {
-        Ok(bundle_index) => Some(bundle_index),
+        Ok(bundle_index) => Some((file_id, bundle_index)),
         Err(err) => {
             let err: &dyn std::error::Error = &err;
             tracing::error!(err, "Failed fetching `BundleIndex`");
@@ -476,6 +471,7 @@ impl FileKey {
 }
 
 /// The actual lookup key that was found using the [`BundleIndex`].
+#[derive(Debug)]
 enum IndexLookupKey {
     DebugId(DebugId),
     Url(String),
@@ -622,8 +618,8 @@ struct ArtifactFetcher {
     source: Arc<SentrySourceConfig>,
 
     // the two lookup indices
-    debug_id_index: Option<Arc<BundleIndex>>,
-    url_index: Option<Arc<BundleIndex>>,
+    debug_id_index: Option<(SentryFileId, Arc<BundleIndex>)>,
+    url_index: Option<(SentryFileId, Arc<BundleIndex>)>,
 
     // settings:
     release: Option<String>,
@@ -752,7 +748,7 @@ impl ArtifactFetcher {
     }
 
     async fn try_get_file_using_index(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
-        let (bundle_id, lookup_key) = self.try_get_bundle_from_index(key)?;
+        let (index_id, bundle_id, lookup_key) = self.try_get_bundle_from_index(key)?;
         self.used_artifact_bundles.insert(bundle_id.clone());
 
         // NOTE: we ideally wanted to move away from hardcoded URLs,
@@ -765,7 +761,7 @@ impl ArtifactFetcher {
         let sentry_file = SentryRemoteFile::new(
             Arc::clone(&self.source),
             true,
-            bundle_id,
+            bundle_id.clone(),
             Some(download_url),
         );
 
@@ -782,9 +778,9 @@ impl ArtifactFetcher {
         // by now we have a bundle, and we *know* the file should be included in the
         // bundle and accessible via the `lookup_key`.
 
-        match lookup_key {
+        match &lookup_key {
             IndexLookupKey::DebugId(debug_id) => {
-                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, key.as_type()) {
+                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(*debug_id, key.as_type()) {
                     self.found_via_index_debugid += 1;
                     tracing::trace!(?key, "Found file in `BundleIndex` by debug-id");
                     return Some(CachedFileEntry {
@@ -795,7 +791,7 @@ impl ArtifactFetcher {
                 }
             }
             IndexLookupKey::Url(url) => {
-                if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
+                if let Ok(Some(descriptor)) = bundle.source_by_url(url) {
                     self.found_via_index_url += 1;
                     tracing::trace!(?key, url, "Found file in `BundleIndex` by url");
                     return Some(CachedFileEntry {
@@ -808,7 +804,13 @@ impl ArtifactFetcher {
         }
 
         // If we get to this point, it means that the `BundleIndex` lied to us
-        tracing::error!(?key, "Indexed file not found in `ArtifactBundle`");
+        tracing::error!(
+            ?key,
+            ?lookup_key,
+            ?index_id,
+            ?bundle_id,
+            "Indexed file not found in `ArtifactBundle`"
+        );
 
         None
     }
@@ -816,22 +818,26 @@ impl ArtifactFetcher {
     fn try_get_bundle_from_index(
         &mut self,
         key: &FileKey,
-    ) -> Option<(SentryFileId, IndexLookupKey)> {
+    ) -> Option<(SentryFileId, SentryFileId, IndexLookupKey)> {
         if let Some(debug_id) = key.debug_id() {
-            if let Some(debug_id_index) = self.debug_id_index.as_ref() {
+            if let Some((index_id, debug_id_index)) = self.debug_id_index.as_ref() {
                 if let Some(bundle_id) = debug_id_index.get_bundle_id_by_debug_id(debug_id) {
                     let lookup_key = IndexLookupKey::DebugId(debug_id);
-                    return Some((SentryFileId(bundle_id.into()), lookup_key));
+                    return Some((index_id.clone(), SentryFileId(bundle_id.into()), lookup_key));
                 }
             }
         }
 
         if let Some(abs_path) = key.abs_path() {
-            if let Some(url_index) = self.url_index.as_ref() {
+            if let Some((index_id, url_index)) = self.url_index.as_ref() {
                 for url in get_release_file_candidate_urls(abs_path) {
                     if let Some(bundle_id) = url_index.get_bundle_id_by_url(&url) {
                         let lookup_key = IndexLookupKey::Url(url);
-                        return Some((SentryFileId(bundle_id.into()), lookup_key));
+                        return Some((
+                            index_id.clone(),
+                            SentryFileId(bundle_id.into()),
+                            lookup_key,
+                        ));
                     }
                 }
             }

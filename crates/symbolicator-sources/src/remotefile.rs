@@ -5,6 +5,7 @@
 
 use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -289,11 +290,11 @@ impl RemoteFile {
 /// be an `s3://` URI etc.
 ///
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
-pub struct RemoteFileUri(String);
+pub struct RemoteFileUri(Arc<str>);
 
 impl RemoteFileUri {
     /// Creates a new [`RemoteFileUri`].
-    pub fn new(s: impl Into<String>) -> Self {
+    pub fn new(s: impl Into<Arc<str>>) -> Self {
         Self(s.into())
     }
 
@@ -314,7 +315,7 @@ impl RemoteFileUri {
     pub fn from_parts(scheme: &str, host: &str, path: &str) -> Self {
         Url::parse(&format!("{scheme}://{host}/"))
             .and_then(|base| base.join(path))
-            .map(RemoteFileUri::new)
+            .map(|url| RemoteFileUri::new(url.as_str()))
             .unwrap_or_else(|_| {
                 // All these Result-returning operations *should* be infallible and this
                 // branch should never be used.  Nevertheless, for panic-safety we default
@@ -326,7 +327,7 @@ impl RemoteFileUri {
 
 impl<T> From<T> for RemoteFileUri
 where
-    T: Into<String>,
+    T: Into<Arc<str>>,
 {
     fn from(source: T) -> Self {
         Self(source.into())
