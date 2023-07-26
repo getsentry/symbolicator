@@ -306,7 +306,10 @@ async fn test_redirects() {
     let candidate = module.candidates.into_inner().pop().unwrap();
     let expected_url = hitcounter
         .url("/redirect/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb");
-    assert_eq!(candidate.location, RemoteFileUri::from(expected_url));
+    assert_eq!(
+        candidate.location,
+        RemoteFileUri::from(expected_url.as_str())
+    );
     assert!(matches!(candidate.download, ObjectDownloadInfo::Ok { .. }));
 }
 
