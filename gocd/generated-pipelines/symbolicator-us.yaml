@@ -41,8 +41,6 @@ pipelines:
                       "us.gcr.io/sentryio/symbolicator"
               timeout: 1200
       - deploy_canary:
-          approval:
-            type: manual
           fetch_materials: true
           jobs:
             create_sentry_release:
