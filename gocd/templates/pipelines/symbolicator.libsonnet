@@ -75,7 +75,7 @@ function(region) {
   ] + deploy_canary_stage(region) + [
     {
       deploy_primary: {
-        approval: {
+        [if region == 's4s' then null else 'approval']: {
           type: 'manual',
         },
         fetch_materials: true,
