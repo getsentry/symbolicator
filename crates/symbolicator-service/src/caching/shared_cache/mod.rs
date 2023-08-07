@@ -168,6 +168,8 @@ impl GcsState {
     where
         W: tokio::io::AsyncWrite + Unpin,
     {
+        // FIXME: This function is pretty much duplicated with `download_reqwest` except for
+        // logging, metrics and error handling.
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("bucket".to_string(), self.config.bucket.clone().into());
@@ -180,37 +182,40 @@ impl GcsState {
         let request = tokio::time::timeout(CONNECT_TIMEOUT, request);
         let request = measure_download_time("services.shared_cache.fetch.connect", "gcs", request);
 
-        match request.await {
-            Ok(Ok(response)) => {
-                let status = response.status();
-                match status {
-                    _ if status.is_success() => {
-                        tracing::trace!("Success hitting shared_cache GCS {}", key);
-                        let stream = response
-                            .bytes_stream()
-                            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
-                        let mut stream = StreamReader::new(stream);
-                        let res = io::copy(&mut stream, writer)
-                            .await
-                            .context("IO Error streaming HTTP bytes to writer")
-                            .map_err(CacheError::Other);
-                        Some(res).transpose()
-                    }
-                    StatusCode::NOT_FOUND => Ok(None),
-                    StatusCode::FORBIDDEN => Err(anyhow!(
-                        "Insufficient permissions for bucket {}",
-                        self.config.bucket
-                    )
-                    .into()),
-                    StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
-                    _ => Err(anyhow!("Error response from GCS: {}", status).into()),
-                }
-            }
-            Ok(Err(e)) => {
+        let response = request
+            .await
+            .map_err(|_| CacheError::ConnectTimeout)?
+            .map_err(|err| {
                 tracing::trace!("Error in shared_cache GCS response for {}", key);
-                Err(e).context("Bad GCS response for shared_cache")?
+                Error::new(err).context("Bad GCS response for shared_cache")
+            })?;
+
+        let status = response.status();
+        match status {
+            _ if status.is_success() => {
+                tracing::trace!("Success hitting shared_cache GCS {}", key);
+                let stream = response
+                    .bytes_stream()
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                let mut stream = StreamReader::new(stream);
+
+                // NOTE: this is not really a `STORE`, but we use the same timeout here regardless,
+                // as we expect this operation to be fast and want to time it out early.
+                let future = tokio::time::timeout(STORE_TIMEOUT, io::copy(&mut stream, writer));
+                let res = future
+                    .await
+                    .map_err(|_| CacheError::ConnectTimeout)?
+                    .context("IO Error streaming HTTP bytes to writer")
+                    .map_err(CacheError::Other);
+
+                Some(res).transpose()
             }
-            Err(_) => Err(CacheError::ConnectTimeout),
+            StatusCode::NOT_FOUND => Ok(None),
+            StatusCode::FORBIDDEN => {
+                Err(anyhow!("Insufficient permissions for bucket {}", self.config.bucket).into())
+            }
+            StatusCode::UNAUTHORIZED => Err(anyhow!("Invalid credentials").into()),
+            _ => Err(anyhow!("Error response from GCS: {}", status).into()),
         }
     }
 

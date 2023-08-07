@@ -5,7 +5,6 @@
 
 use std::fmt::{self, Display};
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Context;
 use futures::future::{self, BoxFuture};
@@ -22,7 +21,6 @@ use crate::caching::{
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
-use crate::utils::futures::{m, measure};
 
 use super::caches::versions::BITCODE_CACHE_VERSIONS;
 use super::fetch_file;
@@ -85,10 +83,8 @@ struct FetchFileRequest {
 }
 
 impl FetchFileRequest {
-    /// Downloads the file and saves it to `path`.
-    ///
-    /// Actual implementation of [`FetchFileRequest::compute`].
-    async fn fetch_file(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+    #[tracing::instrument(skip(self, temp_file), fields(kind = %self.kind))]
+    async fn fetch_auxdif(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
         fetch_file(
             self.download_svc.clone(),
             self.file_source.clone(),
@@ -125,16 +121,8 @@ impl CacheItemRequest for FetchFileRequest {
 
     const VERSIONS: CacheVersions = BITCODE_CACHE_VERSIONS;
 
-    /// Downloads a file, writing it to `path`.
-    ///
-    /// Only when [`Ok`] is returned is the data written to `path` used.
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let fut = self.fetch_file(temp_file).bind_hub(Hub::current());
-
-        let timeout = Duration::from_secs(1200);
-        let future = tokio::time::timeout(timeout, fut);
-        let future = measure("auxdifs", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+        Box::pin(self.fetch_auxdif(temp_file))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {

@@ -417,7 +417,11 @@ impl RequestService {
         let request_future = async move {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
 
-            let timeout = Duration::from_secs(3600);
+            // The "normal" maximum for Native and JS Symbolication is ~5 minutes,
+            // and ~10 minutes for minidump processing. Going for a hard timeout of 15 minutes
+            // sounds reasonable as we want to support as many events as possible. We might tighten
+            // up this timeout even further in the future.
+            let timeout = Duration::from_secs(15 * 60);
             let f = tokio::time::timeout(timeout, f);
             let f = measure(task_name, m::timed_result, f);
 
