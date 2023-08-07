@@ -846,12 +846,12 @@ non-lossy conversions in pseudocode:</p>
 </li>
 <li>
 <p><strong>ELF</strong>: <code>code_id</code> → <code>debug_id</code>. This is not yet implemented.</p>
-<div class="codehilite"><pre><span></span><code><span class="nv">debug_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nv">code_id</span>[<span class="mi">0</span>..<span class="mi">16</span>]
+<div class="codehilite"><pre><span></span><code>debug_id = code_id[0..16]
 
-<span class="k">if</span><span class="w"> </span><span class="nv">object</span>.<span class="nv">little_endian</span><span class="w"> </span>{
-<span class="w">  </span><span class="nv">debug_id</span>[<span class="mi">0</span>..<span class="mi">4</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 1</span>
-<span class="w">  </span><span class="nv">debug_id</span>[<span class="mi">4</span>..<span class="mi">6</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 2</span>
-<span class="w">  </span><span class="nv">debug_id</span>[<span class="mi">6</span>..<span class="mi">8</span>].<span class="nv">reverse</span><span class="ss">()</span><span class="c1">; // uuid field 3</span>
+if object.little_endian {
+  debug_id[0..4].reverse(); // uuid field 1
+  debug_id[4..6].reverse(); // uuid field 2
+  debug_id[6..8].reverse(); // uuid field 3
 }
 </code></pre></div>
 
