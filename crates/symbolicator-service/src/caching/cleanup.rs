@@ -186,7 +186,9 @@ impl Cache {
     /// Tries to clean up the file at `path`, returning `true` if it was removed.
     fn try_cleanup_path(&self, path: &Path, stats: &mut CleanupStats) -> Result<bool> {
         tracing::trace!("Checking file `{}`", path.display());
-        let Some(metadata) = catch_not_found(|| path.metadata())? else { return Ok(true) };
+        let Some(metadata) = catch_not_found(|| path.metadata())? else {
+            return Ok(true);
+        };
         anyhow::ensure!(metadata.is_file(), "not a file");
         let size = metadata.len();
 
