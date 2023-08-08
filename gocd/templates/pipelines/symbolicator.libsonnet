@@ -1,3 +1,4 @@
+local getsentry = import 'github.com/getsentry/gocd-jsonnet/libs/getsentry.libsonnet';
 local gocdtasks = import 'github.com/getsentry/gocd-jsonnet/libs/gocd-tasks.libsonnet';
 
 // Only the US region has a canary deployment.
@@ -75,7 +76,7 @@ function(region) {
   ] + deploy_canary_stage(region) + [
     {
       deploy_primary: {
-        [if region == 's4s' then null else 'approval']: {
+        [if getsentry.is_st(region) then null else 'approval']: {
           type: 'manual',
         },
         fetch_materials: true,
