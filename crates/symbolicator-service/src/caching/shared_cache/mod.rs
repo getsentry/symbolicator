@@ -48,6 +48,8 @@ const STORE_TIMEOUT: Duration = Duration::from_secs(60);
 enum CacheError {
     #[error("timeout connecting to cache service")]
     ConnectTimeout,
+    #[error("timeout fetching from cache service")]
+    Timeout,
     #[error(transparent)]
     Other(#[from] Error),
 }
@@ -204,7 +206,7 @@ impl GcsState {
                 let future = tokio::time::timeout(STORE_TIMEOUT, io::copy(&mut stream, writer));
                 let res = future
                     .await
-                    .map_err(|_| CacheError::ConnectTimeout)?
+                    .map_err(|_| CacheError::Timeout)?
                     .context("IO Error streaming HTTP bytes to writer")
                     .map_err(CacheError::Other);
 
@@ -627,6 +629,7 @@ impl SharedCacheService {
             Err(outer_err) => {
                 let errdetails = match outer_err {
                     CacheError::ConnectTimeout => "connect-timeout",
+                    CacheError::Timeout => "timeout",
                     CacheError::Other(_) => "other",
                 };
                 if let CacheError::Other(err) = outer_err {
@@ -689,11 +692,14 @@ impl SharedCacheService {
         let res = match self.backend.as_ref() {
             SharedCacheBackend::Gcs(state) => {
                 let state = Arc::clone(state);
-                let future = async move { state.fetch(&key, &mut file).await };
-
-                CancelOnDrop::new(self.runtime.spawn(future.bind_hub(sentry::Hub::current())))
+                let future = async move { state.fetch(&key, &mut file).await }
+                    .bind_hub(sentry::Hub::current());
+                let future = CancelOnDrop::new(self.runtime.spawn(future));
+                let future = tokio::time::timeout(STORE_TIMEOUT, future);
+                future
                     .await
-                    .unwrap_or(Err(CacheError::ConnectTimeout))
+                    .map(|res| res.unwrap_or(Err(CacheError::ConnectTimeout)))
+                    .unwrap_or(Err(CacheError::Timeout))
             }
             SharedCacheBackend::Fs(cfg) => cfg.fetch(&key, &mut file).await,
         };
@@ -724,6 +730,7 @@ impl SharedCacheService {
             Err(outer_err) => {
                 let errdetails = match outer_err {
                     CacheError::ConnectTimeout => "connect-timeout",
+                    CacheError::Timeout => "timeout",
                     CacheError::Other(_) => "other",
                 };
                 if let CacheError::Other(err) = outer_err {
