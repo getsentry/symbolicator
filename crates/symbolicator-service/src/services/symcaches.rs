@@ -2,7 +2,6 @@ use std::fmt::Write;
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
@@ -20,7 +19,6 @@ use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
-use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::bitcode::BcSymbolMapHandle;
@@ -76,23 +74,14 @@ struct FetchSymCacheInternal {
     object_meta: Arc<ObjectMetaHandle>,
 }
 
-/// Fetches the needed DIF objects and spawns symcache computation.
-///
-/// Required DIF objects are fetched from the objects actor in the current executor, once
-/// DIFs have been retrieved it spawns the symcache computation onto the provided
-/// threadpool.
-///
-/// This is the actual implementation of [`CacheItemRequest::compute`] for
-/// [`FetchSymCacheInternal`] but outside of the trait so it can be written as async/await
-/// code.
 #[tracing::instrument(name = "compute_symcache", skip_all)]
-async fn fetch_difs_and_compute_symcache(
+async fn compute_symcache(
     temp_file: &mut NamedTempFile,
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-    secondary_sources: SecondarySymCacheSources,
+    secondary_sources: &SecondarySymCacheSources,
 ) -> CacheEntry {
-    let object_handle = objects_actor.fetch(object_meta.clone()).await?;
+    let object_handle = objects_actor.fetch(object_meta).await?;
 
     write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
 }
@@ -103,17 +92,12 @@ impl CacheItemRequest for FetchSymCacheInternal {
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let future = fetch_difs_and_compute_symcache(
+        Box::pin(compute_symcache(
             temp_file,
             &self.objects_actor,
             self.object_meta.clone(),
-            self.secondary_sources.clone(),
-        );
-
-        let timeout = Duration::from_secs(1200);
-        let future = tokio::time::timeout(timeout, future);
-        let future = measure("symcaches", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+            &self.secondary_sources,
+        ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
@@ -226,14 +210,14 @@ struct SecondarySymCacheSources {
 fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
-    secondary_sources: SecondarySymCacheSources,
+    secondary_sources: &SecondarySymCacheSources,
 ) -> CacheEntry {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();
 
-    let bcsymbolmap_transformer = match secondary_sources.bcsymbolmap_handle {
-        Some(ref handle) => {
+    let bcsymbolmap_transformer = match secondary_sources.bcsymbolmap_handle.as_ref() {
+        Some(handle) => {
             let bcsymbolmap = handle.bc_symbol_map().map_err(|e| {
                 // FIXME(swatinem): this should really be an InternalError?
 
@@ -251,7 +235,7 @@ fn write_symcache(
         }
         None => None,
     };
-    let linemapping_transformer = match secondary_sources.il2cpp_handle {
+    let linemapping_transformer = match secondary_sources.il2cpp_handle.as_ref() {
         Some(handle) => {
             let mapping = handle.line_mapping().ok_or_else(|| {
                 tracing::error!("cached il2cpp LineMapping should have been parsable");
@@ -294,6 +278,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use std::time::Duration;
 
     use symbolic::common::{DebugId, Uuid};
 

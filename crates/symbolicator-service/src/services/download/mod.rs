@@ -512,8 +512,7 @@ async fn download_reqwest(
     let request = tokio::time::timeout(timeout, request);
     let request = measure_download_time(source.source_metric_key(), request);
 
-    let timeout_err = CacheError::Timeout(timeout);
-    let response = request.await.map_err(|_| timeout_err)??;
+    let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
 
     let status = response.status();
     if status.is_success() {

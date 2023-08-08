@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use tempfile::NamedTempFile;
@@ -15,7 +14,6 @@ use crate::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use crate::types::{CandidateStatus, Scope};
-use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::caches::versions::PPDB_CACHE_VERSIONS;
@@ -87,17 +85,8 @@ struct FetchPortablePdbCacheInternal {
     object_meta: Arc<ObjectMetaHandle>,
 }
 
-/// Fetches the needed DIF objects and spawns symcache computation.
-///
-/// Required DIF objects are fetched from the objects actor in the current executor, once
-/// DIFs have been retrieved it spawns the symcache computation onto the provided
-/// threadpool.
-///
-/// This is the actual implementation of [`CacheItemRequest::compute`] for
-/// [`FetchPortablePdbCacheInternal`] but outside of the trait so it can be written as async/await
-/// code.
-#[tracing::instrument(name = "compute_ppdb_cache", skip_all)]
-async fn fetch_difs_and_compute_ppdb_cache(
+#[tracing::instrument(skip_all)]
+async fn compute_ppdb_cache(
     temp_file: &mut NamedTempFile,
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
@@ -113,16 +102,11 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let future = fetch_difs_and_compute_ppdb_cache(
+        Box::pin(compute_ppdb_cache(
             temp_file,
             &self.objects_actor,
             self.object_meta.clone(),
-        );
-
-        let timeout = Duration::from_secs(1200);
-        let future = tokio::time::timeout(timeout, future);
-        let future = measure("ppdb_caches", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+        ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {

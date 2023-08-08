@@ -244,18 +244,8 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "symbolicate_stacktraces",
-            "symbolicate_stacktraces",
-            span,
-        );
         self.create_symbolication_request("symbolicate", options, async move {
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf.symbolication.symbolicate(request).await;
-            transaction.finish();
-            res.map(Into::into)
+            slf.symbolication.symbolicate(request).await.map(Into::into)
         })
     }
 
@@ -264,18 +254,11 @@ impl RequestService {
         request: SymbolicateJsStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "symbolicate_js_stacktraces",
-            "symbolicate_js_stacktraces",
-            span,
-        );
         self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf.symbolication.symbolicate_js(request).await;
-            transaction.finish();
-            res.map(Into::into)
+            slf.symbolication
+                .symbolicate_js(request)
+                .await
+                .map(Into::into)
         })
     }
 
@@ -291,21 +274,11 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "process_minidump",
-            "process_minidump",
-            span,
-        );
         self.create_symbolication_request("minidump_stackwalk", options, async move {
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf
-                .symbolication
+            slf.symbolication
                 .process_minidump(scope, minidump_file, sources)
-                .await;
-            transaction.finish();
-            res.map(Into::into)
+                .await
+                .map(Into::into)
         })
     }
 
@@ -321,21 +294,11 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "process_apple_crash_report",
-            "process_apple_crash_report",
-            span,
-        );
         self.create_symbolication_request("parse_apple_crash_report", options, async move {
-            let transaction = sentry::start_transaction(ctx);
-            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let res = slf
-                .symbolication
+            slf.symbolication
                 .process_apple_crash_report(scope, apple_crash_report, sources)
-                .await;
-            transaction.finish();
-            res.map(Into::into)
+                .await
+                .map(Into::into)
         })
     }
 
@@ -417,11 +380,25 @@ impl RequestService {
         let request_future = async move {
             metric!(timer("symbolication.create_request.first_poll") = spawn_time.elapsed());
 
-            let timeout = Duration::from_secs(3600);
+            let span = sentry::configure_scope(|scope| scope.get_span());
+            let ctx = sentry::TransactionContext::continue_from_span(task_name, task_name, span);
+            let transaction = sentry::start_transaction(ctx);
+            sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
+            let transaction_guard = CallOnDrop::new(move || {
+                transaction.finish();
+            });
+
+            // The "normal" maximum for Native and JS Symbolication is ~5 minutes,
+            // and ~10 minutes for minidump processing. Going for a hard timeout of 15 minutes
+            // sounds reasonable as we want to support as many events as possible. We might tighten
+            // up this timeout even further in the future.
+            let timeout = Duration::from_secs(15 * 60);
             let f = tokio::time::timeout(timeout, f);
             let f = measure(task_name, m::timed_result, f);
+            let response = f.await;
+            drop(transaction_guard);
 
-            let response = match f.await {
+            let response = match response {
                 Ok(Ok(mut response)) => {
                     if !options.dif_candidates {
                         if let CompletedResponse::NativeSymbolication(ref mut res) = response {
