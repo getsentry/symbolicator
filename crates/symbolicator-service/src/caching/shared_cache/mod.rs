@@ -773,11 +773,20 @@ impl SharedCacheService {
         content: ByteView<'static>,
         reason: CacheStoreReason,
     ) -> oneshot::Receiver<()> {
+        let (done_tx, done_rx) = oneshot::channel::<()>();
+        // We want to throttle refreshes to a lower number, as refreshes happen every ~1h if a cache
+        // item is actively being used. That is quite some overhead considering that we only refresh
+        // an item once it expires.
+        if reason == CacheStoreReason::Refresh && rand::random::<f32>() > 0.05 {
+            metric!(counter("services.shared_cache.store.discarded") += 1);
+            tracing::debug!("Randomly discarded shared cache refresh");
+            let _ = done_tx.send(());
+            return done_rx;
+        }
         metric!(
             gauge("services.shared_cache.uploads_queue_capacity") =
                 self.upload_queue_tx.capacity() as u64
         );
-        let (done_tx, done_rx) = oneshot::channel::<()>();
         self.upload_queue_tx
             .try_send(UploadMessage {
                 cache,
