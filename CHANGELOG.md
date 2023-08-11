@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump `aws-sdk-rust` from 0.55.3 to 0.56.0. ([#1282](https://github.com/getsentry/symbolicator/pull/1282))
+
 ## 23.7.2
 
 ### Dependencies

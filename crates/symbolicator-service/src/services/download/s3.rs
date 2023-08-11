@@ -144,7 +144,7 @@ impl S3Downloader {
                         // The errors and status codes are explained here:
                         // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
                         let response = service_err.raw();
-                        let status = response.http().status();
+                        let status = response.status();
                         let code = service_err.err().code();
 
                         // NOTE: leaving the credentials empty as our unit / integration tests do
