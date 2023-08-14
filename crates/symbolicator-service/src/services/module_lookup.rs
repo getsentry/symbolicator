@@ -448,7 +448,7 @@ impl ModuleLookup {
                     .binary_search_by_key(&addr, |entry| entry.object_info.raw.image_addr.0)
                 {
                     Ok(idx) => idx,
-                    Err(idx) if idx == 0 => {
+                    Err(0) => {
                         return None;
                     }
                     Err(idx) => idx - 1,

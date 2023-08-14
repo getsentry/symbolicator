@@ -788,9 +788,8 @@ mod tests {
         assert_eq!(symbol, b"ho\xF0\x90\x80nk");
     }
 
-    //// The lying header series. The header and the contents deliberately do not match up but
-    //// the contents are still parseable, causing bad threads and frames to be parsed out.
-
+    /// The lying header series. The header and the contents deliberately do not match up but
+    /// the contents are still parseable, causing bad threads and frames to be parsed out.
     #[test]
     fn test_lying_header() {
         let section = Section::new()
