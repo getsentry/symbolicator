@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 23.8.0
 
 ### Dependencies
 
