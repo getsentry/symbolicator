@@ -852,64 +852,43 @@ impl ArtifactFetcher {
             return CachedFileEntry::empty();
         };
 
+        let make_error = |err| CachedFileEntry {
+            uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
+            entry: Err(CacheError::DownloadError(err)),
+            resolved_with: None,
+        };
+
         let url = match Url::parse(abs_path) {
             Ok(url) => url,
             Err(err) => {
-                return CachedFileEntry {
-                    uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                    entry: Err(CacheError::DownloadError(err.to_string())),
-                    resolved_with: None,
-                }
+                return make_error(err.to_string());
             }
         };
 
         if !self.scraping.enabled {
-            return CachedFileEntry {
-                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                entry: Err(CacheError::DownloadError("Scraping disabled".to_string())),
-                resolved_with: None,
-            };
+            return make_error("Scraping disabled".to_string());
         }
 
         // Only scrape from http sources
         let scheme = url.scheme();
         if !["http", "https"].contains(&scheme) {
-            return CachedFileEntry {
-                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                entry: Err(CacheError::DownloadError(format!(
-                    "`{scheme}` is not an allowed download scheme"
-                ))),
-                resolved_with: None,
-            };
+            return make_error(format!("`{scheme}` is not an allowed download scheme"));
         }
 
         if !is_valid_origin(&url, &self.scraping.allowed_origins) {
-            return CachedFileEntry {
-                uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                entry: Err(CacheError::DownloadError(format!(
-                    "{abs_path} is not an allowed download origin"
-                ))),
-                resolved_with: None,
-            };
+            return make_error(format!("{abs_path} is not an allowed download origin"));
         }
 
         let host_string = match url.host_str() {
             None => {
-                return CachedFileEntry {
-                    uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                    entry: Err(CacheError::DownloadError("Invalid host".to_string())),
-                    resolved_with: None,
-                }
+                return make_error("Invalid host".to_string());
             }
             Some(host @ ("localhost" | "127.0.0.1")) => {
+                // NOTE: the reserved IPs cover a lot more than just localhost.
                 if self.download_svc.can_connect_to_reserved_ips() {
                     host
                 } else {
-                    return CachedFileEntry {
-                        uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
-                        entry: Err(CacheError::DownloadError("Invalid host".to_string())),
-                        resolved_with: None,
-                    };
+                    return make_error("Invalid host".to_string());
                 }
             }
             Some(host) => host,
@@ -929,6 +908,12 @@ impl ArtifactFetcher {
             scope.set_tag("host", host_string);
         });
 
+        // TODO: we could add a hash with a timestamp to the `url` to make sure that we
+        // are busting caches that are based on the `uri`.
+        // We should be careful doing so to avoid re-fetching the whole world at the same time.
+        // We might also want to avoid using shared cache in that case, as fetching will be
+        // ineffective, and storing would only store things we are re-fetching every couple
+        // of hours anyway.
         let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
         remote_file.headers.extend(
             self.scraping
