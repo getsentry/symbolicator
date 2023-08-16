@@ -28,6 +28,7 @@ use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
+use std::time::SystemTime;
 
 use futures::future::BoxFuture;
 use reqwest::Url;
@@ -63,6 +64,9 @@ use super::sourcemap::SourceMapService;
 use super::symbolication::SymbolicateJsStacktraces;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
+
+// We want to cache scraped files for 1 hour, or rather, we want to re-download them every hour.
+const SCRAPE_FILES_EVERY: u64 = 60 * 60;
 
 /// A JS-processing "Module".
 ///
@@ -858,7 +862,7 @@ impl ArtifactFetcher {
             resolved_with: None,
         };
 
-        let url = match Url::parse(abs_path) {
+        let mut url = match Url::parse(abs_path) {
             Ok(url) => url,
             Err(err) => {
                 return make_error(err.to_string());
@@ -908,13 +912,16 @@ impl ArtifactFetcher {
             scope.set_tag("host", host_string);
         });
 
-        // TODO: we could add a hash with a timestamp to the `url` to make sure that we
-        // are busting caches that are based on the `uri`.
-        // We should be careful doing so to avoid re-fetching the whole world at the same time.
-        // We might also want to avoid using shared cache in that case, as fetching will be
-        // ineffective, and storing would only store things we are re-fetching every couple
-        // of hours anyway.
-        let mut remote_file = HttpRemoteFile::from_url(url.to_owned());
+        // We add a hash with a timestamp to the `url` to make sure that we are busting caches
+        // that are based on the `uri`.
+        let timestamp = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let key = cache_busting_key(url.as_str(), timestamp, SCRAPE_FILES_EVERY);
+        url.set_fragment(Some(&key.to_string()));
+
+        let mut remote_file = HttpRemoteFile::from_url(url);
         remote_file.headers.extend(
             self.scraping
                 .headers
@@ -923,9 +930,11 @@ impl ArtifactFetcher {
         );
         let remote_file: RemoteFile = remote_file.into();
         let uri = CachedFileUri::ScrapedFile(remote_file.uri());
+        // NOTE: We want to avoid using shared cache in this case, as fetching will be ineffective,
+        // and storing would only store things we are re-fetching every couple of hours anyway.
         let scraped_file = self
             .sourcefiles_cache
-            .fetch_file(&self.scope, remote_file)
+            .fetch_file(&self.scope, remote_file, false)
             .await;
 
         transaction.finish();
@@ -1013,7 +1022,7 @@ impl ArtifactFetcher {
 
         let mut artifact_contents = self
             .sourcefiles_cache
-            .fetch_file(&self.scope, artifact.remote_file.clone())
+            .fetch_file(&self.scope, artifact.remote_file.clone(), true)
             .await;
 
         if artifact_contents == Err(CacheError::NotFound) && !artifact.headers.is_empty() {
@@ -1404,9 +1413,38 @@ fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> Cach
     Ok(())
 }
 
+/// This will truncate the `timestamp` to a multiple of `refresh_every`, using a stable offset
+/// derived from `url` to avoid having the same cutoff for every single `url`.
+fn cache_busting_key(url: &str, timestamp: u64, refresh_every: u64) -> u64 {
+    let url_hash = Sha256::digest(url);
+    let url_hash =
+        u64::from_le_bytes(<[u8; 8]>::try_from(&url_hash[..8]).expect("sha256 outputs >8 bytes"));
+
+    let offset = url_hash % refresh_every;
+    ((timestamp - offset) / refresh_every * refresh_every) + offset
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_cache_busting_key() {
+        // the hashed offset for this url is `39`
+        let url = "https://example.com/foo.js";
+
+        let timestamp = 1000;
+        let refresh_every = 100;
+
+        let key = cache_busting_key(url, timestamp, refresh_every);
+        assert_eq!(key, 939);
+        let key = cache_busting_key(url, timestamp + 38, refresh_every);
+        assert_eq!(key, 939);
+        let key = cache_busting_key(url, timestamp + 40, refresh_every);
+        assert_eq!(key, 1039);
+        let key = cache_busting_key(url, timestamp + 100, refresh_every);
+        assert_eq!(key, 1039);
+    }
 
     #[test]
     fn test_strip_hostname() {

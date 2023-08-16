@@ -225,8 +225,9 @@ impl SymbolicationActor {
                             );
                         }
 
-                        if let Ok(source) =
-                            cache.fetch_file(&source_scope, remote_file.into()).await
+                        if let Ok(source) = cache
+                            .fetch_file(&source_scope, remote_file.into(), true)
+                            .await
                         {
                             for frame in frames {
                                 ModuleLookup::set_source_context(&source, frame);

@@ -166,6 +166,11 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     fn weight(item: &Self::Item) -> u32 {
         std::mem::size_of_val(item) as u32
     }
+
+    /// Allows avoiding the shared cache per item.
+    fn use_shared_cache(&self) -> bool {
+        true
+    }
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
@@ -245,7 +250,9 @@ impl<T: CacheItemRequest> Cacher<T> {
         let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.tempfile()?;
 
-        let shared_cache_hit = if let Some(shared_cache) = self.shared_cache.get() {
+        let shared_cache_hit = if !request.use_shared_cache() {
+            false
+        } else if let Some(shared_cache) = self.shared_cache.get() {
             let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
             shared_cache.fetch(name, &cache_path, temp_fd).await
         } else {
@@ -321,7 +328,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
-        if !shared_cache_hit {
+        if !shared_cache_hit && request.use_shared_cache() {
             if let Ok(byteview) = &entry {
                 if let Some(shared_cache) = self.shared_cache.get() {
                     shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
