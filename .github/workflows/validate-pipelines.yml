@@ -27,19 +27,6 @@ jobs:
                   - 'gocd/**'
                   - '.github/workflows/validate-pipelines.yml'
 
-    render:
-        if: needs.files-changed.outputs.gocd == 'true'
-        needs: files-changed
-        name: Render GoCD Pipelines with Jsonnet
-        runs-on: ubuntu-latest
-        steps:
-          - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3
-          - uses: getsentry/action-gocd-jsonnet@v1
-            with:
-              jb-install: true
-              jsonnet-dir: gocd/templates
-              generated-dir: gocd/generated-pipelines
-
     validate:
         if: needs.files-changed.outputs.gocd == 'true'
         needs: files-changed
@@ -64,10 +51,8 @@ jobs:
             - uses: getsentry/action-gocd-jsonnet@v1
               with:
                 jb-install: true
-                convert-to-yaml: true
                 jsonnet-dir: gocd/templates
                 generated-dir: gocd/generated-pipelines
-                render-as-single-file: true
             - uses: getsentry/action-validate-gocd-pipelines@v1
               with:
                 configrepo: symbolicator__master
