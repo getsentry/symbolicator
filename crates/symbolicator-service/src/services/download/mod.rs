@@ -246,27 +246,38 @@ impl DownloadService {
 
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheEntry {
+        let source_name = source.source_metric_key();
         let result = retry(|| async {
+            // XXX: we have to create the file here, as doing so outside in `download`
+            // would run into borrow checker problems due to the `&mut`.
+            let mut destination = tokio::fs::File::create(destination).await?;
             match source {
-                RemoteFile::Sentry(inner) => {
+                RemoteFile::Sentry(source) => {
                     self.sentry
-                        .download_source(inner.clone(), destination)
+                        .download_source(source_name, source, &mut destination)
                         .await
                 }
-                RemoteFile::Http(inner) => {
-                    self.http.download_source(inner.clone(), destination).await
+                RemoteFile::Http(source) => {
+                    self.http
+                        .download_source(source_name, source, &mut destination)
+                        .await
                 }
-                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
-                RemoteFile::Gcs(inner) => {
-                    self.gcs.download_source(inner.clone(), destination).await
+                RemoteFile::S3(source) => {
+                    self.s3
+                        .download_source(source_name, source, &mut destination)
+                        .await
                 }
-                RemoteFile::Filesystem(inner) => {
-                    self.fs.download_source(inner.clone(), destination).await
+                RemoteFile::Gcs(source) => {
+                    self.gcs
+                        .download_source(source_name, source, &mut destination)
+                        .await
+                }
+                RemoteFile::Filesystem(source) => {
+                    self.fs.download_source(source, &mut destination).await
                 }
             }
-        });
-
-        let result = result.await;
+        })
+        .await;
 
         if let Err(err) = &result {
             tracing::debug!("File `{}` fetching failed: {}", source, err);
@@ -434,9 +445,9 @@ impl DownloadService {
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
-pub async fn retry<G, F, T>(mut task_gen: G) -> CacheEntry<T>
+pub async fn retry<G, F, T>(task_gen: G) -> CacheEntry<T>
 where
-    G: FnMut() -> F,
+    G: Fn() -> F,
     F: Future<Output = CacheEntry<T>>,
 {
     let mut tries = 0;

@@ -3,9 +3,8 @@
 //! It allows sources to be present on the local filesystem, usually only used for testing.
 
 use std::io;
-use std::path::Path;
 
-use tokio::fs;
+use tokio::fs::File;
 
 use symbolicator_sources::FilesystemRemoteFile;
 
@@ -23,19 +22,17 @@ impl FilesystemDownloader {
     /// Download from a filesystem source.
     pub async fn download_source(
         &self,
-        file_source: FilesystemRemoteFile,
-        dest: &Path,
+        file_source: &FilesystemRemoteFile,
+        destination: &mut File,
     ) -> CacheEntry {
-        // All file I/O in this function is blocking!
-        let abspath = file_source.path();
-        tracing::debug!("Fetching debug file from {:?}", abspath);
+        let path = file_source.path();
+        tracing::debug!("Fetching debug file from {:?}", path);
 
-        fs::copy(abspath, dest)
-            .await
-            .map(|_| ())
-            .map_err(|e| match e.kind() {
-                io::ErrorKind::NotFound => CacheError::NotFound,
-                _ => e.into(),
-            })
+        let mut file = File::open(path).await.map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => CacheError::NotFound,
+            _ => e.into(),
+        })?;
+        tokio::io::copy(&mut file, destination).await?;
+        Ok(())
     }
 }

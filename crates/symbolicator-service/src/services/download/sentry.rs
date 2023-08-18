@@ -4,7 +4,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -12,6 +11,7 @@ use sentry::types::DebugId;
 use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use tokio::fs::File;
 use url::Url;
 
 use symbolicator_sources::{
@@ -142,6 +142,7 @@ impl fmt::Debug for SentryDownloader {
         f.debug_struct("SentryDownloader")
             .field("dif_cache", &self.dif_cache.entry_count())
             .field("js_cache", &self.js_cache.entry_count())
+            .field("timeouts", &self.timeouts)
             .finish()
     }
 }
@@ -398,28 +399,19 @@ impl SentryDownloader {
     /// Downloads a source hosted on Sentry.
     pub async fn download_source(
         &self,
-        file_source: SentryRemoteFile,
-        destination: &Path,
+        source_name: &str,
+        file_source: &SentryRemoteFile,
+        destination: &mut File,
     ) -> CacheEntry {
-        tracing::debug!("Fetching Sentry artifact from {}", file_source.url());
+        let url = file_source.url();
+        tracing::debug!("Fetching Sentry artifact from {}", url);
 
-        let mut request = self
-            .client
-            .get(file_source.url())
-            .header("User-Agent", USER_AGENT);
+        let mut builder = self.client.get(url).header("User-Agent", USER_AGENT);
         if file_source.use_credentials() {
-            request = request.bearer_auth(&file_source.source.token);
+            builder = builder.bearer_auth(&file_source.source.token);
         }
-        let source = RemoteFile::from(file_source);
 
-        let mut destination = tokio::fs::File::create(destination).await?;
-        super::download_reqwest(
-            source.source_metric_key(),
-            request,
-            &self.timeouts,
-            &mut destination,
-        )
-        .await
+        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
 }
 
