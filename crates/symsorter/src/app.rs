@@ -123,6 +123,12 @@ fn process_file(
 
     for obj in archive.objects() {
         let obj = maybe_ignore_error!(obj.map_err(|e| anyhow!(e)));
+        if !matches!(
+            obj.kind(),
+            ObjectKind::Executable | ObjectKind::Library | ObjectKind::Debug | ObjectKind::Sources
+        ) {
+            continue;
+        }
         let new_filename = root.join(maybe_ignore_error!(get_target_filename(&obj)));
 
         fs::create_dir_all(new_filename.parent().unwrap())?;
