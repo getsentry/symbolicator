@@ -2,17 +2,24 @@
 
 Symbolicator pipelines are rendered using jsonnet.
 
+## Dependencies
+
+You'll need the following dependencies to build the pipelines:
+
+```sh
+brew install go-jsonnet jsonnet-bundler yq
+```
+
 ## Jsonnet
 
 You can render the jsonnet pipelines by running:
 
-```
+```sh
 make gocd
 ```
 
 This will clean, fmt, lint and generate the GoCD pipelines to
 `./gocd/generated-pipelines`.
-
 
 The pipelines are using the https://github.com/getsentry/gocd-jsonnet
 libraries to generate the pipeline for each region.
@@ -45,15 +52,5 @@ You can update jsonnet dependencies by runnning `jb update`.
 
 ### `gocd/generated-pipelines/`
 
-The current setup of GoCD at sentry is only able to look for
-yaml pipelines in a repo, so the genered pipelines have the be
-commited.
-
-The dev-infra team is working on a GoCD plugin that will accept
-the jsonnet directly, removing the need for commiting the
-generated-pipelines.
-
-### `gocd/pipelines/`
-
-These are the original pipelines and will be used until we move
-to the jsonnet pipelines.
+GoCD generates pipelines using the jsonnet files directly, hence why
+the generated pipelines are part of the gitignore.
