@@ -21,4 +21,6 @@ site
 # New test snapshots
 *.snap.new
 
+# GoCD
 gocd/templates/vendor/
+gocd/generated-pipelines/
