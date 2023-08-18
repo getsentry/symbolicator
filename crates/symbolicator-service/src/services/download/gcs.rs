@@ -60,20 +60,27 @@ impl GcsDownloader {
         destination: &Path,
     ) -> CacheEntry {
         let key = file_source.key();
-        let bucket = file_source.source.bucket.clone();
-        tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
+        let bucket = &file_source.source.bucket;
+        tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
         tracing::debug!("Got valid GCS token");
 
-        let url = gcs::download_url(&bucket, &key)?;
+        let url = gcs::download_url(bucket, &key)?;
 
         let source = RemoteFile::from(file_source);
         let request = self
             .client
-            .get(url.clone())
+            .get(url)
             .header("authorization", token.bearer_token());
 
-        super::download_reqwest(&source, request, &self.timeouts, destination).await
+        let mut destination = tokio::fs::File::create(destination).await?;
+        super::download_reqwest(
+            source.source_metric_key(),
+            request,
+            &self.timeouts,
+            &mut destination,
+        )
+        .await
     }
 }
 

@@ -116,9 +116,10 @@ impl S3Downloader {
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
         let source = RemoteFile::from(file_source);
+        let source_name = source.source_metric_key();
         let timeout = self.timeouts.head;
         let request = tokio::time::timeout(timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+        let request = super::measure_download_time(source_name, request);
 
         let response = request.await.map_err(|_| CacheError::Timeout(timeout))?; // Timeout
 
@@ -182,11 +183,6 @@ impl S3Downloader {
             }
         };
 
-        let timeout = Some(content_length_timeout(
-            response.content_length(),
-            self.timeouts.streaming,
-        ));
-
         let stream = if response.content_length == 0 {
             tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
             return Err(CacheError::NotFound);
@@ -195,8 +191,14 @@ impl S3Downloader {
                 .body
                 .map_err(|err| CacheError::download_error(&err))
         };
+        let mut destination = tokio::fs::File::create(destination).await?;
+        let future = super::download_stream(source_name, stream, &mut destination);
 
-        super::download_stream(&source, stream, destination, timeout).await
+        let timeout = content_length_timeout(response.content_length, self.timeouts.streaming);
+
+        tokio::time::timeout(timeout, future)
+            .await
+            .map_err(|_| CacheError::Timeout(timeout))?
     }
 }
 

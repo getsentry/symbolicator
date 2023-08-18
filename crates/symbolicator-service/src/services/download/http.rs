@@ -31,8 +31,8 @@ impl HttpDownloader {
     ) -> CacheEntry {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
-        tracing::debug!("Fetching debug file from {}", download_url);
-        let mut builder = self.client.get(download_url.clone());
+        tracing::debug!("Fetching debug file from `{}`", download_url);
+        let mut builder = self.client.get(download_url);
 
         let headers = file_source
             .source
@@ -48,7 +48,14 @@ impl HttpDownloader {
         let request = builder.header(header::USER_AGENT, USER_AGENT);
 
         let source = RemoteFile::from(file_source);
-        super::download_reqwest(&source, request, &self.timeouts, destination).await
+        let mut destination = tokio::fs::File::create(destination).await?;
+        super::download_reqwest(
+            source.source_metric_key(),
+            request,
+            &self.timeouts,
+            &mut destination,
+        )
+        .await
     }
 }
 

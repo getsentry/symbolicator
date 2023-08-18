@@ -412,7 +412,14 @@ impl SentryDownloader {
         }
         let source = RemoteFile::from(file_source);
 
-        super::download_reqwest(&source, request, &self.timeouts, destination).await
+        let mut destination = tokio::fs::File::create(destination).await?;
+        super::download_reqwest(
+            source.source_metric_key(),
+            request,
+            &self.timeouts,
+            &mut destination,
+        )
+        .await
     }
 }
 
