@@ -13,7 +13,7 @@ use tempfile::NamedTempFile;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime};
+use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
 type InMemoryItem<T> = (Instant, CacheEntry<T>);
 type InMemoryCache<T> = moka::future::Cache<CacheKey, InMemoryItem<T>>;
@@ -126,10 +126,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             shared_cache,
         }
     }
-
-    pub fn tempfile(&self) -> std::io::Result<NamedTempFile> {
-        self.config.tempfile()
-    }
 }
 
 /// Cache Version Configuration used during cache lookup and generation.
@@ -174,70 +170,6 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
-    /// Look up an item in the file system cache and load it if available.
-    ///
-    /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
-    /// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
-    fn lookup_local_cache(
-        &self,
-        request: &T,
-        cache_dir: &Path,
-        key: &CacheKey,
-        version: u32,
-    ) -> CacheEntry<(Instant, CacheEntry<T::Item>)> {
-        let name = self.config.name();
-        let cache_key = key.cache_path(version);
-
-        let item_path = cache_dir.join(&cache_key);
-        tracing::trace!("Trying {} cache at path {}", name, item_path.display());
-        let _scope = Hub::current().push_scope();
-        sentry::configure_scope(|scope| {
-            scope.set_extra(
-                &format!("cache.{name}.cache_path"),
-                item_path.to_string_lossy().into(),
-            );
-        });
-        let (entry, expiration) = self
-            .config
-            .open_cachefile(&item_path)?
-            .ok_or(CacheError::NotFound)?;
-
-        // store things into the shared cache when:
-        // - we have a positive cache
-        // - that has the latest version (we don’t want to upload old versions)
-        // - we refreshed the local cache time, so we also refresh the shared cache time.
-        let needs_reupload = expiration.was_touched();
-        // FIXME: let-chains would be nice here :-)
-        if version == T::VERSIONS.current && needs_reupload {
-            if let Ok(byteview) = &entry {
-                if let Some(shared_cache) = self.shared_cache.get() {
-                    shared_cache.store(
-                        name,
-                        &cache_key,
-                        byteview.clone(),
-                        CacheStoreReason::Refresh,
-                    );
-                }
-            }
-        }
-
-        // This is also reported for "negative cache hits": When we cached
-        // the 404 response from a server as empty file.
-        metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
-        if let Ok(byteview) = &entry {
-            metric!(
-                time_raw("caches.file.size") = byteview.len() as u64,
-                "hit" => "true",
-                "cache" => name.as_ref(),
-            );
-        }
-
-        tracing::trace!("Loading {} at path {}", name, item_path.display());
-
-        let entry = entry.and_then(|byteview| request.load(byteview));
-        Ok((expiration.as_instant(), entry))
-    }
-
     /// Compute an item.
     ///
     /// The item is computed using [`T::compute`](CacheItemRequest::compute), and saved in the cache
@@ -248,7 +180,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
         let cache_path = key.cache_path(T::VERSIONS.current);
-        let mut temp_file = self.tempfile()?;
+        let mut temp_file = self.config.tempfile()?;
 
         let shared_cache_hit = if !request.use_shared_cache() {
             false
@@ -358,24 +290,30 @@ impl<T: CacheItemRequest> Cacher<T> {
         let init = Box::pin(async {
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
+                let shared_cache = self.shared_cache.get();
                 let versions = std::iter::once(T::VERSIONS.current)
                     .chain(T::VERSIONS.fallbacks.iter().copied());
 
                 for version in versions {
+                    let is_current_version = version == T::VERSIONS.current;
                     // try the new cache key first, then fall back to the old cache key
-                    let item = match self
-                        .lookup_local_cache(&request, cache_dir, &cache_key, version)
-                    {
+                    let item = match lookup_local_cache(
+                        &self.config,
+                        shared_cache,
+                        cache_dir,
+                        &cache_key.cache_path(version),
+                        is_current_version,
+                    ) {
                         Err(CacheError::NotFound) => continue,
                         Err(err) => {
                             let item = Err(err);
                             let expiration = ExpirationTime::for_fresh_status(&self.config, &item);
                             return (expiration.as_instant(), item);
                         }
-                        Ok(item) => item,
+                        Ok(item) => (item.0, item.1.and_then(|byteview| request.load(byteview))),
                     };
 
-                    if version != T::VERSIONS.current {
+                    if !is_current_version {
                         // we have found an outdated cache that we will use right away,
                         // and we will kick off a recomputation for the `current` cache version
                         // in a deduplicated background task, which we will not await
@@ -483,6 +421,62 @@ impl<T: CacheItemRequest> Cacher<T> {
         };
         tokio::spawn(task.bind_hub(Hub::new_from_top(Hub::current())));
     }
+}
+
+/// Look up an item in the file system cache and load it if available.
+///
+/// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
+/// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
+fn lookup_local_cache(
+    config: &Cache,
+    shared_cache: Option<&SharedCacheService>,
+    cache_dir: &Path,
+    cache_key: &str,
+    is_current_version: bool,
+) -> CacheEntry<(Instant, CacheEntry<ByteView<'static>>)> {
+    let name = config.name();
+
+    let item_path = cache_dir.join(cache_key);
+    tracing::trace!("Trying {} cache at path {}", name, item_path.display());
+    let _scope = Hub::current().push_scope();
+    sentry::configure_scope(|scope| {
+        scope.set_extra(
+            &format!("cache.{name}.cache_path"),
+            item_path.to_string_lossy().into(),
+        );
+    });
+    let (entry, expiration) = config
+        .open_cachefile(&item_path)?
+        .ok_or(CacheError::NotFound)?;
+
+    // store things into the shared cache when:
+    // - we have a positive cache
+    // - that has the latest version (we don’t want to upload old versions)
+    // - we refreshed the local cache time, so we also refresh the shared cache time.
+    let needs_reupload = expiration.was_touched();
+    // FIXME: let-chains would be nice here :-)
+    if is_current_version && needs_reupload {
+        if let Ok(byteview) = &entry {
+            if let Some(shared_cache) = shared_cache {
+                shared_cache.store(name, cache_key, byteview.clone(), CacheStoreReason::Refresh);
+            }
+        }
+    }
+
+    // This is also reported for "negative cache hits": When we cached
+    // the 404 response from a server as empty file.
+    metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
+    if let Ok(byteview) = &entry {
+        metric!(
+            time_raw("caches.file.size") = byteview.len() as u64,
+            "hit" => "true",
+            "cache" => name.as_ref(),
+        );
+    }
+
+    tracing::trace!("Loading {} at path {}", name, item_path.display());
+
+    Ok((expiration.as_instant(), entry))
 }
 
 fn persist_tempfile(
