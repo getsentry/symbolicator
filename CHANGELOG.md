@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- Do not process `.o` files in Symsorter. ([#1288](https://github.com/getsentry/symbolicator/pull/1288))
+
 ## 23.8.0
 
 ### Dependencies
@@ -19,7 +25,6 @@
 ### Various fixes & improvements
 
 - Add a new `BundleIndex` for SourceMap processing (#1251) by @Swatinem
-
 
 ## 23.7.0
 
