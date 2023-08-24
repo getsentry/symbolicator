@@ -1,5 +1,9 @@
 # Changelog
 
+## 23.7.3
+### Various Fixes and Improvements
+- symsorter now uses the same filter as sentry-cli to ignore (very) large files and precompiled headers.
+
 ## 23.7.2
 
 ### Dependencies
