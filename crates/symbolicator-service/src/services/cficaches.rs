@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
 use minidump_unwind::SymbolFile;
@@ -18,7 +17,6 @@ use crate::services::objects::{
     FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use crate::types::{CandidateStatus, Scope};
-use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::caches::versions::CFICACHE_VERSIONS;
@@ -86,12 +84,11 @@ impl CacheItemRequest for FetchCfiCacheInternal {
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let future = compute_cficache(&self.objects_actor, self.meta_handle.clone(), temp_file);
-
-        let timeout = Duration::from_secs(1200);
-        let future = tokio::time::timeout(timeout, future);
-        let future = measure("cficaches", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+        Box::pin(compute_cficache(
+            &self.objects_actor,
+            self.meta_handle.clone(),
+            temp_file,
+        ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {

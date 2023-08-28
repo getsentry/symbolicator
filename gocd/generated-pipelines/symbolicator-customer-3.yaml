@@ -1,14 +1,14 @@
 format_version: 10
 pipelines:
-  deploy-symbolicator-customer-2:
-    display_order: 5
+  deploy-symbolicator-customer-3:
+    display_order: 6
     environment_variables:
-      SENTRY_REGION: customer-2
+      SENTRY_REGION: customer-3
     group: symbolicator
     lock_behavior: unlockWhenFinished
     materials:
-      deploy-symbolicator-customer-1-pipeline-complete:
-        pipeline: deploy-symbolicator-customer-1
+      deploy-symbolicator-customer-2-pipeline-complete:
+        pipeline: deploy-symbolicator-customer-2
         stage: pipeline-complete
       symbolicator_repo:
         branch: master

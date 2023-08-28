@@ -1,8 +1,17 @@
 # Changelog
 
-## 23.7.3
-### Various Fixes and Improvements
-- symsorter now uses the same filter as sentry-cli to ignore (very) large files and precompiled headers.
+## Unreleased
+
+### Various fixes & improvements
+
+- Do not process `.o` files in Symsorter. ([#1288](https://github.com/getsentry/symbolicator/pull/1288))
+- symsorter now uses the same filter as sentry-cli to ignore (very) large files and precompiled headers. ([#1273](https://github.com/getsentry/symbolicator/pull/1273))
+
+## 23.8.0
+
+### Dependencies
+
+- Bump `aws-sdk-rust` from 0.55.3 to 0.56.0. ([#1282](https://github.com/getsentry/symbolicator/pull/1282))
 
 ## 23.7.2
 
@@ -17,7 +26,6 @@
 ### Various fixes & improvements
 
 - Add a new `BundleIndex` for SourceMap processing (#1251) by @Swatinem
-
 
 ## 23.7.0
 

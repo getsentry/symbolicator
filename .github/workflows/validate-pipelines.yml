@@ -10,19 +10,6 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
-    render:
-        name: Render GoCD Pipelines with Jsonnet
-        runs-on: ubuntu-latest
-        steps:
-          - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3
-          - uses: getsentry/action-gocd-jsonnet@v0
-            with:
-              jb-install: true
-              check-for-changes: true
-              convert-to-yaml: true
-              jsonnet-dir: gocd/templates
-              generated-dir: gocd/generated-pipelines
-
     files-changed:
         name: files-changed
         runs-on: ubuntu-latest
@@ -38,6 +25,23 @@ jobs:
               filters: |
                 gocd:
                   - 'gocd/**'
+                  - '.github/workflows/validate-pipelines.yml'
+
+    render:
+        if: needs.files-changed.outputs.gocd == 'true'
+        needs: files-changed
+        name: Render GoCD Pipelines with Jsonnet
+        runs-on: ubuntu-latest
+        steps:
+          - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c  # v3
+          - uses: getsentry/action-gocd-jsonnet@v1
+            with:
+              jb-install: true
+              check-for-changes: true
+              convert-to-yaml: true
+              jsonnet-dir: gocd/templates
+              generated-dir: gocd/generated-pipelines
+              render-as-single-file: false
 
     validate:
         if: needs.files-changed.outputs.gocd == 'true'
@@ -60,6 +64,13 @@ jobs:
                 token_format: 'id_token'
                 id_token_audience: '610575311308-9bsjtgqg4jm01mt058rncpopujgk3627.apps.googleusercontent.com'
                 id_token_include_email: true
+            - uses: getsentry/action-gocd-jsonnet@v1
+              with:
+                jb-install: true
+                convert-to-yaml: true
+                jsonnet-dir: gocd/templates
+                generated-dir: gocd/generated-pipelines
+                render-as-single-file: true
             - uses: getsentry/action-validate-gocd-pipelines@v1
               with:
                 configrepo: symbolicator__master

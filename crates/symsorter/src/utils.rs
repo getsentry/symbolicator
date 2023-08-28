@@ -61,7 +61,7 @@ pub fn get_target_filename(obj: &Object) -> Result<PathBuf> {
     let suffix = match obj.kind() {
         ObjectKind::Debug => "debuginfo",
         ObjectKind::Sources if obj.file_format() == FileFormat::SourceBundle => "sourcebundle",
-        ObjectKind::Relocatable | ObjectKind::Library | ObjectKind::Executable => "executable",
+        ObjectKind::Library | ObjectKind::Executable => "executable",
         _ => bail!("unsupported file"),
     };
     Ok(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())

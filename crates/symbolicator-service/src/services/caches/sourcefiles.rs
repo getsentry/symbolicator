@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use url::Url;
 
 use symbolic::common::{ByteView, SelfCell};
-use symbolicator_sources::{HttpRemoteFile, RemoteFile};
+use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
 use crate::caching::{
@@ -72,31 +71,22 @@ impl SourceFilesCache {
 
     /// Retrieves the given [`RemoteFile`] from cache, or fetches it and persists it according
     /// to the provided [`Scope`].
-    pub async fn fetch_file(&self, scope: &Scope, file: RemoteFile) -> CacheEntry<ByteViewString> {
-        // FIXME: We should probably make it possible to somehow predictably re-fetch
-        // files and respect the caching headers from external servers. Right now we
-        // keep these files indefinitely. See:
-        // <https://github.com/getsentry/symbolicator/issues/1059>
+    /// It is possible to avoid using the shared cache using the `use_shared_cache` parameter.
+    pub async fn fetch_file(
+        &self,
+        scope: &Scope,
+        file: RemoteFile,
+        use_shared_cache: bool,
+    ) -> CacheEntry<ByteViewString> {
         let cache_key = CacheKey::from_scoped_file(scope, &file);
 
         let request = FetchFileRequest {
             file,
             download_svc: Arc::clone(&self.download_svc),
+            use_shared_cache,
         };
 
         self.cache.compute_memoized(request, cache_key).await
-    }
-
-    /// Fetches the file from the given [`Url`] and caches it globally.
-    pub async fn fetch_public_url(&self, url: Url) -> CacheEntry<ByteViewString> {
-        let scope = Scope::Global;
-        self.fetch_scoped_url(&scope, url).await
-    }
-
-    /// Fetches the file from the given [`Url`] and caches it according to the given [`Scope`].
-    pub async fn fetch_scoped_url(&self, scope: &Scope, url: Url) -> CacheEntry<ByteViewString> {
-        let file = HttpRemoteFile::from_url(url);
-        self.fetch_file(scope, file.into()).await
     }
 }
 
@@ -104,6 +94,7 @@ impl SourceFilesCache {
 struct FetchFileRequest {
     file: RemoteFile,
     download_svc: Arc<DownloadService>,
+    use_shared_cache: bool,
 }
 
 impl CacheItemRequest for FetchFileRequest {
@@ -128,5 +119,9 @@ impl CacheItemRequest for FetchFileRequest {
             std::str::from_utf8(&*s).map_err(|err| CacheError::Malformed(err.to_string()))
         })?;
         Ok(ByteViewString(inner))
+    }
+
+    fn use_shared_cache(&self) -> bool {
+        self.use_shared_cache
     }
 }

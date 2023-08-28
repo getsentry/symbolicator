@@ -4,7 +4,6 @@
 //! generated C++ source files back to the original C# sources.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::{self, BoxFuture};
 use sentry::{Hub, SentryFutureExt};
@@ -20,7 +19,6 @@ use crate::caching::{
 };
 use crate::services::download::DownloadService;
 use crate::types::Scope;
-use crate::utils::futures::{m, measure};
 
 use super::caches::versions::IL2CPP_CACHE_VERSIONS;
 use super::fetch_file;
@@ -55,11 +53,14 @@ struct FetchFileRequest {
 }
 
 impl FetchFileRequest {
-    /// Downloads the file and saves it to `path`.
-    ///
-    /// Actual implementation of [`FetchFileRequest::compute`].
-    async fn fetch_file(self, temp_file: &mut NamedTempFile) -> CacheEntry {
-        fetch_file(self.download_svc, self.file_source, temp_file).await?;
+    #[tracing::instrument(skip_all)]
+    async fn fetch_il2cpp(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+        fetch_file(
+            Arc::clone(&self.download_svc),
+            self.file_source.clone(),
+            temp_file,
+        )
+        .await?;
 
         let view = ByteView::map_file_ref(temp_file.as_file())?;
 
@@ -82,12 +83,7 @@ impl CacheItemRequest for FetchFileRequest {
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let fut = self.clone().fetch_file(temp_file).bind_hub(Hub::current());
-
-        let timeout = Duration::from_secs(1200);
-        let future = tokio::time::timeout(timeout, fut);
-        let future = measure("il2cpp", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+        Box::pin(self.fetch_il2cpp(temp_file))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
@@ -145,7 +141,9 @@ impl Il2cppService {
                 file_source,
                 download_svc: self.download_svc.clone(),
             };
-            self.cache.compute_memoized(request, cache_key)
+            self.cache
+                .compute_memoized(request, cache_key)
+                .bind_hub(hub)
         });
 
         let all_results = future::join_all(fetch_jobs).await;

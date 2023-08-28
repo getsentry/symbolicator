@@ -521,11 +521,12 @@ impl Default for Config {
             symstore_proxy: true,
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
-            // Allow a 4MB/s connection to download 2GB without timing out
-            max_download_timeout: Duration::from_secs(315),
+            // We want to have a hard download timeout of 5 minutes.
+            // This means a download connection needs to sustain ~6,7MB/s to download a 2GB file.
+            max_download_timeout: Duration::from_secs(5 * 60),
             connect_timeout: Duration::from_secs(1),
             head_timeout: Duration::from_secs(5),
-            // Allow a 4MB/s connection to download 1GB without timing out
+            // Allow a 4MB/s connection to download 1GB without timing out.
             streaming_timeout: Duration::from_secs(250),
             deny_list_time_window: Duration::from_secs(60),
             deny_list_bucket_size: Duration::from_secs(5),

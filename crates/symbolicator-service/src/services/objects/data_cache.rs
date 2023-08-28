@@ -10,10 +10,8 @@ use std::cmp;
 use std::fmt;
 use std::io;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::BoxFuture;
-use sentry::{Hub, SentryFutureExt};
 use symbolic::common::SelfCell;
 use tempfile::NamedTempFile;
 
@@ -28,7 +26,6 @@ use crate::services::download::DownloadService;
 use crate::services::fetch_file;
 use crate::types::Scope;
 use crate::utils::compression::tempfile_in_parent;
-use crate::utils::futures::{m, measure};
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
@@ -119,6 +116,7 @@ impl fmt::Display for ObjectHandle {
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
+#[tracing::instrument(skip(downloader, temp_file), fields(object_id, %file_id))]
 async fn fetch_object_file(
     object_id: &ObjectId,
     file_id: RemoteFile,
@@ -206,20 +204,16 @@ impl CacheItemRequest for FetchFileDataRequest {
     const VERSIONS: CacheVersions = OBJECTS_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        let cache_key = CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source);
-        tracing::trace!("Fetching file data for {}", cache_key);
-        let future = fetch_object_file(
+        tracing::trace!(
+            "Fetching file data for {}",
+            CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source)
+        );
+        Box::pin(fetch_object_file(
             &self.0.object_id,
             self.0.file_source.clone(),
             self.0.download_svc.clone(),
             temp_file,
-        )
-        .bind_hub(Hub::current());
-
-        let timeout = Duration::from_secs(600);
-        let future = tokio::time::timeout(timeout, future);
-        let future = measure("objects", m::timed_result, future);
-        Box::pin(async move { future.await.map_err(|_| CacheError::Timeout(timeout))? })
+        ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
