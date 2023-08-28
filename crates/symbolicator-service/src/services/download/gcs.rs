@@ -1,9 +1,9 @@
 //! Support to download from Google Cloud Storage buckets.
 
-use std::path::Path;
 use std::sync::Arc;
 
-use symbolicator_sources::{GcsRemoteFile, GcsSourceKey, RemoteFile};
+use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
+use tokio::fs::File;
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::utils::gcs::{self, GcsToken};
@@ -56,24 +56,24 @@ impl GcsDownloader {
     /// Downloads a source hosted on GCS.
     pub async fn download_source(
         &self,
-        file_source: GcsRemoteFile,
-        destination: &Path,
+        source_name: &str,
+        file_source: &GcsRemoteFile,
+        destination: &mut File,
     ) -> CacheEntry {
         let key = file_source.key();
-        let bucket = file_source.source.bucket.clone();
-        tracing::debug!("Fetching from GCS: {} (from {})", &key, bucket);
+        let bucket = &file_source.source.bucket;
+        tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
         let token = self.get_token(&file_source.source.source_key).await?;
         tracing::debug!("Got valid GCS token");
 
-        let url = gcs::download_url(&bucket, &key)?;
+        let url = gcs::download_url(bucket, &key)?;
 
-        let source = RemoteFile::from(file_source);
-        let request = self
+        let builder = self
             .client
-            .get(url.clone())
+            .get(url)
             .header("authorization", token.bearer_token());
 
-        super::download_reqwest(&source, request, &self.timeouts, destination).await
+        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
 }
 
@@ -116,7 +116,10 @@ mod tests {
         let source_location = SourceLocation::new("e5/14c9464eed3be5943a2c61d9241fad/executable");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert!(download_status.is_ok());
         assert!(target_path.exists());
@@ -140,10 +143,12 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsRemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));
-        assert!(!target_path.exists());
     }
 
     #[tokio::test]
@@ -165,12 +170,11 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = GcsRemoteFile::new(source, source_location);
 
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
         downloader
-            .download_source(file_source, &target_path)
+            .download_source("", &file_source, &mut destination)
             .await
             .expect_err("authentication should fail");
-
-        assert!(!target_path.exists());
     }
 
     #[test]

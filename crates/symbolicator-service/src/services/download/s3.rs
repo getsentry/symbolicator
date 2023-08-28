@@ -1,8 +1,6 @@
 //! Support to download from S3 buckets.
 
-use std::any::type_name;
 use std::fmt;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,9 +14,8 @@ pub use aws_sdk_s3::Error as S3Error;
 use futures::TryStreamExt;
 use reqwest::StatusCode;
 
-use symbolicator_sources::{
-    AwsCredentialsProvider, RemoteFile, S3Region, S3RemoteFile, S3SourceKey,
-};
+use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
+use tokio::fs::File;
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::utils::http::DownloadTimeouts;
@@ -35,7 +32,7 @@ pub struct S3Downloader {
 
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct(type_name::<Self>())
+        f.debug_struct("S3Downloader")
             .field("timeouts", &self.timeouts)
             .finish()
     }
@@ -104,8 +101,9 @@ impl S3Downloader {
     /// Downloads a source hosted on an S3 bucket.
     pub async fn download_source(
         &self,
-        file_source: S3RemoteFile,
-        destination: &Path,
+        source_name: &str,
+        file_source: &S3RemoteFile,
+        destination: &mut File,
     ) -> CacheEntry {
         let key = file_source.key();
         let bucket = file_source.bucket();
@@ -115,10 +113,9 @@ impl S3Downloader {
         let client = self.get_s3_client(&source_key).await;
         let request = client.get_object().bucket(&bucket).key(&key).send();
 
-        let source = RemoteFile::from(file_source);
         let timeout = self.timeouts.head;
         let request = tokio::time::timeout(timeout, request);
-        let request = super::measure_download_time(source.source_metric_key(), request);
+        let request = super::measure_download_time(source_name, request);
 
         let response = request.await.map_err(|_| CacheError::Timeout(timeout))?; // Timeout
 
@@ -182,11 +179,6 @@ impl S3Downloader {
             }
         };
 
-        let timeout = Some(content_length_timeout(
-            response.content_length(),
-            self.timeouts.streaming,
-        ));
-
         let stream = if response.content_length == 0 {
             tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
             return Err(CacheError::NotFound);
@@ -195,8 +187,13 @@ impl S3Downloader {
                 .body
                 .map_err(|err| CacheError::download_error(&err))
         };
+        let future = super::download_stream(source_name, stream, destination);
 
-        super::download_stream(&source, stream, destination, timeout).await
+        let timeout = content_length_timeout(response.content_length, self.timeouts.streaming);
+
+        tokio::time::timeout(timeout, future)
+            .await
+            .map_err(|_| CacheError::Timeout(timeout))?
     }
 }
 
@@ -365,7 +362,10 @@ mod tests {
         let source_location = SourceLocation::new("50/2fc0a51ec13e479998684fa139dca7/debuginfo");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert!(download_status.is_ok());
         assert!(target_path.exists());
@@ -391,10 +391,12 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let download_status = downloader.download_source(file_source, &target_path).await;
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));
-        assert!(!target_path.exists());
     }
 
     #[tokio::test]
@@ -416,14 +418,15 @@ mod tests {
         let source_location = SourceLocation::new("does/not/exist");
         let file_source = S3RemoteFile::new(source, source_location);
 
-        let result = downloader.download_source(file_source, &target_path).await;
+        let mut destination = tokio::fs::File::create(&target_path).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert!(
-            matches!(result, Err(CacheError::PermissionDenied(_))),
-            "{result:?}"
+            matches!(download_status, Err(CacheError::PermissionDenied(_))),
+            "{download_status:?}"
         );
-
-        assert!(!target_path.exists());
     }
 
     #[test]

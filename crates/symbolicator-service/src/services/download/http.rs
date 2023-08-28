@@ -1,10 +1,9 @@
 //! Support to download from HTTP sources.
 
-use std::path::Path;
-
 use reqwest::{header, Client};
 
-use symbolicator_sources::{HttpRemoteFile, RemoteFile};
+use symbolicator_sources::HttpRemoteFile;
+use tokio::fs::File;
 
 use crate::caching::{CacheEntry, CacheError};
 use crate::utils::http::DownloadTimeouts;
@@ -26,13 +25,14 @@ impl HttpDownloader {
     /// Downloads a source hosted on an HTTP server.
     pub async fn download_source(
         &self,
-        file_source: HttpRemoteFile,
-        destination: &Path,
+        source_name: &str,
+        file_source: &HttpRemoteFile,
+        destination: &mut File,
     ) -> CacheEntry {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
-        tracing::debug!("Fetching debug file from {}", download_url);
-        let mut builder = self.client.get(download_url.clone());
+        tracing::debug!("Fetching debug file from `{}`", download_url);
+        let mut builder = self.client.get(download_url);
 
         let headers = file_source
             .source
@@ -44,11 +44,9 @@ impl HttpDownloader {
                 builder = builder.header(key, value.as_str());
             }
         }
+        builder = builder.header(header::USER_AGENT, USER_AGENT);
 
-        let request = builder.header(header::USER_AGENT, USER_AGENT);
-
-        let source = RemoteFile::from(file_source);
-        super::download_reqwest(&source, request, &self.timeouts, destination).await
+        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
 }
 
@@ -76,7 +74,10 @@ mod tests {
         let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(Client::new(), Default::default());
-        let download_status = downloader.download_source(file_source, dest).await;
+        let mut destination = tokio::fs::File::create(&dest).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert!(download_status.is_ok());
 
@@ -100,7 +101,10 @@ mod tests {
         let file_source = HttpRemoteFile::new(http_source, loc);
 
         let downloader = HttpDownloader::new(Client::new(), Default::default());
-        let download_status = downloader.download_source(file_source, dest).await;
+        let mut destination = tokio::fs::File::create(&dest).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));
     }

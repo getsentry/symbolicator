@@ -246,27 +246,38 @@ impl DownloadService {
 
     /// Dispatches downloading of the given file to the appropriate source.
     async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheEntry {
+        let source_name = source.source_metric_key();
         let result = retry(|| async {
+            // XXX: we have to create the file here, as doing so outside in `download`
+            // would run into borrow checker problems due to the `&mut`.
+            let mut destination = tokio::fs::File::create(destination).await?;
             match source {
-                RemoteFile::Sentry(inner) => {
+                RemoteFile::Sentry(source) => {
                     self.sentry
-                        .download_source(inner.clone(), destination)
+                        .download_source(source_name, source, &mut destination)
                         .await
                 }
-                RemoteFile::Http(inner) => {
-                    self.http.download_source(inner.clone(), destination).await
+                RemoteFile::Http(source) => {
+                    self.http
+                        .download_source(source_name, source, &mut destination)
+                        .await
                 }
-                RemoteFile::S3(inner) => self.s3.download_source(inner.clone(), destination).await,
-                RemoteFile::Gcs(inner) => {
-                    self.gcs.download_source(inner.clone(), destination).await
+                RemoteFile::S3(source) => {
+                    self.s3
+                        .download_source(source_name, source, &mut destination)
+                        .await
                 }
-                RemoteFile::Filesystem(inner) => {
-                    self.fs.download_source(inner.clone(), destination).await
+                RemoteFile::Gcs(source) => {
+                    self.gcs
+                        .download_source(source_name, source, &mut destination)
+                        .await
+                }
+                RemoteFile::Filesystem(source) => {
+                    self.fs.download_source(source, &mut destination).await
                 }
             }
-        });
-
-        let result = result.await;
+        })
+        .await;
 
         if let Err(err) = &result {
             tracing::debug!("File `{}` fetching failed: {}", source, err);
@@ -434,9 +445,9 @@ impl DownloadService {
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
-pub async fn retry<G, F, T>(mut task_gen: G) -> CacheEntry<T>
+pub async fn retry<G, F, T>(task_gen: G) -> CacheEntry<T>
 where
-    G: FnMut() -> F,
+    G: Fn() -> F,
     F: Future<Output = CacheEntry<T>>,
 {
     let mut tries = 0;
@@ -462,55 +473,45 @@ where
 ///
 /// This is common functionality used by many downloaders.
 async fn download_stream(
-    source: &RemoteFile,
+    source_name: &str,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    destination: &Path,
-    timeout: Option<Duration>,
+    destination: &mut File,
 ) -> CacheEntry {
-    // All file I/O in this function is blocking!
-    tracing::trace!("Downloading from {}", source);
-    let future = async {
-        let mut file = File::create(destination).await?;
-        futures::pin_mut!(stream);
+    futures::pin_mut!(stream);
 
-        let mut throughput_recorder =
-            MeasureSourceDownloadGuard::new("source.download.stream", source.source_metric_key());
-        let result: CacheEntry = async {
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk?;
-                let chunk = chunk.as_ref();
-                throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-                file.write_all(chunk).await?;
-            }
-            Ok(())
+    let mut throughput_recorder =
+        MeasureSourceDownloadGuard::new("source.download.stream", source_name);
+    let result: CacheEntry = async {
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            let chunk = chunk.as_ref();
+            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
+            destination.write_all(chunk).await?;
         }
-        .await;
-        throughput_recorder.done(&result);
-        result?;
-
-        file.flush().await?;
         Ok(())
-    };
-
-    match timeout {
-        Some(timeout) => tokio::time::timeout(timeout, future)
-            .await
-            .map_err(|_| CacheError::Timeout(timeout))?,
-        None => future.await,
     }
+    .await;
+    throughput_recorder.done(&result);
+    result?;
+
+    destination.flush().await?;
+    Ok(())
 }
 
 async fn download_reqwest(
-    source: &RemoteFile,
+    source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: &Path,
+    destination: &mut File,
 ) -> CacheEntry {
-    let request = builder.send();
+    let (client, request) = builder.build_split();
+    let request = request?;
+    let source = request.url().to_string();
+    let request = client.execute(request);
 
     let timeout = timeouts.head;
     let request = tokio::time::timeout(timeout, request);
-    let request = measure_download_time(source.source_metric_key(), request);
+    let request = measure_download_time(source_name, request);
 
     let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
 
@@ -526,8 +527,14 @@ async fn download_reqwest(
 
         let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
         let stream = response.bytes_stream().map_err(CacheError::from);
+        let future = download_stream(source_name, stream, destination);
 
-        download_stream(source, stream, destination, timeout).await
+        match timeout {
+            Some(timeout) => tokio::time::timeout(timeout, future)
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?,
+            None => future.await,
+        }
     } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
         tracing::debug!(
             "Insufficient permissions to download `{}`: {}",
