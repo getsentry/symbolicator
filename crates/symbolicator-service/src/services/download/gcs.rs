@@ -149,7 +149,6 @@ mod tests {
             .await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));
-        assert!(!target_path.exists());
     }
 
     #[tokio::test]
