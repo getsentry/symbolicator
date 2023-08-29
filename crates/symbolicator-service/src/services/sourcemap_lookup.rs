@@ -55,6 +55,8 @@ use crate::services::symbolication::ScrapingConfig;
 use crate::types::{JsStacktrace, ResolvedWith, Scope};
 use crate::utils::http::is_valid_origin;
 
+use crate::js::JsMetrics;
+
 use super::bundle_index::BundleIndex;
 use super::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use super::caches::{BundleIndexCache, ByteViewString, SourceFilesCache};
@@ -224,16 +226,7 @@ impl SourceMapLookup {
 
             used_artifact_bundles: Default::default(),
 
-            api_requests: 0,
-            queried_artifacts: 0,
-            fetched_artifacts: 0,
-            queried_bundles: 0,
-            scraped_files: 0,
-            found_via_index_debugid: 0,
-            found_via_index_url: 0,
-            found_via_bundle_debugid: 0,
-            found_via_bundle_url: 0,
-            found_via_scraping: 0,
+            metrics: Default::default(),
         };
 
         Self {
@@ -524,7 +517,7 @@ impl fmt::Display for CachedFileUri {
 pub struct CachedFileEntry<T = CachedFile> {
     pub uri: CachedFileUri,
     pub entry: CacheEntry<T>,
-    pub resolved_with: Option<ResolvedWith>,
+    pub resolved_with: ResolvedWith,
 }
 
 impl<T> CachedFileEntry<T> {
@@ -533,7 +526,7 @@ impl<T> CachedFileEntry<T> {
         Self {
             uri: CachedFileUri::IndividualFile(uri),
             entry: Err(CacheError::NotFound),
-            resolved_with: None,
+            resolved_with: ResolvedWith::Unknown,
         }
     }
 }
@@ -607,10 +600,12 @@ impl CachedFile {
 struct IndividualArtifact {
     remote_file: RemoteFile,
     headers: ArtifactHeaders,
-    resolved_with: Option<ResolvedWith>,
+    resolved_with: ResolvedWith,
 }
 
 struct ArtifactFetcher {
+    metrics: JsMetrics,
+
     // other services:
     objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
@@ -631,23 +626,11 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, Option<ResolvedWith>)>>,
+    artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
     used_artifact_bundles: HashSet<SentryFileId>,
-
-    // various metrics:
-    api_requests: u64,
-    queried_artifacts: u64,
-    fetched_artifacts: u64,
-    queried_bundles: u64,
-    scraped_files: u64,
-    found_via_index_url: i64,
-    found_via_index_debugid: i64,
-    found_via_bundle_url: i64,
-    found_via_bundle_debugid: i64,
-    found_via_scraping: i64,
 }
 
 impl ArtifactFetcher {
@@ -667,6 +650,9 @@ impl ArtifactFetcher {
 
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
+        if minified_source.entry.is_err() {
+            self.metrics.record_not_found(SourceFileType::Source);
+        }
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
         let sourcemap_url = match &minified_source.entry {
@@ -676,6 +662,7 @@ impl ArtifactFetcher {
 
         // If we don't have sourcemap reference, nor a `DebugId`, we skip creating `SourceMapCache`.
         if sourcemap_url.is_none() && debug_id.is_none() {
+            self.metrics.record_sourcemap_not_needed();
             return (minified_source, None);
         }
 
@@ -707,6 +694,12 @@ impl ArtifactFetcher {
                 self.get_file(&sourcemap_key).await
             }
         };
+
+        if matches!(sourcemap.uri, CachedFileUri::Embedded) {
+            self.metrics.record_sourcemap_not_needed();
+        } else if sourcemap.entry.is_err() {
+            self.metrics.record_not_found(SourceFileType::SourceMap);
+        }
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
         let smcache = self
@@ -772,7 +765,7 @@ impl ArtifactFetcher {
         let remote_file: RemoteFile = sentry_file.into();
         let bundle_uri = remote_file.uri();
 
-        self.ensure_artifact_bundle(remote_file, Some(ResolvedWith::Index))
+        self.ensure_artifact_bundle(remote_file, ResolvedWith::BundleIndex)
             .await;
 
         let bundle = self.artifact_bundles.get(&bundle_uri)?;
@@ -782,26 +775,36 @@ impl ArtifactFetcher {
         // by now we have a bundle, and we *know* the file should be included in the
         // bundle and accessible via the `lookup_key`.
 
+        // FIXME: Both cases here should have `BundleIndex` as `resolved_with`, but we have tests in
+        // the Sentry repo that assert `index` here, so changing that is a pain.
         match &lookup_key {
             IndexLookupKey::DebugId(debug_id) => {
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(*debug_id, key.as_type()) {
-                    self.found_via_index_debugid += 1;
+                    self.metrics.record_file_found_in_bundle(
+                        key.as_type(),
+                        ResolvedWith::DebugId,
+                        ResolvedWith::BundleIndex,
+                    );
                     tracing::trace!(?key, "Found file in `BundleIndex` by debug-id");
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: Some(ResolvedWith::Index),
+                        resolved_with: ResolvedWith::Index,
                     });
                 }
             }
             IndexLookupKey::Url(url) => {
                 if let Ok(Some(descriptor)) = bundle.source_by_url(url) {
-                    self.found_via_index_url += 1;
+                    self.metrics.record_file_found_in_bundle(
+                        key.as_type(),
+                        ResolvedWith::Url,
+                        ResolvedWith::BundleIndex,
+                    );
                     tracing::trace!(?key, url, "Found file in `BundleIndex` by url");
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: Some(ResolvedWith::Index),
+                        resolved_with: ResolvedWith::Index,
                     });
                 }
             }
@@ -859,7 +862,7 @@ impl ArtifactFetcher {
         let make_error = |err| CachedFileEntry {
             uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
             entry: Err(CacheError::DownloadError(err)),
-            resolved_with: None,
+            resolved_with: ResolvedWith::Unknown,
         };
 
         let mut url = match Url::parse(abs_path) {
@@ -898,7 +901,7 @@ impl ArtifactFetcher {
             Some(host) => host,
         };
 
-        self.scraped_files += 1;
+        self.metrics.scraped_files += 1;
 
         let span = sentry::configure_scope(|scope| scope.get_span());
         let ctx = sentry::TransactionContext::continue_from_span(
@@ -918,8 +921,8 @@ impl ArtifactFetcher {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        let key = cache_busting_key(url.as_str(), timestamp, SCRAPE_FILES_EVERY);
-        url.set_fragment(Some(&key.to_string()));
+        let cache_key = cache_busting_key(url.as_str(), timestamp, SCRAPE_FILES_EVERY);
+        url.set_fragment(Some(&cache_key.to_string()));
 
         let mut remote_file = HttpRemoteFile::from_url(url);
         remote_file.headers.extend(
@@ -941,7 +944,7 @@ impl ArtifactFetcher {
         CachedFileEntry {
             uri,
             entry: scraped_file.map(|contents| {
-                self.found_via_scraping += 1;
+                self.metrics.record_file_scraped(key.as_type());
                 tracing::trace!(?key, "Found file by scraping the web");
 
                 let sourcemap_url = discover_sourcemaps_location(&contents)
@@ -953,7 +956,7 @@ impl ArtifactFetcher {
                     sourcemap_url,
                 }
             }),
-            resolved_with: Some(ResolvedWith::Scraping),
+            resolved_with: ResolvedWith::Scraping,
         }
     }
 
@@ -966,15 +969,21 @@ impl ArtifactFetcher {
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
             for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
-                let Ok((bundle, _)) = bundle else { continue };
+                let Ok((bundle, bundle_resolved_with)) = bundle else {
+                    continue;
+                };
                 let bundle = bundle.get();
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
-                    self.found_via_bundle_debugid += 1;
+                    self.metrics.record_file_found_in_bundle(
+                        key.as_type(),
+                        ResolvedWith::DebugId,
+                        *bundle_resolved_with,
+                    );
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: Some(ResolvedWith::DebugId),
+                        resolved_with: ResolvedWith::DebugId,
                     });
                 }
             }
@@ -989,7 +998,11 @@ impl ArtifactFetcher {
                     };
                     let bundle = bundle.get();
                     if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
-                        self.found_via_bundle_url += 1;
+                        self.metrics.record_file_found_in_bundle(
+                            key.as_type(),
+                            ResolvedWith::Url,
+                            *resolved_with,
+                        );
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
                         return Some(CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
@@ -1018,7 +1031,7 @@ impl ArtifactFetcher {
 
         // NOTE: we have no separate `found_via_artifacts` metric, as we don't expect these to ever
         // error, so one can use the `sum` of this metric:
-        self.fetched_artifacts += 1;
+        self.metrics.fetched_artifacts += 1;
 
         let mut artifact_contents = self
             .sourcefiles_cache
@@ -1087,7 +1100,7 @@ impl ArtifactFetcher {
                 return false;
             }
         }
-        self.api_requests += 1;
+        self.metrics.api_requests += 1;
 
         let results = match self
             .download_svc
@@ -1117,7 +1130,7 @@ impl ArtifactFetcher {
                     headers,
                     resolved_with,
                 } => {
-                    self.queried_artifacts += 1;
+                    self.metrics.queried_artifacts += 1;
                     self.individual_artifacts
                         .entry(abs_path)
                         .or_insert_with(|| {
@@ -1140,7 +1153,7 @@ impl ArtifactFetcher {
                     remote_file,
                     resolved_with,
                 } => {
-                    self.queried_bundles += 1;
+                    self.metrics.queried_bundles += 1;
 
                     did_get_new_data |= self
                         .ensure_artifact_bundle(remote_file, resolved_with)
@@ -1155,7 +1168,7 @@ impl ArtifactFetcher {
     async fn ensure_artifact_bundle(
         &mut self,
         remote_file: RemoteFile,
-        resolved_with: Option<ResolvedWith>,
+        resolved_with: ResolvedWith,
     ) -> bool {
         let uri = remote_file.uri();
         // clippy, you are wrong, as this would result in borrowing errors,
@@ -1262,17 +1275,8 @@ impl ArtifactFetcher {
     }
 
     fn record_metrics(&self) {
-        metric!(time_raw("js.api_requests") = self.api_requests);
-        metric!(time_raw("js.queried_bundles") = self.queried_bundles);
-        metric!(time_raw("js.fetched_bundles") = self.artifact_bundles.len() as u64);
-        metric!(time_raw("js.queried_artifacts") = self.queried_artifacts);
-        metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
-        metric!(time_raw("js.scraped_files") = self.scraped_files);
-        metric!(counter("js.found_via_index_debugid") += self.found_via_index_debugid);
-        metric!(counter("js.found_via_index_url") += self.found_via_index_url);
-        metric!(counter("js.found_via_bundle_debugid") += self.found_via_bundle_debugid);
-        metric!(counter("js.found_via_bundle_url") += self.found_via_bundle_url);
-        metric!(counter("js.found_via_scraping") += self.found_via_scraping);
+        let artifact_bundles = self.artifact_bundles.len() as u64;
+        self.metrics.submit_metrics(artifact_bundles);
     }
 }
 
