@@ -42,13 +42,16 @@ impl JsMetrics {
         }
     }
 
-    pub fn record_not_found(&mut self, file_ty: SourceFileType, was_needed: bool) {
-        use SourceFileType::*;
-        match (file_ty, was_needed) {
-            (SourceMap, true) => self.sourcemap_not_found += 1,
-            (SourceMap, false) => self.sourcemap_not_needed += 1,
-            (_, _) => self.source_not_found += 1,
+    pub fn record_not_found(&mut self, file_ty: SourceFileType) {
+        if file_ty == SourceFileType::SourceMap {
+            self.sourcemap_not_found += 1
+        } else {
+            self.source_not_found += 1
         }
+    }
+
+    pub fn record_sourcemap_not_needed(&mut self) {
+        self.sourcemap_not_needed += 1
     }
 
     pub fn record_file_found_in_bundle(

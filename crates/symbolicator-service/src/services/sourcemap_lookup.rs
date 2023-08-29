@@ -651,7 +651,7 @@ impl ArtifactFetcher {
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
         if minified_source.entry.is_err() {
-            self.metrics.record_not_found(SourceFileType::Source, true);
+            self.metrics.record_not_found(SourceFileType::Source);
         }
 
         // Then fetch the corresponding sourcemap if we have a sourcemap reference
@@ -662,8 +662,7 @@ impl ArtifactFetcher {
 
         // If we don't have sourcemap reference, nor a `DebugId`, we skip creating `SourceMapCache`.
         if sourcemap_url.is_none() && debug_id.is_none() {
-            self.metrics
-                .record_not_found(SourceFileType::SourceMap, false);
+            self.metrics.record_sourcemap_not_needed();
             return (minified_source, None);
         }
 
@@ -697,11 +696,9 @@ impl ArtifactFetcher {
         };
 
         if matches!(sourcemap.uri, CachedFileUri::Embedded) {
-            self.metrics
-                .record_not_found(SourceFileType::SourceMap, false);
+            self.metrics.record_sourcemap_not_needed();
         } else if sourcemap.entry.is_err() {
-            self.metrics
-                .record_not_found(SourceFileType::SourceMap, true);
+            self.metrics.record_not_found(SourceFileType::SourceMap);
         }
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
@@ -778,6 +775,8 @@ impl ArtifactFetcher {
         // by now we have a bundle, and we *know* the file should be included in the
         // bundle and accessible via the `lookup_key`.
 
+        // FIXME: Both cases here should have `BundleIndex` as `resolved_with`, but we have tests in
+        // the Sentry repo that assert `index` here, so changing that is a pain.
         match &lookup_key {
             IndexLookupKey::DebugId(debug_id) => {
                 if let Ok(Some(descriptor)) = bundle.source_by_debug_id(*debug_id, key.as_type()) {
@@ -790,7 +789,7 @@ impl ArtifactFetcher {
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: ResolvedWith::BundleIndex, // TODO: should this be `DebugId` instead?
+                        resolved_with: ResolvedWith::Index,
                     });
                 }
             }
@@ -805,7 +804,7 @@ impl ArtifactFetcher {
                     return Some(CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: ResolvedWith::BundleIndex,
+                        resolved_with: ResolvedWith::Index,
                     });
                 }
             }

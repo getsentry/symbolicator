@@ -704,7 +704,7 @@ pub struct JsFrameData {
     pub symbolicated: bool,
 }
 
-/// A marker what a File was resolved with.
+/// A marker indicating what a File was resolved with.
 ///
 /// This enum serves a double purpose, both marking how an individual file was found inside of a
 /// bundle, as well as tracking through which method that bundle itself was found.
