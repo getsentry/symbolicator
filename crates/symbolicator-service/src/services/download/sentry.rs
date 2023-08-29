@@ -82,7 +82,8 @@ enum RawJsLookupResult {
     Bundle {
         id: SentryFileId,
         url: Url,
-        resolved_with: Option<ResolvedWith>,
+        #[serde(default)]
+        resolved_with: ResolvedWith,
     },
     File {
         id: SentryFileId,
@@ -90,7 +91,8 @@ enum RawJsLookupResult {
         abs_path: String,
         #[serde(default)]
         headers: ArtifactHeaders,
-        resolved_with: Option<ResolvedWith>,
+        #[serde(default)]
+        resolved_with: ResolvedWith,
     },
 }
 
@@ -103,7 +105,7 @@ pub enum JsLookupResult {
     ArtifactBundle {
         /// The [`RemoteFile`] to download this bundle from.
         remote_file: RemoteFile,
-        resolved_with: Option<ResolvedWith>,
+        resolved_with: ResolvedWith,
     },
     /// This is an individual artifact file.
     IndividualArtifact {
@@ -113,7 +115,7 @@ pub enum JsLookupResult {
         abs_path: String,
         /// Arbitrary headers of this file, such as a `Sourcemap` reference.
         headers: ArtifactHeaders,
-        resolved_with: Option<ResolvedWith>,
+        resolved_with: ResolvedWith,
     },
 }
 

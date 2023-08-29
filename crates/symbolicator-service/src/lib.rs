@@ -6,6 +6,7 @@ pub mod metrics;
 
 pub mod caching;
 pub mod config;
+mod js;
 pub mod services;
 pub mod types;
 pub mod utils;

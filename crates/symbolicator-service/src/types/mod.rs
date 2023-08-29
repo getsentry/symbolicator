@@ -704,14 +704,32 @@ pub struct JsFrameData {
     pub symbolicated: bool,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+/// A marker what a File was resolved with.
+///
+/// This enum serves a double purpose, both marking how an individual file was found inside of a
+/// bundle, as well as tracking through which method that bundle itself was found.
+///
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum ResolvedWith {
+    /// Both: Found in a Bundle via DebugId
+    /// And: Found the Bundle via API Lookup via DebugId / Database Index
     DebugId,
+    /// Found in a Bundle via Url matching
+    Url,
+    /// Found the Bundle via API Lookup via Database Index
     Index,
+    /// Found the File in a Flat File / Bundle Index
+    BundleIndex,
+    /// Found the Bundle via API Lookup as an ArtifactBundle
     Release,
+    /// Found the Bundle via API Lookup as a ReleaseFile
     ReleaseOld,
+    /// Scraped the File from the Web
     Scraping,
+    /// Unknown
+    #[default]
+    Unknown,
 }
 
 impl JsFrameData {
