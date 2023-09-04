@@ -5,6 +5,7 @@
 ### Various fixes & improvements
 
 - Do not process `.o` files in Symsorter. ([#1288](https://github.com/getsentry/symbolicator/pull/1288))
+- symsorter now uses the same filter as sentry-cli to ignore (very) large files and precompiled headers. ([#1273](https://github.com/getsentry/symbolicator/pull/1273))
 
 ## 23.8.0
 

@@ -1,3 +1,5 @@
+use crate::config::RunConfig;
+use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
@@ -5,11 +7,23 @@ use anyhow::{anyhow, bail, Result};
 use lazy_static::lazy_static;
 use regex::Regex;
 use symbolic::common::ByteView;
-use symbolic::debuginfo::sourcebundle::SourceBundleWriter;
-use symbolic::debuginfo::{Archive, FileFormat, Object, ObjectKind};
+use symbolic::debuginfo::sourcebundle::{SourceBundleWriter, SourceFileDescriptor};
+use symbolic::debuginfo::{Archive, FileEntry, FileFormat, Object, ObjectKind};
 
 lazy_static! {
     static ref BAD_CHARS_RE: Regex = Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap();
+}
+
+/// Console logging for the symsorter app.
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => {
+        {
+            if (!RunConfig::get().quiet) {
+                println!($($arg)*);
+            }
+        }
+    }
 }
 
 /// Makes a safe bundle ID from arbitrary input.
@@ -52,6 +66,41 @@ pub fn get_target_filename(obj: &Object) -> Result<PathBuf> {
     Ok(format!("{}/{}/{}", &id[..2], &id[2..], suffix).into())
 }
 
+// Filters very large files, embedded source files, and Precompiled headers from Source bundles.
+pub fn filter_bad_sources(
+    entry: &FileEntry,
+    embedded_source: &Option<SourceFileDescriptor>,
+) -> bool {
+    let max_size = 10 * 1024 * 1024; // Files over 10MB.
+    let path = &entry.abs_path_str();
+
+    // Ignore pch files.
+    if path.ends_with(".pch") {
+        log!("Skipping precompiled header: {}", path);
+        return false;
+    }
+
+    // Ignore files embedded in the object itself.
+    if embedded_source.is_some() {
+        log!("Skipping embedded source file: {}", path);
+        return false;
+    }
+
+    // Ignore files larger than limit, currently 10MB.
+    if let Ok(meta) = fs::metadata(path) {
+        let item_size = meta.len();
+        if meta.len() > max_size {
+            log!(
+                "Source exceeded maximum item size limit ({}). {}",
+                item_size,
+                path
+            );
+            return false;
+        }
+    }
+    true
+}
+
 /// Creates a source bundle from a path.
 pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<ByteView<'static>>> {
     let bv = ByteView::open(path)?;
@@ -63,22 +112,13 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
             let writer =
                 SourceBundleWriter::start(Cursor::new(&mut out)).map_err(|e| anyhow!(e))?;
             let name = path.file_name().unwrap().to_string_lossy();
-            if writer.write_object(&obj, &name).map_err(|e| anyhow!(e))? {
+            if writer
+                .write_object_with_filter(&obj, &name, filter_bad_sources)
+                .map_err(|e| anyhow!(e))?
+            {
                 return Ok(Some(ByteView::from_vec(out)));
             }
         }
     }
     Ok(None)
-}
-
-/// Console logging for the symsorter app.
-#[macro_export]
-macro_rules! log {
-    ($($arg:tt)*) => {
-        {
-            if (!RunConfig::get().quiet) {
-                println!($($arg)*);
-            }
-        }
-    }
 }
