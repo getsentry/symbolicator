@@ -1,7 +1,7 @@
+use crate::config::RunConfig;
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use crate::config::RunConfig;
 
 use anyhow::{anyhow, bail, Result};
 use lazy_static::lazy_static;
@@ -25,7 +25,6 @@ macro_rules! log {
         }
     }
 }
-
 
 /// Makes a safe bundle ID from arbitrary input.
 pub fn make_bundle_id(input: &str) -> String {
@@ -93,7 +92,8 @@ pub fn filter_bad_sources(
         if meta.len() > max_size {
             log!(
                 "Source exceeded maximum item size limit ({}). {}",
-                item_size, path
+                item_size,
+                path
             );
             return false;
         }
@@ -112,7 +112,10 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
             let writer =
                 SourceBundleWriter::start(Cursor::new(&mut out)).map_err(|e| anyhow!(e))?;
             let name = path.file_name().unwrap().to_string_lossy();
-            if writer.write_object_with_filter(&obj, &name, filter_bad_sources).map_err(|e| anyhow!(e))? {
+            if writer
+                .write_object_with_filter(&obj, &name, filter_bad_sources)
+                .map_err(|e| anyhow!(e))?
+            {
                 return Ok(Some(ByteView::from_vec(out)));
             }
         }
