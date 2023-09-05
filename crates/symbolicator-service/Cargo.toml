@@ -13,7 +13,7 @@ anyhow = "1.0.57"
 apple-crash-report-parser = "0.5.1"
 async-trait = "0.1.53"
 aws-config = "0.56.0"
-aws-sdk-s3 = "0.29.0"
+aws-sdk-s3 = "0.30.0"
 aws-types = "0.56.0"
 aws-credential-types = { version = "0.56.0", features = ["hardcoded-credentials"] }
 backtrace = "0.3.65"

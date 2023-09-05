@@ -2,7 +2,7 @@
 FROM getsentry/sentry-cli:2 AS sentry-cli
 
 # Image with cargo-chef as base image to our builder
-FROM rust:slim-bullseye AS symbolicator-chef
+FROM rust:slim-bookworm AS symbolicator-chef
 
 WORKDIR /work
 RUN cargo install cargo-chef --locked
@@ -48,7 +48,7 @@ RUN sentry-cli --version \
 # Copy the compiled binary to a clean image #
 #############################################
 
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu curl cabextract \
     && rm -rf /var/lib/apt/lists/*
