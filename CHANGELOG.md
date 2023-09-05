@@ -4,6 +4,7 @@
 
 ### Various fixes & improvements
 
+- Docker containers were updated to debian bookworm. ([#1293](https://github.com/getsentry/symbolicator/pull/1293))
 - Do not process `.o` files in Symsorter. ([#1288](https://github.com/getsentry/symbolicator/pull/1288))
 - symsorter now uses the same filter as sentry-cli to ignore (very) large files and precompiled headers. ([#1273](https://github.com/getsentry/symbolicator/pull/1273))
 
