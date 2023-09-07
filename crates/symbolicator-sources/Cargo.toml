@@ -12,7 +12,7 @@ aws-types = "0.56.0"
 glob = "0.3.0"
 lazy_static = "1.4.0"
 serde = { version = "1.0.137", features = ["derive", "rc"] }
-symbolic = "12.3.0"
+symbolic = "12.4.0"
 url = { version = "2.2.0", features = ["serde"] }
 
 [dev-dependencies]
