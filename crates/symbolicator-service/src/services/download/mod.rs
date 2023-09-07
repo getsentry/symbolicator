@@ -150,7 +150,7 @@ impl HostDenyList {
     ///
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
-    fn register_failure(&self, host: String) {
+    fn register_failure(&self, source_name: &str, host: String) {
         let current_ts = SystemTime::now();
 
         tracing::trace!(
@@ -197,6 +197,7 @@ impl HostDenyList {
                 "Blocking host due to too many download failures"
             );
             self.blocked_hosts.insert(host, ());
+            metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
         }
     }
 
@@ -342,7 +343,8 @@ impl DownloadService {
             }
 
             if source_is_external {
-                self.host_deny_list.register_failure(host);
+                self.host_deny_list
+                    .register_failure(&source_metric_key, host);
             }
         }
 
@@ -778,12 +780,12 @@ mod tests {
         let deny_list = HostDenyList::from_config(&config);
         let host = String::from("test");
 
-        deny_list.register_failure(host.clone());
+        deny_list.register_failure("test", host.clone());
 
         // shouldn't be blocked after one failure
         assert!(!deny_list.is_blocked(&host));
 
-        deny_list.register_failure(host.clone());
+        deny_list.register_failure("test", host.clone());
 
         // should be blocked after two failures
         assert!(deny_list.is_blocked(&host));
