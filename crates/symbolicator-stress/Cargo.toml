@@ -11,6 +11,7 @@ futures = "0.3.12"
 humantime = "2.0.1"
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-test = { path = "../symbolicator-test" }
+sentry = { version = "0.31.0", features = ["anyhow", "debug-images", "tracing"] }
 serde = { version = "1.0.137", features = ["derive"] }
 tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
 serde_yaml = "0.9.14"

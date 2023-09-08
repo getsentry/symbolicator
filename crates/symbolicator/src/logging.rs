@@ -20,13 +20,11 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
         LevelFilter::DEBUG => {
             "INFO,\
              trust_dns_proto=WARN,\
-             actix_web::pipeline=DEBUG,\
              symbolicator=DEBUG"
         }
         LevelFilter::TRACE => {
             "INFO,\
              trust_dns_proto=WARN,\
-             actix_web::pipeline=DEBUG,\
              symbolicator=TRACE"
         }
     }
