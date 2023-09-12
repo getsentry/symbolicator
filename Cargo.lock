@@ -4434,6 +4434,7 @@ name = "symbolicator-stress"
 version = "23.8.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "futures",
  "humantime",

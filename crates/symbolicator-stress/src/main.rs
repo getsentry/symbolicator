@@ -42,11 +42,12 @@ fn main() -> Result<()> {
     let config_path = cli.config;
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
-    let _guard = logging::init(logging::Config {
+    let mut logging_guard = logging::init(logging::Config {
         // TODO: actually make this configurable
         backtraces: true,
         tracing: true,
-        // TODO: init metrics and sentry
+        sentry: true,
+        // TODO: init metrics
         ..Default::default()
     });
 
@@ -55,6 +56,10 @@ fn main() -> Result<()> {
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;
+
+    if let Some(sentry_server) = logging_guard.sentry_server.take() {
+        runtime.spawn(sentry_server);
+    }
 
     runtime.block_on(perform_stresstest(service_config, workloads, cli.duration))?;
 

@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
+use std::future::Future;
 use std::io::Write;
+use std::net::{SocketAddr, TcpListener};
+use std::pin::Pin;
 
 use symbolicator_service::metrics;
 use tracing_subscriber::fmt::fmt;
@@ -18,6 +21,7 @@ pub struct Config {
 #[derive(Default)]
 pub struct Guard {
     sentry: Option<sentry::ClientInitGuard>,
+    pub sentry_server: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
     // TODO: return the ports / futures of the http / upd servers to use
 }
 
@@ -29,7 +33,22 @@ pub fn init(config: Config) -> Guard {
     let mut guard = Guard::default();
 
     if config.sentry {
-        let dsn = "TODO"; // create a *real* noop http server for sentry to send envelopes to
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let listener = TcpListener::bind(addr).unwrap();
+        let socket = listener.local_addr().unwrap();
+
+        guard.sentry_server = Some(Box::pin(async move {
+            async fn ok() -> &'static str {
+                "OK"
+            }
+            use axum::handler::HandlerWithoutStateExt;
+            let server = axum::Server::from_tcp(listener)
+                .unwrap()
+                .serve(ok.into_make_service());
+            server.await.unwrap()
+        }));
+
+        let dsn = format!("http://some_token@127.0.0.1:{}/1234", socket.port());
 
         guard.sentry = Some(sentry::init((
             dsn,
