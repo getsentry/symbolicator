@@ -4434,9 +4434,11 @@ name = "symbolicator-stress"
 version = "23.8.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "futures",
  "humantime",
+ "sentry",
  "serde",
  "serde_json",
  "serde_yaml",
