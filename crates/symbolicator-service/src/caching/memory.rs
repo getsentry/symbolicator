@@ -251,10 +251,13 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             persist_tempfile(temp_file, &cache_path)?;
 
-            // NOTE: we only create the metadata file once, but do not regularly touch it for now
-            cache_path.set_extension("txt");
-            if let Err(err) = std::fs::write(cache_path, key.metadata()) {
-                tracing::error!(error = &err as &dyn std::error::Error);
+            #[cfg(debug_assertions)]
+            {
+                // NOTE: we only create the metadata file once, but do not regularly touch it for now
+                cache_path.set_extension("txt");
+                if let Err(err) = std::fs::write(cache_path, key.metadata()) {
+                    tracing::error!(error = &err as &dyn std::error::Error);
+                }
             }
         };
 
