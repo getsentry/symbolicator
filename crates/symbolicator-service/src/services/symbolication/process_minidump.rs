@@ -339,8 +339,10 @@ async fn stackwalk(
         .filter_map(|module| {
             let key = LookupKey::new(module);
 
-            // Discard modules that weren't used and don't have a debug id.
-            if !provider.cficaches.contains_key(&key) && module.debug_identifier().is_none() {
+            // Discard modules that weren't used and don't have any valid id to go by.
+            let debug_id = module.debug_identifier();
+            let code_id = module.code_identifier();
+            if !provider.cficaches.contains_key(&key) && debug_id.is_none() && code_id.is_none() {
                 return None;
             }
 
