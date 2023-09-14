@@ -20,6 +20,21 @@
       "program": "${workspaceFolder}/target/debug/symbolicator",
       "stopOnEntry": true,
       "pid": "${command:pickMyProcess}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "sourceLanguages": ["rust"],
+      "name": "symbolicli",
+      "program": "${workspaceFolder}/target/debug/symbolicli",
+      "args": ["--offline", "..."],
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      "cwd": "${workspaceFolder}",
+      "cargo": {
+        "args": ["build", "--package", "symbolicli"]
+      }
     }
   ]
 }
