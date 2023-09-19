@@ -306,13 +306,14 @@ impl DownloadService {
         // Check whether `source` is an internal Sentry source. We don't ever
         // want to put such sources on the block list.
         let source_metric_key = source.source_metric_key().to_string();
-        // NOTE: This allow-lists *all* the builtin symbol servers, even external ones that might
-        // misbehave. If we want to tighten that up to only allow-list the sentry internal source,
+        // NOTE: This allow-lists every external non-http symbol server.
+        // This includes S3, GCS, and builtin http symbol servers that might misbehave.
+        // If we want to tighten that up to only allow-list the sentry internal source,
         // this should be `"sentry:project"` instead, as defined here:
         // <https://github.com/getsentry/sentry/blob/b27ef04df6ecbaa0a34a472f787a163ca8400cc0/src/sentry/lang/native/sources.py#L17>
-        let source_is_external = !source_metric_key.starts_with("sentry:");
+        let source_can_be_blocked = source_metric_key == "http";
 
-        if source_is_external && self.host_deny_list.is_blocked(&host) {
+        if source_can_be_blocked && self.host_deny_list.is_blocked(&host) {
             metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
@@ -342,7 +343,7 @@ impl DownloadService {
                 ::sentry::capture_error(e);
             }
 
-            if source_is_external {
+            if source_can_be_blocked {
                 self.host_deny_list
                     .register_failure(&source_metric_key, host);
             }
