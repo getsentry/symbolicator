@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 23.9.0
 
 ### Various fixes & improvements
 
