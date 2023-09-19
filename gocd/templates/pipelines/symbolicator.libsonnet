@@ -8,7 +8,7 @@ local deploy_canary_stage(region) =
   else
     [
       {
-        deploy_canary: {
+        'deploy-canary': {
           fetch_materials: true,
           jobs: {
             create_sentry_release: {
@@ -75,7 +75,7 @@ function(region) {
     },
   ] + deploy_canary_stage(region) + [
     {
-      deploy_primary: {
+      'deploy-primary': {
         [if getsentry.is_st(region) then null else 'approval']: {
           type: 'manual',
         },

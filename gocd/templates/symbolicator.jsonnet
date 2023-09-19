@@ -18,7 +18,7 @@ local pipedream_config = {
   // Add rollback
   rollback: {
     material_name: 'symbolicator_repo',
-    stage: 'deploy_primary',
+    stage: 'deploy-primary',
     elastic_profile_id: 'symbolicator',
   },
 
