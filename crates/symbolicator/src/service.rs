@@ -293,12 +293,13 @@ impl RequestService {
         scope: Scope,
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("parse_apple_crash_report", options, async move {
             slf.symbolication
-                .process_apple_crash_report(scope, apple_crash_report, sources)
+                .process_apple_crash_report(scope, apple_crash_report, sources, scraping)
                 .await
                 .map(Into::into)
         })

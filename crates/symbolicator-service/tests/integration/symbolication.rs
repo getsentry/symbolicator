@@ -53,7 +53,12 @@ async fn test_apple_crash_report() {
     let report_file = std::fs::File::open(fixture("apple_crash_report.txt")).unwrap();
 
     let response = symbolication
-        .process_apple_crash_report(Scope::Global, report_file, Arc::new([source]))
+        .process_apple_crash_report(
+            Scope::Global,
+            report_file,
+            Arc::new([source]),
+            Default::default(),
+        )
         .await;
 
     assert_snapshot!(response.unwrap());

@@ -21,6 +21,7 @@ pub async fn handle_apple_crash_report_request(
 
     let mut report = None;
     let mut sources = service.config().default_sources();
+    let mut scraping = Default::default();
     let mut options = RequestOptions::default();
 
     while let Some(field) = multipart.next_field().await? {
@@ -34,6 +35,10 @@ pub async fn handle_apple_crash_report_request(
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 sources = serde_json::from_slice(&data)?;
             }
+            Some("scraping") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                scraping = serde_json::from_slice(&data)?;
+            }
             Some("options") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 options = serde_json::from_slice(&data)?
@@ -44,7 +49,8 @@ pub async fn handle_apple_crash_report_request(
 
     let report = report.ok_or((StatusCode::BAD_REQUEST, "missing apple crash report"))?;
 
-    let request_id = service.process_apple_crash_report(params.scope, report, sources, options)?;
+    let request_id =
+        service.process_apple_crash_report(params.scope, report, sources, scraping, options)?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
