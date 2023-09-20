@@ -177,7 +177,7 @@ async fn main() -> Result<()> {
                 Payload::Minidump(minidump_path) => {
                     tracing::info!("symbolicating minidump");
                     symbolication
-                        .process_minidump(scope, minidump_path, dsym_sources)
+                        .process_minidump(scope, minidump_path, dsym_sources, Default::default())
                         .await
                         .map(CompletedResponse::from)?
                 }

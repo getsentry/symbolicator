@@ -23,6 +23,7 @@ pub async fn handle_minidump_request(
 
     let mut minidump = None;
     let mut sources = service.config().default_sources();
+    let mut scraping = Default::default();
     let mut options = RequestOptions::default();
 
     while let Some(field) = multipart.next_field().await? {
@@ -43,6 +44,10 @@ pub async fn handle_minidump_request(
             Some("sources") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 sources = serde_json::from_slice(&data)?;
+            }
+            Some("scraping") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                scraping = serde_json::from_slice(&data)?;
             }
             Some("options") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
@@ -65,7 +70,8 @@ pub async fn handle_minidump_request(
         )
             .into());
     }
-    let request_id = service.process_minidump(params.scope, minidump_file, sources, options)?;
+    let request_id =
+        service.process_minidump(params.scope, minidump_file, sources, scraping, options)?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

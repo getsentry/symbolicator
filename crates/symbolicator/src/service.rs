@@ -24,6 +24,7 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
+use symbolicator_service::services::ScrapingConfig;
 use tempfile::TempPath;
 use uuid::Uuid;
 
@@ -271,12 +272,13 @@ impl RequestService {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("minidump_stackwalk", options, async move {
             slf.symbolication
-                .process_minidump(scope, minidump_file, sources)
+                .process_minidump(scope, minidump_file, sources, scraping)
                 .await
                 .map(Into::into)
         })
