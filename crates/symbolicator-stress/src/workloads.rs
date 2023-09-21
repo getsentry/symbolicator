@@ -159,7 +159,12 @@ pub async fn process_payload(symbolication: &SymbolicationActor, workload: &Pars
                 .unwrap();
 
             symbolication
-                .process_minidump(scope.clone(), temp_path, Arc::clone(sources))
+                .process_minidump(
+                    scope.clone(),
+                    temp_path,
+                    Arc::clone(sources),
+                    Default::default(),
+                )
                 .await
                 .unwrap();
         }

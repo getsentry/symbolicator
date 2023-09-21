@@ -15,7 +15,7 @@ use crate::types::{
 };
 use crate::utils::hex::HexValue;
 
-use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
+use super::{ScrapingConfig, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
 
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
@@ -24,6 +24,7 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
         let report =
             AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
@@ -79,7 +80,7 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
-            scraping: Default::default(),
+            scraping,
         };
 
         let mut system_info = SystemInfo {
@@ -124,8 +125,9 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
-        let (request, state) = self.parse_apple_crash_report(scope, report, sources)?;
+        let (request, state) = self.parse_apple_crash_report(scope, report, sources, scraping)?;
         let mut response = self.symbolicate(request).await?;
 
         state.merge_into(&mut response);

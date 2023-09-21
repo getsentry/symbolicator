@@ -21,6 +21,7 @@ macro_rules! stackwalk_minidump {
                     Scope::Global,
                     minidump_file.into_temp_path(),
                     Arc::new([source]),
+                    Default::default(),
                 )
                 .await;
 

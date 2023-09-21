@@ -29,7 +29,7 @@ use crate::types::{
 };
 use crate::utils::hex::HexValue;
 
-use super::{StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
+use super::{ScrapingConfig, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
 
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 
@@ -404,9 +404,10 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
         let (request, state) = self
-            .stackwalk_minidump(scope, minidump_file, sources)
+            .stackwalk_minidump(scope, minidump_file, sources, scraping)
             .await?;
 
         let mut response = self.symbolicate(request).await?;
@@ -421,6 +422,7 @@ impl SymbolicationActor {
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
+        scraping: ScrapingConfig,
     ) -> Result<(SymbolicateStacktraces, MinidumpState)> {
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
@@ -476,7 +478,7 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
-            scraping: Default::default(),
+            scraping,
         };
 
         Ok((request, minidump_state))
