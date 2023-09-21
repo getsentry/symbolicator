@@ -33,11 +33,13 @@ jobs:
           # Strip debug info for tools
           objcopy --strip-debug --strip-unneeded target/release/wasm-split
           objcopy --strip-debug --strip-unneeded target/release/symsorter
+          objcopy --strip-debug --strip-unneeded target/release/symbolicli
 
           # Move all binaries
           mv target/release/symbolicator build/symbolicator-Linux-x86_64
           mv target/release/wasm-split build/wasm-split-Linux-x86_64
           mv target/release/symsorter build/symsorter-Linux-x86_64
+          mv target/release/symbolicli build/symbolicli-Linux-x86_64
 
       - uses: actions/upload-artifact@v3.1.1
         with:
@@ -85,6 +87,10 @@ jobs:
               target/x86_64-apple-darwin/release/symsorter      \
               target/aarch64-apple-darwin/release/symsorter
 
+          lipo -create -output build/symbolicli-Darwin-universal \
+              target/x86_64-apple-darwin/release/symbolicli      \
+              target/aarch64-apple-darwin/release/symbolicli
+
           cd target/x86_64-apple-darwin/release
           # Recursive zip the debug symbol folder and place the output in the output directory
           zip -r ../../../build/symbolicator-x86_64-apple-darwin-debug.zip symbolicator.dSYM
@@ -118,6 +124,7 @@ jobs:
           cd target/release
           mv symbolicator.exe symbolicator-Windows-x86_64.exe
           mv symsorter.exe symsorter-Windows-x86_64.exe
+          mv symbolicli.exe symbolicli-Windows-x86_64.exe
           mv wasm-split.exe wasm-split-Windows-x86_64.exe
 
       - uses: actions/upload-artifact@v3.1.1

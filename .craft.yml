@@ -32,6 +32,9 @@ requireNames:
   - /^symbolicator-Linux-x86_64-debug.zip$/
   - /^symbolicator-aarch64-apple-darwin-debug.zip$/
   - /^symbolicator-x86_64-apple-darwin-debug.zip$/
+  - /^symbolicli-Darwin-universal$/
+  - /^symbolicli-Linux-x86_64$/
+  - /^symbolicli-Windows-x86_64\.exe$/
   - /^symsorter-Darwin-universal$/
   - /^symsorter-Linux-x86_64$/
   - /^symsorter-Windows-x86_64\.exe$/
