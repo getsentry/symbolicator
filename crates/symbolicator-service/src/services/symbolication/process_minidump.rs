@@ -341,49 +341,46 @@ async fn stackwalk(
     // Start building the module list for the symbolication response.
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
-    let modules: Vec<CompleteObjectInfo> = process_state
-        .modules
-        .by_addr()
-        .filter_map(|module| {
-            let key = LookupKey::new(module);
+    let mut modules = vec![];
+    for module in process_state.modules.by_addr() {
+        let key = LookupKey::new(module);
 
-            // Discard modules that weren't used and don't have any valid id to go by.
-            let debug_id = module.debug_identifier();
-            let code_id = module.code_identifier();
-            if !provider.cficaches.contains_key(&key) && debug_id.is_none() && code_id.is_none() {
-                return None;
-            }
+        // Discard modules that weren't used and don't have any valid id to go by.
+        let debug_id = module.debug_identifier();
+        let code_id = module.code_identifier();
+        if !provider.cficaches.contains_key(&key) && debug_id.is_none() && code_id.is_none() {
+            continue;
+        }
 
-            let mut obj_info = object_info_from_minidump_module(ty, module);
+        let mut obj_info = object_info_from_minidump_module(ty, module);
 
-            obj_info.unwind_status = Some(match provider.cficaches.get(&key) {
-                None => ObjectFileStatus::Unused,
-                Some(cfi_module) => {
-                    obj_info.features.merge(cfi_module.features);
-                    // NOTE: minidump stackwalking is the first thing that happens to a request,
-                    // hence the current candidate list is empty.
-                    obj_info.candidates = cfi_module.candidates;
+        obj_info.unwind_status = Some(match provider.cficaches.get(&key).await {
+            None => ObjectFileStatus::Unused,
+            Some(cfi_module) => {
+                obj_info.features.merge(cfi_module.features);
+                // NOTE: minidump stackwalking is the first thing that happens to a request,
+                // hence the current candidate list is empty.
+                obj_info.candidates = cfi_module.candidates;
 
-                    // if the debug_id/file is empty, it might be possible to
-                    // backfill that using the reference in the executable file.
-                    if let Ok(Some(cfi_item)) = &cfi_module.cache {
-                        if let Some(cfi_module_info) = &cfi_item.1 {
-                            maybe_backfill_debugid(&mut obj_info.raw, cfi_module_info);
-                        }
+                // if the debug_id/file is empty, it might be possible to
+                // backfill that using the reference in the executable file.
+                if let Ok(Some(cfi_item)) = &cfi_module.cache {
+                    if let Some(cfi_module_info) = &cfi_item.1 {
+                        maybe_backfill_debugid(&mut obj_info.raw, cfi_module_info);
                     }
-
-                    object_file_status_from_cache_entry(&cfi_module.cache)
                 }
-            });
 
-            metric!(
-                counter("symbolication.unwind_status") += 1,
-                "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
-            );
+                object_file_status_from_cache_entry(&cfi_module.cache)
+            }
+        });
 
-            Some(obj_info)
-        })
-        .collect();
+        metric!(
+            counter("symbolication.unwind_status") += 1,
+            "status" => obj_info.unwind_status.unwrap_or(ObjectFileStatus::Unused).name(),
+        );
+
+        modules.push(obj_info);
+    }
 
     Ok(StackWalkMinidumpResult {
         modules,
