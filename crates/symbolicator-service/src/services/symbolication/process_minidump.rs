@@ -212,7 +212,7 @@ impl SymbolicatorSymbolProvider {
 impl SymbolProvider for SymbolicatorSymbolProvider {
     async fn fill_symbol(
         &self,
-        _module: &(dyn Module + Sync),
+        module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
         // Always return an error here to signal that we have no useful symbol information to
@@ -221,6 +221,14 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         // See https://github.com/rust-minidump/rust-minidump/blob/7eed71e4075e0a81696ccc307d6ac68920de5db5/minidump-processor/src/stackwalker/mod.rs#L295.
         //
         // TODO: implement this properly, i.e., use symbolic to actually fill in information.
+
+        // This function is being called for every context frame,
+        // regardless if any stack walking happens.
+        // In contrast, `walk_frame` below will be skipped in case the minidump
+        // does not contain any actionable stack memory that would allow stack walking.
+        // Loading this module here means we will be able to backfill a possibly missing
+        // debug_id/file.
+        self.load_cfi_module(module).await;
         Err(FillSymbolError {})
     }
 
