@@ -810,14 +810,20 @@ impl ArtifactFetcher {
             }
         }
 
-        // If we get to this point, it means that the `BundleIndex` lied to us
-        tracing::error!(
-            ?key,
-            ?lookup_key,
-            ?index_id,
-            ?bundle_id,
-            "Indexed file not found in `ArtifactBundle`"
-        );
+        // If we get to this point, it means that the `BundleIndex` lied to us.
+        // However, we do not expect to always have a SourceMap corresponding to a non-minified
+        // file with a DebugId.
+        let hit_is_optional = matches!(lookup_key, IndexLookupKey::DebugId(..))
+            && key.as_type() == SourceFileType::SourceMap;
+        if !hit_is_optional {
+            tracing::error!(
+                ?key,
+                ?lookup_key,
+                ?index_id,
+                ?bundle_id,
+                "Indexed file not found in `ArtifactBundle`"
+            );
+        }
 
         None
     }
