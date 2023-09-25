@@ -20,7 +20,7 @@ use tempfile::TempPath;
 use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 
-use crate::services::cficaches::{CfiCacheActor, FetchCfiCache, FetchedCfiCache};
+use crate::services::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
 use crate::services::minidump::parse_stacktraces_from_minidump;
 use crate::services::module_lookup::object_file_status_from_cache_entry;
 use crate::types::{
@@ -212,7 +212,7 @@ impl SymbolicatorSymbolProvider {
 impl SymbolProvider for SymbolicatorSymbolProvider {
     async fn fill_symbol(
         &self,
-        _module: &(dyn Module + Sync),
+        module: &(dyn Module + Sync),
         _frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
         // Always return an error here to signal that we have no useful symbol information to
@@ -221,6 +221,14 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         // See https://github.com/rust-minidump/rust-minidump/blob/7eed71e4075e0a81696ccc307d6ac68920de5db5/minidump-processor/src/stackwalker/mod.rs#L295.
         //
         // TODO: implement this properly, i.e., use symbolic to actually fill in information.
+
+        // This function is being called for every context frame,
+        // regardless if any stack walking happens.
+        // In contrast, `walk_frame` below will be skipped in case the minidump
+        // does not contain any actionable stack memory that would allow stack walking.
+        // Loading this module here means we will be able to backfill a possibly missing
+        // debug_id/file.
+        self.load_cfi_module(module).await;
         Err(FillSymbolError {})
     }
 
@@ -230,7 +238,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         let cfi_module = self.load_cfi_module(module).await;
-        cfi_module.cache.ok()??.walk_frame(module, walker)
+        cfi_module.cache.ok()??.0.walk_frame(module, walker)
     }
 
     async fn get_file_path(
@@ -355,6 +363,15 @@ async fn stackwalk(
                     // NOTE: minidump stackwalking is the first thing that happens to a request,
                     // hence the current candidate list is empty.
                     obj_info.candidates = cfi_module.candidates;
+
+                    // if the debug_id/file is empty, it might be possible to
+                    // backfill that using the reference in the executable file.
+                    if let Ok(Some(cfi_item)) = &cfi_module.cache {
+                        if let Some(cfi_module_info) = &cfi_item.1 {
+                            maybe_backfill_debugid(&mut obj_info.raw, cfi_module_info);
+                        }
+                    }
+
                     object_file_status_from_cache_entry(&cfi_module.cache)
                 }
             });
@@ -374,6 +391,15 @@ async fn stackwalk(
         minidump_state,
         duration,
     })
+}
+
+fn maybe_backfill_debugid(info: &mut RawObjectInfo, cfi_module: &CfiModuleInfo) {
+    if info.debug_id.is_none() {
+        info.debug_id = Some(cfi_module.debug_id.to_string());
+    }
+    if info.debug_file.is_none() {
+        info.debug_file = Some(cfi_module.debug_file.clone());
+    }
 }
 
 impl SymbolicationActor {

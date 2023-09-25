@@ -4,10 +4,12 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use minidump_unwind::SymbolFile;
+use sentry::types::DebugId;
 use tempfile::NamedTempFile;
 
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
+use symbolic::debuginfo::breakpad::BreakpadModuleRecord;
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use crate::caching::{
@@ -22,10 +24,15 @@ use crate::utils::sentry::ConfigureScope;
 use super::caches::versions::CFICACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 
-type CfiItem = (u32, Option<Arc<SymbolFile>>);
+type CfiItem = Option<Arc<(SymbolFile, Option<CfiModuleInfo>)>>;
+
+pub struct CfiModuleInfo {
+    pub debug_id: DebugId,
+    pub debug_file: String,
+}
 
 #[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<CfiItem> {
+fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<(u32, CfiItem)> {
     let weight = bytes.len().try_into().unwrap_or(u32::MAX);
     // NOTE: we estimate the in-memory structures to be ~8x as heavy in memory as on disk
     let weight = weight.saturating_mul(8);
@@ -39,7 +46,23 @@ fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<CfiItem> {
     let symbol_file =
         SymbolFile::from_bytes(cfi_cache.as_slice()).map_err(CacheError::from_std_error)?;
 
-    Ok((weight, Some(Arc::new(symbol_file))))
+    let first_line = cfi_cache
+        .as_slice()
+        .split(|b| *b == b'\n')
+        .next()
+        .unwrap_or_default();
+    let cfi_module = BreakpadModuleRecord::parse(first_line)
+        .ok()
+        .and_then(|module| {
+            let debug_id = module.id.parse().ok()?;
+            let debug_file = module.name.into();
+            Some(CfiModuleInfo {
+                debug_id,
+                debug_file,
+            })
+        });
+
+    Ok((weight, Some(Arc::new((symbol_file, cfi_module)))))
 }
 
 #[derive(Clone, Debug)]
@@ -79,7 +102,7 @@ async fn compute_cficache(
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
-    type Item = CfiItem;
+    type Item = (u32, CfiItem);
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
@@ -109,7 +132,7 @@ pub struct FetchCfiCache {
     pub scope: Scope,
 }
 
-pub type FetchedCfiCache = DerivedCache<Option<Arc<SymbolFile>>>;
+pub type FetchedCfiCache = DerivedCache<CfiItem>;
 
 impl CfiCacheActor {
     /// Fetches the CFI cache file for a given code module.
