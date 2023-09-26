@@ -4357,6 +4357,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-raw"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "symbolicator-service",
+ "symbolicator-sources",
+]
+
+[[package]]
 name = "symbolicator-service"
 version = "23.9.1"
 dependencies = [
