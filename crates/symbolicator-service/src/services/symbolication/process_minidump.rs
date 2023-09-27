@@ -354,7 +354,7 @@ async fn stackwalk(
 
         let mut obj_info = object_info_from_minidump_module(ty, module);
 
-        obj_info.unwind_status = Some(match provider.cficaches.get(&key).await {
+        obj_info.unwind_status = Some(match provider.cficaches.get(&key) {
             None => ObjectFileStatus::Unused,
             Some(cfi_module) => {
                 obj_info.features.merge(cfi_module.features);
