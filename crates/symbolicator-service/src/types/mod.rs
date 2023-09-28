@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_sources::{ObjectType, SentryFileId};
 
+use crate::caching::CacheError;
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 
@@ -636,6 +637,79 @@ pub struct CompletedJsSymbolicationResponse {
     pub errors: Vec<JsModuleError>,
     #[serde(skip_serializing_if = "HashSet::is_empty")]
     pub used_artifact_bundles: HashSet<SentryFileId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scraping_attempts: Vec<JsScrapingAttempt>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct JsScrapingAttempt {
+    pub url: String,
+    pub result: JsScrapingResult,
+}
+
+impl JsScrapingAttempt {
+    pub fn success(url: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::Success,
+        }
+    }
+    pub fn not_attempted(url: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::NotAttempted,
+        }
+    }
+
+    pub fn failure(url: String, reason: JsScrapingFailureReason, details: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::Failure { reason, details },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum JsScrapingResult {
+    NotAttempted,
+    Success,
+    Failure {
+        reason: JsScrapingFailureReason,
+        #[serde(skip_serializing_if = "String::is_empty")]
+        details: String,
+    },
+}
+
+impl From<CacheError> for JsScrapingResult {
+    fn from(value: CacheError) -> Self {
+        let (reason, details) = match value {
+            CacheError::NotFound => (JsScrapingFailureReason::NotFound, String::new()),
+            CacheError::PermissionDenied(details) => {
+                (JsScrapingFailureReason::PermissionDenied, details)
+            }
+            CacheError::Timeout(duration) => (
+                JsScrapingFailureReason::Timeout,
+                format!("Timeout after {}", humantime::format_duration(duration)),
+            ),
+            CacheError::DownloadError(details) => (JsScrapingFailureReason::DownloadError, details),
+            CacheError::Malformed(details) => (JsScrapingFailureReason::Other, details),
+            CacheError::InternalError => (JsScrapingFailureReason::Other, String::new()),
+        };
+
+        Self::Failure { reason, details }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+pub enum JsScrapingFailureReason {
+    NotFound,
+    Disabled,
+    InvalidHost,
+    PermissionDenied,
+    Timeout,
+    DownloadError,
+    Malformed,
+    Other,
 }
 
 /// Information about the operating system.

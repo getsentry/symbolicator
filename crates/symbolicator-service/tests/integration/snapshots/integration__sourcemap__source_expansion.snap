@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 222
+assertion_line: 240
 expression: response.unwrap()
 ---
 stacktraces:
@@ -59,4 +59,7 @@ raw_stacktraces:
           - w
           - o
           - r
+scraping_attempts:
+  - url: "http://example.com/foo.js"
+    result: NotAttempted
 

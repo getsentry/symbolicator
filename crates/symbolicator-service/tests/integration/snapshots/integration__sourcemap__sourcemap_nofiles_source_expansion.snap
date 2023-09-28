@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 295
+assertion_line: 298
 expression: response.unwrap()
 ---
 stacktraces:
@@ -31,4 +31,9 @@ raw_stacktraces:
           - "}"
           - "function multiply(a, b) {"
           - "  'use strict';"
+scraping_attempts:
+  - url: "app:///nofiles.js"
+    result: NotAttempted
+  - url: "app:///nofiles.js.map"
+    result: NotAttempted
 

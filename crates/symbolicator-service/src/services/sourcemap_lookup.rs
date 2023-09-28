@@ -52,7 +52,7 @@ use crate::caching::{
 use crate::services::download::DownloadService;
 use crate::services::objects::ObjectMetaHandle;
 use crate::services::symbolication::ScrapingConfig;
-use crate::types::{JsStacktrace, ResolvedWith, Scope};
+use crate::types::{JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith, Scope};
 use crate::utils::http::is_valid_origin;
 
 use crate::js::JsMetrics;
@@ -227,6 +227,8 @@ impl SourceMapLookup {
             used_artifact_bundles: Default::default(),
 
             metrics: Default::default(),
+
+            scraping_attempts: Default::default(),
         };
 
         Self {
@@ -307,8 +309,11 @@ impl SourceMapLookup {
         self.fetcher.record_metrics();
     }
 
-    pub fn into_used_artifact_bundles(self) -> HashSet<SentryFileId> {
-        self.fetcher.used_artifact_bundles
+    pub fn into_records(self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+        (
+            self.fetcher.used_artifact_bundles,
+            self.fetcher.scraping_attempts,
+        )
     }
 }
 
@@ -631,6 +636,8 @@ struct ArtifactFetcher {
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
     used_artifact_bundles: HashSet<SentryFileId>,
+
+    scraping_attempts: Vec<JsScrapingAttempt>,
 }
 
 impl ArtifactFetcher {
@@ -714,34 +721,43 @@ impl ArtifactFetcher {
     /// (because multiple files can share one [`DebugId`]).
     #[tracing::instrument(skip(self))]
     pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
-        if let Some(file) = self.try_get_file_using_index(key).await {
-            return file;
+        let mut file = self.try_get_file_using_index(key).await;
+
+        if file.is_none() {
+            // Try looking up the file in one of the artifact bundles that we know about.
+            file = self.try_get_file_from_bundles(key);
         }
 
-        // Try looking up the file in one of the artifact bundles that we know about.
-        if let Some(file) = self.try_get_file_from_bundles(key) {
-            return file;
+        if file.is_none() {
+            // Otherwise, try to get the file from an individual artifact.
+            file = self.try_fetch_file_from_artifacts(key).await;
         }
 
-        // Otherwise, try to get the file from an individual artifact.
-        if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
-            return file;
-        }
-
-        // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
-        if self.query_sentry_for_file(key).await {
-            // At this point, *one* of our known artifacts includes the file we are looking for.
-            // So we do the whole dance yet again.
-            if let Some(file) = self.try_get_file_from_bundles(key) {
-                return file;
-            }
-            if let Some(file) = self.try_fetch_file_from_artifacts(key).await {
-                return file;
+        if file.is_none() {
+            // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
+            if self.query_sentry_for_file(key).await {
+                // At this point, *one* of our known artifacts includes the file we are looking for.
+                // So we do the whole dance yet again.
+                file = self.try_get_file_from_bundles(key);
+                if file.is_none() {
+                    file = self.try_fetch_file_from_artifacts(key).await;
+                }
             }
         }
 
-        // Otherwise, fall back to scraping from the Web.
-        self.scrape(key).await
+        match file {
+            Some(file) => {
+                if let Some(url) = key.abs_path() {
+                    self.scraping_attempts
+                        .push(JsScrapingAttempt::not_attempted(url.to_owned()));
+                }
+                file
+            }
+            None => {
+                // Otherwise, fall back to scraping from the Web.
+                self.scrape(key).await
+            }
+        }
     }
 
     async fn try_get_file_using_index(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
@@ -879,21 +895,41 @@ impl ArtifactFetcher {
         };
 
         if !self.scraping.enabled {
+            self.scraping_attempts.push(JsScrapingAttempt::failure(
+                abs_path.to_owned(),
+                JsScrapingFailureReason::Disabled,
+                String::new(),
+            ));
             return make_error("Scraping disabled".to_string());
         }
 
         // Only scrape from http sources
         let scheme = url.scheme();
         if !["http", "https"].contains(&scheme) {
+            self.scraping_attempts.push(JsScrapingAttempt::failure(
+                abs_path.to_owned(),
+                JsScrapingFailureReason::InvalidHost,
+                format!("`{scheme}` is not an allowed download scheme"),
+            ));
             return make_error(format!("`{scheme}` is not an allowed download scheme"));
         }
 
         if !is_valid_origin(&url, &self.scraping.allowed_origins) {
+            self.scraping_attempts.push(JsScrapingAttempt::failure(
+                abs_path.to_owned(),
+                JsScrapingFailureReason::InvalidHost,
+                format!("{abs_path} is not an allowed download origin"),
+            ));
             return make_error(format!("{abs_path} is not an allowed download origin"));
         }
 
         let host_string = match url.host_str() {
             None => {
+                self.scraping_attempts.push(JsScrapingAttempt::failure(
+                    abs_path.to_owned(),
+                    JsScrapingFailureReason::InvalidHost,
+                    String::new(),
+                ));
                 return make_error("Invalid host".to_string());
             }
             Some(host @ ("localhost" | "127.0.0.1")) => {
@@ -901,6 +937,11 @@ impl ArtifactFetcher {
                 if self.download_svc.can_connect_to_reserved_ips() {
                     host
                 } else {
+                    self.scraping_attempts.push(JsScrapingAttempt::failure(
+                        abs_path.to_owned(),
+                        JsScrapingFailureReason::InvalidHost,
+                        format!("Can't connect to restricted host {host}"),
+                    ));
                     return make_error("Invalid host".to_string());
                 }
             }
@@ -947,9 +988,8 @@ impl ArtifactFetcher {
             .await;
 
         transaction.finish();
-        CachedFileEntry {
-            uri,
-            entry: scraped_file.map(|contents| {
+        let entry = match scraped_file {
+            Ok(contents) => {
                 self.metrics.record_file_scraped(key.as_type());
                 tracing::trace!(?key, "Found file by scraping the web");
 
@@ -957,11 +997,26 @@ impl ArtifactFetcher {
                     .and_then(|sm_ref| SourceMapUrl::parse_with_prefix(abs_path, sm_ref).ok())
                     .map(Arc::new);
 
-                CachedFile {
+                self.scraping_attempts
+                    .push(JsScrapingAttempt::success(abs_path.to_owned()));
+
+                Ok(CachedFile {
                     contents,
                     sourcemap_url,
-                }
-            }),
+                })
+            }
+            Err(e) => {
+                self.scraping_attempts.push(JsScrapingAttempt {
+                    url: abs_path.to_owned(),
+                    result: e.clone().into(),
+                });
+
+                Err(e)
+            }
+        };
+        CachedFileEntry {
+            uri,
+            entry,
             resolved_with: ResolvedWith::Scraping,
         }
     }

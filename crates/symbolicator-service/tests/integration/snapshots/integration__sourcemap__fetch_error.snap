@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 376
+assertion_line: 396
 expression: response.unwrap()
 ---
 stacktraces:
@@ -28,4 +28,13 @@ errors:
     type: missing_source
   - abs_path: "http://localhost:<port>/assets/missing_foo.js"
     type: missing_source
+scraping_attempts:
+  - url: "http://localhost:56779/assets/missing_foo.js"
+    result:
+      Failure:
+        reason: NotFound
+  - url: "http://localhost:56779/assets/missing_bar.js"
+    result:
+      Failure:
+        reason: NotFound
 
