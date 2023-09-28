@@ -708,7 +708,6 @@ pub enum JsScrapingFailureReason {
     PermissionDenied,
     Timeout,
     DownloadError,
-    Malformed,
     Other,
 }
 
