@@ -629,21 +629,12 @@ pub struct JsModuleError {
     pub kind: JsModuleErrorKind,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct CompletedJsSymbolicationResponse {
-    pub stacktraces: Vec<JsStacktrace>,
-    pub raw_stacktraces: Vec<JsStacktrace>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub errors: Vec<JsModuleError>,
-    #[serde(skip_serializing_if = "HashSet::is_empty")]
-    pub used_artifact_bundles: HashSet<SentryFileId>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub scraping_attempts: Vec<JsScrapingAttempt>,
-}
-
+/// An attempt to scrape a JS source or sourcemap file from the web.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JsScrapingAttempt {
+    /// The URL we attempted to scrape from.
     pub url: String,
+    /// The outcome of the attempt.
     #[serde(flatten)]
     pub result: JsScrapingResult,
 }
@@ -670,15 +661,22 @@ impl JsScrapingAttempt {
     }
 }
 
+/// The outcome of a scraping attempt.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 #[serde(tag = "status")]
 pub enum JsScrapingResult {
+    /// We didn't actually attempt scraping because we already obtained the file
+    /// by another method.
     NotAttempted,
+    /// The file was succesfully scraped.
     Success,
+    /// The file couldn't be scraped.
     Failure {
+        /// The basic reason for the failure.
         reason: JsScrapingFailureReason,
         #[serde(skip_serializing_if = "String::is_empty")]
+        /// A more detailed explanation of the failure.
         details: String,
     },
 }
@@ -703,16 +701,39 @@ impl From<CacheError> for JsScrapingResult {
     }
 }
 
+/// The basic reason a scraping attempt failed.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum JsScrapingFailureReason {
+    /// The file was not found at the given URL.
     NotFound,
+    /// Scraping was disabled.
     Disabled,
+    /// The URL was not in the list of allowed hosts or had
+    /// an invalid scheme.
     InvalidHost,
+    /// Permission to access the file was denied.
     PermissionDenied,
+    /// The scraping attempt timed out.
     Timeout,
+    /// There was a non-timeout error while downloading.
     DownloadError,
+    /// Catchall case.
+    ///
+    /// This probably can't actually happen.
     Other,
+}
+
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct CompletedJsSymbolicationResponse {
+    pub stacktraces: Vec<JsStacktrace>,
+    pub raw_stacktraces: Vec<JsStacktrace>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub errors: Vec<JsModuleError>,
+    #[serde(skip_serializing_if = "HashSet::is_empty")]
+    pub used_artifact_bundles: HashSet<SentryFileId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scraping_attempts: Vec<JsScrapingAttempt>,
 }
 
 /// Information about the operating system.

@@ -309,6 +309,8 @@ impl SourceMapLookup {
         self.fetcher.record_metrics();
     }
 
+    /// Consumes `self` and returns the artifact bundles that were used and
+    /// the scraping attempts that were made.
     pub fn into_records(self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
         (
             self.fetcher.used_artifact_bundles,
