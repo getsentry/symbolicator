@@ -5,6 +5,7 @@ use crate::types::ResolvedWith;
 /// Various metrics we want to capture *per-event* for JS events.
 #[derive(Debug, Default)]
 pub struct JsMetrics {
+    pub needed_files: u64,
     pub api_requests: u64,
     pub queried_artifacts: u64,
     pub fetched_artifacts: u64,
@@ -87,6 +88,7 @@ impl JsMetrics {
     }
 
     pub fn submit_metrics(&self, artifact_bundles: u64) {
+        metric!(time_raw("js.needed_files") = self.needed_files);
         metric!(time_raw("js.api_requests") = self.api_requests);
         metric!(time_raw("js.queried_bundles") = self.queried_bundles);
         metric!(time_raw("js.fetched_bundles") = artifact_bundles);

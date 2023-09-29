@@ -723,6 +723,8 @@ impl ArtifactFetcher {
     /// (because multiple files can share one [`DebugId`]).
     #[tracing::instrument(skip(self))]
     pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
+        self.metrics.needed_files += 1;
+
         let mut file = self.try_get_file_using_index(key).await;
 
         if file.is_none() {
