@@ -747,19 +747,16 @@ impl ArtifactFetcher {
             }
         }
 
-        match file {
-            Some(file) => {
-                if let Some(url) = key.abs_path() {
-                    self.scraping_attempts
-                        .push(JsScrapingAttempt::not_attempted(url.to_owned()));
-                }
-                file
+        if let Some(file) = file {
+            if let Some(url) = key.abs_path() {
+                self.scraping_attempts
+                    .push(JsScrapingAttempt::not_attempted(url.to_owned()));
             }
-            None => {
-                // Otherwise, fall back to scraping from the Web.
-                self.scrape(key).await
-            }
+            return file;
         }
+
+        // Otherwise, fall back to scraping from the Web.
+        self.scrape(key).await
     }
 
     async fn try_get_file_using_index(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
