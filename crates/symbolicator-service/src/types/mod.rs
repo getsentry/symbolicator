@@ -670,6 +670,7 @@ impl JsScrapingAttempt {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum JsScrapingResult {
     NotAttempted,
     Success,
@@ -701,6 +702,7 @@ impl From<CacheError> for JsScrapingResult {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum JsScrapingFailureReason {
     NotFound,
     Disabled,

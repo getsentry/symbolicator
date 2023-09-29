@@ -114,10 +114,10 @@ errors:
 scraping_attempts:
   - url: "http://example.com/index.html"
     result:
-      Failure:
-        reason: Disabled
+      failure:
+        reason: disabled
   - url: "http://example.com/test.min.js"
-    result: NotAttempted
+    result: not_attempted
   - url: "http://example.com/test.min.js.map"
-    result: NotAttempted
+    result: not_attempted
 

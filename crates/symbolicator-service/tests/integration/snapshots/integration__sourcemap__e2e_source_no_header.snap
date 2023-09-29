@@ -39,7 +39,7 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
 scraping_attempts:
   - url: "app:///_next/server/pages/_error.js"
-    result: NotAttempted
+    result: not_attempted
   - url: "app:///_next/server/pages/test.min.js.map"
-    result: NotAttempted
+    result: not_attempted
 
