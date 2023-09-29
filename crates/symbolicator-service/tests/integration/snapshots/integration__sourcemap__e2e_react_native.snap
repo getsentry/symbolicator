@@ -28,7 +28,7 @@ raw_stacktraces:
         colno: 11940
 scraping_attempts:
   - url: "app:///index.android.bundle"
-    result: not_attempted
+    status: not_attempted
   - url: "app:///index.android.bundle.map"
-    result: not_attempted
+    status: not_attempted
 

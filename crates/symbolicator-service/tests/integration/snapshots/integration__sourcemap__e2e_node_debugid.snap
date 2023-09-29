@@ -42,7 +42,7 @@ raw_stacktraces:
           - ""
 scraping_attempts:
   - url: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js
-    result: not_attempted
+    status: not_attempted
   - url: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js.map
-    result: not_attempted
+    status: not_attempted
 

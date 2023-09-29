@@ -61,5 +61,5 @@ raw_stacktraces:
           - r
 scraping_attempts:
   - url: "http://example.com/foo.js"
-    result: not_attempted
+    status: not_attempted
 

@@ -644,6 +644,7 @@ pub struct CompletedJsSymbolicationResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct JsScrapingAttempt {
     pub url: String,
+    #[serde(flatten)]
     pub result: JsScrapingResult,
 }
 
@@ -671,6 +672,7 @@ impl JsScrapingAttempt {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[serde(tag = "status")]
 pub enum JsScrapingResult {
     NotAttempted,
     Success,

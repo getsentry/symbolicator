@@ -62,11 +62,11 @@ raw_stacktraces:
           - "//# sourceMappingURL=indexed.min.js.map"
 scraping_attempts:
   - url: "http://example.com/indexed.min.js"
-    result: not_attempted
+    status: not_attempted
   - url: "http://example.com/indexed.min.js.map"
-    result: not_attempted
+    status: not_attempted
   - url: "http://example.com/file1.js"
-    result: not_attempted
+    status: not_attempted
   - url: "http://example.com/file2.js"
-    result: not_attempted
+    status: not_attempted
 

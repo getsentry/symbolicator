@@ -33,7 +33,7 @@ raw_stacktraces:
           - "  'use strict';"
 scraping_attempts:
   - url: "app:///nofiles.js"
-    result: not_attempted
+    status: not_attempted
   - url: "app:///nofiles.js.map"
-    result: not_attempted
+    status: not_attempted
 

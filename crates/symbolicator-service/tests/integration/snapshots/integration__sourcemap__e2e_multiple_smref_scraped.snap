@@ -40,8 +40,8 @@ raw_stacktraces:
           - ""
           - //@ sourceMappingURL=another.different.map
 scraping_attempts:
-  - url: "http://localhost:64630/files/app.js"
-    result: success
-  - url: "http://localhost:64630/files/app.js.map"
-    result: success
+  - url: "http://localhost:65187/files/app.js"
+    status: success
+  - url: "http://localhost:65187/files/app.js.map"
+    status: success
 

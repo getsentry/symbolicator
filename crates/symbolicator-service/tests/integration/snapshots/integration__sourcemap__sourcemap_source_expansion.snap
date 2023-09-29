@@ -47,13 +47,12 @@ errors:
     type: scraping_disabled
 scraping_attempts:
   - url: "http://example.com/index.html"
-    result:
-      failure:
-        reason: disabled
+    status: failure
+    reason: disabled
   - url: "http://example.com/file.min.js"
-    result: not_attempted
+    status: not_attempted
   - url: "http://example.com/file.min.js.map"
-    result: not_attempted
+    status: not_attempted
   - url: "http://example.com/file1.js"
-    result: not_attempted
+    status: not_attempted
 
