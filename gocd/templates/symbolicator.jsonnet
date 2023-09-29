@@ -20,6 +20,8 @@ local pipedream_config = {
     material_name: 'symbolicator_repo',
     stage: 'deploy-primary',
     elastic_profile_id: 'symbolicator',
+    // TODO: Remove the final_stage once we have several deploys with pipeline-complete stage
+    final_stage: 'deploy-primary',
   },
 
   // Set to true to auto-deploy changes (defaults to true)
