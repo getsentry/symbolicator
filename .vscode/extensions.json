@@ -5,7 +5,7 @@
     // Rust language server
     "rust-lang.rust-analyzer",
     // TOML language support
-    "bungcip.better-toml",
+    "tamasfe.even-better-toml",
     // Crates.io dependency versions
     "serayuzgur.crates",
     // Debugger support for Rust and native
