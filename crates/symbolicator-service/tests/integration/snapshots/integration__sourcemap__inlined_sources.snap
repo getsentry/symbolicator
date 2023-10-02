@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 263
+assertion_line: 266
 expression: response.unwrap()
 ---
 stacktraces:
@@ -26,4 +26,7 @@ raw_stacktraces:
         post_context:
           - "// Decoded sourcemap: {\"version\":3,\"file\":\"generated.js\",\"sources\":[\"/test.js\"],\"names\":[],\"mappings\":\"AAAA\",\"sourcesContent\":[\"console.log( {snip}"
           - "//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiZ2VuZXJhdGVkLmpzIiwic291cmNlcyI6WyIvdGVzdC5qcyJdLCJuYW1lcyI6W1 {snip}"
+scraping_attempts:
+  - url: "http://example.com/test.min.js"
+    status: not_attempted
 

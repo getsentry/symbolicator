@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 595
+assertion_line: 636
 expression: response.unwrap()
 ---
 stacktraces:
@@ -39,4 +39,9 @@ raw_stacktraces:
           - "//# sourceMappingURL=a.different.map"
           - ""
           - //@ sourceMappingURL=another.different.map
+scraping_attempts:
+  - url: "http://localhost:<port>/files/app.js"
+    status: success
+  - url: "http://localhost:<port>/files/app.js.map"
+    status: success
 

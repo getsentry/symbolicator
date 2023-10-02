@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_sources::{ObjectType, SentryFileId};
 
+use crate::caching::CacheError;
 use crate::utils::addr::AddrMode;
 use crate::utils::hex::HexValue;
 
@@ -628,6 +629,101 @@ pub struct JsModuleError {
     pub kind: JsModuleErrorKind,
 }
 
+/// An attempt to scrape a JS source or sourcemap file from the web.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct JsScrapingAttempt {
+    /// The URL we attempted to scrape from.
+    pub url: String,
+    /// The outcome of the attempt.
+    #[serde(flatten)]
+    pub result: JsScrapingResult,
+}
+
+impl JsScrapingAttempt {
+    pub fn success(url: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::Success,
+        }
+    }
+    pub fn not_attempted(url: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::NotAttempted,
+        }
+    }
+
+    pub fn failure(url: String, reason: JsScrapingFailureReason, details: String) -> Self {
+        Self {
+            url,
+            result: JsScrapingResult::Failure { reason, details },
+        }
+    }
+}
+
+/// The outcome of a scraping attempt.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+#[serde(tag = "status")]
+pub enum JsScrapingResult {
+    /// We didn't actually attempt scraping because we already obtained the file
+    /// by another method.
+    NotAttempted,
+    /// The file was succesfully scraped.
+    Success,
+    /// The file couldn't be scraped.
+    Failure {
+        /// The basic reason for the failure.
+        reason: JsScrapingFailureReason,
+        #[serde(skip_serializing_if = "String::is_empty")]
+        /// A more detailed explanation of the failure.
+        details: String,
+    },
+}
+
+impl From<CacheError> for JsScrapingResult {
+    fn from(value: CacheError) -> Self {
+        let (reason, details) = match value {
+            CacheError::NotFound => (JsScrapingFailureReason::NotFound, String::new()),
+            CacheError::PermissionDenied(details) => {
+                (JsScrapingFailureReason::PermissionDenied, details)
+            }
+            CacheError::Timeout(duration) => (
+                JsScrapingFailureReason::Timeout,
+                format!("Timeout after {}", humantime::format_duration(duration)),
+            ),
+            CacheError::DownloadError(details) => (JsScrapingFailureReason::DownloadError, details),
+            CacheError::Malformed(details) => (JsScrapingFailureReason::Other, details),
+            CacheError::InternalError => (JsScrapingFailureReason::Other, String::new()),
+        };
+
+        Self::Failure { reason, details }
+    }
+}
+
+/// The basic reason a scraping attempt failed.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JsScrapingFailureReason {
+    /// The file was not found at the given URL.
+    NotFound,
+    /// Scraping was disabled.
+    Disabled,
+    /// The URL was not in the list of allowed hosts or had
+    /// an invalid scheme.
+    InvalidHost,
+    /// Permission to access the file was denied.
+    PermissionDenied,
+    /// The scraping attempt timed out.
+    Timeout,
+    /// There was a non-timeout error while downloading.
+    DownloadError,
+    /// Catchall case.
+    ///
+    /// This probably can't actually happen.
+    Other,
+}
+
 #[derive(Debug, Default, Clone, Deserialize, Serialize)]
 pub struct CompletedJsSymbolicationResponse {
     pub stacktraces: Vec<JsStacktrace>,
@@ -636,6 +732,8 @@ pub struct CompletedJsSymbolicationResponse {
     pub errors: Vec<JsModuleError>,
     #[serde(skip_serializing_if = "HashSet::is_empty")]
     pub used_artifact_bundles: HashSet<SentryFileId>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub scraping_attempts: Vec<JsScrapingAttempt>,
 }
 
 /// Information about the operating system.

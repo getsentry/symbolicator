@@ -532,6 +532,9 @@ macro_rules! assert_snapshot {
             ".**.data.sourcemap" => ::insta::dynamic_redaction(
                 $crate::redact_localhost_port
             ),
+            ".**.scraping_attempts[].url" => ::insta::dynamic_redaction(
+                $crate::redact_localhost_port
+            ),
         });
     }
 }

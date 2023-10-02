@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-service/tests/integration/sourcemap.rs
-assertion_line: 345
+assertion_line: 348
 expression: response.unwrap()
 ---
 stacktraces:
@@ -60,4 +60,13 @@ raw_stacktraces:
         context_line: "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
         post_context:
           - "//# sourceMappingURL=indexed.min.js.map"
+scraping_attempts:
+  - url: "http://example.com/indexed.min.js"
+    status: not_attempted
+  - url: "http://example.com/indexed.min.js.map"
+    status: not_attempted
+  - url: "http://example.com/file1.js"
+    status: not_attempted
+  - url: "http://example.com/file2.js"
+    status: not_attempted
 
