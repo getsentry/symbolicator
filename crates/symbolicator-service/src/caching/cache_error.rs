@@ -59,10 +59,10 @@ impl From<serde_json::Error> for CacheError {
 }
 
 impl CacheError {
-    pub(super) const MALFORMED_MARKER: &[u8] = b"malformed";
-    pub(super) const PERMISSION_DENIED_MARKER: &[u8] = b"permissiondenied";
-    pub(super) const TIMEOUT_MARKER: &[u8] = b"timeout";
-    pub(super) const DOWNLOAD_ERROR_MARKER: &[u8] = b"downloaderror";
+    pub(super) const MALFORMED_MARKER: &'static [u8] = b"malformed";
+    pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = b"permissiondenied";
+    pub(super) const TIMEOUT_MARKER: &'static [u8] = b"timeout";
+    pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = b"downloaderror";
 
     /// Writes error markers and details to a file.
     ///
