@@ -1,6 +1,35 @@
-use symbolic::debuginfo::sourcebundle::SourceFileType;
+//! Metrics
+//!
+//! - `js.unsymbolicated_frames`: The number of unsymbolicated frames, per event.
+//!   Should be `0` in the best case, as we obviously should symbolicate :-)
+//!
+//! - `js.missing_sourcescontent`: The number of frames, per event, that have no embedded sources.
+//!   Should be `0` in the best case, as the SourceMaps we use should have embedded sources.
+//!   If they don’t, we have to fall back to applying source context from elsewhere.
+//!
+//! - `js.api_requests`: The number of (potentially cached) API requests, per event.
+//!   Should be `1` in the best case, as `prefetch_artifacts` should provide us with everything we need.
+//!
+//! - `js.queried_bundles` / `js.fetched_bundles`: The number of artifact bundles the API gave us,
+//!   and the ones we ended up using.
+//!   Should both be `1` in the best case, as a single bundle should ideally serve all our needs.
+//!   Otherwise `queried` and `fetched` should be the same, as a difference between the two means
+//!   that multiple API requests gave us duplicated bundles.
+//!
+//! - `js.queried_artifacts` / `js.fetched_artifacts`: The number of individual artifacts the API
+//!   gave us, and the ones we ended up using.
+//!   Should both be `0` as we should not be using individual artifacts but rather bundles.
+//!   Otherwise, `queried` should be close to `fetched`. If they differ, it means the API is sending
+//!   us a lot of candidate artifacts that we don’t end up using, or multiple API requests give us
+//!   duplicated artifacts.
+//!
+//! - `js.scraped_files`: The number of files that were scraped from the Web.
+//!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
-use crate::types::ResolvedWith;
+use symbolic::debuginfo::sourcebundle::SourceFileType;
+use symbolicator_service::metric;
+
+use crate::interface::ResolvedWith;
 
 /// Various metrics we want to capture *per-event* for JS events.
 #[derive(Debug, Default)]

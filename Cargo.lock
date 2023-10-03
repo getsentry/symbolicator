@@ -4247,6 +4247,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-js"
+version = "23.9.1"
+dependencies = [
+ "data-url",
+ "futures",
+ "humantime",
+ "moka",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "sentry",
+ "serde",
+ "serde_json",
+ "sha2",
+ "symbolic",
+ "symbolicator-service",
+ "symbolicator-sources",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "symbolicator-service"
 version = "23.9.1"
 dependencies = [

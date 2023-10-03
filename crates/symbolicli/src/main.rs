@@ -8,7 +8,7 @@ use output::{print_compact, print_pretty};
 use remote::EventKey;
 
 use settings::Mode;
-use symbolicator_service::types::{CompletedResponse, Scope};
+use symbolicator_service::types::Scope;
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
     SentrySourceConfig, SourceConfig, SourceId,
@@ -20,7 +20,10 @@ use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
+use crate::response::CompletedResponse;
+
 mod output;
+mod response;
 mod settings;
 
 #[tokio::main]
