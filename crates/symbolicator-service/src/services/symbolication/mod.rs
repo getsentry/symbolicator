@@ -97,7 +97,7 @@ impl SymbolicationActor {
         let caches = &services.caches;
         let shared_cache = services.shared_cache.clone();
         let objects = services.objects.clone();
-        let download_svc = services.downloader.clone();
+        let download_svc = services.download_svc.clone();
         let sourcefiles_cache = services.sourcefiles_cache.clone();
 
         let bitcode = BitcodeService::new(

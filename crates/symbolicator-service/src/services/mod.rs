@@ -38,40 +38,42 @@ pub use self::symbolication::ScrapingConfig;
 pub use fetch_file::fetch_file;
 
 pub struct SharedServices {
+    pub config: Config,
     pub caches: Caches,
-    pub downloader: Arc<DownloadService>,
+    pub download_svc: Arc<DownloadService>,
     pub shared_cache: SharedCacheRef,
     pub objects: ObjectsActor,
     pub sourcefiles_cache: Arc<SourceFilesCache>,
 }
 
 impl SharedServices {
-    pub fn new(config: &Config, io_pool: tokio::runtime::Handle) -> Result<Self> {
-        let caches = Caches::from_config(config).context("failed to create local caches")?;
+    pub fn new(config: Config, io_pool: tokio::runtime::Handle) -> Result<Self> {
+        let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
-            .clear_tmp(config)
+            .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
 
-        let downloader = DownloadService::new(config, io_pool.clone());
+        let download_svc = DownloadService::new(&config, io_pool.clone());
 
         let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool);
 
         let sourcefiles_cache = Arc::new(SourceFilesCache::new(
             caches.sourcefiles.clone(),
             shared_cache.clone(),
-            downloader.clone(),
+            download_svc.clone(),
         ));
 
         let objects = ObjectsActor::new(
             caches.object_meta.clone(),
             caches.objects.clone(),
             shared_cache.clone(),
-            downloader.clone(),
+            download_svc.clone(),
         );
 
         Ok(Self {
+            config,
             caches,
-            downloader,
+            download_svc,
             shared_cache,
             objects,
             sourcefiles_cache,

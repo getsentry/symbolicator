@@ -27,7 +27,7 @@ impl SourceMapService {
         let caches = &services.caches;
         let shared_cache = services.shared_cache.clone();
         let objects = services.objects.clone();
-        let download_svc = services.downloader.clone();
+        let download_svc = services.download_svc.clone();
         let sourcefiles_cache = services.sourcefiles_cache.clone();
 
         let bundle_index_cache = BundleIndexCache::new(
@@ -36,7 +36,13 @@ impl SourceMapService {
             download_svc.clone(),
         );
 
-        let api_lookup = todo!();
+        let in_memory = &services.config.caches.in_memory;
+        let api_lookup = Arc::new(SentryLookupApi::new(
+            download_svc.trusted_client.clone(),
+            download_svc.runtime.clone(),
+            download_svc.timeouts,
+            in_memory,
+        ));
 
         Self {
             objects,

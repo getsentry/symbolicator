@@ -209,8 +209,9 @@ impl HostDenyList {
 /// rate limits and the concurrency it uses.
 #[derive(Debug)]
 pub struct DownloadService {
-    runtime: tokio::runtime::Handle,
-    timeouts: DownloadTimeouts,
+    pub runtime: tokio::runtime::Handle,
+    pub timeouts: DownloadTimeouts,
+    pub trusted_client: reqwest::Client,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -231,6 +232,7 @@ impl DownloadService {
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
+            trusted_client: trusted_client.clone(),
             sentry: sentry::SentryDownloader::new(trusted_client, runtime, timeouts, in_memory),
             http: http::HttpDownloader::new(restricted_client.clone(), timeouts),
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
