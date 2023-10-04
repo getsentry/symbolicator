@@ -137,7 +137,7 @@ async fn maybe_fetch_bundle_index(
         Ok(bundle_index) => Some((file_id, bundle_index)),
         Err(err) => {
             let err: &dyn std::error::Error = &err;
-            tracing::error!(err, "Failed fetching `BundleIndex`");
+            tracing::error!(err, ?file_id, "Failed fetching `BundleIndex`");
             None
         }
     }
