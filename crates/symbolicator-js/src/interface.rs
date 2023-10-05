@@ -1,10 +1,29 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::Arc;
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
-use symbolicator_sources::SentryFileId;
+use symbolicator_service::services::ScrapingConfig;
+use symbolicator_service::types::{RawObjectInfo, Scope};
+use symbolicator_sources::{SentryFileId, SentrySourceConfig};
+
+#[derive(Debug, Clone)]
+pub struct SymbolicateJsStacktraces {
+    pub scope: Scope,
+    pub source: Arc<SentrySourceConfig>,
+    pub release: Option<String>,
+    pub dist: Option<String>,
+    pub debug_id_index: Option<Url>,
+    pub url_index: Option<Url>,
+    pub stacktraces: Vec<JsStacktrace>,
+    pub modules: Vec<RawObjectInfo>,
+    pub scraping: ScrapingConfig,
+    /// Whether to apply source context for the stack frames.
+    pub apply_source_context: bool,
+}
 
 // Some of the renames are there only to make it synchronized
 // with the already existing monolith naming scheme.

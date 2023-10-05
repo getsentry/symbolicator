@@ -60,9 +60,11 @@ use symbolicator_service::utils::http::is_valid_origin;
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};
 use crate::bundle_index::BundleIndex;
 use crate::bundle_index_cache::BundleIndexCache;
-use crate::interface::{JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith};
+use crate::interface::{
+    JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith,
+    SymbolicateJsStacktraces,
+};
 use crate::metrics::JsMetrics;
-use crate::symbolication::SymbolicateJsStacktraces;
 use crate::utils::{
     cache_busting_key, extract_file_stem, get_release_file_candidate_urls, join_paths,
     resolve_sourcemap_url,

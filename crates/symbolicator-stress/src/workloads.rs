@@ -5,11 +5,13 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use symbolicator_js::interface::{JsStacktrace, SymbolicateJsStacktraces};
+use symbolicator_js::SourceMapService;
 use symbolicator_service::services::download::SourceConfig;
 use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces, SymbolicationActor,
+    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
 };
-use symbolicator_service::types::{JsStacktrace, RawObjectInfo, RawStacktrace, Scope};
+use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WorkloadsConfig {
@@ -135,7 +137,10 @@ pub fn read_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> T {
     serde_json::from_reader(reader).unwrap()
 }
 
-pub async fn process_payload(symbolication: &SymbolicationActor, workload: &ParsedPayload) {
+pub async fn process_payload(
+    symbolication: &(SymbolicationActor, SourceMapService),
+    workload: &ParsedPayload,
+) {
     match workload {
         ParsedPayload::Minidump(payload) => {
             let MinidumpPayload {
@@ -159,6 +164,7 @@ pub async fn process_payload(symbolication: &SymbolicationActor, workload: &Pars
                 .unwrap();
 
             symbolication
+                .0
                 .process_minidump(
                     scope.clone(),
                     temp_path,
@@ -169,10 +175,10 @@ pub async fn process_payload(symbolication: &SymbolicationActor, workload: &Pars
                 .unwrap();
         }
         ParsedPayload::Event(payload) => {
-            symbolication.symbolicate(payload.clone()).await.unwrap();
+            symbolication.0.symbolicate(payload.clone()).await.unwrap();
         }
         ParsedPayload::Js(_srv, payload) => {
-            symbolication.symbolicate_js(payload.clone()).await.unwrap();
+            symbolication.1.symbolicate_js(payload.clone()).await;
         }
     };
 }

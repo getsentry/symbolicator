@@ -8,6 +8,9 @@ use output::{print_compact, print_pretty};
 use remote::EventKey;
 
 use settings::Mode;
+use symbolicator_js::SourceMapService;
+use symbolicator_service::services::symbolication::SymbolicationActor;
+use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
@@ -20,10 +23,9 @@ use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
-use crate::response::CompletedResponse;
+use crate::output::CompletedResponse;
 
 mod output;
-mod response;
 mod settings;
 
 #[tokio::main]
@@ -48,9 +50,12 @@ async fn main() -> Result<()> {
         .init();
 
     let runtime = tokio::runtime::Handle::current();
-    let (symbolication, _objects) =
-        symbolicator_service::services::create_service(&symbolicator_config, runtime)
-            .context("failed to start symbolication service")?;
+
+    let shared_services = SharedServices::new(symbolicator_config, runtime)
+        .context("failed to start symbolication service")?;
+    let native = SymbolicationActor::new(&shared_services);
+    let js = SourceMapService::new(&shared_services);
+    let symbolicator_config = shared_services.config;
 
     let scope = match mode {
         Mode::Online { ref project, .. } => Scope::Scoped(Arc::from(project.as_str())),
@@ -120,10 +125,7 @@ async fn main() -> Result<()> {
 
             tracing::info!("symbolicating event");
 
-            symbolication
-                .symbolicate_js(request)
-                .await
-                .map(CompletedResponse::from)?
+            CompletedResponse::JsSymbolication(js.symbolicate_js(request).await)
         }
 
         _ => {
@@ -165,26 +167,22 @@ async fn main() -> Result<()> {
             }
             let dsym_sources = Arc::from(dsym_sources.into_boxed_slice());
 
-            match payload {
+            CompletedResponse::NativeSymbolication(match payload {
                 Payload::Event(event) => {
                     let request = create_native_symbolication_request(scope, dsym_sources, event)
                         .context("Event cannot be symbolicated")?;
 
                     tracing::info!("symbolicating event");
 
-                    symbolication
-                        .symbolicate(request)
-                        .await
-                        .map(CompletedResponse::from)?
+                    native.symbolicate(request).await?
                 }
                 Payload::Minidump(minidump_path) => {
                     tracing::info!("symbolicating minidump");
-                    symbolication
+                    native
                         .process_minidump(scope, minidump_path, dsym_sources, Default::default())
-                        .await
-                        .map(CompletedResponse::from)?
+                        .await?
                 }
-            }
+            })
         }
     };
 
@@ -409,13 +407,13 @@ mod event {
     use anyhow::bail;
     use serde::Deserialize;
     use symbolic::common::Language;
-    use symbolicator_service::services::symbolication::{
-        StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
+    use symbolicator_js::interface::{
+        JsFrame, JsFrameData, JsStacktrace, SymbolicateJsStacktraces,
     };
+    use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
     use symbolicator_service::services::ScrapingConfig;
     use symbolicator_service::types::{
-        CompleteObjectInfo, FrameTrust, JsFrame, JsFrameData, JsStacktrace, RawFrame,
-        RawObjectInfo, RawStacktrace, Scope, Signal,
+        CompleteObjectInfo, FrameTrust, RawFrame, RawObjectInfo, RawStacktrace, Scope, Signal,
     };
     use symbolicator_service::utils::{addr::AddrMode, hex::HexValue};
     use symbolicator_sources::{SentrySourceConfig, SourceConfig};

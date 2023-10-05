@@ -1,17 +1,13 @@
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
-use reqwest::Url;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::metric;
 use symbolicator_service::services::symbolication::source_context::get_context_lines;
-use symbolicator_service::services::ScrapingConfig;
-use symbolicator_service::types::{RawObjectInfo, Scope};
-use symbolicator_sources::SentrySourceConfig;
 
 use crate::interface::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
+    SymbolicateJsStacktraces,
 };
 use crate::lookup::SourceMapLookup;
 use crate::utils::{
@@ -19,21 +15,6 @@ use crate::utils::{
     join_paths,
 };
 use crate::SourceMapService;
-
-#[derive(Debug, Clone)]
-pub struct SymbolicateJsStacktraces {
-    pub scope: Scope,
-    pub source: Arc<SentrySourceConfig>,
-    pub release: Option<String>,
-    pub dist: Option<String>,
-    pub debug_id_index: Option<Url>,
-    pub url_index: Option<Url>,
-    pub stacktraces: Vec<JsStacktrace>,
-    pub modules: Vec<RawObjectInfo>,
-    pub scraping: ScrapingConfig,
-    /// Whether to apply source context for the stack frames.
-    pub apply_source_context: bool,
-}
 
 impl SourceMapService {
     #[tracing::instrument(skip_all)]

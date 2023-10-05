@@ -24,7 +24,9 @@ use futures::{channel::oneshot, FutureExt as _};
 use sentry::protocol::SessionStatus;
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolicator_service::services::ScrapingConfig;
+use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
+use symbolicator_js::SourceMapService;
+use symbolicator_service::services::{ScrapingConfig, SharedServices};
 use tempfile::TempPath;
 use uuid::Uuid;
 
@@ -33,7 +35,7 @@ use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::services::objects::ObjectsActor;
 use symbolicator_service::services::symbolication::SymbolicationActor;
-use symbolicator_service::types::{CompletedResponse, CompletedSymbolicationResponse};
+use symbolicator_service::types::CompletedSymbolicationResponse;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
@@ -41,10 +43,8 @@ use symbolicator_sources::SourceConfig;
 pub use symbolicator_service::services::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
-pub use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateJsStacktraces, SymbolicateStacktraces,
-};
-pub use symbolicator_service::types::{JsStacktrace, RawObjectInfo, RawStacktrace, Scope, Signal};
+pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
+pub use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope, Signal};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -99,6 +99,13 @@ pub enum SymbolicationResponse {
     },
     Timeout,
     InternalError,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum CompletedResponse {
+    NativeSymbolication(CompletedSymbolicationResponse),
+    JsSymbolication(CompletedJsSymbolicationResponse),
 }
 
 /// Common options for all symbolication API requests.
@@ -159,7 +166,8 @@ type ComputationMap = Arc<Mutex<BTreeMap<RequestId, ComputationChannel>>>;
 struct RequestServiceInner {
     config: Config,
 
-    symbolication: SymbolicationActor,
+    native: SymbolicationActor,
+    js: SourceMapService,
     objects: ObjectsActor,
 
     cpu_pool: tokio::runtime::Handle,
@@ -183,8 +191,12 @@ impl RequestService {
             config.caches.in_memory.sentry_index_ttl = Duration::ZERO;
         }
 
-        let (symbolication, objects) =
-            symbolicator_service::services::create_service(&config, io_pool.clone())?;
+        let shared_services = SharedServices::new(config, io_pool.clone())?;
+        let native = SymbolicationActor::new(&shared_services);
+        let js = SourceMapService::new(&shared_services);
+        let SharedServices {
+            objects, config, ..
+        } = shared_services;
 
         let symbolication_taskmon = tokio_metrics::TaskMonitor::new();
         {
@@ -202,7 +214,8 @@ impl RequestService {
         let inner = RequestServiceInner {
             config,
 
-            symbolication,
+            native,
+            js,
             objects,
 
             cpu_pool,
@@ -246,7 +259,10 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("symbolicate", options, async move {
-            slf.symbolication.symbolicate(request).await.map(Into::into)
+            slf.native
+                .symbolicate(request)
+                .await
+                .map(CompletedResponse::NativeSymbolication)
         })
     }
 
@@ -256,10 +272,9 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
-            slf.symbolication
-                .symbolicate_js(request)
-                .await
-                .map(Into::into)
+            Ok(CompletedResponse::JsSymbolication(
+                slf.js.symbolicate_js(request).await,
+            ))
         })
     }
 
@@ -277,10 +292,10 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("minidump_stackwalk", options, async move {
-            slf.symbolication
+            slf.native
                 .process_minidump(scope, minidump_file, sources, scraping)
                 .await
-                .map(Into::into)
+                .map(CompletedResponse::NativeSymbolication)
         })
     }
 
@@ -298,10 +313,10 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("parse_apple_crash_report", options, async move {
-            slf.symbolication
+            slf.native
                 .process_apple_crash_report(scope, apple_crash_report, sources, scraping)
                 .await
-                .map(Into::into)
+                .map(CompletedResponse::NativeSymbolication)
         })
     }
 

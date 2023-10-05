@@ -5,7 +5,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 
 use sentry::SentryFutureExt;
+use symbolicator_js::SourceMapService;
 use symbolicator_service::config::Config as SymbolicatorConfig;
+use symbolicator_service::services::symbolication::SymbolicationActor;
+use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use tokio::sync::Semaphore;
 
@@ -18,10 +21,12 @@ pub async fn perform_stresstest(
 ) -> Result<()> {
     // start symbolicator service
     let runtime = tokio::runtime::Handle::current();
-    let (symbolication, _objects) =
-        symbolicator_service::services::create_service(&service_config, runtime)
-            .context("failed starting symbolication service")?;
-    let symbolication = Arc::new(symbolication);
+    let shared_services = SharedServices::new(service_config, runtime)
+        .context("failed to start symbolication service")?;
+    let native = SymbolicationActor::new(&shared_services);
+    let js = SourceMapService::new(&shared_services);
+    let symbolication = Arc::new((native, js));
+    let service_config = shared_services.config;
 
     // initialize workloads
     let workloads: Vec<_> = workloads
