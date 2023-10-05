@@ -1,10 +1,8 @@
-//! Provides the internal Symbolicator services and a way to initialize them.
+//! Provides the internal shared Symbolicator services and a way to initialize them.
 //!
 //! Symbolicator operates a number of independent services defined in this module for downloading,
-//! cache management, and symbolication.
-//! The main [`create_service`] fn creates all these internal services according to the provided
-//! [`Config`] and returns a [`SymbolicationActor`] as the main Symbolicator interface, and an
-//! [`ObjectsActor`] which abstracts object access.
+//! cache management, and file access.
+//! [`SharedServices`] initializes all these internal services according to the provided [`Config`].
 //!
 //! The internal services require a separate asynchronous runtimes dedicated for I/O-intensive work,
 //! such as downloads and access to the shared cache.
