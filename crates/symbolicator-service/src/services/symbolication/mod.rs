@@ -16,7 +16,6 @@ use crate::services::cficaches::CfiCacheActor;
 use crate::services::module_lookup::{CacheFileEntry, CacheLookupResult, ModuleLookup};
 use crate::services::objects::ObjectsActor;
 use crate::services::ppdb_caches::PortablePdbCacheActor;
-use crate::services::sourcemap::SourceMapService;
 use crate::services::symcaches::SymCacheActor;
 use crate::types::{
     CompleteObjectInfo, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
@@ -26,12 +25,13 @@ use crate::types::{
 use crate::utils::hex::HexValue;
 use crate::utils::http::is_valid_origin;
 
+use super::bitcode::BitcodeService;
+use super::il2cpp::Il2cppService;
+use super::SharedServices;
+
 mod apple;
-mod js;
 mod process_minidump;
 pub mod source_context;
-
-pub use js::SymbolicateJsStacktraces;
 
 /// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,20 +89,42 @@ pub struct SymbolicationActor {
     cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
     diagnostics_cache: Cache,
-    sourcemaps: SourceMapService,
     sourcefiles_cache: Arc<SourceFilesCache>,
 }
 
 impl SymbolicationActor {
-    pub fn new(
-        objects: ObjectsActor,
-        symcaches: SymCacheActor,
-        cficaches: CfiCacheActor,
-        ppdb_caches: PortablePdbCacheActor,
-        diagnostics_cache: Cache,
-        sourcemaps: SourceMapService,
-        sourcefiles_cache: Arc<SourceFilesCache>,
-    ) -> Self {
+    pub fn new(services: &SharedServices) -> Self {
+        let caches = &services.caches;
+        let shared_cache = services.shared_cache.clone();
+        let objects = services.objects.clone();
+        let download_svc = services.download_svc.clone();
+        let sourcefiles_cache = services.sourcefiles_cache.clone();
+
+        let bitcode = BitcodeService::new(
+            caches.auxdifs.clone(),
+            shared_cache.clone(),
+            download_svc.clone(),
+        );
+
+        let il2cpp = Il2cppService::new(caches.il2cpp.clone(), shared_cache.clone(), download_svc);
+
+        let symcaches = SymCacheActor::new(
+            caches.symcaches.clone(),
+            shared_cache.clone(),
+            objects.clone(),
+            bitcode,
+            il2cpp,
+        );
+
+        let cficaches = CfiCacheActor::new(
+            caches.cficaches.clone(),
+            shared_cache.clone(),
+            objects.clone(),
+        );
+
+        let ppdb_caches =
+            PortablePdbCacheActor::new(caches.ppdb_caches.clone(), shared_cache, objects.clone());
+
         let demangle_cache = DemangleCache::builder()
             .max_capacity(10 * 1024 * 1024) // 10 MiB, considering key and value:
             .weigher(|k, v| (k.0.len() + v.len()).try_into().unwrap_or(u32::MAX))
@@ -114,8 +136,7 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             ppdb_caches,
-            diagnostics_cache,
-            sourcemaps,
+            diagnostics_cache: caches.diagnostics.clone(),
             sourcefiles_cache,
         }
     }

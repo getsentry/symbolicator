@@ -1,17 +1,16 @@
 use std::sync::Arc;
 
 use symbolic::common::ByteView;
-use symbolicator_sources::RemoteFile;
-
-use crate::caching::{
+use symbolicator_service::caching::{
     Cache, CacheEntry, CacheItemRequest, CacheKey, CacheVersions, Cacher, SharedCacheRef,
 };
-use crate::services::bundle_index::BundleIndex;
-use crate::services::download::DownloadService;
-use crate::services::fetch_file;
-use crate::types::Scope;
+use symbolicator_service::services::caches::versions::BUNDLE_INDEX_CACHE_VERSIONS;
+use symbolicator_service::services::download::DownloadService;
+use symbolicator_service::services::fetch_file;
+use symbolicator_service::types::Scope;
+use symbolicator_sources::RemoteFile;
 
-use super::versions::BUNDLE_INDEX_CACHE_VERSIONS;
+use crate::bundle_index::BundleIndex;
 
 type BundleIndexCacheItem = (u32, Arc<BundleIndex>);
 

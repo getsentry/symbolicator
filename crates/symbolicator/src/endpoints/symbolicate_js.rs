@@ -3,14 +3,14 @@ use std::sync::Arc;
 use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
-use symbolicator_service::services::symbolication::SymbolicateJsStacktraces;
+use symbolicator_js::interface::{JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_service::services::ScrapingConfig;
 use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SentrySourceConfig;
 use url::Url;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
-use crate::service::{JsStacktrace, RequestService, SymbolicationResponse};
+use crate::service::{RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;

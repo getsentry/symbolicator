@@ -3,14 +3,13 @@
 //! The sources are described on
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use ::sentry::types::DebugId;
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
@@ -22,8 +21,7 @@ pub use symbolicator_sources::{
     SourceFilters, SourceLocation,
 };
 use symbolicator_sources::{
-    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SentrySourceConfig,
-    SourceLocationIter,
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
 use crate::caching::{CacheEntry, CacheError};
@@ -32,8 +30,6 @@ use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
-
-use self::sentry::JsLookupResult;
 
 mod filesystem;
 mod gcs;
@@ -213,8 +209,9 @@ impl HostDenyList {
 /// rate limits and the concurrency it uses.
 #[derive(Debug)]
 pub struct DownloadService {
-    runtime: tokio::runtime::Handle,
-    timeouts: DownloadTimeouts,
+    pub runtime: tokio::runtime::Handle,
+    pub timeouts: DownloadTimeouts,
+    pub trusted_client: reqwest::Client,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
@@ -235,6 +232,7 @@ impl DownloadService {
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
+            trusted_client: trusted_client.clone(),
             sentry: sentry::SentryDownloader::new(trusted_client, runtime, timeouts, in_memory),
             http: http::HttpDownloader::new(restricted_client.clone(), timeouts),
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
@@ -424,21 +422,6 @@ impl DownloadService {
             }
         }
         remote_files
-    }
-
-    /// Look up a list of bundles or individual artifact files covering the
-    /// `debug_ids` and `file_stems` (using the `release` + `dist`).
-    pub async fn lookup_js_artifacts(
-        &self,
-        source: Arc<SentrySourceConfig>,
-        debug_ids: BTreeSet<DebugId>,
-        file_stems: BTreeSet<String>,
-        release: Option<&str>,
-        dist: Option<&str>,
-    ) -> CacheEntry<Vec<JsLookupResult>> {
-        self.sentry
-            .lookup_js_artifacts(source, debug_ids, file_stems, release, dist)
-            .await
     }
 
     /// Whether this download service is allowed to connect to reserved ip addresses.

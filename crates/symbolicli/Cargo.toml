@@ -15,6 +15,7 @@ serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.9.14"
 symbolic = "12.4.0"
+symbolicator-js = { path = "../symbolicator-js" }
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.3.0"

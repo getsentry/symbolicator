@@ -141,7 +141,7 @@ impl CacheError {
     }
 
     #[track_caller]
-    pub(crate) fn from_std_error<E: std::error::Error + 'static>(e: E) -> Self {
+    pub fn from_std_error<E: std::error::Error + 'static>(e: E) -> Self {
         let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
         tracing::error!(error = dynerr);
         Self::InternalError

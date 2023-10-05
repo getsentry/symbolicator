@@ -2,10 +2,16 @@ use std::{collections::HashMap, iter::Peekable, vec::IntoIter};
 
 use prettytable::{cell, format::consts::FORMAT_CLEAN, row, Row, Table};
 use symbolic::common::split_path;
+use symbolicator_js::interface::{CompletedJsSymbolicationResponse, JsFrame};
 use symbolicator_service::types::{
-    CompleteObjectInfo, CompletedJsSymbolicationResponse, CompletedResponse,
-    CompletedSymbolicationResponse, FrameTrust, JsFrame, SymbolicatedFrame,
+    CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust, SymbolicatedFrame,
 };
+
+#[derive(Debug, Clone)]
+pub enum CompletedResponse {
+    NativeSymbolication(CompletedSymbolicationResponse),
+    JsSymbolication(CompletedJsSymbolicationResponse),
+}
 
 pub fn print_compact(response: CompletedResponse) {
     match response {

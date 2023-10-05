@@ -4221,6 +4221,7 @@ dependencies = [
  "serde_json",
  "symbolic",
  "symbolicator-crash",
+ "symbolicator-js",
  "symbolicator-service",
  "symbolicator-sources",
  "symbolicator-test",
@@ -4244,6 +4245,32 @@ version = "23.9.1"
 dependencies = [
  "bindgen",
  "cmake",
+]
+
+[[package]]
+name = "symbolicator-js"
+version = "23.9.1"
+dependencies = [
+ "data-url",
+ "futures",
+ "humantime",
+ "insta",
+ "moka",
+ "once_cell",
+ "regex",
+ "reqwest",
+ "sentry",
+ "serde",
+ "serde_json",
+ "sha2",
+ "symbolic",
+ "symbolicator-service",
+ "symbolicator-sources",
+ "symbolicator-test",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "url",
 ]
 
 [[package]]
@@ -4330,6 +4357,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "symbolicator-js",
  "symbolicator-service",
  "symbolicator-test",
  "tempfile",
@@ -4368,6 +4396,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "symbolic",
+ "symbolicator-js",
  "symbolicator-service",
  "symbolicator-sources",
  "tempfile",
