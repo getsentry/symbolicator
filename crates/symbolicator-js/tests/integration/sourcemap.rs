@@ -3,11 +3,9 @@ use std::sync::Arc;
 
 use reqwest::Url;
 use serde_json::json;
+use symbolicator_js::interface::{JsFrame, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_service::services::ScrapingConfig;
-use symbolicator_service::types::{JsFrame, RawObjectInfo, Scope};
-use symbolicator_service::{
-    services::symbolication::SymbolicateJsStacktraces, types::JsStacktrace,
-};
+use symbolicator_service::types::{RawObjectInfo, Scope};
 use symbolicator_sources::{SentrySourceConfig, SourceId};
 
 use crate::{assert_snapshot, setup_service};
@@ -115,7 +113,7 @@ async fn test_sourcemap_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -166,7 +164,7 @@ async fn test_sourcemap_source_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -206,7 +204,7 @@ async fn test_sourcemap_embedded_source_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -237,7 +235,7 @@ async fn test_source_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -263,7 +261,7 @@ async fn test_inlined_sources() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -295,7 +293,7 @@ async fn test_sourcemap_nofiles_source_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -345,7 +343,7 @@ async fn test_indexed_sourcemap_source_expansion() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -364,7 +362,7 @@ async fn test_malformed_abs_path() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -393,7 +391,7 @@ async fn test_fetch_error() {
     request.scraping.enabled = true;
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -426,7 +424,7 @@ async fn test_invalid_location() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -477,7 +475,7 @@ async fn test_webpack() {
     let request = make_js_request(source, frames, "[]", String::from("release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -511,7 +509,7 @@ async fn test_dart_async_name() {
     let response = symbolication.symbolicate_js(request).await;
 
     assert_eq!(
-        response.unwrap().stacktraces[0].frames[0].function,
+        response.stacktraces[0].frames[0].function,
         // Without implemented workaround, it would yield `$async$be` here.
         // We want to assert that it uses token name instead of scope name in case of async rewrite.
         Some("main".into())
@@ -546,7 +544,7 @@ async fn e2e_node_debugid() {
     let request = make_js_request(source, frames, modules, None, None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -576,7 +574,7 @@ async fn e2e_source_no_header() {
     let request = make_js_request(source, frames, modules, String::from("some-release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -610,7 +608,7 @@ async fn e2e_react_native() {
     let request = make_js_request(source, frames, modules, String::from("some-release"), None);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -633,7 +631,7 @@ async fn e2e_multiple_smref_scraped() {
 
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -663,7 +661,7 @@ async fn sorted_bundles() {
     let response = symbolication.symbolicate_js(request).await;
 
     assert_eq!(
-        response.unwrap().stacktraces[0].frames[0].function,
+        response.stacktraces[0].frames[0].function,
         // The `01_wrong` bundle would yield `thisIsWrong` here.
         // We want to assert that bundles have stable sort order according to their `url`.
         // The `url` contains their `id` as it comes from sentry. This is the best we can do right now.
@@ -691,7 +689,7 @@ async fn bundle_index() {
 
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }
 
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
@@ -736,5 +734,5 @@ async fn test_manual_processing() {
     let request = make_js_request(source, frames, modules, release, dist);
     let response = symbolication.symbolicate_js(request).await;
 
-    assert_snapshot!(response.unwrap());
+    assert_snapshot!(response);
 }

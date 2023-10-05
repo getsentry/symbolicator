@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use symbolicator_service::config::Config;
-use symbolicator_service::services::create_service;
 use symbolicator_service::services::symbolication::{
     StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
 };
+use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SourceConfig;
 use symbolicator_test as test;
@@ -36,7 +36,8 @@ pub fn setup_service(
     update_config(&mut config);
 
     let handle = tokio::runtime::Handle::current();
-    let (symbolication, _objects) = create_service(&config, handle).unwrap();
+    let shared_services = SharedServices::new(config, handle).unwrap();
+    let symbolication = SymbolicationActor::new(&shared_services);
 
     (symbolication, cache_dir)
 }
