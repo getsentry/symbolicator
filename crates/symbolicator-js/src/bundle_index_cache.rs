@@ -89,4 +89,11 @@ impl CacheItemRequest for BundleIndexRequest {
     fn weight(item: &Self::Item) -> u32 {
         item.0.max(std::mem::size_of::<Self::Item>() as u32)
     }
+
+    fn use_shared_cache(&self) -> bool {
+        // These change frequently, and are being downloaded from Sentry directly.
+        // Here again, the question is whether we want to waste a bit of storage on GCS vs doing
+        // more requests to Python.
+        true
+    }
 }
