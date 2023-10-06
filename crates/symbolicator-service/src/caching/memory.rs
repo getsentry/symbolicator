@@ -170,6 +170,13 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 }
 
 impl<T: CacheItemRequest> Cacher<T> {
+    fn shared_cache(&self, request: &T) -> Option<&SharedCacheService> {
+        request
+            .use_shared_cache()
+            .then(|| self.shared_cache.get())
+            .flatten()
+    }
+
     /// Compute an item.
     ///
     /// The item is computed using [`T::compute`](CacheItemRequest::compute), and saved in the cache
@@ -182,9 +189,8 @@ impl<T: CacheItemRequest> Cacher<T> {
         let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.config.tempfile()?;
 
-        let shared_cache_hit = if !request.use_shared_cache() {
-            false
-        } else if let Some(shared_cache) = self.shared_cache.get() {
+        let shared_cache = self.shared_cache(&request);
+        let shared_cache_hit = if let Some(shared_cache) = shared_cache {
             let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
             shared_cache.fetch(name, &cache_path, temp_fd).await
         } else {
@@ -263,9 +269,9 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
-        if !shared_cache_hit && request.use_shared_cache() {
+        if !shared_cache_hit {
             if let Ok(byteview) = &entry {
-                if let Some(shared_cache) = self.shared_cache.get() {
+                if let Some(shared_cache) = shared_cache {
                     shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
                 }
             }
@@ -293,7 +299,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let init = Box::pin(async {
             // cache_path is None when caching is disabled.
             if let Some(cache_dir) = self.config.cache_dir() {
-                let shared_cache = self.shared_cache.get();
+                let shared_cache = self.shared_cache(&request);
                 let versions = std::iter::once(T::VERSIONS.current)
                     .chain(T::VERSIONS.fallbacks.iter().copied());
 

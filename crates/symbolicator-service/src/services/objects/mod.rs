@@ -74,6 +74,11 @@ pub struct FindResult {
 
 #[derive(Clone, Debug)]
 pub struct ObjectsActor {
+    // FIXME(swatinem): Having a fully fledged filesystem and shared cache for these tiny file meta
+    // items is heavy handed and wasteful. However, we *do* want to have this in shared cache, as
+    // it is the primary thing that makes cold starts fast, as we do not need to fetch the whole
+    // objects, but just the derived caches. Some lighter weight solution, like Redis might be more
+    // appropriate at some point.
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_svc: Arc<DownloadService>,

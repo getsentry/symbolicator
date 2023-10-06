@@ -233,6 +233,10 @@ impl CacheItemRequest for FetchFileDataRequest {
 
         Ok(Arc::new(object_handle))
     }
+
+    fn use_shared_cache(&self) -> bool {
+        self.0.file_source.worth_using_shared_cache()
+    }
 }
 
 #[cfg(test)]

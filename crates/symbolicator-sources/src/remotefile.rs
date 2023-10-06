@@ -280,6 +280,23 @@ impl RemoteFile {
             RemoteFile::Sentry(source) => source.host(),
         }
     }
+
+    /// Determines if this [`RemoteFile`] is worth caching in shared cache or not.
+    ///
+    /// This is `true` for all external symbol servers, but not for our internal source, as we would
+    /// just save the same bytes twice, with an extra roundtrip on fetches.
+    pub fn worth_using_shared_cache(&self) -> bool {
+        match self {
+            // This is our internal sentry source. It is debatable if we want to rather fetch
+            // the file through the Python->FileStore->GCS indirection,
+            // or rather pay to save it twice so we can access GCS (shared cache) directly.
+            RemoteFile::Sentry(_) => true,
+            // This is most likely our scraped apple symbols, which are hosted on GCS directly, no
+            // need to save them twice in shared cache.
+            RemoteFile::Gcs(source) if source.source.id.as_str().starts_with("sentry:") => false,
+            _ => true,
+        }
+    }
 }
 
 /// A URI representing an [`RemoteFile`].

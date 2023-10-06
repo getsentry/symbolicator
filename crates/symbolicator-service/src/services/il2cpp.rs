@@ -92,6 +92,10 @@ impl CacheItemRequest for FetchFileRequest {
             data,
         })
     }
+
+    fn use_shared_cache(&self) -> bool {
+        self.file_source.worth_using_shared_cache()
+    }
 }
 
 #[derive(Debug, Clone)]

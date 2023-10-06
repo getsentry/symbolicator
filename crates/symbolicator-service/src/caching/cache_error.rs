@@ -152,7 +152,7 @@ impl CacheError {
 /// object could not be fetched or is otherwise unusable.
 pub type CacheEntry<T = ()> = Result<T, CacheError>;
 
-/// Parses a [`CacheEntry`] from a [`ByteView`](ByteView).
+/// Parses a [`CacheEntry`] from a [`ByteView`].
 pub fn cache_entry_from_bytes(bytes: ByteView<'static>) -> CacheEntry<ByteView<'static>> {
     CacheError::from_bytes(&bytes).map(Err).unwrap_or(Ok(bytes))
 }
