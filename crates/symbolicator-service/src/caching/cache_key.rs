@@ -76,7 +76,7 @@ impl CacheKey {
 
 /// A builder for [`CacheKey`]s.
 ///
-/// This builder implements the [`Write`](std::fmt::Write) trait, and the intention of it is to
+/// This builder implements the [`Write`] trait, and the intention of it is to
 /// accept human readable, but most importantly **stable**, input.
 /// This input in then being hashed to form the [`CacheKey`], and can also be serialized alongside
 /// the cache files to help debugging.
