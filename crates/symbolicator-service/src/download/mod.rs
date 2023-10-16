@@ -31,11 +31,16 @@ use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 
+mod compression;
+mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
 mod s3;
 pub mod sentry;
+
+pub use compression::tempfile_in_parent;
+pub use fetch_file::fetch_file;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {

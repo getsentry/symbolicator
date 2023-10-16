@@ -9,20 +9,18 @@ use tempfile::NamedTempFile;
 
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
-use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
-
-use crate::caching::{
+use symbolicator_service::caches::versions::SYMCACHE_VERSIONS;
+use symbolicator_service::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
-use crate::services::bitcode::BitcodeService;
-use crate::services::objects::{
-    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+use symbolicator_service::objects::{
+    CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::types::{CandidateStatus, Scope};
-use crate::utils::sentry::ConfigureScope;
+use symbolicator_service::types::Scope;
+use symbolicator_service::utils::sentry::ConfigureScope;
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use super::bitcode::BcSymbolMapHandle;
-use super::caches::versions::SYMCACHE_VERSIONS;
+use super::bitcode::{BcSymbolMapHandle, BitcodeService};
 use super::derived::{derive_from_object_handle, DerivedCache};
 use super::il2cpp::{Il2cppHandle, Il2cppService};
 
@@ -283,14 +281,13 @@ mod tests {
     use symbolic::common::{DebugId, Uuid};
 
     use super::*;
-    use crate::caching::Caches;
-    use crate::config::{CacheConfigs, Config};
-    use crate::services::bitcode::BitcodeService;
-    use crate::services::DownloadService;
-    use crate::test::{self, fixture};
+    use symbolicator_service::caching::Caches;
+    use symbolicator_service::config::{CacheConfigs, Config};
+    use symbolicator_service::download::DownloadService;
     use symbolicator_sources::{
         CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
     };
+    use symbolicator_test::{self as test, fixture};
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.

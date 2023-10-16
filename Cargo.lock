@@ -4274,6 +4274,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-native"
+version = "23.9.1"
+dependencies = [
+ "anyhow",
+ "apple-crash-report-parser",
+ "async-trait",
+ "chrono",
+ "futures",
+ "insta",
+ "lazy_static",
+ "minidump",
+ "minidump-processor",
+ "minidump-unwind",
+ "moka",
+ "regex",
+ "sentry",
+ "serde",
+ "serde_json",
+ "symbolic",
+ "symbolicator-service",
+ "symbolicator-sources",
+ "symbolicator-test",
+ "tempfile",
+ "test-assembler",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "symbolicator-service"
 version = "23.10.0"
 dependencies = [

@@ -14,26 +14,9 @@ use anyhow::{Context, Result};
 use crate::caching::{Caches, SharedCacheRef, SharedCacheService};
 use crate::config::Config;
 
-pub mod bitcode;
-pub mod caches;
-pub mod cficaches;
-pub mod derived;
-pub mod download;
-mod fetch_file;
-pub mod il2cpp;
-mod minidump;
-mod module_lookup;
-pub mod objects;
-pub mod ppdb_caches;
-pub mod symbolication;
-pub mod symcaches;
-
-use self::caches::SourceFilesCache;
-use self::download::DownloadService;
-use self::objects::ObjectsActor;
-
-pub use self::symbolication::ScrapingConfig;
-pub use fetch_file::fetch_file;
+use crate::caches::SourceFilesCache;
+use crate::download::DownloadService;
+use crate::objects::ObjectsActor;
 
 pub struct SharedServices {
     pub config: Config,

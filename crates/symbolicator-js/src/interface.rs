@@ -6,8 +6,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::services::ScrapingConfig;
-use symbolicator_service::types::{RawObjectInfo, Scope};
+use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_sources::{SentryFileId, SentrySourceConfig};
 
 #[derive(Debug, Clone)]

@@ -8,17 +8,18 @@ use tempfile::NamedTempFile;
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
-use symbolicator_sources::{FileType, ObjectId, SourceConfig};
-
-use crate::caching::{
+use symbolicator_service::caches::versions::PPDB_CACHE_VERSIONS;
+use symbolicator_service::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
-use crate::types::{CandidateStatus, Scope};
-use crate::utils::sentry::ConfigureScope;
+use symbolicator_service::objects::{
+    CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+};
+use symbolicator_service::types::Scope;
+use symbolicator_service::utils::sentry::ConfigureScope;
+use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use super::caches::versions::PPDB_CACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
-use super::objects::{FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor};
 
 pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
 

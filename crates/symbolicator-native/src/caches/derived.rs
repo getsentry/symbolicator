@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use crate::caching::{CacheEntry, CacheError};
-use crate::services::objects::{FindResult, ObjectMetaHandle};
-use crate::types::{AllObjectCandidates, CandidateStatus, ObjectFeatures, ObjectUseInfo};
+use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::objects::{
+    AllObjectCandidates, CandidateStatus, FindResult, ObjectFeatures, ObjectMetaHandle,
+    ObjectUseInfo,
+};
 
 /// This is the result of fetching a derived cache file.
 ///

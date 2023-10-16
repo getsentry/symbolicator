@@ -10,18 +10,17 @@ use tempfile::NamedTempFile;
 use symbolic::cfi::CfiCache;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::breakpad::BreakpadModuleRecord;
-use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
-
-use crate::caching::{
+use symbolicator_service::caches::versions::CFICACHE_VERSIONS;
+use symbolicator_service::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
-use crate::services::objects::{
-    FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+use symbolicator_service::objects::{
+    CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
-use crate::types::{CandidateStatus, Scope};
-use crate::utils::sentry::ConfigureScope;
+use symbolicator_service::types::Scope;
+use symbolicator_service::utils::sentry::ConfigureScope;
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use super::caches::versions::CFICACHE_VERSIONS;
 use super::derived::{derive_from_object_handle, DerivedCache};
 
 type CfiItem = Option<Arc<(SymbolFile, Option<CfiModuleInfo>)>>;

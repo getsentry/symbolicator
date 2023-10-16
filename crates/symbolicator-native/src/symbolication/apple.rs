@@ -5,17 +5,18 @@ use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
-
 use symbolic::common::{Arch, CodeId, DebugId};
+use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
-use crate::types::{
-    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawObjectInfo, RawStacktrace,
-    Scope, SystemInfo,
+use crate::interface::{
+    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawStacktrace,
+    SymbolicateStacktraces, SystemInfo,
 };
-use crate::utils::hex::HexValue;
+use crate::metrics::StacktraceOrigin;
 
-use super::{ScrapingConfig, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
+use super::symbolicate::SymbolicationActor;
 
 impl SymbolicationActor {
     #[tracing::instrument(skip_all)]

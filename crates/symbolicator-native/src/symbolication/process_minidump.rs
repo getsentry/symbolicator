@@ -15,21 +15,23 @@ use minidump_unwind::{
 };
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId};
+use symbolicator_service::metric;
+use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::utils::hex::HexValue;
+use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tempfile::TempPath;
 
-use symbolic::common::{Arch, ByteView, CodeId, DebugId};
-use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
-
-use crate::services::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
-use crate::services::minidump::parse_stacktraces_from_minidump;
-use crate::services::module_lookup::object_file_status_from_cache_entry;
-use crate::types::{
-    CompleteObjectInfo, CompletedSymbolicationResponse, ObjectFileStatus, RawFrame, RawObjectInfo,
-    RawStacktrace, Registers, Scope, SystemInfo,
+use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
+use crate::interface::{
+    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawStacktrace, Registers,
+    SymbolicateStacktraces, SystemInfo,
 };
-use crate::utils::hex::HexValue;
+use crate::metrics::StacktraceOrigin;
 
-use super::{ScrapingConfig, StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor};
+use super::minidump_stacktraces::parse_stacktraces_from_minidump;
+use super::module_lookup::object_file_status_from_cache_entry;
+use super::symbolicate::SymbolicationActor;
 
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
 

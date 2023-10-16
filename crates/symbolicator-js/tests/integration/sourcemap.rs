@@ -4,8 +4,7 @@ use std::sync::Arc;
 use reqwest::Url;
 use serde_json::json;
 use symbolicator_js::interface::{JsFrame, JsStacktrace, SymbolicateJsStacktraces};
-use symbolicator_service::services::ScrapingConfig;
-use symbolicator_service::types::{RawObjectInfo, Scope};
+use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_sources::{SentrySourceConfig, SourceId};
 
 use crate::{assert_snapshot, setup_service};

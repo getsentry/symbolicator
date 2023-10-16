@@ -15,12 +15,14 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
+use crate::caches::versions::META_CACHE_VERSIONS;
 use crate::caching::{
     CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
 };
-use crate::services::caches::versions::META_CACHE_VERSIONS;
-use crate::types::{ObjectFeatures, Scope};
+use crate::download::DownloadService;
+use crate::types::Scope;
 
+use super::candidates::ObjectFeatures;
 use super::FetchFileDataRequest;
 
 /// This requests metadata of a single file at a specific path/url.
@@ -36,7 +38,7 @@ pub(super) struct FetchFileMetaRequest {
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
     // state for computing.
     pub(super) data_cache: Arc<Cacher<FetchFileDataRequest>>,
-    pub(super) download_svc: Arc<crate::services::download::DownloadService>,
+    pub(super) download_svc: Arc<DownloadService>,
 }
 
 /// Handle to local metadata file of an object.

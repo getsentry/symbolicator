@@ -1,63 +1,178 @@
-//! Types for the Symbolicator API.
-//!
-//! This module contains some types which (de)serialise to/from JSON to make up the public
-//! HTTP API.  Its messy and things probably need a better place and different way to signal
-//! they are part of the public API.
-
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use serde::de::{self, Deserializer};
+use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
-use symbolicator_sources::ObjectType;
+use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
+use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::utils::hex::HexValue;
+use symbolicator_sources::SourceConfig;
+use thiserror::Error;
 
-use crate::utils::addr::AddrMode;
-use crate::utils::hex::HexValue;
+use crate::metrics::StacktraceOrigin;
 
-mod objects;
+#[derive(Debug, Clone)]
+/// A request for symbolication of multiple stack traces.
+pub struct SymbolicateStacktraces {
+    /// The scope of this request which determines access to cached files.
+    pub scope: Scope,
 
-pub use objects::{
-    AllObjectCandidates, CandidateStatus, ObjectCandidate, ObjectDownloadInfo, ObjectUseInfo,
-};
+    /// The signal thrown on certain operating systems.
+    ///
+    ///  Signal handlers sometimes mess with the runtime stack. This is used to determine whether
+    /// the top frame should be fixed or not.
+    pub signal: Option<Signal>,
+
+    /// A list of external sources to load debug files.
+    pub sources: Arc<[SourceConfig]>,
+
+    /// Where the stacktraces originated from.
+    pub origin: StacktraceOrigin,
+
+    /// A list of threads containing stack traces.
+    pub stacktraces: Vec<RawStacktrace>,
+
+    /// A list of images that were loaded into the process.
+    ///
+    /// This list must cover the instruction addresses of the frames in
+    /// [`stacktraces`](Self::stacktraces). If a frame is not covered by any image, the frame cannot
+    /// be symbolicated as it is not clear which debug file to load.
+    pub modules: Vec<CompleteObjectInfo>,
+
+    /// Whether to apply source context for the stack frames.
+    pub apply_source_context: bool,
+
+    /// Scraping configuration controling authenticated requests.
+    pub scraping: ScrapingConfig,
+}
+
+/// The symbolicated crash data.
+///
+/// It contains the symbolicated stack frames, module information as well as other
+/// meta-information about the crash.
+///
+/// It is publicly documented at <https://getsentry.github.io/symbolicator/api/response/>.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct CompletedSymbolicationResponse {
+    /// When the crash occurred.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "chrono::serde::ts_seconds_option"
+    )]
+    pub timestamp: Option<DateTime<Utc>>,
+
+    /// The signal that caused this crash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal: Option<Signal>,
+
+    /// Information about the operating system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_info: Option<SystemInfo>,
+
+    /// True if the process crashed, false if the dump was produced outside of an exception
+    /// handler. Only set for minidumps.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crashed: Option<bool>,
+
+    /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
+    /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
+    /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crash_reason: Option<String>,
+
+    /// A detailed explanation of the crash, potentially in human readable form. This may
+    /// include a string representation of the crash reason or application-specific info.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crash_details: Option<String>,
+
+    /// If there was an assertion that was hit, a textual representation of that assertion,
+    /// possibly including the file and line at which it occurred.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assertion: Option<String>,
+
+    /// The threads containing symbolicated stack frames.
+    pub stacktraces: Vec<CompleteStacktrace>,
+
+    /// A list of images, extended with status information.
+    pub modules: Vec<CompleteObjectInfo>,
+}
 
 /// OS-specific crash signal value.
 // TODO(markus): Also accept POSIX signal name as defined in signal.h
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, Eq, PartialEq)]
 pub struct Signal(pub u32);
 
-/// The scope of a source or debug file.
-///
-/// Based on scopes, access to debug files that have been cached is determined. If a file comes from
-/// a public source, it can be used for any symbolication request. Otherwise, the symbolication
-/// request must match the scope of a file.
-#[derive(Debug, Clone, Deserialize, Serialize, Eq, Ord, PartialEq, PartialOrd, Hash)]
-#[serde(untagged)]
+/// Information on the symbolication status of this frame.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 #[derive(Default)]
-pub enum Scope {
-    #[serde(rename = "global")]
+pub enum FrameStatus {
+    /// The frame was symbolicated successfully.
     #[default]
-    Global,
-    Scoped(Arc<str>),
+    Symbolicated,
+    /// The symbol (i.e. function) was not found within the debug file.
+    MissingSymbol,
+    /// No debug image is specified for the address of the frame.
+    UnknownImage,
+    /// The debug file could not be retrieved from any of the sources.
+    Missing,
+    /// The retrieved debug file could not be processed.
+    Malformed,
 }
 
-impl AsRef<str> for Scope {
-    fn as_ref(&self) -> &str {
-        match *self {
-            Scope::Global => "global",
-            Scope::Scoped(ref s) => s,
-        }
-    }
+/// A potentially symbolicated frame in the symbolication response.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct SymbolicatedFrame {
+    /// Symbolication status of this frame.
+    pub status: FrameStatus,
+
+    /// The index of this frame in the request.
+    ///
+    /// This is relevant for two reasons:
+    ///  1. Frames might disappear if the symbolicator determines them as a false-positive from
+    ///     stackwalking without CFI.
+    ///  2. Frames might expand to multiple inline frames at the same instruction address. However,
+    ///     this might occur within recursion, so the instruction address is not a good
+    pub original_index: Option<usize>,
+
+    #[serde(flatten)]
+    pub raw: RawFrame,
 }
 
-impl fmt::Display for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Scope::Global => f.write_str("global"),
-            Scope::Scoped(ref scope) => f.write_str(scope),
-        }
-    }
+/// A symbolicated stacktrace.
+///
+/// Frames in this request may or may not be symbolicated. The status field contains information on
+/// the individual success for each frame.
+#[derive(Debug, Default, Clone, Deserialize, Serialize)]
+pub struct CompleteStacktrace {
+    /// ID of thread that had this stacktrace. Returned when a minidump was processed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<u64>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thread_name: Option<String>,
+
+    /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
+    /// If the dump was produced by user code without crashing, and the dump contains extended
+    /// Breakpad information, this will point to the thread that requested the dump.
+    ///
+    /// Currently only `Some` for minidumps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_requesting: Option<bool>,
+
+    /// Registers, only useful when returning a processed minidump.
+    #[serde(default, skip_serializing_if = "Registers::is_empty")]
+    pub registers: Registers,
+
+    /// Frames of this stack trace.
+    pub frames: Vec<SymbolicatedFrame>,
 }
 
 /// A map of register values.
@@ -234,177 +349,6 @@ pub struct RawStacktrace {
     /// The first entry in the list is the active frame, with its callers below.
     pub frames: Vec<RawFrame>,
 }
-
-/// Specification of a module loaded into the process.
-#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
-pub struct RawObjectInfo {
-    /// Platform image file type (container format).
-    #[serde(rename = "type")]
-    pub ty: ObjectType,
-
-    /// Identifier of the code file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_id: Option<String>,
-
-    /// Name of the code file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub code_file: Option<String>,
-
-    /// Identifier of the debug file.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub debug_id: Option<String>,
-
-    /// Name of the debug file.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debug_file: Option<String>,
-
-    /// Checksum of the file's contents.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub debug_checksum: Option<String>,
-
-    /// Absolute address at which the image was mounted into virtual memory.
-    ///
-    /// We do allow the `image_addr` to be skipped if it is zero. This is because systems like WASM
-    /// do not require modules to be mounted at a specific absolute address. Per definition, a
-    /// module mounted at `0` does not support absolute addressing.
-    #[serde(default)]
-    pub image_addr: HexValue,
-
-    /// Size of the image in virtual memory.
-    ///
-    /// The size is infered from the module list if not specified.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub image_size: Option<u64>,
-}
-
-/// Information on the symbolication status of this frame.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum FrameStatus {
-    /// The frame was symbolicated successfully.
-    #[default]
-    Symbolicated,
-    /// The symbol (i.e. function) was not found within the debug file.
-    MissingSymbol,
-    /// No debug image is specified for the address of the frame.
-    UnknownImage,
-    /// The debug file could not be retrieved from any of the sources.
-    Missing,
-    /// The retrieved debug file could not be processed.
-    Malformed,
-}
-
-/// A potentially symbolicated frame in the symbolication response.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct SymbolicatedFrame {
-    /// Symbolication status of this frame.
-    pub status: FrameStatus,
-
-    /// The index of this frame in the request.
-    ///
-    /// This is relevant for two reasons:
-    ///  1. Frames might disappear if the symbolicator determines them as a false-positive from
-    ///     stackwalking without CFI.
-    ///  2. Frames might expand to multiple inline frames at the same instruction address. However,
-    ///     this might occur within recursion, so the instruction address is not a good
-    pub original_index: Option<usize>,
-
-    #[serde(flatten)]
-    pub raw: RawFrame,
-}
-
-/// A symbolicated stacktrace.
-///
-/// Frames in this request may or may not be symbolicated. The status field contains information on
-/// the individual success for each frame.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct CompleteStacktrace {
-    /// ID of thread that had this stacktrace. Returned when a minidump was processed.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thread_id: Option<u64>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub thread_name: Option<String>,
-
-    /// If a dump was produced as a result of a crash, this will point to the thread that crashed.
-    /// If the dump was produced by user code without crashing, and the dump contains extended
-    /// Breakpad information, this will point to the thread that requested the dump.
-    ///
-    /// Currently only `Some` for minidumps.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_requesting: Option<bool>,
-
-    /// Registers, only useful when returning a processed minidump.
-    #[serde(default, skip_serializing_if = "Registers::is_empty")]
-    pub registers: Registers,
-
-    /// Frames of this stack trace.
-    pub frames: Vec<SymbolicatedFrame>,
-}
-
-/// Information on a debug information file.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum ObjectFileStatus {
-    /// The file was found and successfully processed.
-    Found,
-    /// The image was not referenced in the stack trace and not further handled.
-    #[default]
-    Unused,
-    /// The file could not be found in any of the specified sources.
-    Missing,
-    /// The file failed to process.
-    Malformed,
-    /// The file could not be downloaded.
-    FetchingFailed,
-    /// Downloading or processing the file took too long.
-    Timeout,
-    /// An internal error while handling this image.
-    Other,
-}
-
-impl ObjectFileStatus {
-    pub fn name(self) -> &'static str {
-        // used for metrics
-        match self {
-            ObjectFileStatus::Found => "found",
-            ObjectFileStatus::Unused => "unused",
-            ObjectFileStatus::Missing => "missing",
-            ObjectFileStatus::Malformed => "malformed",
-            ObjectFileStatus::FetchingFailed => "fetching_failed",
-            ObjectFileStatus::Timeout => "timeout",
-            ObjectFileStatus::Other => "other",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ObjectFeatures {
-    /// The object file contains full debug info.
-    pub has_debug_info: bool,
-
-    /// The object file contains unwind info.
-    pub has_unwind_info: bool,
-
-    /// The object file contains a symbol table.
-    pub has_symbols: bool,
-
-    /// The object file had sources available.
-    #[serde(default)]
-    pub has_sources: bool,
-}
-
-impl ObjectFeatures {
-    pub fn merge(&mut self, other: ObjectFeatures) {
-        self.has_debug_info |= other.has_debug_info;
-        self.has_unwind_info |= other.has_unwind_info;
-        self.has_symbols |= other.has_symbols;
-        self.has_sources |= other.has_sources;
-    }
-}
-
 /// Normalized [`RawObjectInfo`] with status attached.
 ///
 /// This describes an object in the modules list of a response to a symbolication request.
@@ -500,58 +444,6 @@ impl From<RawObjectInfo> for CompleteObjectInfo {
     }
 }
 
-/// The symbolicated crash data.
-///
-/// It contains the symbolicated stack frames, module information as well as other
-/// meta-information about the crash.
-///
-/// It is publicly documented at <https://getsentry.github.io/symbolicator/api/response/>.
-#[derive(Debug, Default, Clone, Deserialize, Serialize)]
-pub struct CompletedSymbolicationResponse {
-    /// When the crash occurred.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "chrono::serde::ts_seconds_option"
-    )]
-    pub timestamp: Option<DateTime<Utc>>,
-
-    /// The signal that caused this crash.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub signal: Option<Signal>,
-
-    /// Information about the operating system.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub system_info: Option<SystemInfo>,
-
-    /// True if the process crashed, false if the dump was produced outside of an exception
-    /// handler. Only set for minidumps.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crashed: Option<bool>,
-
-    /// If the process crashed, the type of crash.  OS- and possibly CPU- specific.  For
-    /// example, "EXCEPTION_ACCESS_VIOLATION" (Windows), "EXC_BAD_ACCESS /
-    /// KERN_INVALID_ADDRESS" (Mac OS X), "SIGSEGV" (other Unix).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crash_reason: Option<String>,
-
-    /// A detailed explanation of the crash, potentially in human readable form. This may
-    /// include a string representation of the crash reason or application-specific info.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub crash_details: Option<String>,
-
-    /// If there was an assertion that was hit, a textual representation of that assertion,
-    /// possibly including the file and line at which it occurred.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub assertion: Option<String>,
-
-    /// The threads containing symbolicated stack frames.
-    pub stacktraces: Vec<CompleteStacktrace>,
-
-    /// A list of images, extended with status information.
-    pub modules: Vec<CompleteObjectInfo>,
-}
-
 /// Information about the operating system.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SystemInfo {
@@ -569,4 +461,112 @@ pub struct SystemInfo {
 
     /// Device model name
     pub device_model: String,
+}
+
+/// Whether a frame's instruction address needs to be "adjusted" by subtracting a word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdjustInstructionAddr {
+    /// The frame's address definitely needs to be adjusted.
+    Yes,
+    /// The frame's address definitely does not need to be adjusted.
+    No,
+    /// The frame's address might need to be adjusted.
+    ///
+    /// This defers to the heuristic in [InstructionInfo::caller_address].
+    Auto,
+}
+
+impl AdjustInstructionAddr {
+    /// Returns the adjustment strategy for the given frame.
+    ///
+    /// If the frame has the
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
+    /// field set, this will be [`Yes`](Self::Yes) or [`No`](Self::No) accordingly, otherwise
+    /// the given default is used.
+    fn for_frame(frame: &RawFrame, default: Self) -> Self {
+        match frame.adjust_instruction_addr {
+            Some(true) => Self::Yes,
+            Some(false) => Self::No,
+            None => default,
+        }
+    }
+
+    /// Returns the default adjustment strategy for the given thread.
+    ///
+    /// This will be [`Yes`](Self::Yes) if any frame in the thread has the
+    /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
+    /// field set, otherwise it will be [`Auto`](Self::Auto).
+    fn default_for_thread(thread: &RawStacktrace) -> Self {
+        if thread
+            .frames
+            .iter()
+            .any(|frame| frame.adjust_instruction_addr.is_some())
+        {
+            AdjustInstructionAddr::Yes
+        } else {
+            AdjustInstructionAddr::Auto
+        }
+    }
+}
+
+/// Defines the addressing mode.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Default)]
+pub enum AddrMode {
+    /// Declares addresses to be absolute with a shared memory space.
+    #[default]
+    Abs,
+    /// Declares an address to be relative to an indexed module.
+    Rel(usize),
+}
+
+impl fmt::Display for AddrMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            AddrMode::Abs => write!(f, "abs"),
+            AddrMode::Rel(idx) => write!(f, "rel:{idx}"),
+        }
+    }
+}
+
+impl Serialize for AddrMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("invalid address mode")]
+pub struct ParseAddrModeError;
+
+impl FromStr for AddrMode {
+    type Err = ParseAddrModeError;
+
+    fn from_str(s: &str) -> Result<AddrMode, ParseAddrModeError> {
+        if s == "abs" {
+            return Ok(AddrMode::Abs);
+        }
+        let mut iter = s.splitn(2, ':');
+        let kind = iter.next().ok_or(ParseAddrModeError)?;
+        let index = iter
+            .next()
+            .and_then(|x| x.parse().ok())
+            .ok_or(ParseAddrModeError)?;
+        match kind {
+            "rel" => Ok(AddrMode::Rel(index)),
+            _ => Err(ParseAddrModeError),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AddrMode {
+    fn deserialize<D>(deserializer: D) -> Result<AddrMode, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = Cow::<str>::deserialize(deserializer).map_err(de::Error::custom)?;
+        AddrMode::from_str(&s).map_err(de::Error::custom)
+    }
 }

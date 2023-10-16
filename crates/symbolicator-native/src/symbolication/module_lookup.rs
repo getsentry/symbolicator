@@ -5,22 +5,21 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
 use symbolic::debuginfo::ObjectDebugSession;
+use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::objects::{
+    AllObjectCandidates, FindObject, FindResult, ObjectFeatures, ObjectHandle, ObjectPurpose,
+    ObjectsActor,
+};
+use symbolicator_service::source_context::get_context_lines;
+use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
 use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
-use crate::caching::{CacheEntry, CacheError};
-use crate::services::derived::DerivedCache;
-use crate::services::objects::{FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor};
-use crate::services::ppdb_caches::{
+use crate::caches::derived::DerivedCache;
+use crate::caches::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor,
 };
-use crate::services::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
-use crate::types::{
-    AllObjectCandidates, CompleteObjectInfo, CompleteStacktrace, ObjectFeatures, ObjectFileStatus,
-    RawFrame, RawObjectInfo, RawStacktrace, Scope,
-};
-use crate::utils::addr::AddrMode;
-
-use super::symbolication::source_context::get_context_lines;
+use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
+use crate::interface::{AddrMode, CompleteObjectInfo, CompleteStacktrace, RawFrame, RawStacktrace};
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
@@ -477,8 +476,8 @@ impl ModuleLookup {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::RawObjectInfo;
-    use crate::utils::hex::HexValue;
+    use symbolicator_service::types::RawObjectInfo;
+    use symbolicator_service::utils::hex::HexValue;
 
     use super::*;
 

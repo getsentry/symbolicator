@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::Cacher;
-use symbolicator_service::services::caches::SourceFilesCache;
-use symbolicator_service::services::download::DownloadService;
-use symbolicator_service::services::objects::ObjectsActor;
+use symbolicator_service::download::DownloadService;
+use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 
 use crate::api_lookup::SentryLookupApi;

@@ -4,7 +4,30 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
 
-use super::ObjectFeatures;
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ObjectFeatures {
+    /// The object file contains full debug info.
+    pub has_debug_info: bool,
+
+    /// The object file contains unwind info.
+    pub has_unwind_info: bool,
+
+    /// The object file contains a symbol table.
+    pub has_symbols: bool,
+
+    /// The object file had sources available.
+    #[serde(default)]
+    pub has_sources: bool,
+}
+
+impl ObjectFeatures {
+    pub fn merge(&mut self, other: ObjectFeatures) {
+        self.has_debug_info |= other.has_debug_info;
+        self.has_unwind_info |= other.has_unwind_info;
+        self.has_symbols |= other.has_symbols;
+        self.has_sources |= other.has_sources;
+    }
+}
 
 /// Information about a Debug Information File in the [`CompleteObjectInfo`].
 ///
@@ -240,8 +263,6 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::ObjectDownloadInfo;
-
     use super::*;
 
     #[test]

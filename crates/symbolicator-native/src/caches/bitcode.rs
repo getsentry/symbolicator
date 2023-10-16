@@ -12,18 +12,16 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
-use symbolicator_sources::{FileType, RemoteFile, SourceConfig};
-use tempfile::NamedTempFile;
-
-use crate::caching::{
+use symbolicator_service::caches::versions::BITCODE_CACHE_VERSIONS;
+use symbolicator_service::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
     SharedCacheRef,
 };
-use crate::services::download::DownloadService;
-use crate::types::Scope;
-
-use super::caches::versions::BITCODE_CACHE_VERSIONS;
-use super::fetch_file;
+use symbolicator_service::download::{fetch_file, DownloadService};
+use symbolicator_service::metric;
+use symbolicator_service::types::Scope;
+use symbolicator_sources::{FileType, RemoteFile, SourceConfig};
+use tempfile::NamedTempFile;
 
 /// Handle to a valid BCSymbolMap.
 ///

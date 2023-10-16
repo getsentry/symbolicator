@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use symbolic::common::ByteView;
+use symbolicator_service::caches::versions::BUNDLE_INDEX_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     Cache, CacheEntry, CacheItemRequest, CacheKey, CacheVersions, Cacher, SharedCacheRef,
 };
-use symbolicator_service::services::caches::versions::BUNDLE_INDEX_CACHE_VERSIONS;
-use symbolicator_service::services::download::DownloadService;
-use symbolicator_service::services::fetch_file;
+use symbolicator_service::download::{fetch_file, DownloadService};
 use symbolicator_service::types::Scope;
 use symbolicator_sources::RemoteFile;
 

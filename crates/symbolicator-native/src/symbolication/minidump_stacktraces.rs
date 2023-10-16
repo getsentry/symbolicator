@@ -97,10 +97,10 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use symbolic::common::ByteView;
+use symbolicator_service::utils::hex;
 use thiserror::Error;
 
-use crate::types::{self, FrameTrust};
-use crate::utils::hex;
+use crate::interface::{self as types, FrameTrust};
 
 const MINIDUMP_EXTENSION_TYPE: u32 = u32::from_be_bytes([b'S', b'y', 0, 1]);
 const MINIDUMP_FORMAT_VERSION: u32 = 1;

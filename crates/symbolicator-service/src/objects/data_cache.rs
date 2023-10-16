@@ -19,13 +19,11 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
+use crate::caches::versions::OBJECTS_CACHE_VERSIONS;
 use crate::caching::CacheVersions;
 use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey};
-use crate::services::caches::versions::OBJECTS_CACHE_VERSIONS;
-use crate::services::download::DownloadService;
-use crate::services::fetch_file;
+use crate::download::{fetch_file, tempfile_in_parent, DownloadService};
 use crate::types::Scope;
-use crate::utils::compression::tempfile_in_parent;
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
@@ -249,9 +247,8 @@ mod tests {
     use super::*;
     use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::services::download::DownloadService;
-    use crate::services::objects::data_cache::Scope;
-    use crate::services::objects::{FindObject, ObjectPurpose, ObjectsActor};
+    use crate::download::DownloadService;
+    use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
 
     use symbolic::common::DebugId;

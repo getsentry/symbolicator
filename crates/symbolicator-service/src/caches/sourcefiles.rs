@@ -10,8 +10,7 @@ use crate::caching::{
     Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
     SharedCacheRef,
 };
-use crate::services::download::DownloadService;
-use crate::services::fetch_file;
+use crate::download::{fetch_file, DownloadService};
 use crate::types::Scope;
 
 use super::versions::SOURCEFILES_CACHE_VERSIONS;
