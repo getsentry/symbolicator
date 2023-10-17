@@ -9,7 +9,7 @@ use remote::EventKey;
 
 use settings::Mode;
 use symbolicator_js::SourceMapService;
-use symbolicator_service::services::symbolication::SymbolicationActor;
+use symbolicator_native::SymbolicationActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
@@ -410,12 +410,12 @@ mod event {
     use symbolicator_js::interface::{
         JsFrame, JsFrameData, JsStacktrace, SymbolicateJsStacktraces,
     };
-    use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
-    use symbolicator_service::services::ScrapingConfig;
-    use symbolicator_service::types::{
-        CompleteObjectInfo, FrameTrust, RawFrame, RawObjectInfo, RawStacktrace, Scope, Signal,
+    use symbolicator_native::interface::{
+        AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal,
+        StacktraceOrigin, SymbolicateStacktraces,
     };
-    use symbolicator_service::utils::{addr::AddrMode, hex::HexValue};
+    use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
+    use symbolicator_service::utils::hex::HexValue;
     use symbolicator_sources::{SentrySourceConfig, SourceConfig};
 
     pub fn create_js_symbolication_request(

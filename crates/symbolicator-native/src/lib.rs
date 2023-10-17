@@ -1,4 +1,6 @@
 mod caches;
-mod interface;
+pub mod interface;
 mod metrics;
 mod symbolication;
+
+pub use symbolication::symbolicate::SymbolicationActor;

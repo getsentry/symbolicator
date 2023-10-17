@@ -15,7 +15,7 @@ use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
 
-use crate::metrics::StacktraceOrigin;
+pub use crate::metrics::StacktraceOrigin;
 
 #[derive(Debug, Clone)]
 /// A request for symbolication of multiple stack traces.
@@ -483,7 +483,7 @@ impl AdjustInstructionAddr {
     /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
     /// field set, this will be [`Yes`](Self::Yes) or [`No`](Self::No) accordingly, otherwise
     /// the given default is used.
-    fn for_frame(frame: &RawFrame, default: Self) -> Self {
+    pub fn for_frame(frame: &RawFrame, default: Self) -> Self {
         match frame.adjust_instruction_addr {
             Some(true) => Self::Yes,
             Some(false) => Self::No,
@@ -496,7 +496,7 @@ impl AdjustInstructionAddr {
     /// This will be [`Yes`](Self::Yes) if any frame in the thread has the
     /// [`adjust_instruction_addr`](RawFrame::adjust_instruction_addr)
     /// field set, otherwise it will be [`Auto`](Self::Auto).
-    fn default_for_thread(thread: &RawStacktrace) -> Self {
+    pub fn default_for_thread(thread: &RawStacktrace) -> Self {
         if thread
             .frames
             .iter()

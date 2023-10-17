@@ -3,7 +3,7 @@ use std::{collections::HashMap, iter::Peekable, vec::IntoIter};
 use prettytable::{cell, format::consts::FORMAT_CLEAN, row, Row, Table};
 use symbolic::common::split_path;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, JsFrame};
-use symbolicator_service::types::{
+use symbolicator_native::interface::{
     CompleteObjectInfo, CompletedSymbolicationResponse, FrameTrust, SymbolicatedFrame,
 };
 

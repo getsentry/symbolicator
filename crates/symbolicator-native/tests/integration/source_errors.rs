@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-use symbolicator_service::types::{
-    CompletedSymbolicationResponse, FrameStatus, ObjectDownloadInfo, ObjectFileStatus,
-    ObjectUseInfo,
-};
+use symbolicator_native::interface::{CompletedSymbolicationResponse, FrameStatus};
+use symbolicator_service::objects::{ObjectDownloadInfo, ObjectUseInfo};
+use symbolicator_service::types::ObjectFileStatus;
 
 use crate::{example_request, setup_service, Server};
 

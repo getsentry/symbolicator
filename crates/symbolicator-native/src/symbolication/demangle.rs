@@ -3,7 +3,7 @@ use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::symcache::Function;
 
 /// Options for demangling all symbols.
-const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
+pub const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
 
 /// A cache for demangled symbols
 pub type DemangleCache = moka::sync::Cache<(String, Language), String>;

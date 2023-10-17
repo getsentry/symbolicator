@@ -1,8 +1,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use symbolicator_service::services::symbolication::SymbolicateStacktraces;
-use symbolicator_service::types::{FrameStatus, ObjectDownloadInfo, ObjectFileStatus, Scope};
+use symbolicator_native::interface::{FrameStatus, SymbolicateStacktraces};
+use symbolicator_service::objects::ObjectDownloadInfo;
+use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
     DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig, RemoteFileUri,
     SentrySourceConfig, SourceConfig, SourceId,

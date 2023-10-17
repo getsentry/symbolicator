@@ -19,7 +19,7 @@ use crate::interface::{
 };
 use crate::metrics::{record_symbolication_metrics, StacktraceMetrics};
 
-use super::demangle::DemangleCache;
+use super::demangle::{DemangleCache, DEMANGLE_OPTIONS};
 use super::dotnet::symbolicate_dotnet_frame;
 use super::module_lookup::{CacheFileEntry, ModuleLookup};
 use super::native::{get_relative_caller_addr, symbolicate_native_frame};
@@ -29,12 +29,12 @@ use super::native::{get_relative_caller_addr, symbolicate_native_frame};
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     demangle_cache: DemangleCache,
-    objects: ObjectsActor,
+    pub(crate) objects: ObjectsActor,
     symcaches: SymCacheActor,
-    cficaches: CfiCacheActor,
+    pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    diagnostics_cache: Cache,
-    sourcefiles_cache: Arc<SourceFilesCache>,
+    pub(crate) diagnostics_cache: Cache,
+    pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
 }
 
 impl SymbolicationActor {

@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 
 use sentry::SentryFutureExt;
 use symbolicator_js::SourceMapService;
+use symbolicator_native::SymbolicationActor;
 use symbolicator_service::config::Config as SymbolicatorConfig;
-use symbolicator_service::services::symbolication::SymbolicationActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use tokio::sync::Semaphore;

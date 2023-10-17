@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
+use symbolicator_native::interface::{StacktraceOrigin, SymbolicateStacktraces};
+use symbolicator_native::SymbolicationActor;
 use symbolicator_service::config::Config;
-use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
-};
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SourceConfig;

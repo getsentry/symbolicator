@@ -6,4 +6,4 @@ mod module_lookup;
 mod native;
 mod process_minidump;
 mod source_context;
-mod symbolicate;
+pub mod symbolicate;
