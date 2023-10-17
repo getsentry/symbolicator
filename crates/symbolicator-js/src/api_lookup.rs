@@ -6,9 +6,9 @@ use std::time::Duration;
 use sentry::types::DebugId;
 use sentry::SentryFutureExt;
 use serde::Deserialize;
+use symbolicator_service::download::retry;
+use symbolicator_service::download::sentry::{SearchQuery, SentryDownloader};
 use symbolicator_service::metric;
-use symbolicator_service::services::download::retry;
-use symbolicator_service::services::download::sentry::{SearchQuery, SentryDownloader};
 use url::Url;
 
 use symbolicator_service::caching::{CacheEntry, CacheError};

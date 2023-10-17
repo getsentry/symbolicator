@@ -2,12 +2,14 @@ use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 
-use symbolicator_service::services::ScrapingConfig;
+use symbolicator_native::interface::{
+    RawStacktrace, Signal, StacktraceOrigin, SymbolicateStacktraces,
+};
+use symbolicator_service::types::RawObjectInfo;
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{
-    RawObjectInfo, RawStacktrace, RequestOptions, RequestService, Scope, Signal, StacktraceOrigin,
-    SymbolicateStacktraces, SymbolicationResponse,
+    RequestOptions, RequestService, Scope, ScrapingConfig, SymbolicationResponse,
 };
 use crate::utils::sentry::ConfigureScope;
 
@@ -89,7 +91,7 @@ mod tests {
     use super::*;
 
     use reqwest::{Client, StatusCode};
-    use symbolicator_service::types::CompletedSymbolicationResponse;
+    use symbolicator_native::interface::CompletedSymbolicationResponse;
 
     use crate::test;
 

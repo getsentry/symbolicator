@@ -7,11 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_js::interface::{JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
-use symbolicator_service::services::download::SourceConfig;
-use symbolicator_service::services::symbolication::{
-    StacktraceOrigin, SymbolicateStacktraces, SymbolicationActor,
-};
-use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope};
+use symbolicator_native::interface::{RawStacktrace, StacktraceOrigin, SymbolicateStacktraces};
+use symbolicator_native::SymbolicationActor;
+use symbolicator_service::download::SourceConfig;
+use symbolicator_service::types::{RawObjectInfo, Scope};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WorkloadsConfig {

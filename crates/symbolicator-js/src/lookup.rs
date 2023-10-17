@@ -46,15 +46,14 @@ use symbolicator_sources::{
 };
 use tempfile::NamedTempFile;
 
+use symbolicator_service::caches::versions::SOURCEMAP_CACHE_VERSIONS;
+use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
 use symbolicator_service::caching::{
     CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
 };
-use symbolicator_service::services::caches::versions::SOURCEMAP_CACHE_VERSIONS;
-use symbolicator_service::services::caches::{ByteViewString, SourceFilesCache};
-use symbolicator_service::services::download::DownloadService;
-use symbolicator_service::services::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
-use symbolicator_service::services::symbolication::ScrapingConfig;
-use symbolicator_service::types::Scope;
+use symbolicator_service::download::DownloadService;
+use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
+use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
 
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};

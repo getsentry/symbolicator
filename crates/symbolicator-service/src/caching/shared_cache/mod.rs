@@ -25,7 +25,7 @@ use tokio::sync::{mpsc, oneshot, OnceCell};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 
-use crate::services::download::MeasureSourceDownloadGuard;
+use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs::{self, GcsError};
 

@@ -26,25 +26,23 @@ use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
-use symbolicator_service::services::{ScrapingConfig, SharedServices};
-use tempfile::TempPath;
-use uuid::Uuid;
-
+use symbolicator_native::interface::{CompletedSymbolicationResponse, SymbolicateStacktraces};
+use symbolicator_native::SymbolicationActor;
 use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
-use symbolicator_service::services::objects::ObjectsActor;
-use symbolicator_service::services::symbolication::SymbolicationActor;
-use symbolicator_service::types::CompletedSymbolicationResponse;
+use symbolicator_service::objects::ObjectsActor;
+use symbolicator_service::services::SharedServices;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
+use tempfile::TempPath;
+use uuid::Uuid;
 
-pub use symbolicator_service::services::objects::{
+pub use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
-pub use symbolicator_service::services::symbolication::{StacktraceOrigin, SymbolicateStacktraces};
-pub use symbolicator_service::types::{RawObjectInfo, RawStacktrace, Scope, Signal};
+pub use symbolicator_service::types::{Scope, ScrapingConfig};
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -120,7 +118,7 @@ pub struct RequestOptions {
     /// influences the quality of symbolication.  Enabling this will return extra
     /// information in the modules list section of the response detailing all DIF objects
     /// considered, any problems with them and what they were used for.  See the
-    /// [`ObjectCandidate`](symbolicator_service::types::ObjectCandidate) struct
+    /// [`ObjectCandidate`](symbolicator_service::objects::ObjectCandidate) struct
     /// for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,
@@ -540,7 +538,10 @@ pub fn record_task_metrics(name: &str, metrics: &tokio_metrics::TaskMetrics) {
 
 #[cfg(test)]
 mod tests {
-    use symbolicator_service::types::{CompleteObjectInfo, RawFrame};
+    use symbolicator_native::interface::{
+        CompleteObjectInfo, RawFrame, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
+    };
+    use symbolicator_service::types::RawObjectInfo;
     use symbolicator_service::utils::hex::HexValue;
     use symbolicator_sources::ObjectType;
 
