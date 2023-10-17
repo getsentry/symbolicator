@@ -3,18 +3,34 @@ use std::net::IpAddr;
 use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
+use once_cell::sync::Lazy;
 use reqwest::Url;
 
 use crate::config::Config;
 
-lazy_static::lazy_static! {
-    static ref RESERVED_IP_BLOCKS: Vec<Ipv4Network> = vec![
+static RESERVED_IP_BLOCKS: Lazy<Vec<Ipv4Network>> = Lazy::new(|| {
+    [
         // https://en.wikipedia.org/wiki/Reserved_IP_addresses#IPv4
-        "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
-        "192.0.0.0/29", "192.0.2.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15",
-        "198.51.100.0/24", "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
-    ].into_iter().map(|x| x.parse().unwrap()).collect();
-}
+        "0.0.0.0/8",
+        "10.0.0.0/8",
+        "100.64.0.0/10",
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "172.16.0.0/12",
+        "192.0.0.0/29",
+        "192.0.2.0/24",
+        "192.88.99.0/24",
+        "192.168.0.0/16",
+        "198.18.0.0/15",
+        "198.51.100.0/24",
+        "224.0.0.0/4",
+        "240.0.0.0/4",
+        "255.255.255.255/32",
+    ]
+    .into_iter()
+    .map(|x| x.parse().unwrap())
+    .collect()
+});
 
 fn is_external_ip(ip: std::net::IpAddr) -> bool {
     let addr = match ip {

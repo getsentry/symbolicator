@@ -1,10 +1,7 @@
-use lazy_static::lazy_static;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::OnceLock;
 
-lazy_static! {
-    static ref CONFIG: Mutex<Arc<RunConfig>> = Mutex::new(Arc::new(Default::default()));
-}
+static CONFIG: OnceLock<RunConfig> = OnceLock::new();
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Default, Clone)]
 pub struct RunConfig {
@@ -19,17 +16,14 @@ pub struct RunConfig {
 }
 
 impl RunConfig {
-    pub fn get() -> Arc<RunConfig> {
-        CONFIG.lock().unwrap().clone()
+    pub fn get() -> &'static RunConfig {
+        CONFIG.get_or_init(RunConfig::default)
     }
 
     pub fn configure<F: FnOnce(&mut Self) -> R, R>(f: F) -> R {
-        let mut config = RunConfig::get();
-        let rv = {
-            let mutable_config = Arc::make_mut(&mut config);
-            f(mutable_config)
-        };
-        *CONFIG.lock().unwrap() = config;
+        let mut config = RunConfig::default();
+        let rv = f(&mut config);
+        CONFIG.set(config).unwrap();
         rv
     }
 }

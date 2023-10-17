@@ -25,10 +25,8 @@ humantime-serde = "1.1.1"
 idna = "0.4.0"
 ipnetwork = "0.20.0"
 jsonwebtoken = "8.1.0"
-lazy_static = "1.4.0"
 moka = { version = "0.12.1", features = ["future", "sync"] }
 once_cell = "1.17.1"
-parking_lot = "0.12.0"
 rand = "0.8.5"
 reqwest = { version = "0.11.0", features = ["gzip", "brotli", "deflate", "json", "stream", "trust-dns"] }
 sentry = { version = "0.31.7", features = ["tracing"] }
@@ -46,7 +44,7 @@ tracing = "0.1.34"
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 zip = { version = "0.6.4", default-features = false, features = ["deflate"] }
-zstd = "0.12.1"
+zstd = "0.13.0"
 
 [dev-dependencies]
 sha-1 = "0.10.0"

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
+use once_cell::sync::Lazy;
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
 use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
@@ -136,10 +137,10 @@ impl SymbolicationActor {
     }
 }
 
-lazy_static::lazy_static! {
-    /// Format sent by Unreal Engine on macOS
-    static ref OS_MACOS_REGEX: Regex = Regex::new(r"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$").unwrap();
-}
+/// Format sent by Unreal Engine on macOS
+static OS_MACOS_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$").unwrap()
+});
 
 #[derive(Debug)]
 struct AppleCrashReportState {

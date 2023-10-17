@@ -1,18 +1,15 @@
 //! Provides access to the metrics sytem.
 use std::collections::BTreeMap;
 use std::net::ToSocketAddrs;
-use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
+use std::ops::Deref;
+use std::sync::OnceLock;
 
 use cadence::{Metric, MetricBuilder, StatsdClient, UdpMetricSink};
-use parking_lot::RwLock;
 
-lazy_static::lazy_static! {
-    static ref METRICS_CLIENT: RwLock<Option<Arc<MetricsClient>>> = RwLock::new(None);
-}
+static METRICS_CLIENT: OnceLock<MetricsClient> = OnceLock::new();
 
 thread_local! {
-    static CURRENT_CLIENT: Option<Arc<MetricsClient>> = METRICS_CLIENT.read().clone();
+    static CURRENT_CLIENT: Option<&'static MetricsClient> = METRICS_CLIENT.get();
 }
 
 /// The metrics prelude that is necessary to use the client.
@@ -50,17 +47,6 @@ impl Deref for MetricsClient {
     }
 }
 
-impl DerefMut for MetricsClient {
-    fn deref_mut(&mut self) -> &mut StatsdClient {
-        &mut self.statsd_client
-    }
-}
-
-/// Set a new statsd client.
-pub fn set_client(client: MetricsClient) {
-    *METRICS_CLIENT.write() = Some(Arc::new(client));
-}
-
 /// Tell the metrics system to report to statsd.
 pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<String, String>) {
     let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
@@ -71,10 +57,13 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<
     socket.set_nonblocking(true).unwrap();
     let sink = UdpMetricSink::from(&addrs[..], socket).unwrap();
     let statsd_client = StatsdClient::from_sink(prefix, sink);
-    set_client(MetricsClient {
-        statsd_client,
-        tags,
-    });
+
+    METRICS_CLIENT
+        .set(MetricsClient {
+            statsd_client,
+            tags,
+        })
+        .unwrap();
 }
 
 /// Invoke a callback with the current statsd client.
