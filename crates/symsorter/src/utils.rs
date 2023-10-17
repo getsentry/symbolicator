@@ -4,15 +4,13 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, bail, Result};
-use lazy_static::lazy_static;
+use once_cell::sync::Lazy;
 use regex::Regex;
 use symbolic::common::ByteView;
 use symbolic::debuginfo::sourcebundle::{SourceBundleWriter, SourceFileDescriptor};
 use symbolic::debuginfo::{Archive, FileEntry, FileFormat, Object, ObjectKind};
 
-lazy_static! {
-    static ref BAD_CHARS_RE: Regex = Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap();
-}
+static BAD_CHARS_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap());
 
 /// Console logging for the symsorter app.
 #[macro_export]

@@ -1,11 +1,10 @@
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
-use parking_lot::Mutex;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
@@ -372,7 +371,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
         let name = self.config.name();
 
-        let mut refreshes = self.refreshes.lock();
+        let mut refreshes = self.refreshes.lock().unwrap();
         if refreshes.contains(&cache_key) {
             return;
         }
@@ -391,7 +390,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             let refreshes = Arc::clone(&self.refreshes);
             CallOnDrop::new(move || {
                 max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-                refreshes.lock().remove(&key);
+                refreshes.lock().unwrap().remove(&key);
             })
         };
 
