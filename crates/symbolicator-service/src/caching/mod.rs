@@ -141,7 +141,7 @@
 //!
 //! A [`CacheItemRequest`] also needs to specify [`CacheVersions`] which are used for cache fallback
 //! as explained in detail above. Newly added caches should start with version `1`, and all the
-//! cache versions and their versioning history should be recorded in [`caches::versions`](crate::services::caches::versions).
+//! cache versions and their versioning history should be recorded in [`caches::versions`](crate::caches::versions).
 //!
 //! A new cache item also needs a new [`CacheName`] and [`Cache`] configuration. This should be added
 //! to [`Caches`] down below as well, and to [`Caches::cleanup`] to properly clean up cache files.
@@ -175,18 +175,17 @@ pub use memory::{CacheItemRequest, CacheVersions, Cacher};
 pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
 
 pub struct Caches {
-    /// Caches for object files, used by [`crate::services::objects::ObjectsActor`].
+    /// Caches for object files.
     pub objects: Cache,
-    /// Caches for object metadata, used by [`crate::services::objects::ObjectsActor`].
+    /// Caches for object metadata.
     pub object_meta: Cache,
-    /// Caches for auxiliary DIF files, used by [`crate::services::bitcode::BitcodeService`].
+    /// Caches for auxiliary DIF files.
     pub auxdifs: Cache,
-    /// Caches for il2cpp line mapping files, used by [`crate::services::il2cpp::Il2cppService`].
+    /// Caches for il2cpp line mapping files.
     pub il2cpp: Cache,
-    /// Caches for [`symbolic::symcache::SymCache`], used by
-    /// [`crate::services::symcaches::SymCacheActor`].
+    /// Caches for [`symbolic::symcache::SymCache`], used by.
     pub symcaches: Cache,
-    /// Caches for breakpad CFI info, used by [`crate::services::cficaches::CfiCacheActor`].
+    /// Caches for breakpad CFI info.
     pub cficaches: Cache,
     /// PortablePDB files.
     pub ppdb_caches: Cache,
@@ -196,8 +195,7 @@ pub struct Caches {
     pub sourcefiles: Cache,
     /// Bundle Indexes.
     pub bundle_index: Cache,
-    /// Store for diagnostics data symbolicator failed to process, used by
-    /// [`crate::services::symbolication::SymbolicationActor`].
+    /// Store for minidump data symbolicator failed to process, for diagnostics purposes
     pub diagnostics: Cache,
 }
 

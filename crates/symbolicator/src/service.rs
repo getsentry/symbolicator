@@ -118,7 +118,7 @@ pub struct RequestOptions {
     /// influences the quality of symbolication.  Enabling this will return extra
     /// information in the modules list section of the response detailing all DIF objects
     /// considered, any problems with them and what they were used for.  See the
-    /// [`ObjectCandidate`](symbolicator_service::types::ObjectCandidate) struct
+    /// [`ObjectCandidate`](symbolicator_service::objects::ObjectCandidate) struct
     /// for which extra information is returned for DIF objects.
     #[serde(default)]
     pub dif_candidates: bool,

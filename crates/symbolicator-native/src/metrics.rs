@@ -6,7 +6,8 @@ use symbolicator_sources::ObjectType;
 use crate::interface::{CompleteObjectInfo, CompleteStacktrace};
 
 #[derive(Debug, Copy, Clone)]
-/// Where the Stack Traces in the [`SymbolicateStacktraces`] originated from.
+/// Where the Stack Traces in the [`SymbolicateStacktraces`](crate::interface::SymbolicateStacktraces)
+/// originated from.
 pub enum StacktraceOrigin {
     /// The stack traces came from a direct request to symbolicate.
     Symbolicate,

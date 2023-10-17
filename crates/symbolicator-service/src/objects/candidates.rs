@@ -29,16 +29,15 @@ impl ObjectFeatures {
     }
 }
 
-/// Information about a Debug Information File in the [`CompleteObjectInfo`].
+/// Information about a Debug Information File in the `CompleteObjectInfo`.
 ///
-/// All DIFs are backed by an [`ObjectHandle`](crate::services::objects::ObjectHandle).  But we
+/// All DIFs are backed by an [`ObjectHandle`](crate::objects::ObjectHandle).  But we
 /// may not have been able to get hold of this object file.  We still want to describe the
 /// relevant DIF however.
 ///
 /// Currently has no [`ObjectId`] attached and the parent container is expected to know
 /// which ID this DIF info was for.
 ///
-/// [`CompleteObjectInfo`]: crate::types::CompleteObjectInfo
 /// [`ObjectId`]: symbolicator_sources::ObjectId
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObjectCandidate {

@@ -28,7 +28,7 @@ pub use meta_cache::ObjectMetaHandle;
 /// along some errors, so we use this wrapper.
 ///
 /// [`CacheItemRequest`]: crate::caching::CacheItemRequest
-/// [`SourceLocation`]: crate::services::download::SourceLocation
+/// [`SourceLocation`]: crate::download::SourceLocation
 #[derive(Clone, Debug)]
 pub struct CacheLookupError {
     /// The object file which was attempted to be fetched.

@@ -472,7 +472,8 @@ pub enum AdjustInstructionAddr {
     No,
     /// The frame's address might need to be adjusted.
     ///
-    /// This defers to the heuristic in [InstructionInfo::caller_address].
+    /// This defers to the heuristic in
+    /// [InstructionInfo::caller_address](symbolic::common::InstructionInfo::caller_address).
     Auto,
 }
 
