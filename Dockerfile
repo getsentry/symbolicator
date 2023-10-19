@@ -17,6 +17,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM symbolicator-chef AS symbolicator-build
 
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
     # below required for sentry-native
     cmake clang libcurl4-openssl-dev \
@@ -50,6 +51,7 @@ RUN sentry-cli --version \
 
 FROM debian:bookworm-slim
 RUN apt-get update \
+    && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends openssl ca-certificates gosu curl cabextract \
     && rm -rf /var/lib/apt/lists/*
 
