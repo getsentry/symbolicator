@@ -1,5 +1,9 @@
 # Changelog
 
+## 23.10.1
+
+- No documented changes.
+
 ## 23.10.0
 
 - No documented changes.
