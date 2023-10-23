@@ -307,7 +307,7 @@ async fn stackwalk(
     let threads = process_state.threads;
     let mut stacktraces = Vec::with_capacity(threads.len());
     for (index, thread) in threads.into_iter().enumerate() {
-        let registers = match thread.frames.get(0) {
+        let registers = match thread.frames.first() {
             Some(frame) => map_symbolic_registers(&frame.context),
             None => Registers::new(),
         };
