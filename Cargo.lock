@@ -246,7 +246,7 @@ dependencies = [
  "hex",
  "http",
  "hyper",
- "ring 0.17.5",
+ "ring 0.17.6",
  "time",
  "tokio",
  "tracing",
@@ -421,7 +421,7 @@ dependencies = [
  "p256",
  "percent-encoding",
  "regex",
- "ring 0.17.5",
+ "ring 0.17.6",
  "sha2",
  "subtle",
  "time",
@@ -774,9 +774,9 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74d84f4b64599b9ce996914673a5b4d60181c3895c7eb26369459ccc41fb37d"
+checksum = "b002797414ffc34425bdf5b21a9e50d102013292625749eeba0a59923176ab05"
 dependencies = [
  "async-trait",
  "cachemap2",
@@ -2297,9 +2297,9 @@ checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
 
 [[package]]
 name = "memmap2"
-version = "0.5.10"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+checksum = "43a5a03cefb0d953ec0be133036f14e109412fa594edc2f77227249db66cc3ed"
 dependencies = [
  "libc",
 ]
@@ -2340,13 +2340,13 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e20da5c0aab8b6d683d8a15ca70db468d3f6ddfe38269837c22c7bab7ba2627c"
+checksum = "5c671544a05d0e8daa3018c8fb6687c11935c4ae8f122de8f2386c2896b4e9b8"
 dependencies = [
  "debugid",
  "encoding_rs",
- "memmap2 0.5.10",
+ "memmap2 0.8.0",
  "minidump-common",
  "num-traits",
  "range-map",
@@ -2359,9 +2359,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-common"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b23ab3a13de24f89fa3060579288f142ac4d138d37eec8a398ba59b0ca4d577"
+checksum = "3dbc11dfb55b3b7b5684fb16d98e0fc9d1e93a64d6b00bf383eabfc4541aaac2"
 dependencies = [
  "bitflags 2.4.1",
  "debugid",
@@ -2374,15 +2374,15 @@ dependencies = [
 
 [[package]]
 name = "minidump-processor"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e402963e1997711e1cc491a35fc2c4a4822d4eb95d939e0401c72cb9faacb19f"
+checksum = "76b49bde7c0ae9a7142c540c27c7fc29db2288fd9614f11a9ce57badeb74af43"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
  "debugid",
  "futures-util",
- "memmap2 0.5.10",
+ "memmap2 0.8.0",
  "minidump",
  "minidump-common",
  "minidump-unwind",
@@ -2396,9 +2396,9 @@ dependencies = [
 
 [[package]]
 name = "minidump-unwind"
-version = "0.18.0"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bfe80a00f234a23ae2e42336e0b7e40d6b1c330712777bb7e2c7bebb6c3bf80"
+checksum = "63aef4cd2e018881680b152296ae28e674242823faa1767b417b6669a1896cdc"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
