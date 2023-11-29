@@ -10,7 +10,6 @@ https = []
 
 [dependencies]
 anyhow = "1.0.57"
-async-stream = "0.3.5"
 aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.0.1", features = ["hardcoded-credentials"] }
 aws-sdk-s3 = "1.4.0"
