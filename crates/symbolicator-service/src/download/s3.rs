@@ -11,9 +11,7 @@ use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
-use futures::TryStreamExt;
-use reqwest::StatusCode;
-
+use futures::TryStreamExt as _;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
 use tokio::fs::File;
 
@@ -146,7 +144,7 @@ impl S3Downloader {
 
                         // NOTE: leaving the credentials empty as our unit / integration tests do
                         // leads to a `AuthorizationHeaderMalformed` error.
-                        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+                        if matches!(status.as_u16(), 401 | 403)
                             || code == Some("AuthorizationHeaderMalformed")
                         {
                             let details =
@@ -162,10 +160,6 @@ impl S3Downloader {
                     S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
                         Err(CacheError::NotFound)
                     }
-                    S3Error::Unhandled(unhandled) => {
-                        let details = unhandled.to_string();
-                        Err(CacheError::DownloadError(details))
-                    }
                     _ => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,
@@ -179,21 +173,26 @@ impl S3Downloader {
             }
         };
 
-        let stream = if response.content_length == 0 {
+        if response.content_length == Some(0) {
             tracing::debug!("Empty response from s3:{}{}", &bucket, &key);
             return Err(CacheError::NotFound);
-        } else {
-            response
-                .body
-                .map_err(|err| CacheError::download_error(&err))
-        };
+        }
+
+        let timeout = response
+            .content_length
+            .map(|cl| content_length_timeout(cl, self.timeouts.streaming));
+
+        let mut body = std::pin::pin!(response.body);
+        let stream = futures::stream::poll_fn(move |cx| body.as_mut().poll_next(cx))
+            .map_err(|err| CacheError::download_error(&err));
         let future = super::download_stream(source_name, stream, destination);
 
-        let timeout = content_length_timeout(response.content_length, self.timeouts.streaming);
-
-        tokio::time::timeout(timeout, future)
-            .await
-            .map_err(|_| CacheError::Timeout(timeout))?
+        match timeout {
+            Some(timeout) => tokio::time::timeout(timeout, future)
+                .await
+                .map_err(|_| CacheError::Timeout(timeout))?,
+            None => future.await,
+        }
     }
 }
 
