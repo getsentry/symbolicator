@@ -16,6 +16,8 @@ default-members = ["crates/symbolicator", "crates/symbolicli", "crates/symsorter
 [profile.release]
 # For release builds, we do want line-only debug information to be able to symbolicate panic stack traces.
 debug = 1
+codegen-units = 1
+lto = true
 
 [profile.local]
 # For running a local symbolicator, we want the best of both worlds: a fast executable, with quick
