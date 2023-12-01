@@ -223,7 +223,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
-            let mut cache_path = cache_dir.join(&cache_path);
+            let cache_path = cache_dir.join(&cache_path);
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
@@ -258,6 +258,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             #[cfg(debug_assertions)]
             {
+                let mut cache_path = cache_path;
                 // NOTE: we only create the metadata file once, but do not regularly touch it for now
                 cache_path.set_extension("txt");
                 if let Err(err) = std::fs::write(cache_path, key.metadata()) {
