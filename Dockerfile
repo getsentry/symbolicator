@@ -18,13 +18,14 @@ FROM symbolicator-chef AS symbolicator-build
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates curl libssl-dev pkg-config git zip clang mold \
     # below required for sentry-native
     cmake clang libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ARG SYMBOLICATOR_FEATURES=symbolicator-crash
 ENV SYMBOLICATOR_FEATURES=${SYMBOLICATOR_FEATURES}
+ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=/usr/bin/mold"
 
 COPY --from=symbolicator-planner /work/recipe.json recipe.json
 
