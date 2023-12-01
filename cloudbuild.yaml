@@ -111,7 +111,7 @@ images:
 timeout: 3600s
 options:
   # Run on bigger machines
-  machineType: "e2-standard-8"
+  machineType: "E2_HIGHCPU_32"
 secrets:
   - kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
     secretEnv:
