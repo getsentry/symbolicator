@@ -8,7 +8,8 @@
           "subdir": "libs"
         }
       },
-      "version": "v2.5"
+
+      "version": "v2.7"
     }
   ],
   "legacyImports": true

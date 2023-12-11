@@ -44,7 +44,7 @@ steps:
     waitFor: ["builder"]
     entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |-
         cp /opt/symbolicator-debug.zip /opt/symbolicator.src.zip .
 
@@ -55,7 +55,7 @@ steps:
     waitFor: ["builder-extract-difs"]
     entrypoint: "bash"
     args:
-      - '-c'
+      - "-c"
       - |-
         gsutil -m cp \
         ./symbolicator-debug.zip ./symbolicator.src.zip \
@@ -111,7 +111,7 @@ images:
 timeout: 3600s
 options:
   # Run on bigger machines
-  machineType: "N1_HIGHCPU_8"
+  machineType: "E2_HIGHCPU_32"
 secrets:
   - kmsKeyName: projects/sentryio/locations/global/keyRings/service-credentials/cryptoKeys/cloudbuild
     secretEnv:
