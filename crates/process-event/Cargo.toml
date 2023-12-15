@@ -1,7 +1,7 @@
 [package]
 name = "process-event"
 publish = false
-version = "23.11.2"
+version = "23.12.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
