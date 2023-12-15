@@ -3213,7 +3213,7 @@ checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
 [[package]]
 name = "reqwest"
 version = "0.11.22"
-source = "git+https://github.com/getsentry/reqwest?branch=restricted-connector#a780c826d293b500eb2857b21d5eb49d3c0297b6"
+source = "git+https://github.com/getsentry/reqwest?branch=restricted-connector#4a6d728c4b94732f75ef20bbfb3ee50569244bbb"
 dependencies = [
  "async-compression",
  "base64",
