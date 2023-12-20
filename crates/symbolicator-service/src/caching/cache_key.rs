@@ -97,12 +97,10 @@ impl CacheKeyBuilder {
     /// Finalize the [`CacheKey`].
     pub fn build(self) -> CacheKey {
         let hash = Sha256::digest(&self.metadata);
-        // FIXME: `sha2` should really adopt const generics, this is such a pain right now
-        let hash = <[u8; 32]>::try_from(hash).expect("sha256 outputs 32 bytes");
 
         CacheKey {
             metadata: self.metadata.into(),
-            hash,
+            hash: hash.into(),
         }
     }
 }

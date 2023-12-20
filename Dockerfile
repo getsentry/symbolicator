@@ -30,20 +30,20 @@ ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=/usr/bin/mold"
 COPY --from=symbolicator-planner /work/recipe.json recipe.json
 
 # Build only the dependencies identified in the `symbolicator-planner` image
-RUN cargo chef cook --release --features=${SYMBOLICATOR_FEATURES} --recipe-path recipe.json
+RUN cargo chef cook --profile release-lto --features=${SYMBOLICATOR_FEATURES} --recipe-path recipe.json
 
 COPY . .
 RUN git update-index --skip-worktree $(git status | grep deleted | awk '{print $2}')
-RUN cargo build -p symbolicator --release --features=${SYMBOLICATOR_FEATURES}
-RUN cp target/release/symbolicator target/release/symbolicator.debug \
-    && objcopy --strip-debug --strip-unneeded target/release/symbolicator \
-    && objcopy --add-gnu-debuglink target/release/symbolicator target/release/symbolicator.debug \
-    && cp ./target/release/symbolicator /usr/local/bin \
-    && zip /opt/symbolicator-debug.zip target/release/symbolicator.debug
+RUN cargo build -p symbolicator --profile release-lto --features=${SYMBOLICATOR_FEATURES}
+RUN cp target/release-lto/symbolicator target/release-lto/symbolicator.debug \
+    && objcopy --strip-debug --strip-unneeded target/release-lto/symbolicator \
+    && objcopy --add-gnu-debuglink target/release-lto/symbolicator target/release-lto/symbolicator.debug \
+    && cp ./target/release-lto/symbolicator /usr/local/bin \
+    && zip /opt/symbolicator-debug.zip target/release-lto/symbolicator.debug
 
 COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
-    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release/symbolicator.debug)" \
+    && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release-lto/symbolicator.debug)" \
     && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
 
 #############################################
