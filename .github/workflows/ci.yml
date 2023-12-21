@@ -99,8 +99,6 @@ jobs:
           workdir: sentry
           kafka: true
           snuba: true
-          cache-files-hash: ${{ hashFiles('sentry/requirements**.txt') }}
-          python-version: 3.8
 
       - name: Do the localhost docker dance
         run: echo "$DJANGO_LIVE_TEST_SERVER_ADDRESS host.docker.internal" | sudo tee --append /etc/hosts
