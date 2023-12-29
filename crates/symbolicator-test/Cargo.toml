@@ -7,7 +7,6 @@ license = "MIT"
 
 [dependencies]
 axum = "0.7.2"
-axum-server = "0.6.0"
 humantime = "2.0.1"
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
 regex = "1.5.5"

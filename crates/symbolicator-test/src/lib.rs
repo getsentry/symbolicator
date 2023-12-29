@@ -198,13 +198,12 @@ impl Server {
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(addr).unwrap();
+        listener.set_nonblocking(true).unwrap();
         let socket = listener.local_addr().unwrap();
 
         let handle = tokio::spawn(async move {
-            axum_server::from_tcp(listener)
-                .serve(router.into_make_service())
-                .await
-                .unwrap();
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            axum::serve(listener, router).await.unwrap();
         });
 
         Self {
