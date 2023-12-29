@@ -42,10 +42,11 @@ pub fn init(config: Config) -> Guard {
                 "OK"
             }
             use axum::handler::HandlerWithoutStateExt;
-            let server = axum::Server::from_tcp(listener)
-                .unwrap()
-                .serve(ok.into_make_service());
-            server.await.unwrap()
+
+            axum_server::from_tcp(listener)
+                .serve(ok.into_make_service())
+                .await
+                .unwrap();
         }));
 
         let dsn = format!("http://some_token@127.0.0.1:{}/1234", socket.port());

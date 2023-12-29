@@ -75,7 +75,7 @@ pub async fn proxy_symstore_request(
     }
 
     let bytes = Cursor::new(data);
-    Ok(response.body(Body::wrap_stream(tokio_util::io::ReaderStream::new(bytes)))?)
+    Ok(response.body(Body::from_stream(tokio_util::io::ReaderStream::new(bytes)))?)
 }
 
 #[cfg(test)]

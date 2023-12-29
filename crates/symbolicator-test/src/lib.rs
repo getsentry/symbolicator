@@ -17,15 +17,16 @@
 //!    HTTP connections.
 
 use std::collections::BTreeMap;
-use std::net::SocketAddr;
+use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect};
 use axum::routing::{get, get_service};
 use axum::{extract, Json};
 use axum::{middleware, Router};
-use reqwest::{StatusCode, Url};
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use tower_http::services::ServeDir;
@@ -179,7 +180,7 @@ impl Server {
 
         let hitcounter = {
             let hits = hits.clone();
-            move |extract::OriginalUri(uri), req, next: middleware::Next<_>| {
+            move |extract::OriginalUri(uri), req, next: middleware::Next| {
                 let hits = hits.clone();
                 async move {
                     {
@@ -196,12 +197,14 @@ impl Server {
         let router = router.layer(middleware::from_fn(hitcounter));
 
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-
-        let server = axum::Server::bind(&addr).serve(router.into_make_service());
-        let socket = server.local_addr();
+        let listener = TcpListener::bind(addr).unwrap();
+        let socket = listener.local_addr().unwrap();
 
         let handle = tokio::spawn(async move {
-            server.await.unwrap();
+            axum_server::from_tcp(listener)
+                .serve(router.into_make_service())
+                .await
+                .unwrap();
         });
 
         Self {
