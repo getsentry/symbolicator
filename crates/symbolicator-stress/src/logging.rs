@@ -35,6 +35,7 @@ pub fn init(config: Config) -> Guard {
     if config.sentry {
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
         let listener = TcpListener::bind(addr).unwrap();
+        listener.set_nonblocking(true).unwrap();
         let socket = listener.local_addr().unwrap();
 
         guard.sentry_server = Some(Box::pin(async move {
@@ -42,10 +43,9 @@ pub fn init(config: Config) -> Guard {
                 "OK"
             }
             use axum::handler::HandlerWithoutStateExt;
-            let server = axum::Server::from_tcp(listener)
-                .unwrap()
-                .serve(ok.into_make_service());
-            server.await.unwrap()
+
+            let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+            axum::serve(listener, ok.into_make_service()).await.unwrap();
         }));
 
         let dsn = format!("http://some_token@127.0.0.1:{}/1234", socket.port());

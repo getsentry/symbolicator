@@ -16,6 +16,9 @@ default-members = ["crates/symbolicator", "crates/symbolicli", "crates/symsorter
 [profile.release]
 # For release builds, we do want line-only debug information to be able to symbolicate panic stack traces.
 debug = 1
+
+[profile.release-lto]
+inherits = "release"
 codegen-units = 1
 lto = true
 
