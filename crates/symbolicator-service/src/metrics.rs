@@ -57,6 +57,9 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::incr($id.to_string(), $value as f64)
+            $(.with_tag($k, $v.to_string()))*
+            .send();
     }};
     (counter($id:expr) -= $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         use $crate::metrics::prelude::*;
@@ -66,6 +69,9 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::incr($id, -$value as f64)
+            $(.with_tag($k, $v))*
+            .send();
     }};
 
     // gauges
@@ -77,6 +83,9 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::gauge($id, $value as f64)
+            $(.with_tag($k, $v.to_string()))*
+            .send();
     }};
 
     // timers
@@ -88,6 +97,9 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::timing($id.to_string(), $value)
+            $(.with_tag($k, $v.to_string()))*
+            .send();
     }};
 
     // we use statsd timers to send things such as filesizes as well.
@@ -99,6 +111,9 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::distribution($id, $value as f64)
+            $(.with_tag($k, $v.to_string()))*
+            .send();
     }};
 
     // histograms
@@ -110,5 +125,8 @@ macro_rules! metric {
                 $(.with_tag($k, $v))*
                 .send();
         });
+        ::sentry::metrics::Metric::distribution($id.to_string(), $value as f64)
+            $(.with_tag($k, $v.to_string()))*
+            .send();
     }};
 }
