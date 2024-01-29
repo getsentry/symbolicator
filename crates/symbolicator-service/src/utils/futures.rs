@@ -101,11 +101,10 @@ impl<'a> MeasureGuard<'a> {
     /// metric.
     pub fn start(&mut self) {
         metrics::with_client(|client| {
-            let metric = client
+            client
                 .time_with_tags("futures.wait_time", self.creation_time.elapsed())
-                .with_tag("task_name", self.task_name);
-
-            client.send_metric(metric);
+                .with_tag("task_name", self.task_name)
+                .send();
         })
     }
 
@@ -122,12 +121,11 @@ impl Drop for MeasureGuard<'_> {
             MeasureState::Done(status) => status,
         };
         metrics::with_client(|client| {
-            let metric = client
+            client
                 .time_with_tags("futures.done", self.creation_time.elapsed())
                 .with_tag("task_name", self.task_name)
-                .with_tag("status", status);
-
-            client.send_metric(metric);
+                .with_tag("status", status)
+                .send();
         })
     }
 }
