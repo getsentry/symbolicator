@@ -32,12 +32,12 @@ impl GcsToken {
 }
 
 #[derive(Serialize)]
-struct JwtClaims {
+struct JwtClaims<'s> {
     #[serde(rename = "iss")]
-    issuer: String,
-    scope: String,
+    issuer: &'s str,
+    scope: &'s str,
     #[serde(rename = "aud")]
-    audience: String,
+    audience: &'s str,
     #[serde(rename = "exp")]
     expiration: i64,
     #[serde(rename = "iat")]
@@ -100,9 +100,9 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Jw
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
 
     let jwt_claims = JwtClaims {
-        issuer: source_key.client_email.clone(),
-        scope: "https://www.googleapis.com/auth/devstorage.read_only".into(),
-        audience: "https://www.googleapis.com/oauth2/v4/token".into(),
+        issuer: &source_key.client_email,
+        scope: "https://www.googleapis.com/auth/devstorage.read_only",
+        audience: "https://www.googleapis.com/oauth2/v4/token",
         expiration,
         issued_at: Utc::now().timestamp(),
     };
