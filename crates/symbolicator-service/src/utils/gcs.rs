@@ -1,6 +1,9 @@
 //! Access to Google Cloud Storeage
 
+use std::sync::Arc;
+
 use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::errors::Error as JwtError;
 use jsonwebtoken::EncodingKey;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -10,9 +13,9 @@ use url::Url;
 use symbolicator_sources::GcsSourceKey;
 
 /// A JWT token usable for GCS.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GcsToken {
-    access_token: String,
+    bearer_token: Arc<str>,
     expires_at: DateTime<Utc>,
 }
 
@@ -23,8 +26,8 @@ impl GcsToken {
     }
 
     /// The token in the HTTP Bearer-header format, header value only.
-    pub fn bearer_token(&self) -> String {
-        format!("Bearer {}", self.access_token)
+    pub fn bearer_token(&self) -> &str {
+        &self.bearer_token
     }
 }
 
@@ -57,20 +60,9 @@ pub enum GcsError {
     #[error("failed to construct URL")]
     InvalidUrl,
     #[error("failed encoding JWT")]
-    Jwt(#[from] jsonwebtoken::errors::Error),
+    Jwt(#[from] JwtError),
     #[error("failed to send authentication request")]
     Auth(#[source] reqwest::Error),
-}
-
-/// Returns the JWT key parsed from a string.
-///
-/// Because Google provides this key in JSON format a lot of users just copy-paste this key
-/// directly, leaving the escaped newlines from the JSON-encoding in place.  In normal
-/// base64 this should not occur so we pre-process the key to convert these back to real
-/// newlines, ensuring they are in the correct PEM format.
-fn key_from_string(key: &str) -> Result<EncodingKey, jsonwebtoken::errors::Error> {
-    let buffer = key.replace("\\n", "\n");
-    EncodingKey::from_rsa_pem(buffer.as_bytes())
 }
 
 /// Returns the URL for an object.
@@ -92,8 +84,19 @@ pub fn download_url(bucket: &str, object: &str) -> Result<Url, GcsError> {
     Ok(url)
 }
 
+/// Returns the JWT key parsed from a string.
+///
+/// Because Google provides this key in JSON format a lot of users just copy-paste this key
+/// directly, leaving the escaped newlines from the JSON-encoding in place.  In normal
+/// base64 this should not occur so we pre-process the key to convert these back to real
+/// newlines, ensuring they are in the correct PEM format.
+fn key_from_string(key: &str) -> Result<EncodingKey, JwtError> {
+    let buffer = key.replace("\\n", "\n");
+    EncodingKey::from_rsa_pem(buffer.as_bytes())
+}
+
 /// Computes a JWT authentication assertion for the given GCS bucket.
-fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, GcsError> {
+fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, JwtError> {
     let header = jsonwebtoken::Header::new(jsonwebtoken::Algorithm::RS256);
 
     let jwt_claims = JwtClaims {
@@ -106,7 +109,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Gc
 
     let key = key_from_string(&source_key.private_key)?;
 
-    Ok(jsonwebtoken::encode(&header, &jwt_claims, &key)?)
+    jsonwebtoken::encode(&header, &jwt_claims, &key)
 }
 
 /// Requests a new GCS OAuth token.
@@ -133,9 +136,10 @@ pub async fn request_new_token(
         .json::<GcsTokenResponse>()
         .await
         .map_err(GcsError::Auth)?;
+    let bearer_token = format!("Bearer {}", token.access_token).into();
 
     Ok(GcsToken {
-        access_token: token.access_token,
+        bearer_token,
         expires_at,
     })
 }
