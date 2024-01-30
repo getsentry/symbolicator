@@ -10,11 +10,12 @@ use symbolicator_service::services::SharedServices;
 
 use crate::api_lookup::SentryLookupApi;
 use crate::bundle_index_cache::BundleIndexCache;
-use crate::lookup::FetchSourceMapCacheInternal;
+use crate::lookup::{FetchSourceMapCacheInternal, FileInBundleCache};
 
 #[derive(Debug, Clone)]
 pub struct SourceMapService {
     pub(crate) objects: ObjectsActor,
+    pub(crate) files_in_bundles: FileInBundleCache,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
     pub(crate) bundle_index_cache: Arc<BundleIndexCache>,
     pub(crate) sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
@@ -44,8 +45,11 @@ impl SourceMapService {
             in_memory,
         ));
 
+        let files_in_bundles = FileInBundleCache::new();
+
         Self {
             objects,
+            files_in_bundles,
             sourcefiles_cache,
             bundle_index_cache: Arc::new(bundle_index_cache),
             sourcemap_caches: Arc::new(Cacher::new(caches.sourcemap_caches.clone(), shared_cache)),
