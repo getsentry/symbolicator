@@ -389,7 +389,7 @@ async fn stackwalk(
 
         let mut obj_info = object_info_from_minidump_module(ty, module);
 
-        obj_info.unwind_status = Some(match cficaches.remove(&key) {
+        let unwind_status = match cficaches.remove(&key) {
             Some(LazyCfiCache::Fetched(cfi_module)) => {
                 let cfi_module = Arc::into_inner(cfi_module).unwrap();
                 obj_info.features.merge(cfi_module.features);
@@ -408,7 +408,8 @@ async fn stackwalk(
                 object_file_status_from_cache_entry(&cfi_module.cache)
             }
             _ => ObjectFileStatus::Unused,
-        });
+        };
+        obj_info.unwind_status = Some(unwind_status);
 
         metric!(
             counter("symbolication.unwind_status") += 1,
