@@ -28,7 +28,7 @@ use std::fmt::{self, Write};
 use std::fs::File;
 use std::io::{self, BufWriter};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use futures::future::BoxFuture;
 use reqwest::Url;
@@ -59,6 +59,7 @@ use symbolicator_service::utils::http::is_valid_origin;
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};
 use crate::bundle_index::BundleIndex;
 use crate::bundle_index_cache::BundleIndexCache;
+use crate::bundle_lookup::FileInBundleCache;
 use crate::interface::{
     JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith,
     SymbolicateJsStacktraces,
@@ -555,74 +556,6 @@ struct IndividualArtifact {
     remote_file: RemoteFile,
     headers: ArtifactHeaders,
     resolved_with: ResolvedWith,
-}
-
-type FileInBundleCacheInner = moka::sync::Cache<(RemoteFileUri, FileKey), CachedFileEntry>;
-
-/// A cache that memoizes looking up files in artifact bundles.
-#[derive(Clone)]
-pub struct FileInBundleCache {
-    cache: FileInBundleCacheInner,
-}
-
-impl std::fmt::Debug for FileInBundleCache {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("FileInBundleCache").finish()
-    }
-}
-
-impl FileInBundleCache {
-    /// Creates a new `FileInBundleCache` with a maximum size of 2GiB and
-    /// idle time of 1h.
-    pub fn new() -> Self {
-        const GIGS: u64 = 1 << 30;
-        let cache = FileInBundleCacheInner::builder()
-            .max_capacity(2 * GIGS)
-            .time_to_idle(Duration::from_secs(60 * 60))
-            .name("file-in-bundle")
-            .weigher(|_k, v| {
-                let content_size = v
-                    .entry
-                    .as_ref()
-                    .map(|cached_file| cached_file.contents.len())
-                    .unwrap_or_default();
-                (std::mem::size_of_val(v) + content_size)
-                    .try_into()
-                    .unwrap_or(u32::MAX)
-            })
-            .build();
-        Self { cache }
-    }
-
-    /// Tries to retrieve a file from the cache.
-    ///
-    /// We look for the file under `(bundle_uri, key)` for `bundle_uri` in `bundle_uris`.
-    /// Retrieval is limited to a specific list of bundles so that e.g. files with the same
-    /// `abs_path` belonging to different events are disambiguated.
-    fn try_get(
-        &self,
-        bundle_uris: impl Iterator<Item = RemoteFileUri>,
-        mut key: FileKey,
-    ) -> Option<CachedFileEntry> {
-        for bundle_uri in bundle_uris {
-            // XXX: this is a really horrible workaround for not being able to look up things via `(&A, &B)` instead of `&(A, B)`.
-            let lookup_key = (bundle_uri, key);
-            if let Some(file_entry) = self.cache.get(&lookup_key) {
-                return Some(file_entry);
-            }
-            key = lookup_key.1;
-        }
-        None
-    }
-
-    /// Inserts `file_entry` into the cache under `(bundle_uri, key)`.
-    ///
-    /// Files are inserted under a specific bundle so that e.g. files with the same
-    /// `abs_path` belonging to different events are disambiguated.
-    fn insert(&self, bundle_uri: &RemoteFileUri, key: &FileKey, file_entry: &CachedFileEntry) {
-        let key = (bundle_uri.clone(), key.clone());
-        self.cache.insert(key, file_entry.clone())
-    }
 }
 
 struct ArtifactFetcher {

@@ -1,6 +1,7 @@
 mod api_lookup;
 mod bundle_index;
 mod bundle_index_cache;
+mod bundle_lookup;
 pub mod interface;
 mod lookup;
 mod metrics;
