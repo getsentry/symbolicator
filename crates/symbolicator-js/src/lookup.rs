@@ -559,6 +559,7 @@ struct IndividualArtifact {
 
 type FileInBundleCacheInner = moka::sync::Cache<(RemoteFileUri, FileKey), CachedFileEntry>;
 
+/// A cache that memoizes looking up files in artifact bundles.
 #[derive(Clone)]
 pub struct FileInBundleCache {
     cache: FileInBundleCacheInner,
@@ -571,6 +572,8 @@ impl std::fmt::Debug for FileInBundleCache {
 }
 
 impl FileInBundleCache {
+    /// Creates a new `FileInBundleCache` with a maximum size of 2GiB and
+    /// idle time of 1h.
     pub fn new() -> Self {
         const GIGS: u64 = 1 << 30;
         let cache = FileInBundleCacheInner::builder()
@@ -591,6 +594,11 @@ impl FileInBundleCache {
         Self { cache }
     }
 
+    /// Tries to retrieve a file from the cache.
+    ///
+    /// We look for the file under `(bundle_uri, key)` for `bundle_uri` in `bundle_uris`.
+    /// Retrieval is limited to a specific list of bundles so that e.g. files with the same
+    /// `abs_path` belonging to different events are disambiguated.
     fn try_get(
         &self,
         bundle_uris: impl Iterator<Item = RemoteFileUri>,
@@ -607,6 +615,10 @@ impl FileInBundleCache {
         None
     }
 
+    /// Inserts `file_entry` into the cache under `(bundle_uri, key)`.
+    ///
+    /// Files are inserted under a specific bundle so that e.g. files with the same
+    /// `abs_path` belonging to different events are disambiguated.
     fn insert(&self, bundle_uri: &RemoteFileUri, key: &FileKey, file_entry: &CachedFileEntry) {
         let key = (bundle_uri.clone(), key.clone());
         self.cache.insert(key, file_entry.clone())
@@ -617,6 +629,9 @@ struct ArtifactFetcher {
     metrics: JsMetrics,
 
     // other services:
+    /// Cache for looking up files in artifact bundles.
+    ///
+    /// This cache is shared between all JS symbolication requests.
     files_in_bundles: FileInBundleCache,
     objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
@@ -1032,6 +1047,7 @@ impl ArtifactFetcher {
             return None;
         }
 
+        // First see if we have already cached this file for any of this event's bundles.
         if let Some(file_entry) = self
             .files_in_bundles
             .try_get(self.artifact_bundles.keys().rev().cloned(), key.clone())
