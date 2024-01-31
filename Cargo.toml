@@ -1,7 +1,12 @@
 [workspace]
 resolver = "2"
 members = ["crates/*"]
-default-members = ["crates/symbolicator", "crates/symbolicli", "crates/symsorter", "crates/wasm-split"]
+default-members = [
+    "crates/symbolicator",
+    "crates/symbolicli",
+    "crates/symsorter",
+    "crates/wasm-split",
+]
 
 [profile.dev]
 # For debug builds, we do want to optimize for both debug-ability, and fast iteration times.
@@ -47,4 +52,4 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 # symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 # See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
 # [patch.crates-io]
-# symbolic = { path = "../symbolic/symbolic" }
+# symbolic-debuginfo = { path = "../symbolic/symbolic-debuginfo" }

@@ -59,6 +59,7 @@ use symbolicator_service::utils::http::is_valid_origin;
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};
 use crate::bundle_index::BundleIndex;
 use crate::bundle_index_cache::BundleIndexCache;
+use crate::bundle_lookup::FileInBundleCache;
 use crate::interface::{
     JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith,
     SymbolicateJsStacktraces,
@@ -163,6 +164,7 @@ impl SourceMapLookup {
     pub async fn new(service: SourceMapService, request: SymbolicateJsStacktraces) -> Self {
         let SourceMapService {
             objects,
+            files_in_bundles,
             sourcefiles_cache,
             bundle_index_cache,
             sourcemap_caches,
@@ -213,6 +215,7 @@ impl SourceMapLookup {
 
         let fetcher = ArtifactFetcher {
             objects,
+            files_in_bundles,
             sourcefiles_cache,
             sourcemap_caches,
             api_lookup,
@@ -559,6 +562,10 @@ struct ArtifactFetcher {
     metrics: JsMetrics,
 
     // other services:
+    /// Cache for looking up files in artifact bundles.
+    ///
+    /// This cache is shared between all JS symbolication requests.
+    files_in_bundles: FileInBundleCache,
     objects: ObjectsActor,
     sourcefiles_cache: Arc<SourceFilesCache>,
     sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
@@ -973,6 +980,14 @@ impl ArtifactFetcher {
             return None;
         }
 
+        // First see if we have already cached this file for any of this event's bundles.
+        if let Some(file_entry) = self
+            .files_in_bundles
+            .try_get(self.artifact_bundles.keys().rev().cloned(), key.clone())
+        {
+            return Some(file_entry);
+        }
+
         // If we have a `DebugId`, we try a lookup based on that.
         if let Some(debug_id) = key.debug_id() {
             let ty = key.as_type();
@@ -988,11 +1003,13 @@ impl ArtifactFetcher {
                         *bundle_resolved_with,
                     );
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
-                    return Some(CachedFileEntry {
+                    let file_entry = CachedFileEntry {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
                         resolved_with: ResolvedWith::DebugId,
-                    });
+                    };
+                    self.files_in_bundles.insert(bundle_uri, key, &file_entry);
+                    return Some(file_entry);
                 }
             }
         }
@@ -1012,11 +1029,13 @@ impl ArtifactFetcher {
                             *resolved_with,
                         );
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
-                        return Some(CachedFileEntry {
+                        let file_entry = CachedFileEntry {
                             uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                             entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
                             resolved_with: *resolved_with,
-                        });
+                        };
+                        self.files_in_bundles.insert(bundle_uri, key, &file_entry);
+                        return Some(file_entry);
                     }
                 }
             }
