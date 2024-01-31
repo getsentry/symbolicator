@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use anyhow::Result;
@@ -15,12 +15,13 @@ use minidump_unwind::{
 };
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
-use symbolic::common::{Arch, ByteView, CodeId, DebugId};
+use symbolic::common::{Arch, ByteView};
 use symbolicator_service::metric;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tempfile::TempPath;
+use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
 use crate::interface::{
@@ -121,20 +122,24 @@ impl MinidumpState {
 /// The Key that is used for looking up the [`Module`] in the per-stackwalk CFI / computation cache.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct LookupKey {
-    code_id: Option<CodeId>,
-    debug_id: Option<DebugId>,
     base_addr: u64,
+    size: u64,
 }
 
 impl LookupKey {
     /// Creates a new lookup key for the given [`Module`].
     fn new(module: &(dyn Module)) -> Self {
         Self {
-            code_id: module.code_identifier(),
-            debug_id: module.debug_identifier(),
             base_addr: module.base_address(),
+            size: module.size(),
         }
     }
+}
+
+#[derive(Clone)]
+enum LazyCfiCache {
+    Fetched(Arc<FetchedCfiCache>),
+    Fetching(Arc<Notify>),
 }
 
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
@@ -151,9 +156,7 @@ struct SymbolicatorSymbolProvider {
     /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
     /// An internal database of loaded CFI.
-    ///
-    /// The key consists of a module's debug identifier and base address.
-    cficaches: moka::future::Cache<LookupKey, FetchedCfiCache>,
+    cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -168,45 +171,74 @@ impl SymbolicatorSymbolProvider {
             sources,
             cficache_actor,
             object_type,
-            // use `CacheBuilder` to create a cache with no max capacity
-            cficaches: moka::future::Cache::builder().build(),
+            cficaches: Default::default(),
         }
     }
 
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> FetchedCfiCache {
+    async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Arc<FetchedCfiCache> {
         let key = LookupKey::new(module);
-        let init = Box::pin(async {
-            let sources = self.sources.clone();
-            let scope = self.scope.clone();
 
-            let code_file = non_empty_file_name(&module.code_file());
-            let debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+        loop {
+            // FIXME: ideally, we would like to only lock once here, but the borrow checker does not
+            // understand that `drop()`-ing the guard before the `notified().await` does not hold
+            // the guard across an `await` point.
+            // Currently, it still thinks it does, and makes the resulting future `!Send`.
+            // We will therefore double-lock again in the `None` branch.
+            let entry = self.cficaches.lock().unwrap().get(&key).cloned();
+            match entry {
+                Some(LazyCfiCache::Fetched(cficache)) => return cficache,
+                Some(LazyCfiCache::Fetching(notify)) => {
+                    // unlock, wait and then try again
+                    notify.notified().await;
+                }
+                None => {
+                    // insert a notifier for concurrent accesses, then go on to actually fetch
+                    let mut cficaches = self.cficaches.lock().unwrap();
+                    cficaches.insert(key.clone(), LazyCfiCache::Fetching(Arc::new(Notify::new())));
+                    break;
+                }
+            }
+        }
 
-            let identifier = ObjectId {
-                code_id: key.code_id.clone(),
-                code_file,
-                debug_id: key.debug_id,
-                debug_file,
-                debug_checksum: None,
+        let sources = self.sources.clone();
+        let scope = self.scope.clone();
+
+        let code_file = non_empty_file_name(&module.code_file());
+        let debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
+        let identifier = ObjectId {
+            code_id: module.code_identifier(),
+            code_file,
+            debug_id: module.debug_identifier(),
+            debug_file,
+            debug_checksum: None,
+            object_type: self.object_type,
+        };
+
+        let cficache = self
+            .cficache_actor
+            .fetch(FetchCfiCache {
                 object_type: self.object_type,
-            };
+                identifier,
+                sources,
+                scope,
+            })
+            // NOTE: this `bind_hub` is important!
+            // `load_cfi_module` is being called concurrently from `rust-minidump` via
+            // `join_all`. We do need proper isolation of any async task that might
+            // manipulate any Sentry scope.
+            .bind_hub(Hub::new_from_top(Hub::current()))
+            .await;
 
-            self.cficache_actor
-                .fetch(FetchCfiCache {
-                    object_type: self.object_type,
-                    identifier,
-                    sources,
-                    scope,
-                })
-                // NOTE: this `bind_hub` is important!
-                // `load_cfi_module` is being called concurrently from `rust-minidump` via
-                // `join_all`. We do need proper isolation of any async task that might
-                // manipulate any Sentry scope.
-                .bind_hub(Hub::new_from_top(Hub::current()))
-                .await
-        });
-        self.cficaches.get_with_by_ref(&key, init).await
+        let cficache = Arc::new(cficache);
+        let mut cficaches = self.cficaches.lock().unwrap();
+        if let Some(LazyCfiCache::Fetching(notify)) =
+            cficaches.insert(key, LazyCfiCache::Fetched(cficache.clone()))
+        {
+            notify.notify_waiters();
+        }
+        cficache
     }
 }
 
@@ -240,7 +272,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         walker: &mut (dyn FrameWalker + Send),
     ) -> Option<()> {
         let cfi_module = self.load_cfi_module(module).await;
-        cfi_module.cache.ok()??.0.walk_frame(module, walker)
+        cfi_module.cache.clone().ok()??.0.walk_frame(module, walker)
     }
 
     async fn get_file_path(
@@ -344,21 +376,22 @@ async fn stackwalk(
     // After stackwalking, `provider.cficaches` contains entries for exactly
     // those modules that were referenced by some stack frame in the minidump.
     let mut modules = vec![];
+    let mut cficaches = provider.cficaches.into_inner().unwrap();
     for module in process_state.modules.by_addr() {
         let key = LookupKey::new(module);
 
         // Discard modules that weren't used and don't have any valid id to go by.
         let debug_id = module.debug_identifier();
         let code_id = module.code_identifier();
-        if !provider.cficaches.contains_key(&key) && debug_id.is_none() && code_id.is_none() {
+        if !cficaches.contains_key(&key) && debug_id.is_none() && code_id.is_none() {
             continue;
         }
 
         let mut obj_info = object_info_from_minidump_module(ty, module);
 
-        obj_info.unwind_status = Some(match provider.cficaches.get(&key).await {
-            None => ObjectFileStatus::Unused,
-            Some(cfi_module) => {
+        let unwind_status = match cficaches.remove(&key) {
+            Some(LazyCfiCache::Fetched(cfi_module)) => {
+                let cfi_module = Arc::into_inner(cfi_module).unwrap();
                 obj_info.features.merge(cfi_module.features);
                 // NOTE: minidump stackwalking is the first thing that happens to a request,
                 // hence the current candidate list is empty.
@@ -374,7 +407,9 @@ async fn stackwalk(
 
                 object_file_status_from_cache_entry(&cfi_module.cache)
             }
-        });
+            _ => ObjectFileStatus::Unused,
+        };
+        obj_info.unwind_status = Some(unwind_status);
 
         metric!(
             counter("symbolication.unwind_status") += 1,
