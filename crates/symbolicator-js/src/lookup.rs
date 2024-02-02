@@ -877,7 +877,7 @@ impl ArtifactFetcher {
             return make_error(format!("{abs_path} is not an allowed download origin"));
         }
 
-        let host_string = match url.host_str() {
+        match url.host_str() {
             None => {
                 self.scraping_attempts.push(JsScrapingAttempt::failure(
                     abs_path.to_owned(),
@@ -886,35 +886,21 @@ impl ArtifactFetcher {
                 ));
                 return make_error("Invalid host".to_string());
             }
-            Some(host @ ("localhost" | "127.0.0.1")) => {
-                // NOTE: the reserved IPs cover a lot more than just localhost.
-                if self.download_svc.can_connect_to_reserved_ips() {
-                    host
-                } else {
-                    self.scraping_attempts.push(JsScrapingAttempt::failure(
-                        abs_path.to_owned(),
-                        JsScrapingFailureReason::InvalidHost,
-                        format!("Can't connect to restricted host {host}"),
-                    ));
-                    return make_error("Invalid host".to_string());
-                }
+            // NOTE: the reserved IPs cover a lot more than just localhost.
+            Some(host @ ("localhost" | "127.0.0.1"))
+                if !self.download_svc.can_connect_to_reserved_ips() =>
+            {
+                self.scraping_attempts.push(JsScrapingAttempt::failure(
+                    abs_path.to_owned(),
+                    JsScrapingFailureReason::InvalidHost,
+                    format!("Can't connect to restricted host {host}"),
+                ));
+                return make_error("Invalid host".to_string());
             }
-            Some(host) => host,
-        };
+            _ => {}
+        }
 
         self.metrics.scraped_files += 1;
-
-        let span = sentry::configure_scope(|scope| scope.get_span());
-        let ctx = sentry::TransactionContext::continue_from_span(
-            "scrape_js_file",
-            "scrape_js_file",
-            span,
-        );
-        let transaction = sentry::start_transaction(ctx);
-        sentry::configure_scope(|scope| {
-            scope.set_span(Some(transaction.clone().into()));
-            scope.set_tag("host", host_string);
-        });
 
         // We add a hash with a timestamp to the `url` to make sure that we are busting caches
         // that are based on the `uri`.
@@ -941,7 +927,6 @@ impl ArtifactFetcher {
             .fetch_file(&self.scope, remote_file, false)
             .await;
 
-        transaction.finish();
         let entry = match scraped_file {
             Ok(contents) => {
                 self.metrics.record_file_scraped(key.as_type());
