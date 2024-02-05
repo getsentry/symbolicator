@@ -967,10 +967,18 @@ impl ArtifactFetcher {
         }
 
         // First see if we have already cached this file for any of this event's bundles.
-        if let Some(file_entry) = self
+        if let Some((bundle_uri, file_entry, resolved_with)) = self
             .files_in_bundles
             .try_get(self.artifact_bundles.keys().rev().cloned(), key.clone())
         {
+            if let Some(Ok((_, bundle_resolved_with))) = self.artifact_bundles.get(&bundle_uri) {
+                self.metrics.record_file_found_in_bundle(
+                    key.as_type(),
+                    resolved_with,
+                    *bundle_resolved_with,
+                );
+            }
+
             return Some(file_entry);
         }
 
@@ -994,7 +1002,12 @@ impl ArtifactFetcher {
                         entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
                         resolved_with: ResolvedWith::DebugId,
                     };
-                    self.files_in_bundles.insert(bundle_uri, key, &file_entry);
+                    self.files_in_bundles.insert(
+                        bundle_uri,
+                        key,
+                        ResolvedWith::DebugId,
+                        &file_entry,
+                    );
                     return Some(file_entry);
                 }
             }
@@ -1020,7 +1033,12 @@ impl ArtifactFetcher {
                             entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
                             resolved_with: *resolved_with,
                         };
-                        self.files_in_bundles.insert(bundle_uri, key, &file_entry);
+                        self.files_in_bundles.insert(
+                            bundle_uri,
+                            key,
+                            ResolvedWith::Url,
+                            &file_entry,
+                        );
                         return Some(file_entry);
                     }
                 }
