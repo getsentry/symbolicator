@@ -126,7 +126,7 @@ pub async fn perform_stresstest(
         let (concurrency, ops) = task.unwrap();
 
         let ops_ps = ops as f32 / duration.as_secs() as f32;
-        println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps} ops/s");
+        println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps:.2} ops/s");
     }
 
     Ok(())

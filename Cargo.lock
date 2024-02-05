@@ -4504,6 +4504,7 @@ dependencies = [
  "clap",
  "futures",
  "humantime",
+ "jemallocator",
  "sentry",
  "serde",
  "serde_json",

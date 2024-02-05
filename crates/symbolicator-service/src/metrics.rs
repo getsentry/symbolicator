@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use std::net::ToSocketAddrs;
 use std::sync::OnceLock;
 
-use cadence::{StatsdClient, UdpMetricSink};
+use cadence::{BufferedUdpMetricSink, QueuingMetricSink, StatsdClient};
 
 static METRICS_CLIENT: OnceLock<StatsdClient> = OnceLock::new();
 
@@ -20,8 +20,9 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<
     }
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
     socket.set_nonblocking(true).unwrap();
-    let sink = UdpMetricSink::from(&addrs[..], socket).unwrap();
-    let mut builder = StatsdClient::builder(prefix, sink);
+    let udp_sink = BufferedUdpMetricSink::from(&addrs[..], socket).unwrap();
+    let queuing_sink = QueuingMetricSink::from(udp_sink);
+    let mut builder = StatsdClient::builder(prefix, queuing_sink);
     for (key, value) in tags {
         builder = builder.with_tag(key, value)
     }

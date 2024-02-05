@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::future::Future;
 use std::io::Write;
-use std::net::{SocketAddr, TcpListener};
+use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::pin::Pin;
 
 use symbolicator_service::metrics;
@@ -21,8 +21,8 @@ pub struct Config {
 #[derive(Default)]
 pub struct Guard {
     sentry: Option<sentry::ClientInitGuard>,
-    pub sentry_server: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
-    // TODO: return the ports / futures of the http / upd servers to use
+    pub http_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    pub upd_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
 pub fn init(config: Config) -> Guard {
@@ -38,7 +38,7 @@ pub fn init(config: Config) -> Guard {
         listener.set_nonblocking(true).unwrap();
         let socket = listener.local_addr().unwrap();
 
-        guard.sentry_server = Some(Box::pin(async move {
+        guard.http_sink = Some(Box::pin(async move {
             async fn ok() -> &'static str {
                 "OK"
             }
@@ -86,7 +86,21 @@ pub fn init(config: Config) -> Guard {
     }
 
     if config.metrics {
-        let host = "TODO"; // create a *real* noop udp server to send metrics to
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let listener = UdpSocket::bind(addr).unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let socket = listener.local_addr().unwrap();
+
+        guard.upd_sink = Some(Box::pin(async move {
+            let listener = tokio::net::UdpSocket::from_std(listener).unwrap();
+            let mut buf = Vec::with_capacity(1024);
+            loop {
+                buf.clear();
+                let _len = listener.recv_buf(&mut buf).await.unwrap();
+            }
+        }));
+
+        let host = format!("127.0.0.1:{}", socket.port());
 
         // have some default tags, just to be closer to the real world config
         let mut tags = BTreeMap::new();
