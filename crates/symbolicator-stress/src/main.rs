@@ -14,6 +14,13 @@ mod workloads;
 use stresstest::perform_stresstest;
 use workloads::WorkloadsConfig;
 
+#[cfg(not(target_env = "msvc"))]
+use jemallocator::Jemalloc;
+
+#[cfg(not(target_env = "msvc"))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 /// Command line interface parser.
 #[derive(Parser)]
 struct Cli {
@@ -47,8 +54,7 @@ fn main() -> Result<()> {
         backtraces: true,
         tracing: true,
         sentry: true,
-        // TODO: init metrics
-        ..Default::default()
+        metrics: true,
     });
 
     let megs = 1024 * 1024;
@@ -57,8 +63,11 @@ fn main() -> Result<()> {
         .thread_stack_size(8 * megs)
         .build()?;
 
-    if let Some(sentry_server) = logging_guard.sentry_server.take() {
-        runtime.spawn(sentry_server);
+    if let Some(http_sink) = logging_guard.http_sink.take() {
+        runtime.spawn(http_sink);
+    }
+    if let Some(udp) = logging_guard.udp_sink.take() {
+        runtime.spawn(udp);
     }
 
     runtime.block_on(perform_stresstest(service_config, workloads, cli.duration))?;
