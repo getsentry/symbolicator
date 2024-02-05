@@ -25,12 +25,9 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Write};
-use std::fs::File;
-use std::io::{self, BufWriter};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use futures::future::BoxFuture;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
 use symbolic::common::{ByteView, DebugId, SelfCell};
@@ -39,18 +36,14 @@ use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
 use symbolic::debuginfo::Object;
-use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
+use symbolic::sourcemapcache::SourceMapCache;
 use symbolicator_sources::{
     HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentryFileId, SentryRemoteFile,
     SentrySourceConfig,
 };
-use tempfile::NamedTempFile;
 
-use symbolicator_service::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
-use symbolicator_service::caching::{
-    CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
-};
+use symbolicator_service::caching::{CacheEntry, CacheError, CacheKey, CacheKeyBuilder, Cacher};
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
 use symbolicator_service::types::{Scope, ScrapingConfig};
@@ -65,6 +58,7 @@ use crate::interface::{
     SymbolicateJsStacktraces,
 };
 use crate::metrics::JsMetrics;
+use crate::sourcemap_cache::{FetchSourceMapCacheInternal, SourceMapContents};
 use crate::utils::{
     cache_busting_key, extract_file_stem, get_release_file_candidate_urls, join_paths,
     resolve_sourcemap_url,
@@ -369,7 +363,7 @@ impl SourceMapUrl {
     }
 }
 
-type ArtifactBundle = SelfCell<Arc<ObjectHandle>, SourceBundleDebugSession<'static>>;
+pub type ArtifactBundle = SelfCell<Arc<ObjectHandle>, SourceBundleDebugSession<'static>>;
 
 /// The lookup key of an arbitrary file.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -395,7 +389,7 @@ impl FileKey {
     }
 
     /// Returns this key's debug id, if any.
-    fn debug_id(&self) -> Option<DebugId> {
+    pub fn debug_id(&self) -> Option<DebugId> {
         match self {
             FileKey::MinifiedSource { debug_id, .. } => *debug_id,
             FileKey::SourceMap { debug_id, .. } => *debug_id,
@@ -413,7 +407,7 @@ impl FileKey {
     }
 
     /// Returns the type of the file this key represents.
-    fn as_type(&self) -> SourceFileType {
+    pub fn as_type(&self) -> SourceFileType {
         match self {
             FileKey::MinifiedSource { .. } => SourceFileType::MinifiedSource,
             FileKey::SourceMap { .. } => SourceFileType::SourceMap,
@@ -490,6 +484,7 @@ impl<T> CachedFileEntry<T> {
 /// the parts that we care about.
 #[derive(Clone)]
 pub struct CachedFile {
+    pub is_lazy: bool,
     pub contents: ByteViewString,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
 }
@@ -504,6 +499,7 @@ impl fmt::Debug for CachedFile {
             self.contents.to_string()
         };
         f.debug_struct("CachedFile")
+            .field("is_lazy", &self.is_lazy)
             .field("contents", &contents)
             .field("sourcemap_url", &self.sourcemap_url)
             .finish()
@@ -535,6 +531,7 @@ impl CachedFile {
         let contents = ByteViewString::from(contents);
 
         Ok(Self {
+            is_lazy: false,
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
@@ -545,7 +542,7 @@ impl CachedFile {
         self.sourcemap_url
             .as_ref()
             .and_then(|sm| match sm.as_ref() {
-                SourceMapUrl::Remote(url) => Some(url.to_string()),
+                SourceMapUrl::Remote(url) => Some(url.clone()),
                 SourceMapUrl::Data(_) => None,
             })
     }
@@ -557,6 +554,8 @@ struct IndividualArtifact {
     headers: ArtifactHeaders,
     resolved_with: ResolvedWith,
 }
+
+pub type ArtifactBundles = BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>;
 
 struct ArtifactFetcher {
     metrics: JsMetrics,
@@ -586,7 +585,7 @@ struct ArtifactFetcher {
     scraping: ScrapingConfig,
 
     /// The set of all the artifact bundles that we have downloaded so far.
-    artifact_bundles: BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>,
+    artifact_bundles: ArtifactBundles,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
@@ -634,6 +633,7 @@ impl ArtifactFetcher {
             Some(SourceMapUrl::Data(data)) => CachedFileEntry {
                 uri: CachedFileUri::Embedded,
                 entry: Ok(CachedFile {
+                    is_lazy: false,
                     contents: data.clone(),
                     sourcemap_url: None,
                 }),
@@ -940,6 +940,7 @@ impl ArtifactFetcher {
                     .push(JsScrapingAttempt::success(abs_path.to_owned()));
 
                 Ok(CachedFile {
+                    is_lazy: false,
                     contents,
                     sourcemap_url,
                 })
@@ -1067,6 +1068,7 @@ impl ArtifactFetcher {
                 // Get the sourcemap reference from the artifact, either from metadata, or file contents
                 let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, &contents);
                 CachedFile {
+                    is_lazy: false,
                     contents,
                     sourcemap_url: sourcemap_url.map(Arc::new),
                 }
@@ -1202,18 +1204,7 @@ impl ArtifactFetcher {
         let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
 
         let fetched_bundle = self.objects.fetch(object_handle).await?;
-
-        SelfCell::try_new(fetched_bundle, |handle| unsafe {
-            match (*handle).object() {
-                Object::SourceBundle(source_bundle) => source_bundle
-                    .debug_session()
-                    .map_err(CacheError::from_std_error),
-                obj => {
-                    tracing::error!("expected a `SourceBundle`, got `{}`", obj.file_format());
-                    Err(CacheError::InternalError)
-                }
-            }
-        })
+        open_bundle(fetched_bundle)
     }
 
     #[tracing::instrument(skip_all)]
@@ -1248,7 +1239,6 @@ impl ArtifactFetcher {
             Ok(source_entry) => match sourcemap.entry {
                 Ok(sourcemap_entry) => {
                     let source_content = source_entry.contents.clone();
-                    let sourcemap_content = sourcemap_entry.contents;
 
                     let cache_key = {
                         let mut cache_key = CacheKey::scoped_builder(&self.scope);
@@ -1263,15 +1253,22 @@ impl ArtifactFetcher {
                             &mut cache_key,
                             "sourcemap",
                             &sourcemap.uri,
-                            sourcemap_content.as_ref(),
+                            // NOTE: `write_cache_key` will never use the contents of a `lazy` sourcemap
+                            sourcemap_entry.contents.as_ref(),
                         );
 
                         cache_key.build()
                     };
 
+                    let sourcemap = SourceMapContents::from_cachedfile(
+                        &self.artifact_bundles,
+                        &sourcemap.uri,
+                        sourcemap_entry,
+                    );
+
                     let req = FetchSourceMapCacheInternal {
                         source: source_content,
-                        sourcemap: sourcemap_content,
+                        sourcemap,
                     };
                     self.sourcemap_caches.compute_memoized(req, cache_key).await
                 }
@@ -1292,46 +1289,16 @@ impl ArtifactFetcher {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct FetchSourceMapCacheInternal {
-    source: ByteViewString,
-    sourcemap: ByteViewString,
-}
-
-impl CacheItemRequest for FetchSourceMapCacheInternal {
-    type Item = OwnedSourceMapCache;
-
-    const VERSIONS: CacheVersions = SOURCEMAP_CACHE_VERSIONS;
-
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
-        Box::pin(async move {
-            write_sourcemap_cache(temp_file.as_file_mut(), &self.source, &self.sourcemap)
-        })
-    }
-
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        parse_sourcemap_cache_owned(data)
-    }
-}
-
-fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedSourceMapCache> {
-    SelfCell::try_new(byteview, |p| unsafe {
-        SourceMapCache::parse(&*p).map_err(CacheError::from_std_error)
+pub fn open_bundle(bundle: Arc<ObjectHandle>) -> CacheEntry<ArtifactBundle> {
+    SelfCell::try_new(bundle, |handle| unsafe {
+        match (*handle).object() {
+            Object::SourceBundle(source_bundle) => source_bundle
+                .debug_session()
+                .map_err(CacheError::from_std_error),
+            obj => {
+                tracing::error!("expected a `SourceBundle`, got `{}`", obj.file_format());
+                Err(CacheError::InternalError)
+            }
+        }
     })
-}
-
-/// Computes and writes the SourceMapCache.
-#[tracing::instrument(skip_all)]
-fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheEntry {
-    tracing::debug!("Converting SourceMap cache");
-
-    let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)
-        .map_err(|err| CacheError::Malformed(err.to_string()))?;
-
-    let mut writer = BufWriter::new(file);
-    smcache_writer.serialize(&mut writer)?;
-    let file = writer.into_inner().map_err(io::Error::from)?;
-    file.sync_all()?;
-
-    Ok(())
 }

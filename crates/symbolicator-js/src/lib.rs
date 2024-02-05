@@ -6,6 +6,7 @@ pub mod interface;
 mod lookup;
 mod metrics;
 mod service;
+mod sourcemap_cache;
 mod symbolication;
 mod utils;
 

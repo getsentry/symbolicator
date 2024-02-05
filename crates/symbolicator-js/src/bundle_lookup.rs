@@ -1,6 +1,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use symbolicator_service::caches::ByteViewString;
 use symbolicator_sources::RemoteFileUri;
 
 use crate::lookup::{CachedFileEntry, FileKey};
@@ -71,7 +72,14 @@ impl FileInBundleCache {
     /// Files are inserted under a specific bundle so that e.g. files with the same
     /// `abs_path` belonging to different events are disambiguated.
     pub fn insert(&self, bundle_uri: &RemoteFileUri, key: &FileKey, file_entry: &CachedFileEntry) {
+        let mut file_entry = file_entry.clone();
+        if matches!(key, FileKey::SourceMap { .. }) {
+            if let Ok(cached_file) = file_entry.entry.as_mut() {
+                cached_file.is_lazy = true;
+                cached_file.contents = ByteViewString::from(String::new());
+            }
+        }
         let key = (bundle_uri.clone(), key.clone());
-        self.cache.insert(key, file_entry.clone())
+        self.cache.insert(key, file_entry)
     }
 }
