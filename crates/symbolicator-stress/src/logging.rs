@@ -22,7 +22,7 @@ pub struct Config {
 pub struct Guard {
     sentry: Option<sentry::ClientInitGuard>,
     pub http_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
-    pub upd_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
+    pub udp_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
 pub fn init(config: Config) -> Guard {
@@ -91,7 +91,7 @@ pub fn init(config: Config) -> Guard {
         listener.set_nonblocking(true).unwrap();
         let socket = listener.local_addr().unwrap();
 
-        guard.upd_sink = Some(Box::pin(async move {
+        guard.udp_sink = Some(Box::pin(async move {
             let listener = tokio::net::UdpSocket::from_std(listener).unwrap();
             let mut buf = Vec::with_capacity(1024);
             loop {

@@ -66,7 +66,7 @@ fn main() -> Result<()> {
     if let Some(http_sink) = logging_guard.http_sink.take() {
         runtime.spawn(http_sink);
     }
-    if let Some(udp) = logging_guard.upd_sink.take() {
+    if let Some(udp) = logging_guard.udp_sink.take() {
         runtime.spawn(udp);
     }
 
