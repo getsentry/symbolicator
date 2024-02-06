@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add dependabot for github actions. ([#1362](https://github.com/getsentry/symbolicator/pull/1362))
+
 ## 24.1.1
 
 - No documented changes.
