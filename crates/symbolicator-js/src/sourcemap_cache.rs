@@ -20,8 +20,10 @@ use crate::utils::get_release_file_candidate_urls;
 
 #[derive(Clone, Debug)]
 pub enum SourceMapContents {
-    Lazy(Arc<ObjectHandle>, FileKey),
-    Eager(ByteViewString),
+    /// The contents have to be fetched from the given [`ArtifactBundle`].
+    FromBundle(Arc<ObjectHandle>, FileKey),
+    /// The contents of the sourcemap have already been resolved.
+    Resolved(ByteViewString),
 }
 
 impl SourceMapContents {
@@ -29,23 +31,19 @@ impl SourceMapContents {
         artifact_bundles: &ArtifactBundles,
         sourcemap_uri: &CachedFileUri,
         sourcemap: CachedFile,
-    ) -> Self {
-        if !sourcemap.is_lazy {
-            return Self::Eager(sourcemap.contents);
+    ) -> Option<Self> {
+        if let Some(contents) = sourcemap.contents {
+            return Some(Self::Resolved(contents));
         }
 
-        let bundle = if let CachedFileUri::Bundled(bundle_uri, key) = sourcemap_uri {
-            artifact_bundles.get(bundle_uri).and_then(|bundle| {
-                let Ok((bundle, _)) = bundle else { return None };
-                let bundle = bundle.owner().clone();
-                let contents = Self::Lazy(bundle, key.clone());
-                Some(contents)
-            })
-        } else {
-            None
+        let CachedFileUri::Bundled(bundle_uri, key) = sourcemap_uri else {
+            return None;
         };
 
-        bundle.unwrap_or(Self::Eager(sourcemap.contents))
+        let (bundle, _) = artifact_bundles.get(bundle_uri)?.as_ref().ok()?;
+        let bundle = bundle.owner().clone();
+        let contents = Self::FromBundle(bundle, key.clone());
+        Some(contents)
     }
 }
 
@@ -63,7 +61,7 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         Box::pin(async move {
             let sourcemap = match &self.sourcemap {
-                SourceMapContents::Lazy(bundle, key) => {
+                SourceMapContents::FromBundle(bundle, key) => {
                     let bundle = open_bundle(bundle.clone())?;
                     let descriptor = get_descriptor_from_bundle(&bundle, key);
 
@@ -75,7 +73,7 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
                         .into_owned();
                     ByteViewString::from(contents)
                 }
-                SourceMapContents::Eager(contents) => contents.clone(),
+                SourceMapContents::Resolved(contents) => contents.clone(),
             };
 
             write_sourcemap_cache(temp_file.as_file_mut(), &self.source, &sourcemap)

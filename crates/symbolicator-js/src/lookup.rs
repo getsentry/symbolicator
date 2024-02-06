@@ -484,22 +484,21 @@ impl<T> CachedFileEntry<T> {
 /// the parts that we care about.
 #[derive(Clone)]
 pub struct CachedFile {
-    pub is_lazy: bool,
-    pub contents: ByteViewString,
+    pub contents: Option<ByteViewString>,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
 }
 
 impl fmt::Debug for CachedFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let contents = if self.contents.len() > 64 {
+        let contents: &str = self.contents();
+        let contents = if contents.len() > 64 {
             // its just `Debug` prints, but we would like the end of the file, as it may
             // have a `sourceMappingURL`
-            format!("...{}", &self.contents[self.contents.len() - 61..])
+            format!("...{}", &contents[contents.len() - 61..])
         } else {
-            self.contents.to_string()
+            contents.to_string()
         };
         f.debug_struct("CachedFile")
-            .field("is_lazy", &self.is_lazy)
             .field("contents", &contents)
             .field("sourcemap_url", &self.sourcemap_url)
             .finish()
@@ -528,13 +527,22 @@ impl CachedFile {
             .into_contents()
             .ok_or_else(|| CacheError::Malformed("descriptor should have `contents`".into()))?
             .into_owned();
-        let contents = ByteViewString::from(contents);
+        let contents = Some(ByteViewString::from(contents));
 
         Ok(Self {
-            is_lazy: false,
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
         })
+    }
+
+    pub fn contents(&self) -> &str {
+        self.contents.as_deref().unwrap_or_default()
+    }
+
+    pub fn owned_contents(&self) -> ByteViewString {
+        self.contents
+            .clone()
+            .unwrap_or(ByteViewString::from(String::new()))
     }
 
     /// Returns a string representation of a SourceMap URL if it was coming from a remote resource.
@@ -633,8 +641,7 @@ impl ArtifactFetcher {
             Some(SourceMapUrl::Data(data)) => CachedFileEntry {
                 uri: CachedFileUri::Embedded,
                 entry: Ok(CachedFile {
-                    is_lazy: false,
-                    contents: data.clone(),
+                    contents: Some(data.clone()),
                     sourcemap_url: None,
                 }),
                 resolved_with: minified_source.resolved_with,
@@ -940,8 +947,7 @@ impl ArtifactFetcher {
                     .push(JsScrapingAttempt::success(abs_path.to_owned()));
 
                 Ok(CachedFile {
-                    is_lazy: false,
-                    contents,
+                    contents: Some(contents),
                     sourcemap_url,
                 })
             }
@@ -971,6 +977,8 @@ impl ArtifactFetcher {
             .files_in_bundles
             .try_get(self.artifact_bundles.keys().rev().cloned(), key.clone())
         {
+            // we would like to gather metrics for which method we used to resolve the artifact bundle
+            // containing the file. we should also be doing so if we got the file from the cache.
             if let Some(Ok((_, bundle_resolved_with))) = self.artifact_bundles.get(&bundle_uri) {
                 self.metrics.record_file_found_in_bundle(
                     key.as_type(),
@@ -1086,8 +1094,7 @@ impl ArtifactFetcher {
                 // Get the sourcemap reference from the artifact, either from metadata, or file contents
                 let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, &contents);
                 CachedFile {
-                    is_lazy: false,
-                    contents,
+                    contents: Some(contents),
                     sourcemap_url: sourcemap_url.map(Arc::new),
                 }
             }),
@@ -1256,7 +1263,7 @@ impl ArtifactFetcher {
         let smcache = match &source.entry {
             Ok(source_entry) => match sourcemap.entry {
                 Ok(sourcemap_entry) => {
-                    let source_content = source_entry.contents.clone();
+                    let source_content = source_entry.owned_contents();
 
                     let cache_key = {
                         let mut cache_key = CacheKey::scoped_builder(&self.scope);
@@ -1271,8 +1278,7 @@ impl ArtifactFetcher {
                             &mut cache_key,
                             "sourcemap",
                             &sourcemap.uri,
-                            // NOTE: `write_cache_key` will never use the contents of a `lazy` sourcemap
-                            sourcemap_entry.contents.as_ref(),
+                            sourcemap_entry.contents().as_bytes(),
                         );
 
                         cache_key.build()
@@ -1282,7 +1288,11 @@ impl ArtifactFetcher {
                         &self.artifact_bundles,
                         &sourcemap.uri,
                         sourcemap_entry,
-                    );
+                    )
+                    .unwrap_or_else(|| {
+                        tracing::error!("expected either a `Bundled` or `Resolved` SourceMap");
+                        SourceMapContents::Resolved(ByteViewString::from(String::new()))
+                    });
 
                     let req = FetchSourceMapCacheInternal {
                         source: source_content,
@@ -1307,8 +1317,10 @@ impl ArtifactFetcher {
     }
 }
 
-pub fn open_bundle(bundle: Arc<ObjectHandle>) -> CacheEntry<ArtifactBundle> {
-    SelfCell::try_new(bundle, |handle| unsafe {
+/// This opens `artifact_bundle` [`Object`], ensuring that it is a [`SourceBundle`](`Object::SourceBundle`),
+/// and opening up a debug session to it.
+pub fn open_bundle(artifact_bundle: Arc<ObjectHandle>) -> CacheEntry<ArtifactBundle> {
+    SelfCell::try_new(artifact_bundle, |handle| unsafe {
         match (*handle).object() {
             Object::SourceBundle(source_bundle) => source_bundle
                 .debug_session()

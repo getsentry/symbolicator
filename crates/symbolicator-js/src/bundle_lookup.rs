@@ -1,7 +1,6 @@
 use std::fmt;
 use std::time::Duration;
 
-use symbolicator_service::caches::ByteViewString;
 use symbolicator_sources::RemoteFileUri;
 
 use crate::interface::ResolvedWith;
@@ -35,11 +34,12 @@ impl FileInBundleCache {
             .time_to_idle(Duration::from_secs(60 * 60))
             .name("file-in-bundle")
             .weigher(|_k, v| {
-                let content_size =
-                    v.0.entry
-                        .as_ref()
-                        .map(|cached_file| cached_file.contents.len())
-                        .unwrap_or_default();
+                let content_size = v
+                    .0
+                    .entry
+                    .as_ref()
+                    .map(|cached_file| cached_file.contents.as_deref().unwrap_or_default().len())
+                    .unwrap_or_default();
                 (std::mem::size_of_val(v) + content_size)
                     .try_into()
                     .unwrap_or(u32::MAX)
@@ -83,8 +83,10 @@ impl FileInBundleCache {
         let mut file_entry = file_entry.clone();
         if matches!(key, FileKey::SourceMap { .. }) {
             if let Ok(cached_file) = file_entry.entry.as_mut() {
-                cached_file.is_lazy = true;
-                cached_file.contents = ByteViewString::from(String::new());
+                // SourceMaps are usually very large, and we only need them for
+                // `sourcemapcache` creation. So do not persist the actual contents here.
+                // Rather load them later in `sourcemapcache` generation if needed.
+                cached_file.contents = None;
             }
         }
         let key = (bundle_uri.clone(), key.clone());
