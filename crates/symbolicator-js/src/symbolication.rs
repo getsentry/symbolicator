@@ -121,7 +121,7 @@ async fn symbolicate_js_frame(
     match &module.minified_source.entry {
         Ok(minified_source) => {
             if should_apply_source_context {
-                apply_source_context(raw_frame, &minified_source.contents)?
+                apply_source_context(raw_frame, minified_source.contents())?
             }
         }
         Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
@@ -267,7 +267,7 @@ async fn symbolicate_js_frame(
             if source_file
                 .as_ref()
                 .map_err(|_| JsModuleErrorKind::MissingSource)
-                .and_then(|file| apply_source_context(&mut frame, &file.contents))
+                .and_then(|file| apply_source_context(&mut frame, file.contents()))
                 .is_err()
             {
                 // It's arguable whether we should collect it, but this is what monolith does now,

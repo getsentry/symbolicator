@@ -11,7 +11,7 @@ use symbolicator_service::services::SharedServices;
 use crate::api_lookup::SentryLookupApi;
 use crate::bundle_index_cache::BundleIndexCache;
 use crate::bundle_lookup::FileInBundleCache;
-use crate::lookup::FetchSourceMapCacheInternal;
+use crate::sourcemap_cache::FetchSourceMapCacheInternal;
 
 #[derive(Debug, Clone)]
 pub struct SourceMapService {
