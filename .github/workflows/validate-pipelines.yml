@@ -17,7 +17,7 @@ jobs:
         outputs:
             gocd: ${{ steps.changes.outputs.gocd }}
         steps:
-          - uses: actions/checkout@v3
+          - uses: actions/checkout@v4
           - name: Check for relevant file changes
             uses: getsentry/paths-filter@4512585405083f25c027a35db413c2b3b9006d50 # v2.11.1
             id: changes
@@ -39,7 +39,7 @@ jobs:
             id-token: "write"
 
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
             - id: 'auth'
               uses: google-github-actions/auth@v1
               with:
