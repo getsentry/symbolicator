@@ -160,6 +160,11 @@ impl S3Downloader {
                     S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
                         Err(CacheError::NotFound)
                     }
+                    // Dear AWS SDK? Why do I have to match these using the `code`?
+                    // Why is the `From` impl not converting these properly?
+                    _ if matches!(err.code(), Some("NoSuchBucket" | "NoSuchKey" | "NotFound")) => {
+                        Err(CacheError::NotFound)
+                    }
                     _ => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,

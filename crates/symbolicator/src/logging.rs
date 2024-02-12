@@ -12,9 +12,13 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
     match level {
         LevelFilter::OFF => "",
         LevelFilter::ERROR => "ERROR",
-        LevelFilter::WARN => "WARN",
+        LevelFilter::WARN => {
+            "WARN,\
+             minidump=ERROR"
+        }
         LevelFilter::INFO => {
             "INFO,\
+             minidump=ERROR,\
              trust_dns_proto=WARN"
         }
         LevelFilter::DEBUG => {
