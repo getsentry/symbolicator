@@ -3076,6 +3076,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "proguard"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02edf5746919e655cfec7b1accbfc889d76b80e5cf72ba4a4da8024b2c2ee1a6"
+
+[[package]]
 name = "psm"
 version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4483,9 +4489,13 @@ dependencies = [
 name = "symbolicator-proguard"
 version = "24.1.2"
 dependencies = [
+ "futures",
+ "proguard",
+ "symbolic",
  "symbolicator-service",
  "symbolicator-sources",
  "symbolicator-test",
+ "tempfile",
 ]
 
 [[package]]

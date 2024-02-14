@@ -9,6 +9,10 @@ license = "MIT"
 [dependencies]
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
+proguard = "5.4.0"
+symbolic = "12.8.0"
+tempfile = "3.10.0"
+futures = "0.3.12"
 
 [dev-dependencies]
 symbolicator-test = { path = "../symbolicator-test" }

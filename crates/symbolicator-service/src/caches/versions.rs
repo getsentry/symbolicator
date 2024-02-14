@@ -138,3 +138,11 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: 1,
     fallbacks: &[],
 };
+
+/// Proguard Cache, with the following versions:
+///
+/// - `1`: Initial version.
+pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: 1,
+    fallbacks: &[],
+};

@@ -197,6 +197,7 @@ pub struct Caches {
     pub bundle_index: Cache,
     /// Store for minidump data symbolicator failed to process, for diagnostics purposes
     pub diagnostics: Cache,
+    pub proguard: Cache,
 }
 
 impl Caches {
@@ -287,7 +288,7 @@ impl Caches {
                 CacheName::BundleIndex,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads,
+                max_lazy_redownloads.clone(),
                 in_memory.bundle_index_capacity,
             )?,
             diagnostics: Cache::from_config(
@@ -295,6 +296,13 @@ impl Caches {
                 config,
                 config.caches.diagnostics.into(),
                 Default::default(),
+                default_cap,
+            )?,
+            proguard: Cache::from_config(
+                CacheName::Proguard,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads,
                 default_cap,
             )?,
         })

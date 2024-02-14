@@ -47,6 +47,7 @@ impl Caches {
             sourcefiles,
             bundle_index,
             diagnostics,
+            proguard,
         } = &self;
 
         // We want to clean up the caches in a random order. Ideally, this should not matter at all,
@@ -68,6 +69,7 @@ impl Caches {
             sourcefiles,
             bundle_index,
             diagnostics,
+            proguard,
         ];
         let mut rng = thread_rng();
         caches.as_mut_slice().shuffle(&mut rng);
