@@ -24,6 +24,7 @@ symbolic = "12.7.1"
 symbolicator-crash = { path = "../symbolicator-crash", optional = true }
 symbolicator-js = { path = "../symbolicator-js" }
 symbolicator-native = { path = "../symbolicator-native" }
+symbolicator-proguard = { path = "../symbolicator-proguard" }
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"

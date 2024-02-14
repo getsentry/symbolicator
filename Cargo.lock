@@ -4396,6 +4396,7 @@ dependencies = [
  "symbolicator-crash",
  "symbolicator-js",
  "symbolicator-native",
+ "symbolicator-proguard",
  "symbolicator-service",
  "symbolicator-sources",
  "symbolicator-test",
@@ -4479,6 +4480,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "symbolicator-proguard"
+version = "24.1.2"
+dependencies = [
+ "symbolicator-service",
+ "symbolicator-sources",
+ "symbolicator-test",
+]
+
+[[package]]
 name = "symbolicator-service"
 version = "24.1.2"
 dependencies = [
@@ -4553,6 +4563,7 @@ dependencies = [
  "serde_yaml",
  "symbolicator-js",
  "symbolicator-native",
+ "symbolicator-proguard",
  "symbolicator-service",
  "symbolicator-test",
  "tempfile",

@@ -1,0 +1,14 @@
+[package]
+name = "symbolicator-proguard"
+publish = false
+version = "24.1.2"
+authors = ["Sentry <hello@getsentry.com>"]
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+symbolicator-service = { path = "../symbolicator-service" }
+symbolicator-sources = { path = "../symbolicator-sources" }
+
+[dev-dependencies]
+symbolicator-test = { path = "../symbolicator-test" }
