@@ -28,6 +28,8 @@ use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJs
 use symbolicator_js::SourceMapService;
 use symbolicator_native::interface::{CompletedSymbolicationResponse, SymbolicateStacktraces};
 use symbolicator_native::SymbolicationActor;
+// TODO: actually use it
+use symbolicator_proguard as _;
 use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;

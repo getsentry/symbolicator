@@ -80,7 +80,11 @@ impl ProguardService {
 }
 
 struct ProguardInner<'a> {
+    // TODO: actually use it
+    #[allow(unused)]
     mapping: proguard::ProguardMapping<'a>,
+    // TODO: actually use it
+    #[allow(unused)]
     mapper: proguard::ProguardMapper<'a>,
 }
 
@@ -94,6 +98,8 @@ impl<'slf, 'a: 'slf> AsSelf<'slf> for ProguardInner<'a> {
 
 #[derive(Clone)]
 pub struct ProguardMapper {
+    // TODO: actually use it
+    #[allow(unused)]
     inner: Arc<SelfCell<ByteView<'static>, ProguardInner<'static>>>,
 }
 
