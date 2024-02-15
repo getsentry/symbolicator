@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use symbolic::common::{AsSelf, ByteView, SelfCell};
+use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
@@ -39,7 +39,7 @@ impl ProguardService {
     ) -> Option<RemoteFile> {
         let file_ids = self
             .download_svc
-            .list_files(&sources, &[FileType::Proguard], identifier)
+            .list_files(sources, &[FileType::Proguard], identifier)
             .await;
 
         file_ids.into_iter().next()
@@ -57,6 +57,25 @@ impl ProguardService {
         };
 
         self.cache.compute_memoized(request, cache_key).await
+    }
+
+    pub async fn download_proguard_file(
+        &self,
+        sources: &[SourceConfig],
+        scope: &Scope,
+        debug_id: DebugId,
+    ) -> CacheEntry<ProguardMapper> {
+        let identifier = ObjectId {
+            debug_id: Some(debug_id),
+            ..Default::default()
+        };
+
+        let remote_file = self
+            .find_proguard_file(sources, &identifier)
+            .await
+            .ok_or(CacheError::NotFound)?;
+
+        self.fetch_file(scope, remote_file).await
     }
 }
 

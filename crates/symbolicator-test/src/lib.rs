@@ -16,7 +16,7 @@
 //!    source) = symbol_server();`. Alternatively, use [`local_source`] to test without
 //!    HTTP connections.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::{SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -386,6 +386,47 @@ where
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         url: server.url("/lookup"),
+        token: String::new(),
+    };
+
+    (server, source)
+}
+
+pub fn sentry_server<L>(fixtures_dir: impl AsRef<Path>, lookup: L) -> (Server, SentrySourceConfig)
+where
+    L: Fn(&str, &HashMap<String, String>) -> serde_json::Value + Clone + Send + 'static,
+{
+    let files_url = Arc::new(OnceCell::<Url>::new());
+
+    let router = {
+        let files_url = files_url.clone();
+
+        let tracing_layer = TraceLayer::new_for_http().on_response(());
+        let serve_dir = get_service(ServeDir::new(fixtures_dir));
+        Router::new()
+            .route(
+                "/files/dsyms/",
+                get(
+                    move |extract::Query(params): extract::Query<HashMap<String, String>>| async move {
+                        let files_url = files_url.get().unwrap().as_str();
+                        if let Some(download_id) = params.get("id") {
+                            return Redirect::to(&format!("/files/{download_id}")).into_response();
+                        }
+                        let res = lookup(files_url, &params);
+                        Json(res).into_response()
+                    },
+                ),
+            )
+            .nest_service("/files", serve_dir)
+            .layer(tracing_layer)
+    };
+    let server = Server::with_router(router);
+
+    files_url.set(server.url("/files")).unwrap();
+
+    let source = SentrySourceConfig {
+        id: SourceId::new("sentry:project"),
+        url: server.url("/files/dsyms/"),
         token: String::new(),
     };
 

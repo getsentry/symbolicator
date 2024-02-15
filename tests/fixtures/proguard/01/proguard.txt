@@ -1,0 +1,35 @@
+android.support.constraint.ConstraintLayout$LayoutParams -> android.support.constraint.ConstraintLayout$a:
+    int guideBegin -> a
+android.support.constraint.solver.ArrayRow -> android.support.constraint.a.b:
+    android.support.constraint.solver.SolverVariable variable -> a
+    float constantValue -> b
+    boolean used -> c
+    android.support.constraint.solver.ArrayLinkedVariables variables -> d
+    boolean isSimpleDefinition -> e
+    22:32:void <init>(android.support.constraint.solver.Cache) -> <init>
+    35:36:void updateClientEquations() -> a
+    43:43:boolean hasKeyVariable() -> b
+    51:51:java.lang.String toString() -> toString
+    55:101:java.lang.String toReadableString() -> c
+    105:109:void reset() -> d
+    112:112:boolean hasVariable(android.support.constraint.solver.SolverVariable) -> a
+    116:120:android.support.constraint.solver.ArrayRow createRowDefinition(android.support.constraint.solver.SolverVariable,int) -> a
+    124:131:android.support.constraint.solver.ArrayRow createRowEquals(android.support.constraint.solver.SolverVariable,int) -> b
+    135:151:android.support.constraint.solver.ArrayRow createRowEquals(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,int) -> a
+    155:156:android.support.constraint.solver.ArrayRow addSingleError(android.support.constraint.solver.SolverVariable,int) -> c
+    162:180:android.support.constraint.solver.ArrayRow createRowGreaterThan(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,int) -> a
+    185:203:android.support.constraint.solver.ArrayRow createRowLowerThan(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,int) -> b
+    211:233:android.support.constraint.solver.ArrayRow createRowEqualDimension(float,float,float,android.support.constraint.solver.SolverVariable,int,android.support.constraint.solver.SolverVariable,int,android.support.constraint.solver.SolverVariable,int,android.support.constraint.solver.SolverVariable,int) -> a
+    238:280:android.support.constraint.solver.ArrayRow createRowCentering(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,int,float,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,int) -> a
+    284:286:android.support.constraint.solver.ArrayRow addError(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable) -> a
+    291:294:android.support.constraint.solver.ArrayRow createRowDimensionPercent(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,float) -> a
+    311:315:android.support.constraint.solver.ArrayRow createRowDimensionRatio(android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,android.support.constraint.solver.SolverVariable,float) -> a
+    331:332:boolean updateRowWithEquation(android.support.constraint.solver.ArrayRow) -> a
+    337:342:void ensurePositiveConstant() -> e
+    345:352:void pickRowVariable() -> f
+    355:368:void pivot(android.support.constraint.solver.SolverVariable) -> b
+io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
+    1:1:void <init>():15:15 -> <init>
+    1:1:void bar():54:54 -> a
+    1:1:void foo():44 -> a
+    1:1:void onClickHandler(android.view.View):40 -> a

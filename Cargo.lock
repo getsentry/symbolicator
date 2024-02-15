@@ -4491,11 +4491,15 @@ version = "24.1.2"
 dependencies = [
  "futures",
  "proguard",
+ "reqwest",
+ "serde",
+ "serde_json",
  "symbolic",
  "symbolicator-service",
  "symbolicator-sources",
  "symbolicator-test",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
