@@ -47,6 +47,7 @@ enum SentryFileType {
     UuidMap,
     BcSymbolMap,
     Il2cpp,
+    Proguard,
 }
 
 impl From<FileType> for SentryFileType {
@@ -63,6 +64,7 @@ impl From<FileType> for SentryFileType {
             FileType::UuidMap => Self::UuidMap,
             FileType::BcSymbolMap => Self::BcSymbolMap,
             FileType::Il2cpp => Self::Il2cpp,
+            FileType::Proguard => Self::Proguard,
         }
     }
 }

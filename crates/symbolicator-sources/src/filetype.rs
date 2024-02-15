@@ -55,6 +55,8 @@ pub enum FileType {
     /// This file maps from C++ source locations to the original C# source location it was transpiled from.
     #[serde(rename = "il2cpp")]
     Il2cpp,
+    /// A proguard debug file.
+    Proguard,
 }
 
 impl FileType {
@@ -76,6 +78,7 @@ impl FileType {
             UuidMap,
             BcSymbolMap,
             PortablePdb,
+            Proguard,
         ]
     }
 
@@ -138,6 +141,7 @@ impl AsRef<str> for FileType {
             FileType::BcSymbolMap => "bcsymbolmap",
             FileType::Il2cpp => "il2cpp",
             FileType::PortablePdb => "portablepdb",
+            FileType::Proguard => "proguard",
         }
     }
 }

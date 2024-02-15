@@ -14,6 +14,7 @@ pub enum CacheName {
     SourceFiles,
     BundleIndex,
     Diagnostics,
+    Proguard,
 }
 
 impl AsRef<str> for CacheName {
@@ -30,6 +31,7 @@ impl AsRef<str> for CacheName {
             Self::SourceFiles => "sourcefiles",
             Self::BundleIndex => "bundle_index",
             Self::Diagnostics => "diagnostics",
+            Self::Proguard => "proguard",
         }
     }
 }
