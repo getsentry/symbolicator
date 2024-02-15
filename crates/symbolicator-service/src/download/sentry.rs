@@ -26,6 +26,7 @@ use crate::utils::http::DownloadTimeouts;
 #[serde(rename_all = "camelCase")]
 struct SearchResult {
     id: SentryFileId,
+    symbol_type: SentryFileType,
 }
 
 /// The is almost the same as [`FileType`], except it does not treat MachO, Elf and Wasm
@@ -63,6 +64,12 @@ impl From<FileType> for SentryFileType {
             FileType::BcSymbolMap => Self::BcSymbolMap,
             FileType::Il2cpp => Self::Il2cpp,
         }
+    }
+}
+
+impl SentryFileType {
+    fn matches(self, file_types: &[FileType]) -> bool {
+        file_types.iter().any(|ty| Self::from(*ty) == self)
     }
 }
 
@@ -168,12 +175,10 @@ impl SentryDownloader {
                 .append_pair("code_id", code_id.as_str());
         }
 
-        for file_type in file_types {
-            index_url
-                .query_pairs_mut()
-                .append_pair("file_formats", file_type.as_ref());
-        }
-
+        // NOTE: We intentionally don't limit the query to the provided file types, even though
+        // the endpoint supports it. The reason is that the result of the query gets cached locally
+        // and we can then filter the cached results. This saves us from making individual requests to Sentry
+        // for ever file type or combination of file types we need.
         let query = SearchQuery {
             index_url,
             token: source.token.clone(),
@@ -226,6 +231,7 @@ impl SentryDownloader {
 
         let file_ids = entries
             .iter()
+            .filter(|file| file.symbol_type.matches(file_types))
             .map(|file| SentryRemoteFile::new(source.clone(), true, file.id.clone(), None).into())
             .collect();
         Ok(file_ids)
