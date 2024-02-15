@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use symbolic::common::DebugId;
-use symbolicator_service::types::{RawObjectInfo, Scope};
+use symbolicator_service::types::Scope;
 use symbolicator_sources::SourceConfig;
 
 #[derive(Debug, Clone)]
