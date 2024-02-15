@@ -177,6 +177,10 @@ impl SentryDownloader {
                 .append_pair("code_id", code_id.as_str());
         }
 
+        // NOTE: We intentionally don't limit the query to the provided file types, even though
+        // the endpoint supports it. The reason is that the result of the query gets cached locally
+        // and we can then filter the cached results. This saves us from making individual requests to Sentry
+        // for every file type or combination of file types we need.
         let query = SearchQuery {
             index_url,
             token: source.token.clone(),
