@@ -91,14 +91,16 @@ pub fn execute() -> Result<()> {
             if Some(true) == ctx.sampled() {
                 1.0
             } else if ctx.operation() != "http.server" {
-                // Symbolicator receives ~200 rps right now,
-                // with ~20 sampled transactions per minute,
-                // which comes to an effective sampling rate of `1/600` (~0.0016).
-                // Lets crank that up to `0.02`, which would give us ~4 rps,
-                // or ~240 transactions per minute.
+                // Symbolicator receives at peak:
+                // - ~3_000 `symbolicate_js`,
+                // - ~800 `symbolicater`, and
+                // - ~40 `minidump_stackwalk` requests per second.
+                //
+                // round that up to ~4_000 total requests per second, with a 5% sample rate,
+                // we end up with ~200 sampled transactions per second, or ~12_000 per minute.
                 // We only do this for the "real" transactions and not the http frontend that
                 // just spawns these computations.
-                0.02
+                0.05
             } else {
                 0.0
             }
