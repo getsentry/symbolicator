@@ -41,7 +41,7 @@ jobs:
           mv target/release/symsorter build/symsorter-Linux-x86_64
           mv target/release/symbolicli build/symbolicli-Linux-x86_64
 
-      - uses: actions/upload-artifact@v4.3.1
+      - uses: actions/upload-artifact@v3
         with:
           name: ${{ github.sha }}
           path: build/*
@@ -99,7 +99,7 @@ jobs:
           cd target/x86_64-apple-darwin/release
           zip -r ../../../build/symbolicator-aarch64-apple-darwin-debug.zip symbolicator.dSYM
 
-      - uses: actions/upload-artifact@v4.3.1
+      - uses: actions/upload-artifact@v3
         with:
           name: ${{ github.sha }}
           path: build/*
@@ -127,7 +127,7 @@ jobs:
           mv symbolicli.exe symbolicli-Windows-x86_64.exe
           mv wasm-split.exe wasm-split-Windows-x86_64.exe
 
-      - uses: actions/upload-artifact@v4.3.1
+      - uses: actions/upload-artifact@v3
         with:
           name: ${{ github.sha }}
           path: target/release/*-Windows-x86_64.exe
