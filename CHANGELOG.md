@@ -1,5 +1,22 @@
 # Changelog
 
+## 24.2.0
+
+### Various fixes & improvements
+
+- Do a `cargo update` (#1377) by @Swatinem
+- Increase percentage of sampled transactions (#1376) by @Swatinem
+- feat(proguard): Add types for JVM requests (#1373) by @loewenheim
+- Make stresstest observability configurable (#1375) by @Swatinem
+- chore(ci): Revert upload-artifact version (#1374) by @azaslavsky
+- doc(sources): Document rationale for Sentry list_file behavior (#1372) by @loewenheim
+- Add a basic `proguard` workspace crate (#1371) by @Swatinem
+- build(deps): bump google-github-actions/auth from 1 to 2 (#1365) by @dependabot
+- build(deps): bump actions/setup-python from 4 to 5 (#1364) by @dependabot
+- build(deps): bump actions/checkout from 3 to 4 (#1368) by @dependabot
+- build(deps): bump codecov/codecov-action from 3 to 4 (#1367) by @dependabot
+- build(deps): bump actions/upload-artifact from 3.1.1 to 4.3.1 (#1366) by @dependabot
+
 ## 24.1.2
 
 - Add dependabot for github actions. ([#1362](https://github.com/getsentry/symbolicator/pull/1362))
