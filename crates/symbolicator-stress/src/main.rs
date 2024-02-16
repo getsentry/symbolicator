@@ -25,16 +25,28 @@ static GLOBAL: Jemalloc = Jemalloc;
 #[derive(Parser)]
 struct Cli {
     /// Path to your configuration file.
-    #[arg(long = "config", short = 'c', value_name = "FILE")]
+    #[arg(long, short, value_name = "FILE")]
     config: Option<PathBuf>,
 
     /// Path to the workload definition file.
-    #[arg(long = "workloads", short = 'w', value_name = "FILE")]
+    #[arg(long, short, value_name = "FILE")]
     workloads: PathBuf,
 
     /// Duration of the stresstest.
-    #[arg(long = "duration", short = 'd', value_parser = parse_duration)]
+    #[arg(long, short, value_parser = parse_duration)]
     duration: Duration,
+
+    /// Register a `tracing` subscriber.
+    #[arg(long, short)]
+    tracing: bool,
+
+    /// Enable Sentry, capturing breadcrumbs and `tracing` spans if that is enabled as well.
+    #[arg(long, short)]
+    sentry: bool,
+
+    /// Register a metrics sink.
+    #[arg(long, short)]
+    metrics: bool,
 }
 
 fn main() -> Result<()> {
@@ -50,15 +62,15 @@ fn main() -> Result<()> {
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
     let mut logging_guard = logging::init(logging::Config {
-        // TODO: actually make this configurable
         backtraces: true,
-        tracing: true,
-        sentry: true,
-        metrics: true,
+        tracing: cli.tracing,
+        sentry: cli.sentry,
+        metrics: cli.metrics,
     });
 
     let megs = 1024 * 1024;
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .thread_name("stresstest")
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;

@@ -61,8 +61,7 @@ pub fn init(config: Config) -> Guard {
     }
 
     if config.tracing {
-        // we will log DEBUG output
-        let rust_log = "INFO,symbolicator=DEBUG";
+        let rust_log = "INFO";
         let subscriber = fmt()
             .with_timer(UtcTime::rfc_3339())
             .with_target(true)
