@@ -38,9 +38,11 @@ symbolic = { version = "12.7.1", features = ["cfi", "common-serde", "debuginfo",
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
 thiserror = "1.0.31"
+time = { version = "0.3.34", features = ["serde", "formatting"] }
 tokio = { version = "1.24.2", features = ["rt", "macros", "fs"] }
 tokio-util = { version = "0.7.1", features = ["io"] }
 tracing = "0.1.34"
+tracing-serde = "0.1.3"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "time", "json"] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
