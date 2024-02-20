@@ -117,18 +117,6 @@ impl JsMetrics {
     }
 
     pub fn submit_metrics(&self, artifact_bundles: u64) {
-        metrics::with_client(|client| {
-            client.with_local_aggregator(|aggregator| {
-                self.submit_metrics_inner(aggregator, artifact_bundles);
-            });
-        })
-    }
-
-    fn submit_metrics_inner(
-        &self,
-        aggregator: &mut metrics::LocalAggregator,
-        artifact_bundles: u64,
-    ) {
         metric!(time_raw("js.needed_files") = self.needed_files);
         metric!(time_raw("js.api_requests") = self.api_requests);
         metric!(time_raw("js.queried_bundles") = self.queried_bundles);
@@ -137,9 +125,10 @@ impl JsMetrics {
         metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
         metric!(time_raw("js.scraped_files") = self.scraped_files);
 
-        // TODO: we are currently getting these as counters. maybe we want to use `time_raw` to also
-        // have a per-event avg, etc.
+        metrics::with_client(|_client, aggregator| self.submit_local_metrics(aggregator))
+    }
 
+    fn submit_local_metrics(&self, aggregator: &mut metrics::LocalAggregator) {
         // Sources:
         aggregator.emit_count(
             "js.found_via_bundle_debugid",
