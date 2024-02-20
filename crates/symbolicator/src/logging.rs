@@ -1,5 +1,6 @@
 use std::env;
 
+use symbolicator_service::logging::init_json_logging;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::fmt::fmt;
 use tracing_subscriber::fmt::time::UtcTime;
@@ -52,7 +53,7 @@ pub fn init_logging(config: &Config) {
     let subscriber = fmt()
         .with_timer(UtcTime::rfc_3339())
         .with_target(true)
-        .with_env_filter(rust_log);
+        .with_env_filter(&rust_log);
 
     match (config.logging.format, console::user_attended()) {
         (LogFormat::Auto, true) | (LogFormat::Pretty, _) => subscriber
@@ -66,16 +67,7 @@ pub fn init_logging(config: &Config) {
             .finish()
             .with(sentry::integrations::tracing::layer())
             .init(),
-        (LogFormat::Json, _) => subscriber
-            .json()
-            .flatten_event(true)
-            .with_current_span(true)
-            .with_span_list(true)
-            .with_file(true)
-            .with_line_number(true)
-            .finish()
-            .with(sentry::integrations::tracing::layer())
-            .init(),
+        (LogFormat::Json, _) => init_json_logging(&rust_log, std::io::stdout),
     }
 }
 
