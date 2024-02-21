@@ -27,7 +27,7 @@
 //!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
 use symbolic::debuginfo::sourcebundle::SourceFileType;
-use symbolicator_service::{metric, metrics};
+use symbolicator_service::metrics;
 
 use crate::interface::ResolvedWith;
 
@@ -117,18 +117,34 @@ impl JsMetrics {
     }
 
     pub fn submit_metrics(&self, artifact_bundles: u64) {
-        metric!(time_raw("js.needed_files") = self.needed_files);
-        metric!(time_raw("js.api_requests") = self.api_requests);
-        metric!(time_raw("js.queried_bundles") = self.queried_bundles);
-        metric!(time_raw("js.fetched_bundles") = artifact_bundles);
-        metric!(time_raw("js.queried_artifacts") = self.queried_artifacts);
-        metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
-        metric!(time_raw("js.scraped_files") = self.scraped_files);
-
-        metrics::with_client(|_client, aggregator| self.submit_local_metrics(aggregator))
+        metrics::with_client(|_client, aggregator| {
+            self.submit_local_metrics(aggregator, artifact_bundles)
+        })
     }
 
-    fn submit_local_metrics(&self, aggregator: &mut metrics::LocalAggregator) {
+    fn submit_local_metrics(
+        &self,
+        aggregator: &mut metrics::LocalAggregator,
+        artifact_bundles: u64,
+    ) {
+        // per-event distribution, emitted as `time_raw`
+        use symbolicator_service::metrics::IntoDistributionValue;
+        aggregator.emit_timer("js.needed_files", self.needed_files.into_value(), &[]);
+        aggregator.emit_timer("js.api_requests", self.api_requests.into_value(), &[]);
+        aggregator.emit_timer("js.queried_bundles", self.queried_bundles.into_value(), &[]);
+        aggregator.emit_timer("js.fetched_bundles", artifact_bundles.into_value(), &[]);
+        aggregator.emit_timer(
+            "js.queried_artifacts",
+            self.queried_artifacts.into_value(),
+            &[],
+        );
+        aggregator.emit_timer(
+            "js.fetched_artifacts",
+            self.fetched_artifacts.into_value(),
+            &[],
+        );
+        aggregator.emit_timer("js.scraped_files", self.scraped_files.into_value(), &[]);
+
         // Sources:
         aggregator.emit_count(
             "js.found_via_bundle_debugid",
