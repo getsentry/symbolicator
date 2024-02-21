@@ -117,9 +117,7 @@ impl JsMetrics {
     }
 
     pub fn submit_metrics(&self, artifact_bundles: u64) {
-        metrics::with_client(|_client, aggregator| {
-            self.submit_local_metrics(aggregator, artifact_bundles)
-        })
+        metrics::with_client(|aggregator| self.submit_local_metrics(aggregator, artifact_bundles))
     }
 
     fn submit_local_metrics(

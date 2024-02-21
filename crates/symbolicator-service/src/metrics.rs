@@ -183,13 +183,13 @@ fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> L
 
 impl MetricsWrapper {
     /// Invokes the provided callback with a mutable reference to a thread-local [`LocalAggregator`].
-    fn with_local_aggregator(&self, f: impl FnOnce(&Self, &mut LocalAggregator)) {
+    fn with_local_aggregator(&self, f: impl FnOnce(&mut LocalAggregator)) {
         let mut local_aggregator = self
             .local_aggregator
             .get_or(Default::default)
             .lock()
             .unwrap();
-        f(self, &mut local_aggregator)
+        f(&mut local_aggregator)
     }
 }
 
@@ -382,7 +382,7 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<
 #[inline(always)]
 pub fn with_client<F>(f: F)
 where
-    F: FnOnce(&MetricsWrapper, &mut LocalAggregator),
+    F: FnOnce(&mut LocalAggregator),
 {
     if let Some(client) = METRICS_CLIENT.get() {
         client.with_local_aggregator(f)
@@ -394,7 +394,7 @@ where
 macro_rules! metric {
     // counters
     (counter($id:expr) += $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|_client, local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
@@ -404,7 +404,7 @@ macro_rules! metric {
 
     // gauges
     (gauge($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|_client, local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
@@ -414,7 +414,7 @@ macro_rules! metric {
 
     // timers
     (timer($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|_client, local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
@@ -425,7 +425,7 @@ macro_rules! metric {
 
     // we use statsd timers to send things such as filesizes as well.
     (time_raw($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|_client, local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
@@ -436,7 +436,7 @@ macro_rules! metric {
 
     // histograms
     (histogram($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|_client, local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
