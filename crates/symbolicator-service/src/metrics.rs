@@ -3,7 +3,11 @@ use std::collections::BTreeMap;
 use std::net::ToSocketAddrs;
 use std::sync::OnceLock;
 
-use cadence::{BufferedUdpMetricSink, QueuingMetricSink, StatsdClient};
+use cadence::StatsdClient;
+use statsdproxy::cadence::StatsdProxyMetricSink;
+use statsdproxy::config::AggregateMetricsConfig;
+use statsdproxy::middleware::aggregate::AggregateMetrics;
+use statsdproxy::middleware::upstream::Upstream;
 
 static METRICS_CLIENT: OnceLock<StatsdClient> = OnceLock::new();
 
@@ -18,11 +22,20 @@ pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<
     if !addrs.is_empty() {
         tracing::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
-    let socket = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
-    socket.set_nonblocking(true).unwrap();
-    let udp_sink = BufferedUdpMetricSink::from(&addrs[..], socket).unwrap();
-    let queuing_sink = QueuingMetricSink::from(udp_sink);
-    let mut builder = StatsdClient::builder(prefix, queuing_sink);
+    let aggregator_sink = StatsdProxyMetricSink::new(move || {
+        let next_step = Upstream::new(&addrs[..]).unwrap();
+
+        let config = AggregateMetricsConfig {
+            aggregate_counters: true,
+            aggregate_gauges: true,
+            flush_offset: 0,
+            flush_interval: 5,
+            max_map_size: None,
+        };
+        AggregateMetrics::new(config, next_step)
+    });
+
+    let mut builder = StatsdClient::builder(prefix, aggregator_sink);
     for (key, value) in tags {
         builder = builder.with_tag(key, value)
     }

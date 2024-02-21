@@ -14,7 +14,7 @@ aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.0.1", features = ["hardcoded-credentials"] }
 aws-sdk-s3 = "1.4.0"
 aws-types = "1.0.1"
-cadence = "1.0.0"
+cadence = "0.29.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 filetime = "0.2.16"
 flate2 = "1.0.23"
@@ -34,6 +34,7 @@ serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 serde_yaml = "0.9.14"
 sha2 = "0.10.6"
+statsdproxy = { version = "0.1.2", features = ["cadence-adapter"] }
 symbolic = { version = "12.7.1", features = ["cfi", "common-serde", "debuginfo", "symcache"] }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.2.0"
