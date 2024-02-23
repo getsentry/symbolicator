@@ -1,5 +1,6 @@
 use crate::interface::{
-    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, SymbolicateJvmStacktraces,
+    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmStacktrace,
+    SymbolicateJvmStacktraces,
 };
 use crate::ProguardService;
 
@@ -14,6 +15,7 @@ impl ProguardService {
             scope,
             sources,
             exceptions,
+            stacktraces,
             modules,
             ..
         } = request;
@@ -40,8 +42,23 @@ impl ProguardService {
                 .push(Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception));
         }
 
+        let mut remapped_stacktraces = Vec::with_capacity(stacktraces.len());
+
+        for raw_stacktrace in stacktraces {
+            let remapped_frames = raw_stacktrace
+                .frames
+                .iter()
+                .flat_map(|frame| Self::map_frame(&mappers, frame).into_iter())
+                .collect();
+
+            remapped_stacktraces.push(JvmStacktrace {
+                frames: remapped_frames,
+            });
+        }
+
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
+            stacktraces: remapped_stacktraces,
         }
     }
 

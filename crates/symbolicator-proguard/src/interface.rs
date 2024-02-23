@@ -95,4 +95,6 @@ pub struct JvmModule {
 pub struct CompletedJvmSymbolicationResponse {
     /// The exceptions after remapping.
     pub exceptions: Vec<JvmException>,
+    /// The stacktraces after remapping.
+    pub stacktraces: Vec<JvmStacktrace>,
 }

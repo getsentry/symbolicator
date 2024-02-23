@@ -98,7 +98,7 @@ async fn test_remap_exception() {
         apply_source_context: false,
     };
 
-    let CompletedJvmSymbolicationResponse { exceptions } =
+    let CompletedJvmSymbolicationResponse { exceptions, .. } =
         symbolication.symbolicate_jvm(request).await;
 
     let remapped_exception = JvmException {
