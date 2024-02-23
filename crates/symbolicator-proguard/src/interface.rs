@@ -25,20 +25,23 @@ pub struct SymbolicateJvmStacktraces {
 /// A stack frame in a JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmFrame {
-    /// The frame's function name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub function: Option<String>,
+    /// The frame's method name.
+    ///
+    /// This corresponds to the `function` field on native frames.
+    pub method: String,
 
     /// The source file name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
-    /// The module name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub module: Option<String>,
+    /// The frame's class name.
+    ///
+    /// This corresponds to the `module` field on native frames.
+    pub class: String,
 
     /// The source file's absolute path.
-    pub abs_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub abs_path: Option<String>,
 
     /// The line number within the source file, starting at `1` for the first line.
     pub lineno: u32,
