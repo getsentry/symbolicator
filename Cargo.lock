@@ -3929,6 +3929,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sketches-ddsketch"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85636c14b73d81f541e525f585c0a2109e6744e1565b5c1668e31c70c10ed65c"
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4554,6 +4560,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sketches-ddsketch",
  "symbolicator-js",
  "symbolicator-native",
  "symbolicator-proguard",

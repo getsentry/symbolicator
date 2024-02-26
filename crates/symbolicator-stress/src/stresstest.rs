@@ -1,10 +1,10 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
 use sentry::SentryFutureExt;
+use sketches_ddsketch::DDSketch;
 use symbolicator_js::SourceMapService;
 use symbolicator_native::SymbolicationActor;
 use symbolicator_service::config::Config as SymbolicatorConfig;
@@ -68,7 +68,7 @@ pub async fn perform_stresstest(
         let workload = Arc::clone(&workload);
 
         let task = tokio::spawn(async move {
-            let finished_tasks = Arc::new(AtomicUsize::new(0));
+            let task_durations = Arc::new(Mutex::new(DDSketch::default()));
             let semaphore = Arc::new(Semaphore::new(concurrency));
 
             // See <https://docs.rs/tokio/latest/tokio/time/struct.Sleep.html#examples>
@@ -83,7 +83,8 @@ pub async fn perform_stresstest(
                     permit = semaphore.clone().acquire_owned() => {
                         let workload = Arc::clone(&workload);
                         let symbolication = Arc::clone(&symbolication);
-                        let finished_tasks = Arc::clone(&finished_tasks);
+                        let task_durations = Arc::clone(&task_durations);
+                        let task_start = Instant::now();
 
                         let hub = sentry::Hub::new_from_top(sentry::Hub::current());
                         let ctx = sentry::TransactionContext::new("stresstest", "stresstest");
@@ -92,10 +93,9 @@ pub async fn perform_stresstest(
                         let future = async move {
                             process_payload(&symbolication, &workload).await;
 
-                            // TODO: maybe maintain a histogram?
-                            finished_tasks.fetch_add(1, Ordering::Relaxed);
-
                             transaction.finish();
+
+                            task_durations.lock().unwrap().add(task_start.elapsed().as_secs_f64());
 
                             drop(permit);
                         };
@@ -109,13 +109,15 @@ pub async fn perform_stresstest(
                 }
             }
 
-            // we only count finished tasks
-            let ops = finished_tasks.load(Ordering::Relaxed);
+            let task_durations: DDSketch = {
+                let mut task_durations = task_durations.lock().unwrap();
+                std::mem::take(&mut task_durations)
+            };
 
             // by acquiring *all* the semaphores, we essentially wait for all outstanding tasks to finish
             let _permits = semaphore.acquire_many(concurrency as u32).await;
 
-            (concurrency, ops)
+            (concurrency, task_durations)
         });
         tasks.push(task);
     }
@@ -123,10 +125,17 @@ pub async fn perform_stresstest(
     let finished_tasks = futures::future::join_all(tasks).await;
 
     for (i, task) in finished_tasks.into_iter().enumerate() {
-        let (concurrency, ops) = task.unwrap();
+        let (concurrency, task_durations) = task.unwrap();
 
+        let ops = task_durations.count();
         let ops_ps = ops as f32 / duration.as_secs() as f32;
         println!("Workload {i} (concurrency: {concurrency}): {ops} operations, {ops_ps:.2} ops/s");
+
+        let avg = Duration::from_secs_f64(task_durations.sum().unwrap() / ops as f64);
+        let p50 = Duration::from_secs_f64(task_durations.quantile(0.5).unwrap().unwrap());
+        let p90 = Duration::from_secs_f64(task_durations.quantile(0.9).unwrap().unwrap());
+        let p99 = Duration::from_secs_f64(task_durations.quantile(0.99).unwrap().unwrap());
+        println!("  avg: {avg:.2?}; p50: {p50:.2?}; p90: {p90:.2?}; p99: {p99:.2?}");
     }
 
     Ok(())
