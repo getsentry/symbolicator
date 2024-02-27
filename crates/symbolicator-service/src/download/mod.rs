@@ -615,9 +615,9 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
         };
 
         let duration = self.creation_time.elapsed();
-        let metric_name = format!("{}.duration", self.task_name);
         metric!(
-            timer(&metric_name) = duration,
+            timer("download_duration") = duration,
+            "task_name" => self.task_name,
             "status" => status,
             "source" => self.source_name,
         );
@@ -631,9 +631,9 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 .checked_div(duration.as_millis())
                 .and_then(|t| t.try_into().ok())
                 .unwrap_or(bytes_transferred);
-            let throughput_name = format!("{}.throughput", self.task_name);
             metric!(
-                histogram(&throughput_name) = throughput,
+                histogram("download_throughput") = throughput,
+                "task_name" => self.task_name,
                 "status" => status,
                 "source" => self.source_name,
             );

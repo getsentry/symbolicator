@@ -3,8 +3,6 @@ use std::time::Instant;
 
 use tokio::task::JoinHandle;
 
-use crate::metrics::{self, prelude::*};
-
 /// Execute a callback on dropping of the container type.
 ///
 /// The callback must not panic under any circumstance. Since it is called while dropping an item,
@@ -100,12 +98,10 @@ impl<'a> MeasureGuard<'a> {
     /// By default, the future is waiting to be polled. `start` emits the `futures.wait_time`
     /// metric.
     pub fn start(&mut self) {
-        metrics::with_client(|client| {
-            client
-                .time_with_tags("futures.wait_time", self.creation_time.elapsed())
-                .with_tag("task_name", self.task_name)
-                .send();
-        })
+        metric!(
+            timer("futures.wait_time") = self.creation_time.elapsed(),
+            "task_name" => self.task_name,
+        );
     }
 
     /// Marks the future as terminated and emits the `futures.done` metric.
@@ -120,13 +116,11 @@ impl Drop for MeasureGuard<'_> {
             MeasureState::Pending => "canceled",
             MeasureState::Done(status) => status,
         };
-        metrics::with_client(|client| {
-            client
-                .time_with_tags("futures.done", self.creation_time.elapsed())
-                .with_tag("task_name", self.task_name)
-                .with_tag("status", status)
-                .send();
-        })
+        metric!(
+            timer("futures.done") = self.creation_time.elapsed(),
+            "task_name" => self.task_name,
+            "status" => status,
+        );
     }
 }
 
