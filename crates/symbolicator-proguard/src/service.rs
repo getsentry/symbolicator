@@ -139,12 +139,16 @@ impl CacheItemRequest for FetchProguard {
             let view = ByteView::map_file_ref(temp_file.as_file())?;
 
             let mapping = proguard::ProguardMapping::new(&view);
-            if mapping.is_valid() {
-                Ok(())
-            } else {
+            if !mapping.is_valid() {
                 Err(CacheError::Malformed(
                     "The file is not a valid ProGuard file".into(),
                 ))
+            } else if !mapping.has_line_info() {
+                Err(CacheError::Malformed(
+                    "The ProGuard file doesn't contain any line mappings".into(),
+                ))
+            } else {
+                Ok(())
             }
         };
         Box::pin(fut)

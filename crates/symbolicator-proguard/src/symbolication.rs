@@ -20,19 +20,26 @@ impl ProguardService {
             release_package,
             ..
         } = request;
-        let mappers = future::join_all(
-            modules
-                .iter()
-                .map(|module| self.download_proguard_file(&sources, &scope, module.uuid)),
-        )
+
+        let mut errors = Vec::new();
+
+        let mappers = future::join_all(modules.iter().map(|module| async {
+            let file = self
+                .download_proguard_file(&sources, &scope, module.uuid)
+                .await;
+            (module.uuid, file)
+        }))
         .await;
 
         // TODO: error handling/reporting
         let mappers: Vec<_> = mappers
             .iter()
-            .filter_map(|res| match res {
+            .filter_map(|(debug_id, res)| match res {
                 Ok(mapper) => Some(mapper.get()),
-                Err(_e) => None,
+                Err(e) => {
+                    errors.push((debug_id, e.clone()));
+                    None
+                }
             })
             .collect();
 
