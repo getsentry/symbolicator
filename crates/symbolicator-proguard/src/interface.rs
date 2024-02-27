@@ -14,6 +14,8 @@ pub struct SymbolicateJvmStacktraces {
     pub sources: Arc<[SourceConfig]>,
     /// The exceptions to symbolicate/remap.
     pub exceptions: Vec<JvmException>,
+    /// The list of stacktraces to symbolicate/remap.
+    pub stacktraces: Vec<JvmStacktrace>,
     /// A list of proguard files to use for remapping.
     pub modules: Vec<JvmModule>,
     /// Whether to apply source context for the stack frames.
@@ -63,18 +65,16 @@ pub struct JvmFrame {
 pub struct JvmException {
     /// The type (class name) of the exception.
     #[serde(rename = "type")]
-    ty: String,
+    pub ty: String,
     /// The module in which the exception is defined.
-    module: String,
-    /// The stacktrace associated with the exception.
-    stacktrace: JvmStacktrace,
+    pub module: String,
 }
 
 /// A JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmStacktrace {
     /// The stacktrace's frames.
-    frames: Vec<JvmFrame>,
+    pub frames: Vec<JvmFrame>,
 }
 
 /// A JVM module (proguard file).
@@ -83,5 +83,13 @@ pub struct JvmModule {
     /// The file's UUID.
     ///
     /// This is used to download the file from symbol sources.
-    uuid: DebugId,
+    pub uuid: DebugId,
+}
+
+// TODO: Expand this
+/// The symbolicated/remapped event data.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CompletedJvmSymbolicationResponse {
+    /// The exceptions after remapping.
+    pub exceptions: Vec<JvmException>,
 }

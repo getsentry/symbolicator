@@ -103,6 +103,24 @@ pub struct ProguardMapper {
     inner: Arc<SelfCell<ByteView<'static>, ProguardInner<'static>>>,
 }
 
+impl ProguardMapper {
+    pub fn new(byteview: ByteView<'static>) -> Self {
+        let inner = SelfCell::new(byteview, |data| {
+            let mapping = proguard::ProguardMapping::new(unsafe { &*data });
+            let mapper = proguard::ProguardMapper::new(mapping.clone());
+            ProguardInner { mapping, mapper }
+        });
+
+        Self {
+            inner: Arc::new(inner),
+        }
+    }
+
+    pub fn get(&self) -> &proguard::ProguardMapper {
+        &self.inner.get().mapper
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FetchProguard {
     file: RemoteFile,
@@ -133,15 +151,7 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        let inner = SelfCell::new(byteview, |data| {
-            let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapper = proguard::ProguardMapper::new(mapping.clone());
-            ProguardInner { mapping, mapper }
-        });
-
-        Ok(ProguardMapper {
-            inner: Arc::new(inner),
-        })
+        Ok(Self::Item::new(byteview))
     }
 
     fn use_shared_cache(&self) -> bool {
