@@ -36,28 +36,28 @@ impl ProguardService {
             })
             .collect();
 
-        let mut remapped_exceptions = Vec::with_capacity(exceptions.len());
+        let remapped_exceptions = exceptions
+            .into_iter()
+            .map(|raw_exception| {
+                Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception)
+            })
+            .collect();
 
-        for raw_exception in exceptions {
-            remapped_exceptions
-                .push(Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception));
-        }
-
-        let mut remapped_stacktraces = Vec::with_capacity(stacktraces.len());
-
-        for raw_stacktrace in stacktraces {
-            let remapped_frames = raw_stacktrace
-                .frames
-                .iter()
-                .flat_map(|frame| {
-                    Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
-                })
-                .collect();
-
-            remapped_stacktraces.push(JvmStacktrace {
-                frames: remapped_frames,
-            });
-        }
+        let remapped_stacktraces = stacktraces
+            .into_iter()
+            .map(|raw_stacktrace| {
+                let remapped_frames = raw_stacktrace
+                    .frames
+                    .iter()
+                    .flat_map(|frame| {
+                        Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
+                    })
+                    .collect();
+                JvmStacktrace {
+                    frames: remapped_frames,
+                }
+            })
+            .collect();
 
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
@@ -100,40 +100,40 @@ impl ProguardService {
             mapped_frames.clear();
             mapped_frames.extend(mapper.remap_frame(&proguard_frame));
 
-            if !mapped_frames.is_empty() {
-                let mut result = Vec::new();
-                let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
+            if mapped_frames.is_empty() {
+                continue;
+            }
 
-                // sentry expects stack traces in reverse order
-                for new_frame in mapped_frames.iter().rev() {
-                    let mut mapped_frame = JvmFrame {
-                        class: new_frame.class().to_owned(),
-                        method: new_frame.method().to_owned(),
-                        lineno: new_frame.line() as u32,
-                        ..frame.clone()
-                    };
+            let mut result = Vec::new();
+            let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
 
-                    // clear the filename for all *foreign* classes
-                    if mapped_frame.class != bottom_class {
-                        mapped_frame.filename = None;
-                        mapped_frame.abs_path = None;
-                    }
+            // sentry expects stack traces in reverse order
+            for new_frame in mapped_frames.iter().rev() {
+                let mut mapped_frame = JvmFrame {
+                    class: new_frame.class().to_owned(),
+                    method: new_frame.method().to_owned(),
+                    lineno: new_frame.line() as u32,
+                    ..frame.clone()
+                };
 
-                    // mark the frame as in_app after deobfuscation based on the release package name
-                    // only if it's not present
-                    if let Some(package) = release_package {
-                        if dbg!(&mapped_frame.class).starts_with(package)
-                            && mapped_frame.in_app.is_none()
-                        {
-                            mapped_frame.in_app = Some(true);
-                        }
-                    }
-
-                    result.push(mapped_frame);
+                // clear the filename for all *foreign* classes
+                if mapped_frame.class != bottom_class {
+                    mapped_frame.filename = None;
+                    mapped_frame.abs_path = None;
                 }
 
-                return result;
+                // mark the frame as in_app after deobfuscation based on the release package name
+                // only if it's not present
+                if let Some(package) = release_package {
+                    if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
+                        mapped_frame.in_app = Some(true);
+                    }
+                }
+
+                result.push(mapped_frame);
             }
+
+            return result;
         }
 
         // second, if that is not possible, try to re-map only the class-name
@@ -147,9 +147,7 @@ impl ProguardService {
                 // mark the frame as in_app after deobfuscation based on the release package name
                 // only if it's not present
                 if let Some(package) = release_package {
-                    if dbg!(&mapped_frame.class).starts_with(package)
-                        && mapped_frame.in_app.is_none()
-                    {
+                    if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
                         mapped_frame.in_app = Some(true);
                     }
                 }
