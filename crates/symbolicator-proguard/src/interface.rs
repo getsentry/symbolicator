@@ -20,6 +20,10 @@ pub struct SymbolicateJvmStacktraces {
     pub modules: Vec<JvmModule>,
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
+    /// The package name of the release this event belongs to.
+    ///
+    /// This is used to set a remapped frame's `in_app` field.
+    pub release_package: Option<String>,
 }
 
 /// A stack frame in a JVM stacktrace.

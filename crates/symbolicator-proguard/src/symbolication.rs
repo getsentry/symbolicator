@@ -17,6 +17,7 @@ impl ProguardService {
             exceptions,
             stacktraces,
             modules,
+            release_package,
             ..
         } = request;
         let mappers = future::join_all(
@@ -48,7 +49,9 @@ impl ProguardService {
             let remapped_frames = raw_stacktrace
                 .frames
                 .iter()
-                .flat_map(|frame| Self::map_frame(&mappers, frame).into_iter())
+                .flat_map(|frame| {
+                    Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
+                })
                 .collect();
 
             remapped_stacktraces.push(JvmStacktrace {
@@ -83,7 +86,11 @@ impl ProguardService {
         })
     }
 
-    fn map_frame(mappers: &[&proguard::ProguardMapper], frame: &JvmFrame) -> Vec<JvmFrame> {
+    fn map_frame(
+        mappers: &[&proguard::ProguardMapper],
+        frame: &JvmFrame,
+        release_package: Option<&str>,
+    ) -> Vec<JvmFrame> {
         let proguard_frame =
             proguard::StackFrame::new(&frame.class, &frame.method, frame.lineno as usize);
         let mut mapped_frames = Vec::new();
@@ -112,12 +119,15 @@ impl ProguardService {
                         mapped_frame.abs_path = None;
                     }
 
-                    // TODO: in_app handing based on release
-                    // // mark the frame as in_app after deobfuscation based on the release package name
-                    // // only if it's not present
-                    // if release and release.package and frame.get("in_app") is None:
-                    //     if frame["module"].startswith(release.package):
-                    //         frame["in_app"] = True
+                    // mark the frame as in_app after deobfuscation based on the release package name
+                    // only if it's not present
+                    if let Some(package) = release_package {
+                        if dbg!(&mapped_frame.class).starts_with(package)
+                            && mapped_frame.in_app.is_none()
+                        {
+                            mapped_frame.in_app = Some(true);
+                        }
+                    }
 
                     result.push(mapped_frame);
                 }
@@ -129,16 +139,20 @@ impl ProguardService {
         // second, if that is not possible, try to re-map only the class-name
         for mapper in mappers {
             if let Some(mapped_class) = mapper.remap_class(&frame.class) {
-                let mapped_frame = JvmFrame {
+                let mut mapped_frame = JvmFrame {
                     class: mapped_class.to_owned(),
                     ..frame.clone()
                 };
 
-                // // mark the frame as in_app after deobfuscation based on the release package name
-                // // only if it's not present
-                // if release and release.package and frame.get("in_app") is None:
-                //     if frame["module"].startswith(release.package):
-                //         frame["in_app"] = True
+                // mark the frame as in_app after deobfuscation based on the release package name
+                // only if it's not present
+                if let Some(package) = release_package {
+                    if dbg!(&mapped_frame.class).starts_with(package)
+                        && mapped_frame.in_app.is_none()
+                    {
+                        mapped_frame.in_app = Some(true);
+                    }
+                }
 
                 return vec![mapped_frame];
             }
@@ -225,7 +239,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 
         let mapped_frames: Vec<_> = frames
             .iter()
-            .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame).into_iter())
+            .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
             .collect();
 
         assert_eq!(mapped_frames.len(), 4);
@@ -254,5 +268,74 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             Some("MainActivity.java".to_owned())
         );
         assert_eq!(mapped_frames[3].class, "io.sentry.sample.MainActivity");
+    }
+
+    // based on the Python test `test_sets_inapp_after_resolving`.
+    #[test]
+    fn sets_in_app_after_resolving() {
+        let proguard_source = b"org.slf4j.helpers.Util$ClassContextSecurityManager -> org.a.b.g$a:
+    65:65:void <init>() -> <init>
+    67:67:java.lang.Class[] getClassContext() -> a
+    69:69:java.lang.Class[] getExtraClassContext() -> a
+    68:68:java.lang.Class[] getContext() -> a
+    65:65:void <init>(org.slf4j.helpers.Util$1) -> <init>
+org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
+    65:65:void <init>() -> <init>
+";
+
+        let mapping = ProguardMapping::new(proguard_source);
+        let mapper = ProguardMapper::new(mapping);
+
+        let frames = [
+            JvmFrame {
+                method: "a".to_owned(),
+                class: "org.a.b.g$a".to_owned(),
+                lineno: 67,
+                ..Default::default()
+            },
+            JvmFrame {
+                method: "a".to_owned(),
+                class: "org.a.b.g$a".to_owned(),
+                lineno: 69,
+                in_app: Some(false),
+                ..Default::default()
+            },
+            JvmFrame {
+                method: "a".to_owned(),
+                class: "org.a.b.g$a".to_owned(),
+                lineno: 68,
+                in_app: Some(true),
+                ..Default::default()
+            },
+            JvmFrame {
+                method: "init".to_owned(),
+                class: "com.android.Zygote".to_owned(),
+                lineno: 62,
+                ..Default::default()
+            },
+            JvmFrame {
+                method: "a".to_owned(),
+                class: "org.a.b.g$b".to_owned(),
+                lineno: 70,
+                ..Default::default()
+            },
+        ];
+
+        let mapped_frames: Vec<_> = frames
+            .iter()
+            .flat_map(|frame| {
+                ProguardService::map_frame(&[&mapper], frame, Some("org.slf4j")).into_iter()
+            })
+            .collect();
+
+        assert_eq!(mapped_frames[0].in_app, Some(true));
+        assert_eq!(mapped_frames[1].in_app, Some(false));
+        assert_eq!(mapped_frames[2].in_app, Some(true));
+
+        // According to the Python test, this should be `Some(false)`, but
+        // based just on the code in this file, this is not possible. We never set `in_app` to `false`,
+        // this must happen somewhere else in `sentry`.
+        assert_eq!(mapped_frames[3].in_app, None);
+        assert_eq!(mapped_frames[4].in_app, Some(true));
     }
 }
