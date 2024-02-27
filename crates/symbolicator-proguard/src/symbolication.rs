@@ -104,56 +104,59 @@ impl ProguardService {
                 continue;
             }
 
-            let mut result = Vec::new();
             let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
 
             // sentry expects stack traces in reverse order
-            for new_frame in mapped_frames.iter().rev() {
-                let mut mapped_frame = JvmFrame {
-                    class: new_frame.class().to_owned(),
-                    method: new_frame.method().to_owned(),
-                    lineno: new_frame.line() as u32,
-                    ..frame.clone()
-                };
+            return mapped_frames
+                .iter()
+                .rev()
+                .map(|new_frame| {
+                    let mut mapped_frame = JvmFrame {
+                        class: new_frame.class().to_owned(),
+                        method: new_frame.method().to_owned(),
+                        lineno: new_frame.line() as u32,
+                        ..frame.clone()
+                    };
 
-                // clear the filename for all *foreign* classes
-                if mapped_frame.class != bottom_class {
-                    mapped_frame.filename = None;
-                    mapped_frame.abs_path = None;
-                }
-
-                // mark the frame as in_app after deobfuscation based on the release package name
-                // only if it's not present
-                if let Some(package) = release_package {
-                    if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
-                        mapped_frame.in_app = Some(true);
+                    // clear the filename for all *foreign* classes
+                    if mapped_frame.class != bottom_class {
+                        mapped_frame.filename = None;
+                        mapped_frame.abs_path = None;
                     }
-                }
 
-                result.push(mapped_frame);
-            }
-
-            return result;
+                    // mark the frame as in_app after deobfuscation based on the release package name
+                    // only if it's not present
+                    if let Some(package) = release_package {
+                        if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none()
+                        {
+                            mapped_frame.in_app = Some(true);
+                        }
+                    }
+                    mapped_frame
+                })
+                .collect();
         }
 
         // second, if that is not possible, try to re-map only the class-name
         for mapper in mappers {
-            if let Some(mapped_class) = mapper.remap_class(&frame.class) {
-                let mut mapped_frame = JvmFrame {
-                    class: mapped_class.to_owned(),
-                    ..frame.clone()
-                };
+            let Some(mapped_class) = mapper.remap_class(&frame.class) else {
+                continue;
+            };
 
-                // mark the frame as in_app after deobfuscation based on the release package name
-                // only if it's not present
-                if let Some(package) = release_package {
-                    if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
-                        mapped_frame.in_app = Some(true);
-                    }
+            let mut mapped_frame = JvmFrame {
+                class: mapped_class.to_owned(),
+                ..frame.clone()
+            };
+
+            // mark the frame as in_app after deobfuscation based on the release package name
+            // only if it's not present
+            if let Some(package) = release_package {
+                if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
+                    mapped_frame.in_app = Some(true);
                 }
-
-                return vec![mapped_frame];
             }
+
+            return vec![mapped_frame];
         }
 
         Vec::new()
