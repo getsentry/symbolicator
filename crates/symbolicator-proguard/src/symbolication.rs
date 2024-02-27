@@ -92,7 +92,7 @@ impl ProguardService {
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
         let proguard_frame =
-            proguard::StackFrame::new(&frame.class, &frame.method, frame.lineno as usize);
+            proguard::StackFrame::new(&frame.module, &frame.function, frame.lineno as usize);
         let mut mapped_frames = Vec::new();
 
         // first, try to remap complete frames
@@ -112,14 +112,14 @@ impl ProguardService {
                 .rev()
                 .map(|new_frame| {
                     let mut mapped_frame = JvmFrame {
-                        class: new_frame.class().to_owned(),
-                        method: new_frame.method().to_owned(),
+                        module: new_frame.class().to_owned(),
+                        function: new_frame.method().to_owned(),
                         lineno: new_frame.line() as u32,
                         ..frame.clone()
                     };
 
                     // clear the filename for all *foreign* classes
-                    if mapped_frame.class != bottom_class {
+                    if mapped_frame.module != bottom_class {
                         mapped_frame.filename = None;
                         mapped_frame.abs_path = None;
                     }
@@ -127,7 +127,7 @@ impl ProguardService {
                     // mark the frame as in_app after deobfuscation based on the release package name
                     // only if it's not present
                     if let Some(package) = release_package {
-                        if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none()
+                        if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none()
                         {
                             mapped_frame.in_app = Some(true);
                         }
@@ -139,19 +139,19 @@ impl ProguardService {
 
         // second, if that is not possible, try to re-map only the class-name
         for mapper in mappers {
-            let Some(mapped_class) = mapper.remap_class(&frame.class) else {
+            let Some(mapped_class) = mapper.remap_class(&frame.module) else {
                 continue;
             };
 
             let mut mapped_frame = JvmFrame {
-                class: mapped_class.to_owned(),
+                module: mapped_class.to_owned(),
                 ..frame.clone()
             };
 
             // mark the frame as in_app after deobfuscation based on the release package name
             // only if it's not present
             if let Some(package) = release_package {
-                if mapped_frame.class.starts_with(package) && mapped_frame.in_app.is_none() {
+                if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none() {
                     mapped_frame.in_app = Some(true);
                 }
             }
@@ -222,14 +222,14 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 
         let frames = [
             JvmFrame {
-                method: "onClick".to_owned(),
-                class: "e.a.c.a".to_owned(),
+                function: "onClick".to_owned(),
+                module: "e.a.c.a".to_owned(),
                 lineno: 2,
                 ..Default::default()
             },
             JvmFrame {
-                method: "t".to_owned(),
-                class: "io.sentry.sample.MainActivity".to_owned(),
+                function: "t".to_owned(),
+                module: "io.sentry.sample.MainActivity".to_owned(),
                 filename: Some("MainActivity.java".to_owned()),
                 lineno: 1,
                 ..Default::default()
@@ -246,9 +246,9 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 
         assert_eq!(mapped_frames.len(), 4);
 
-        assert_eq!(mapped_frames[0].method, "onClick");
+        assert_eq!(mapped_frames[0].function, "onClick");
         assert_eq!(
-            mapped_frames[0].class,
+            mapped_frames[0].module,
             "io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4"
         );
 
@@ -256,20 +256,20 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             mapped_frames[1].filename,
             Some("MainActivity.java".to_owned())
         );
-        assert_eq!(mapped_frames[1].class, "io.sentry.sample.MainActivity");
-        assert_eq!(mapped_frames[1].method, "onClickHandler");
+        assert_eq!(mapped_frames[1].module, "io.sentry.sample.MainActivity");
+        assert_eq!(mapped_frames[1].function, "onClickHandler");
         assert_eq!(mapped_frames[1].lineno, 40);
 
-        assert_eq!(mapped_frames[2].method, "foo");
+        assert_eq!(mapped_frames[2].function, "foo");
         assert_eq!(mapped_frames[2].lineno, 44);
 
-        assert_eq!(mapped_frames[3].method, "bar");
+        assert_eq!(mapped_frames[3].function, "bar");
         assert_eq!(mapped_frames[3].lineno, 54);
         assert_eq!(
             mapped_frames[3].filename,
             Some("MainActivity.java".to_owned())
         );
-        assert_eq!(mapped_frames[3].class, "io.sentry.sample.MainActivity");
+        assert_eq!(mapped_frames[3].module, "io.sentry.sample.MainActivity");
     }
 
     // based on the Python test `test_sets_inapp_after_resolving`.
@@ -290,34 +290,34 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
 
         let frames = [
             JvmFrame {
-                method: "a".to_owned(),
-                class: "org.a.b.g$a".to_owned(),
+                function: "a".to_owned(),
+                module: "org.a.b.g$a".to_owned(),
                 lineno: 67,
                 ..Default::default()
             },
             JvmFrame {
-                method: "a".to_owned(),
-                class: "org.a.b.g$a".to_owned(),
+                function: "a".to_owned(),
+                module: "org.a.b.g$a".to_owned(),
                 lineno: 69,
                 in_app: Some(false),
                 ..Default::default()
             },
             JvmFrame {
-                method: "a".to_owned(),
-                class: "org.a.b.g$a".to_owned(),
+                function: "a".to_owned(),
+                module: "org.a.b.g$a".to_owned(),
                 lineno: 68,
                 in_app: Some(true),
                 ..Default::default()
             },
             JvmFrame {
-                method: "init".to_owned(),
-                class: "com.android.Zygote".to_owned(),
+                function: "init".to_owned(),
+                module: "com.android.Zygote".to_owned(),
                 lineno: 62,
                 ..Default::default()
             },
             JvmFrame {
-                method: "a".to_owned(),
-                class: "org.a.b.g$b".to_owned(),
+                function: "a".to_owned(),
+                module: "org.a.b.g$b".to_owned(),
                 lineno: 70,
                 ..Default::default()
             },

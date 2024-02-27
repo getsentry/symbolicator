@@ -29,19 +29,19 @@ pub struct SymbolicateJvmStacktraces {
 /// A stack frame in a JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmFrame {
-    /// The frame's method name.
+    /// The frame's function name.
     ///
-    /// This corresponds to the `function` field on native frames.
-    pub method: String,
+    /// For a JVM frame, this is always a class method.
+    pub function: String,
 
     /// The source file name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
-    /// The frame's class name.
+    /// The frame's method name.
     ///
-    /// This corresponds to the `module` field on native frames.
-    pub class: String,
+    /// For a JVM frame, this is a fully qualified class name.
+    pub module: String,
 
     /// The source file's absolute path.
     #[serde(skip_serializing_if = "Option::is_none")]
