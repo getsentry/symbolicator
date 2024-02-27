@@ -1,6 +1,7 @@
 use std::fmt;
 use std::time::Duration;
 
+use symbolicator_service::metric;
 use symbolicator_sources::RemoteFileUri;
 
 use crate::interface::ResolvedWith;
@@ -62,10 +63,12 @@ impl FileInBundleCache {
             // XXX: this is a really horrible workaround for not being able to look up things via `(&A, &B)` instead of `&(A, B)`.
             let lookup_key = (bundle_uri, key);
             if let Some((file_entry, resolved_with)) = self.cache.get(&lookup_key) {
+                metric!(counter("js.file_in_bundle.hit") += 1);
                 return Some((lookup_key.0, file_entry, resolved_with));
             }
             key = lookup_key.1;
         }
+        metric!(counter("js.file_in_bundle.miss") += 1);
         None
     }
 
