@@ -4,8 +4,8 @@ use std::fmt::Write;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::thread;
 use std::time::Duration;
-use std::{fmt, thread};
 
 use cadence::{BufferedUdpMetricSink, MetricSink, QueuingMetricSink, StatsdClient};
 use crossbeam_utils::CachePadded;
@@ -34,6 +34,7 @@ impl MetricSink for Sink {
 type LocalAggregators = Arc<ThreadLocal<CachePadded<Mutex<LocalAggregator>>>>;
 
 /// The globally configured Metrics, including a `cadence` client, and a local aggregator.
+#[derive(Debug)]
 pub struct MetricsWrapper {
     /// The raw `cadence` client.
     statsd_client: StatsdClient,
@@ -59,18 +60,6 @@ impl Deref for MetricsWrapper {
 
     fn deref(&self) -> &Self::Target {
         &self.statsd_client
-    }
-}
-
-impl fmt::Debug for MetricsWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MetricsWrapper")
-            .field("statsd_client", &self.statsd_client)
-            .field(
-                "local_aggregator",
-                &format_args!("LocalAggregators {{ .. }}"),
-            )
-            .finish()
     }
 }
 
@@ -211,7 +200,7 @@ fn aggregate_all(aggregators: &LocalAggregators) -> (AggregatedCounters, Aggrega
 }
 
 /// The key by which we group/aggregate metrics.
-#[derive(Eq, Ord, PartialEq, PartialOrd, Hash)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Hash, Debug)]
 struct AggregationKey {
     /// The metric type, pre-formatted as a statsd suffix such as `|c`.
     ty: &'static str,
@@ -253,7 +242,7 @@ impl IntoDistributionValue for i32 {
 }
 
 /// The `thread_local` aggregator which pre-aggregates metrics per-thread.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LocalAggregator {
     /// A mutable scratch-buffer that is reused to format tags into it.
     buf: String,
