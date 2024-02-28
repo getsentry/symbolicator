@@ -7,6 +7,10 @@ use crate::ProguardService;
 use futures::future;
 
 impl ProguardService {
+    /// Symbolicates a JVM event.
+    ///
+    /// "Symbolicate" here means that exceptions and stack
+    /// frames are remapped using proguard files.
     pub async fn symbolicate_jvm(
         &self,
         request: SymbolicateJvmStacktraces,
@@ -21,9 +25,7 @@ impl ProguardService {
             ..
         } = request;
 
-        let mut errors = Vec::new();
-
-        let mappers = future::join_all(modules.iter().map(|module| async {
+        let maybe_mappers = future::join_all(modules.iter().map(|module| async {
             let file = self
                 .download_proguard_file(&sources, &scope, module.uuid)
                 .await;
@@ -31,17 +33,15 @@ impl ProguardService {
         }))
         .await;
 
-        // TODO: error handling/reporting
-        let mappers: Vec<_> = mappers
-            .iter()
-            .filter_map(|(debug_id, res)| match res {
-                Ok(mapper) => Some(mapper.get()),
+        let (mut mappers, mut errors) = (Vec::new(), Vec::new());
+        for (debug_id, res) in &maybe_mappers {
+            match res {
+                Ok(mapper) => mappers.push(mapper.get()),
                 Err(e) => {
-                    errors.push((debug_id, e.clone()));
-                    None
+                    errors.push((*debug_id, e.to_string()));
                 }
-            })
-            .collect();
+            }
+        }
 
         let remapped_exceptions = exceptions
             .into_iter()
@@ -69,9 +69,14 @@ impl ProguardService {
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
             stacktraces: remapped_stacktraces,
+            errors,
         }
     }
 
+    /// Remaps an exception using the provided mappers.
+    ///
+    /// This returns a new exception with the deobfuscated module and class names.
+    /// Returns `None` if none of the `mappers` can remap the exception.
     fn map_exception(
         mappers: &[&proguard::ProguardMapper],
         exception: &JvmException,
@@ -84,8 +89,16 @@ impl ProguardService {
 
         let mapped = mappers.iter().find_map(|mapper| mapper.remap_class(&key))?;
 
-        // TOOD: Capture/log error
-        let (new_module, new_ty) = mapped.rsplit_once('.')?;
+        // In the Python implementation, we just split by `.` here with no check. I assume
+        // this error can not actually occur.
+        let Some((new_module, new_ty)) = mapped.rsplit_once('.') else {
+            tracing::error!(
+                original = key,
+                remapped = mapped,
+                "Invalid remapped class name"
+            );
+            return None;
+        };
 
         Some(JvmException {
             ty: new_ty.into(),
@@ -93,6 +106,9 @@ impl ProguardService {
         })
     }
 
+    /// Remaps a frame using the provided mappers.
+    ///
+    ///
     fn map_frame(
         mappers: &[&proguard::ProguardMapper],
         frame: &JvmFrame,
