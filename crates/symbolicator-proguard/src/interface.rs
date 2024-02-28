@@ -20,25 +20,32 @@ pub struct SymbolicateJvmStacktraces {
     pub modules: Vec<JvmModule>,
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
+    /// The package name of the release this event belongs to.
+    ///
+    /// This is used to set a remapped frame's `in_app` field.
+    pub release_package: Option<String>,
 }
 
 /// A stack frame in a JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmFrame {
     /// The frame's function name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub function: Option<String>,
+    ///
+    /// For a JVM frame, this is always a class method.
+    pub function: String,
 
     /// The source file name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
-    /// The module name.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub module: Option<String>,
+    /// The frame's method name.
+    ///
+    /// For a JVM frame, this is a fully qualified class name.
+    pub module: String,
 
     /// The source file's absolute path.
-    pub abs_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub abs_path: Option<String>,
 
     /// The line number within the source file, starting at `1` for the first line.
     pub lineno: u32,
@@ -92,4 +99,6 @@ pub struct JvmModule {
 pub struct CompletedJvmSymbolicationResponse {
     /// The exceptions after remapping.
     pub exceptions: Vec<JvmException>,
+    /// The stacktraces after remapping.
+    pub stacktraces: Vec<JvmStacktrace>,
 }

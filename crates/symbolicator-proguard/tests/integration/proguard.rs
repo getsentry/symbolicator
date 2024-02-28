@@ -96,9 +96,10 @@ async fn test_remap_exception() {
         stacktraces: vec![],
         modules: vec![JvmModule { uuid: debug_id }],
         apply_source_context: false,
+        release_package: None,
     };
 
-    let CompletedJvmSymbolicationResponse { exceptions } =
+    let CompletedJvmSymbolicationResponse { exceptions, .. } =
         symbolication.symbolicate_jvm(request).await;
 
     let remapped_exception = JvmException {
