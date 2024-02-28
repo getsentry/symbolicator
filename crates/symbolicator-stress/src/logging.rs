@@ -1,14 +1,10 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::future::Future;
-use std::io::Write;
 use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::pin::Pin;
 
-use symbolicator_service::metrics;
-use tracing_subscriber::fmt::fmt;
-use tracing_subscriber::fmt::time::UtcTime;
-use tracing_subscriber::prelude::*;
+use symbolicator_service::{logging, metrics};
 
 #[derive(Debug, Default)]
 pub struct Config {
@@ -61,27 +57,12 @@ pub fn init(config: Config) -> Guard {
     }
 
     if config.tracing {
-        let rust_log = "INFO";
-        let subscriber = fmt()
-            .with_timer(UtcTime::rfc_3339())
-            .with_target(true)
-            .with_env_filter(rust_log);
-
-        // we want all the tracing machinery to be active, but not spam the console,
-        // so redirect everything into the void:
-        let subscriber = subscriber.with_writer(|| NoopWriter);
-
-        // this should mimic the settings used in production:
-        subscriber
-            .json()
-            .flatten_event(true)
-            .with_current_span(true)
-            .with_span_list(true)
-            .with_file(true)
-            .with_line_number(true)
-            .finish()
-            .with(sentry::integrations::tracing::layer())
-            .init();
+        let env_filter = "INFO,\
+             minidump=ERROR,\
+             trust_dns_proto=WARN";
+        // we want all the tracing machinery to be active and use the production JSON output,
+        // but not spam the console, so redirect everything into the void (`std::io::sink`):
+        logging::init_json_logging(env_filter, std::io::sink);
     }
 
     if config.metrics {
@@ -110,18 +91,4 @@ pub fn init(config: Config) -> Guard {
     }
 
     guard
-}
-
-struct NoopWriter;
-impl Write for NoopWriter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        // try to prevent the compiler from optimizing away all the formatting code:
-        let buf = std::hint::black_box(buf);
-
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }

@@ -22,7 +22,6 @@ symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-test = { path = "../symbolicator-test" }
 tempfile = "3.2.0"
 tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
-tracing-subscriber = "0.3.17"
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
 jemallocator = { version = "0.5", features = ["unprefixed_malloc_on_supported_platforms"] }
