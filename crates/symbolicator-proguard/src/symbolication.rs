@@ -108,7 +108,10 @@ impl ProguardService {
 
     /// Remaps a frame using the provided mappers.
     ///
-    ///
+    /// This returns a list of frames because remapping may
+    /// expand a frame into several. The returned list is always
+    /// nonempty; if none of the mappers can remap the frame, the original
+    /// frame is returned.
     fn map_frame(
         mappers: &[&proguard::ProguardMapper],
         frame: &JvmFrame,
