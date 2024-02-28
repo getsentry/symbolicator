@@ -4476,6 +4476,7 @@ dependencies = [
  "symbolicator-test",
  "tempfile",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
