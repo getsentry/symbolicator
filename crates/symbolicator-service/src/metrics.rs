@@ -67,6 +67,9 @@ impl Deref for MetricsWrapper {
 /// To not overwhelm downstream services, we send them in batches instead of all at once.
 const DISTRIBUTION_BATCH_SIZE: usize = 1;
 
+/// The interval in which to flush out metrics.
+const SEND_INTERVAL: Duration = Duration::from_secs(1);
+
 /// Creates [`LocalAggregators`] and starts a thread that will periodically
 /// send aggregated metrics upstream to the `sink`.
 fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> LocalAggregators {
@@ -86,7 +89,7 @@ fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> L
         let mut suffix = String::with_capacity(128);
 
         loop {
-            thread::sleep(Duration::from_secs(5));
+            thread::sleep(SEND_INTERVAL);
 
             let (total_counters, total_distributions) = aggregate_all(&aggregators);
 
@@ -219,7 +222,7 @@ pub trait IntoDistributionValue {
 
 impl IntoDistributionValue for Duration {
     fn into_value(self) -> f64 {
-        self.as_secs_f64() / 1_000.
+        self.as_secs_f64() * 1_000.
     }
 }
 
