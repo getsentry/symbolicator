@@ -1,0 +1,21 @@
+# compiler: R8
+# compiler_version: 2.0.74
+# min_api: 16
+# pg_map_id: 5b46fdc
+# common_typos_disable
+$r8$backportedMethods$utility$Objects$2$equals -> a:
+    boolean equals(java.lang.Object,java.lang.Object) -> a
+$r8$twr$utility -> b:
+    void $closeResource(java.lang.Throwable,java.lang.Object) -> a
+android.support.v4.app.RemoteActionCompatParcelizer -> android.support.v4.app.RemoteActionCompatParcelizer:
+    1:1:void <init>():11:11 -> <init>
+io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4 -> e.a.c.a:
+    io.sentry.sample.MainActivity f$0 -> b
+io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
+    1:1:void <init>():15:15 -> <init>
+    1:1:boolean onCreateOptionsMenu(android.view.Menu):60:60 -> onCreateOptionsMenu
+    1:1:boolean onOptionsItemSelected(android.view.MenuItem):69:69 -> onOptionsItemSelected
+    2:2:boolean onOptionsItemSelected(android.view.MenuItem):76:76 -> onOptionsItemSelected
+    1:1:void bar():54:54 -> t
+    1:1:void foo():44 -> t
+    1:1:void onClickHandler(android.view.View):40 -> t
