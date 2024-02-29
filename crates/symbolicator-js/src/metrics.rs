@@ -27,7 +27,7 @@
 //!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
 use symbolic::debuginfo::sourcebundle::SourceFileType;
-use symbolicator_service::metric;
+use symbolicator_service::metrics;
 
 use crate::interface::ResolvedWith;
 
@@ -117,86 +117,112 @@ impl JsMetrics {
     }
 
     pub fn submit_metrics(&self, artifact_bundles: u64) {
-        metric!(time_raw("js.needed_files") = self.needed_files);
-        metric!(time_raw("js.api_requests") = self.api_requests);
-        metric!(time_raw("js.queried_bundles") = self.queried_bundles);
-        metric!(time_raw("js.fetched_bundles") = artifact_bundles);
-        metric!(time_raw("js.queried_artifacts") = self.queried_artifacts);
-        metric!(time_raw("js.fetched_artifacts") = self.fetched_artifacts);
-        metric!(time_raw("js.scraped_files") = self.scraped_files);
+        metrics::with_client(|aggregator| self.submit_local_metrics(aggregator, artifact_bundles))
+    }
 
-        // TODO: we are currently getting these as counters. maybe we want to use `time_raw` to also
-        // have a per-event avg, etc.
+    fn submit_local_metrics(
+        &self,
+        aggregator: &mut metrics::LocalAggregator,
+        artifact_bundles: u64,
+    ) {
+        // per-event distribution, emitted as `time_raw`
+        use symbolicator_service::metrics::IntoDistributionValue;
+        aggregator.emit_timer("js.needed_files", self.needed_files.into_value(), &[]);
+        aggregator.emit_timer("js.api_requests", self.api_requests.into_value(), &[]);
+        aggregator.emit_timer("js.queried_bundles", self.queried_bundles.into_value(), &[]);
+        aggregator.emit_timer("js.fetched_bundles", artifact_bundles.into_value(), &[]);
+        aggregator.emit_timer(
+            "js.queried_artifacts",
+            self.queried_artifacts.into_value(),
+            &[],
+        );
+        aggregator.emit_timer(
+            "js.fetched_artifacts",
+            self.fetched_artifacts.into_value(),
+            &[],
+        );
+        aggregator.emit_timer("js.scraped_files", self.scraped_files.into_value(), &[]);
 
         // Sources:
-        metric!(
-            counter("js.found_via_bundle_debugid") += self.found_source_via_debugid,
-            "type" => "source",
+        aggregator.emit_count(
+            "js.found_via_bundle_debugid",
+            self.found_source_via_debugid,
+            &[("type", "source")],
         );
-        metric!(
-            counter("js.found_via_bundle_url") += self.found_source_via_release,
-            "type" => "source",
-            "lookup" => "release",
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_source_via_release,
+            &[("type", "source"), ("lookup", "release")],
         );
-        metric!(
-            counter("js.found_via_bundle_url") += self.found_source_via_release_old,
-            "type" => "source",
-            "lookup" => "release-old",
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_source_via_release_old,
+            &[("type", "source"), ("lookup", "release-old")],
         );
-        metric!(
-            counter("js.found_via_scraping") += self.found_source_via_scraping,
-            "type" => "source",
+        aggregator.emit_count(
+            "js.found_via_scraping",
+            self.found_source_via_scraping,
+            &[("type", "source")],
         );
-        metric!(
-            counter("js.file_not_found") += self.source_not_found,
-            "type" => "source",
+        aggregator.emit_count(
+            "js.file_not_found",
+            self.source_not_found,
+            &[("type", "source")],
         );
 
         // SourceMaps:
-        metric!(
-            counter("js.found_via_bundle_debugid") += self.found_sourcemap_via_debugid,
-            "type" => "sourcemap",
+        aggregator.emit_count(
+            "js.found_via_bundle_debugid",
+            self.found_sourcemap_via_debugid,
+            &[("type", "sourcemap")],
         );
-        metric!(
-            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release,
-            "type" => "sourcemap",
-            "lookup" => "release",
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_sourcemap_via_release,
+            &[("type", "sourcemap"), ("lookup", "release")],
         );
-        metric!(
-            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release_old,
-            "type" => "sourcemap",
-            "lookup" => "release-old",
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_sourcemap_via_release_old,
+            &[("type", "sourcemap"), ("lookup", "release-old")],
         );
-        metric!(
-            counter("js.found_via_scraping") += self.found_sourcemap_via_scraping,
-            "type" => "sourcemap",
+        aggregator.emit_count(
+            "js.found_via_scraping",
+            self.found_sourcemap_via_scraping,
+            &[("type", "sourcemap")],
         );
-        metric!(
-            counter("js.file_not_found") += self.sourcemap_not_found,
-            "type" => "sourcemap",
+        aggregator.emit_count(
+            "js.file_not_found",
+            self.sourcemap_not_found,
+            &[("type", "sourcemap")],
         );
-        metric!(counter("js.sourcemap_not_needed") += self.sourcemap_not_needed);
+        aggregator.emit_count("js.sourcemap_not_needed", self.sourcemap_not_needed, &[]);
 
         // Lookup Method:
-        metric!(
-            counter("js.bundle_lookup") += self.found_bundle_via_bundleindex,
-            "method" => "bundleindex"
+        aggregator.emit_count(
+            "js.bundle_lookup",
+            self.found_bundle_via_bundleindex,
+            &[("method", "bundleindex")],
         );
-        metric!(
-            counter("js.bundle_lookup") += self.found_bundle_via_debugid,
-            "method" => "debugid"
+        aggregator.emit_count(
+            "js.bundle_lookup",
+            self.found_bundle_via_debugid,
+            &[("method", "debugid")],
         );
-        metric!(
-            counter("js.bundle_lookup") += self.found_bundle_via_index,
-            "method" => "index"
+        aggregator.emit_count(
+            "js.bundle_lookup",
+            self.found_bundle_via_index,
+            &[("method", "index")],
         );
-        metric!(
-            counter("js.bundle_lookup") += self.found_bundle_via_release,
-            "method" => "release"
+        aggregator.emit_count(
+            "js.bundle_lookup",
+            self.found_bundle_via_release,
+            &[("method", "release")],
         );
-        metric!(
-            counter("js.bundle_lookup") += self.found_bundle_via_release_old,
-            "method" => "release-old"
+        aggregator.emit_count(
+            "js.bundle_lookup",
+            self.found_bundle_via_release_old,
+            &[("method", "release-old")],
         );
     }
 }
