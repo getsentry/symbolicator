@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::io;
 use std::time::Duration;
 
@@ -116,10 +117,10 @@ impl CacheError {
     /// * Otherwise `None` is returned.
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if let Some(raw_message) = bytes.strip_prefix(Self::PERMISSION_DENIED_MARKER) {
-            let err_msg = String::from_utf8_lossy(raw_message);
+            let err_msg = utf8_message(raw_message);
             Some(Self::PermissionDenied(err_msg.into_owned()))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
-            let raw_duration = String::from_utf8_lossy(raw_duration);
+            let raw_duration = utf8_message(raw_duration);
             match parse_duration(&raw_duration) {
                 Ok(duration) => Some(Self::Timeout(duration)),
                 Err(e) => {
@@ -128,10 +129,10 @@ impl CacheError {
                 }
             }
         } else if let Some(raw_message) = bytes.strip_prefix(Self::DOWNLOAD_ERROR_MARKER) {
-            let err_msg = String::from_utf8_lossy(raw_message);
+            let err_msg = utf8_message(raw_message);
             Some(Self::DownloadError(err_msg.into_owned()))
         } else if let Some(raw_message) = bytes.strip_prefix(Self::MALFORMED_MARKER) {
-            let err_msg = String::from_utf8_lossy(raw_message);
+            let err_msg = utf8_message(raw_message);
             Some(Self::Malformed(err_msg.into_owned()))
         } else if bytes.is_empty() {
             Some(Self::NotFound)
@@ -146,6 +147,19 @@ impl CacheError {
         tracing::error!(error = dynerr);
         Self::InternalError
     }
+}
+
+/// A "safer" [`String::from_utf8_lossy`].
+///
+/// This reads the string only up to the first NUL-byte.
+/// We have observed broken cache files which were not properly truncated.
+/// They had a valid `CacheError` prefix, followed by gigabytes worth of NUL-bytes, and some junk at the end.
+fn utf8_message(raw_message: &[u8]) -> Cow<'_, str> {
+    let raw_message = raw_message
+        .split(|c| *c == b'\0')
+        .next()
+        .unwrap_or(raw_message);
+    String::from_utf8_lossy(raw_message)
 }
 
 /// An entry in a cache, containing either `Ok(T)` or an error denoting the reason why an
