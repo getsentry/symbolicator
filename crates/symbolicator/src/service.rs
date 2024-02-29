@@ -28,8 +28,10 @@ use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJs
 use symbolicator_js::SourceMapService;
 use symbolicator_native::interface::{CompletedSymbolicationResponse, SymbolicateStacktraces};
 use symbolicator_native::SymbolicationActor;
-// TODO: actually use it
-use symbolicator_proguard as _;
+use symbolicator_proguard::interface::{
+    CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
+};
+use symbolicator_proguard::ProguardService;
 use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
@@ -103,9 +105,14 @@ pub enum SymbolicationResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
+/// A completed symbolication response.
 pub enum CompletedResponse {
-    NativeSymbolication(CompletedSymbolicationResponse),
-    JsSymbolication(CompletedJsSymbolicationResponse),
+    /// A native symbolication response.
+    Native(CompletedSymbolicationResponse),
+    /// A JS symbolication response.
+    Js(CompletedJsSymbolicationResponse),
+    /// A JVM symbolication response.
+    Jvm(CompletedJvmSymbolicationResponse),
 }
 
 /// Common options for all symbolication API requests.
@@ -168,6 +175,7 @@ struct RequestServiceInner {
 
     native: SymbolicationActor,
     js: SourceMapService,
+    jvm: ProguardService,
     objects: ObjectsActor,
 
     cpu_pool: tokio::runtime::Handle,
@@ -194,6 +202,7 @@ impl RequestService {
         let shared_services = SharedServices::new(config, io_pool.clone())?;
         let native = SymbolicationActor::new(&shared_services);
         let js = SourceMapService::new(&shared_services);
+        let jvm = ProguardService::new(&shared_services);
         let SharedServices {
             objects, config, ..
         } = shared_services;
@@ -216,6 +225,7 @@ impl RequestService {
 
             native,
             js,
+            jvm,
             objects,
 
             cpu_pool,
@@ -262,7 +272,7 @@ impl RequestService {
             slf.native
                 .symbolicate(request)
                 .await
-                .map(CompletedResponse::NativeSymbolication)
+                .map(CompletedResponse::Native)
         })
     }
 
@@ -272,10 +282,24 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
-            Ok(CompletedResponse::JsSymbolication(
-                slf.js.symbolicate_js(request).await,
-            ))
+            Ok(CompletedResponse::Js(slf.js.symbolicate_js(request).await))
         })
+    }
+
+    pub fn symbolicate_jvm_stacktraces(
+        &self,
+        request: SymbolicateJvmStacktraces,
+    ) -> Result<RequestId, MaxRequestsError> {
+        let slf = self.inner.clone();
+        self.create_symbolication_request(
+            "symbolicate_jvm",
+            RequestOptions::default(),
+            async move {
+                Ok(CompletedResponse::Jvm(
+                    slf.jvm.symbolicate_jvm(request).await,
+                ))
+            },
+        )
     }
 
     /// Creates a new request to process a minidump.
@@ -295,7 +319,7 @@ impl RequestService {
             slf.native
                 .process_minidump(scope, minidump_file, sources, scraping)
                 .await
-                .map(CompletedResponse::NativeSymbolication)
+                .map(CompletedResponse::Native)
         })
     }
 
@@ -316,7 +340,7 @@ impl RequestService {
             slf.native
                 .process_apple_crash_report(scope, apple_crash_report, sources, scraping)
                 .await
-                .map(CompletedResponse::NativeSymbolication)
+                .map(CompletedResponse::Native)
         })
     }
 
@@ -419,7 +443,7 @@ impl RequestService {
             let response = match response {
                 Ok(Ok(mut response)) => {
                     if !options.dif_candidates {
-                        if let CompletedResponse::NativeSymbolication(ref mut res) = response {
+                        if let CompletedResponse::Native(ref mut res) = response {
                             clear_dif_candidates(res)
                         }
                     }

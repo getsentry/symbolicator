@@ -15,6 +15,7 @@ mod proxy;
 mod requests;
 mod symbolicate;
 mod symbolicate_js;
+mod symbolicate_jvm;
 
 pub use error::ResponseError;
 use metrics::MetricsLayer;
@@ -25,6 +26,7 @@ use proxy::proxy_symstore_request as proxy;
 use requests::poll_request as requests;
 use symbolicate::symbolicate_frames as symbolicate;
 use symbolicate_js::handle_symbolication_request as symbolicate_js;
+use symbolicate_jvm::handle_symbolication_request as symbolicate_jvm;
 
 pub async fn healthcheck() -> &'static str {
     crate::metric!(counter("healthcheck") += 1);
@@ -47,6 +49,7 @@ pub fn create_app(service: RequestService) -> Router {
         .route("/minidump", post(minidump))
         .route("/symbolicate-js", post(symbolicate_js))
         .route("/symbolicate", symbolicate_route)
+        .route("/symbolicate-jvm", post(symbolicate_jvm))
         .with_state(service)
         .layer(layer)
         // the healthcheck is last, as it will bypass all the middlewares
