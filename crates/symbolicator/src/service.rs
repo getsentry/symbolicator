@@ -105,9 +105,13 @@ pub enum SymbolicationResponse {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
+/// A completed symbolication response.
 pub enum CompletedResponse {
+    /// A native symbolication response.
     Native(CompletedSymbolicationResponse),
+    /// A JS symbolication response.
     Js(CompletedJsSymbolicationResponse),
+    /// A JVM symbolication response.
     Jvm(CompletedJvmSymbolicationResponse),
 }
 
