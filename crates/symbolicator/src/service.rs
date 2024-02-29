@@ -31,8 +31,7 @@ use symbolicator_native::SymbolicationActor;
 use symbolicator_proguard::interface::{
     CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
 };
-// TODO: actually use it
-use symbolicator_proguard::{self as _, ProguardService};
+use symbolicator_proguard::ProguardService;
 use symbolicator_service::caching::CacheEntry;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
