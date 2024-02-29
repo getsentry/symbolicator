@@ -65,7 +65,7 @@ impl Deref for MetricsWrapper {
 
 /// We are not (yet) aggregating distributions, but keeping every value.
 /// To not overwhelm downstream services, we send them in batches instead of all at once.
-const DISTRIBUTION_BATCH_SIZE: usize = 20;
+const DISTRIBUTION_BATCH_SIZE: usize = 1;
 
 /// Creates [`LocalAggregators`] and starts a thread that will periodically
 /// send aggregated metrics upstream to the `sink`.
