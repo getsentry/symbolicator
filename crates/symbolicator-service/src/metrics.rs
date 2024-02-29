@@ -68,7 +68,10 @@ impl Deref for MetricsWrapper {
 const DISTRIBUTION_BATCH_SIZE: usize = 1;
 
 /// The interval in which to flush out metrics.
-const SEND_INTERVAL: Duration = Duration::from_secs(1);
+/// NOTE: In particular for timer metrics, we have observed that for some reason, *some* of the timer
+/// metrics are getting lost (interestingly enough, not all of them) and are not being aggregated into the `.count`
+/// sub-metric collected by `veneur`. Lets just flush a lot more often in order to emit less metrics per-flush.
+const SEND_INTERVAL: Duration = Duration::from_millis(125);
 
 /// Creates [`LocalAggregators`] and starts a thread that will periodically
 /// send aggregated metrics upstream to the `sink`.
