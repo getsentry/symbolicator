@@ -23,15 +23,12 @@ impl std::fmt::Debug for FileInBundleCache {
 }
 
 impl FileInBundleCache {
-    /// Creates a new `FileInBundleCache` with a maximum size of 2GiB and
-    /// idle time of 1h.
-    pub fn new() -> Self {
-        // NOTE: We size the cache at 2 GiB which is quite an arbitrary pick.
+    /// Creates a new `FileInBundleCache` with the given `capacity` and an idle time of 1h.
+    pub fn new(capacity: u64) -> Self {
         // As all the files are living in memory, we return the size of the contents
         // from the `weigher` which is responsible for this accounting.
-        const GIGS: u64 = 1 << 30;
         let cache = FileInBundleCacheInner::builder()
-            .max_capacity(2 * GIGS)
+            .max_capacity(capacity)
             .time_to_idle(Duration::from_secs(60 * 60))
             .name("file-in-bundle")
             .weigher(|_k, v| {

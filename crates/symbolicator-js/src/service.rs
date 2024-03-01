@@ -40,7 +40,7 @@ impl SourceMapService {
 
         Self {
             objects,
-            files_in_bundles: FileInBundleCache::new(),
+            files_in_bundles: FileInBundleCache::new(in_memory.fileinbundle_capacity),
             sourcefiles_cache,
             sourcemap_caches: Arc::new(Cacher::new(caches.sourcemap_caches.clone(), shared_cache)),
             download_svc,
