@@ -118,8 +118,6 @@ pub fn prepare_payload(
                     source: Arc::new(source),
                     release: Some("some-release".into()),
                     dist: None,
-                    debug_id_index: None,
-                    url_index: None,
                     scraping: Default::default(),
                     apply_source_context: true,
                     stacktraces,

@@ -56,7 +56,6 @@ pub struct JsMetrics {
     sourcemap_not_needed: i64,
 
     // Engineers might also be interested in these metrics:
-    found_bundle_via_bundleindex: i64,
     found_bundle_via_debugid: i64,
     found_bundle_via_index: i64,
     found_bundle_via_release: i64,
@@ -108,7 +107,6 @@ impl JsMetrics {
         };
 
         match bundle_resolved_by {
-            BundleIndex => self.found_bundle_via_bundleindex += 1,
             DebugId => self.found_bundle_via_debugid += 1,
             Index => self.found_bundle_via_index += 1,
             Release => self.found_bundle_via_release += 1,
@@ -199,11 +197,6 @@ impl JsMetrics {
         aggregator.emit_count("js.sourcemap_not_needed", self.sourcemap_not_needed, &[]);
 
         // Lookup Method:
-        aggregator.emit_count(
-            "js.bundle_lookup",
-            self.found_bundle_via_bundleindex,
-            &[("method", "bundleindex")],
-        );
         aggregator.emit_count(
             "js.bundle_lookup",
             self.found_bundle_via_debugid,

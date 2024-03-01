@@ -193,8 +193,6 @@ pub struct Caches {
     pub sourcemap_caches: Cache,
     /// Source files.
     pub sourcefiles: Cache,
-    /// Bundle Indexes.
-    pub bundle_index: Cache,
     /// Store for minidump data symbolicator failed to process, for diagnostics purposes
     pub diagnostics: Cache,
     pub proguard: Cache,
@@ -283,13 +281,6 @@ impl Caches {
                 config.caches.downloaded.into(),
                 max_lazy_redownloads.clone(),
                 default_cap,
-            )?,
-            bundle_index: Cache::from_config(
-                CacheName::BundleIndex,
-                config,
-                config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
-                in_memory.bundle_index_capacity,
             )?,
             diagnostics: Cache::from_config(
                 CacheName::Diagnostics,

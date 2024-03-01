@@ -307,13 +307,6 @@ pub struct InMemoryCacheConfig {
     ///
     /// Defaults to `600 MiB (= 629_145_600)`.
     pub cficaches_capacity: u64,
-
-    /// Capacity (in bytes) for the in-memory `bundle_index` Cache.
-    ///
-    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
-    ///
-    /// Defaults to `100 MiB (= 104_857_600)`.
-    pub bundle_index_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
@@ -326,7 +319,6 @@ impl Default for InMemoryCacheConfig {
             s3_client_capacity: 100,
             object_meta_capacity: 100 * meg,
             cficaches_capacity: 400 * meg,
-            bundle_index_capacity: 100 * meg,
         }
     }
 }
