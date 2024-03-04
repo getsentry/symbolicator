@@ -138,5 +138,5 @@ pub struct CompletedJvmSymbolicationResponse {
     /// The original stacktraces, possibly enhanced with source context.
     pub raw_stacktraces: Vec<JvmStacktrace>,
     /// Errors that occurred during symbolication.
-    pub errors: Vec<JvmError>,
+    pub errors: Vec<ProguardError>,
 }

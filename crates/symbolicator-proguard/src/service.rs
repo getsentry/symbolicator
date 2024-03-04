@@ -80,7 +80,6 @@ impl ProguardService {
 }
 
 struct ProguardInner<'a> {
-    mapping: proguard::ProguardMapping<'a>,
     mapper: proguard::ProguardMapper<'a>,
 }
 
@@ -101,8 +100,8 @@ impl ProguardMapper {
     pub fn new(byteview: ByteView<'static>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapper = proguard::ProguardMapper::new(mapping.clone());
-            ProguardInner { mapping, mapper }
+            let mapper = proguard::ProguardMapper::new(mapping);
+            ProguardInner { mapper }
         });
 
         Self {
