@@ -22,7 +22,6 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Write};
 use std::sync::Arc;
@@ -38,8 +37,7 @@ use symbolic::debuginfo::sourcebundle::{
 use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::SourceMapCache;
 use symbolicator_sources::{
-    HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentryFileId, SentryRemoteFile,
-    SentrySourceConfig,
+    HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
 };
 
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
@@ -50,8 +48,6 @@ use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
 
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};
-use crate::bundle_index::BundleIndex;
-use crate::bundle_index_cache::BundleIndexCache;
 use crate::bundle_lookup::FileInBundleCache;
 use crate::interface::{
     JsScrapingAttempt, JsScrapingFailureReason, JsStacktrace, ResolvedWith,
@@ -118,31 +114,6 @@ impl SourceMapModule {
     }
 }
 
-async fn maybe_fetch_bundle_index(
-    cache: &BundleIndexCache,
-    scope: &Scope,
-    source: &Arc<SentrySourceConfig>,
-    url: Option<Url>,
-) -> Option<(SentryFileId, Arc<BundleIndex>)> {
-    let url = url?;
-    // We expect the url to have a parameter like `?download=foo-bar`.
-    let file_id = url
-        .query_pairs()
-        .find_map(|(k, v)| (k == "download").then_some(v))
-        .unwrap_or(Cow::Borrowed(url.as_str()));
-    let file_id = SentryFileId(file_id.into());
-
-    let file = SentryRemoteFile::new(Arc::clone(source), true, file_id.clone(), Some(url)).into();
-    match cache.fetch_index(scope, file).await {
-        Ok(bundle_index) => Some((file_id, bundle_index)),
-        Err(err) => {
-            let err: &dyn std::error::Error = &err;
-            tracing::error!(err, ?file_id, "Failed fetching `BundleIndex`");
-            None
-        }
-    }
-}
-
 pub struct SourceMapLookup {
     /// This is a map from the raw `abs_path` as it appears in the event to a [`SourceMapModule`].
     modules_by_abs_path: HashMap<String, SourceMapModule>,
@@ -160,7 +131,6 @@ impl SourceMapLookup {
             objects,
             files_in_bundles,
             sourcefiles_cache,
-            bundle_index_cache,
             sourcemap_caches,
             download_svc,
             api_lookup,
@@ -173,8 +143,6 @@ impl SourceMapLookup {
             scraping,
             release,
             dist,
-            debug_id_index,
-            url_index,
             ..
         } = request;
 
@@ -202,11 +170,6 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(code_file.to_owned(), cached_module);
         }
 
-        let (debug_id_index, url_index) = futures::join!(
-            maybe_fetch_bundle_index(&bundle_index_cache, &scope, &source, debug_id_index),
-            maybe_fetch_bundle_index(&bundle_index_cache, &scope, &source, url_index)
-        );
-
         let fetcher = ArtifactFetcher {
             objects,
             files_in_bundles,
@@ -217,9 +180,6 @@ impl SourceMapLookup {
 
             scope,
             source,
-
-            debug_id_index,
-            url_index,
 
             release,
             dist,
@@ -416,13 +376,6 @@ impl FileKey {
     }
 }
 
-/// The actual lookup key that was found using the [`BundleIndex`].
-#[derive(Debug)]
-enum IndexLookupKey {
-    DebugId(DebugId),
-    Url(String),
-}
-
 /// The source of an individual file.
 #[derive(Clone, Debug)]
 pub enum CachedFileUri {
@@ -583,10 +536,6 @@ struct ArtifactFetcher {
     scope: Scope,
     source: Arc<SentrySourceConfig>,
 
-    // the two lookup indices
-    debug_id_index: Option<(SentryFileId, Arc<BundleIndex>)>,
-    url_index: Option<(SentryFileId, Arc<BundleIndex>)>,
-
     // settings:
     release: Option<String>,
     dist: Option<String>,
@@ -685,12 +634,8 @@ impl ArtifactFetcher {
     pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
         self.metrics.needed_files += 1;
 
-        let mut file = self.try_get_file_using_index(key).await;
-
-        if file.is_none() {
-            // Try looking up the file in one of the artifact bundles that we know about.
-            file = self.try_get_file_from_bundles(key);
-        }
+        // Try looking up the file in one of the artifact bundles that we know about.
+        let mut file = self.try_get_file_from_bundles(key);
 
         if file.is_none() {
             // Otherwise, try to get the file from an individual artifact.
@@ -719,121 +664,6 @@ impl ArtifactFetcher {
 
         // Otherwise, fall back to scraping from the Web.
         self.scrape(key).await
-    }
-
-    async fn try_get_file_using_index(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
-        let (index_id, bundle_id, lookup_key) = self.try_get_bundle_from_index(key)?;
-        self.used_artifact_bundles.insert(bundle_id.clone());
-
-        // NOTE: we ideally wanted to move away from hardcoded URLs,
-        // but now we are back to square one -_-
-        let mut download_url = self.source.url.clone();
-        download_url
-            .query_pairs_mut()
-            .append_pair("download", &bundle_id.0);
-
-        let sentry_file = SentryRemoteFile::new(
-            Arc::clone(&self.source),
-            true,
-            bundle_id.clone(),
-            Some(download_url),
-        );
-
-        let remote_file: RemoteFile = sentry_file.into();
-        let bundle_uri = remote_file.uri();
-
-        self.ensure_artifact_bundle(remote_file, ResolvedWith::BundleIndex)
-            .await;
-
-        let bundle = self.artifact_bundles.get(&bundle_uri)?;
-        let Ok((bundle, _)) = bundle else { return None };
-        let bundle = bundle.get();
-
-        // by now we have a bundle, and we *know* the file should be included in the
-        // bundle and accessible via the `lookup_key`.
-
-        // FIXME: Both cases here should have `BundleIndex` as `resolved_with`, but we have tests in
-        // the Sentry repo that assert `index` here, so changing that is a pain.
-        match &lookup_key {
-            IndexLookupKey::DebugId(debug_id) => {
-                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(*debug_id, key.as_type()) {
-                    self.metrics.record_file_found_in_bundle(
-                        key.as_type(),
-                        ResolvedWith::DebugId,
-                        ResolvedWith::BundleIndex,
-                    );
-                    tracing::trace!(?key, "Found file in `BundleIndex` by debug-id");
-                    return Some(CachedFileEntry {
-                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                        entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: ResolvedWith::Index,
-                    });
-                }
-            }
-            IndexLookupKey::Url(url) => {
-                if let Ok(Some(descriptor)) = bundle.source_by_url(url) {
-                    self.metrics.record_file_found_in_bundle(
-                        key.as_type(),
-                        ResolvedWith::Url,
-                        ResolvedWith::BundleIndex,
-                    );
-                    tracing::trace!(?key, url, "Found file in `BundleIndex` by url");
-                    return Some(CachedFileEntry {
-                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                        entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: ResolvedWith::Index,
-                    });
-                }
-            }
-        }
-
-        // If we get to this point, it means that the `BundleIndex` lied to us.
-        // However, we do not expect to always have a SourceMap corresponding to a non-minified
-        // file with a DebugId.
-        let hit_is_optional = matches!(lookup_key, IndexLookupKey::DebugId(..))
-            && key.as_type() == SourceFileType::SourceMap;
-        if !hit_is_optional {
-            tracing::error!(
-                ?key,
-                ?lookup_key,
-                ?index_id,
-                ?bundle_id,
-                "Indexed file not found in `ArtifactBundle`"
-            );
-        }
-
-        None
-    }
-
-    fn try_get_bundle_from_index(
-        &mut self,
-        key: &FileKey,
-    ) -> Option<(SentryFileId, SentryFileId, IndexLookupKey)> {
-        if let Some(debug_id) = key.debug_id() {
-            if let Some((index_id, debug_id_index)) = self.debug_id_index.as_ref() {
-                if let Some(bundle_id) = debug_id_index.get_bundle_id_by_debug_id(debug_id) {
-                    let lookup_key = IndexLookupKey::DebugId(debug_id);
-                    return Some((index_id.clone(), SentryFileId(bundle_id.into()), lookup_key));
-                }
-            }
-        }
-
-        if let Some(abs_path) = key.abs_path() {
-            if let Some((index_id, url_index)) = self.url_index.as_ref() {
-                for url in get_release_file_candidate_urls(abs_path) {
-                    if let Some(bundle_id) = url_index.get_bundle_id_by_url(&url) {
-                        let lookup_key = IndexLookupKey::Url(url);
-                        return Some((
-                            index_id.clone(),
-                            SentryFileId(bundle_id.into()),
-                            lookup_key,
-                        ));
-                    }
-                }
-            }
-        }
-
-        None
     }
 
     /// Attempt to scrape a file from the web.

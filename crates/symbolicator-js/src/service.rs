@@ -9,7 +9,6 @@ use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 
 use crate::api_lookup::SentryLookupApi;
-use crate::bundle_index_cache::BundleIndexCache;
 use crate::bundle_lookup::FileInBundleCache;
 use crate::sourcemap_cache::FetchSourceMapCacheInternal;
 
@@ -18,7 +17,6 @@ pub struct SourceMapService {
     pub(crate) objects: ObjectsActor,
     pub(crate) files_in_bundles: FileInBundleCache,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
-    pub(crate) bundle_index_cache: Arc<BundleIndexCache>,
     pub(crate) sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     pub(crate) download_svc: Arc<DownloadService>,
     pub(crate) api_lookup: Arc<SentryLookupApi>,
@@ -32,12 +30,6 @@ impl SourceMapService {
         let download_svc = services.download_svc.clone();
         let sourcefiles_cache = services.sourcefiles_cache.clone();
 
-        let bundle_index_cache = BundleIndexCache::new(
-            caches.bundle_index.clone(),
-            shared_cache.clone(),
-            download_svc.clone(),
-        );
-
         let in_memory = &services.config.caches.in_memory;
         let api_lookup = Arc::new(SentryLookupApi::new(
             download_svc.trusted_client.clone(),
@@ -50,7 +42,6 @@ impl SourceMapService {
             objects,
             files_in_bundles: FileInBundleCache::new(),
             sourcefiles_cache,
-            bundle_index_cache: Arc::new(bundle_index_cache),
             sourcemap_caches: Arc::new(Cacher::new(caches.sourcemap_caches.clone(), shared_cache)),
             download_svc,
             api_lookup,

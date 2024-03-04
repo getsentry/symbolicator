@@ -45,7 +45,6 @@ impl Caches {
             ppdb_caches,
             sourcemap_caches,
             sourcefiles,
-            bundle_index,
             diagnostics,
             proguard,
         } = &self;
@@ -67,7 +66,6 @@ impl Caches {
             ppdb_caches,
             sourcemap_caches,
             sourcefiles,
-            bundle_index,
             diagnostics,
             proguard,
         ];

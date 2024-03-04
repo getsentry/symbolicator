@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
-use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
@@ -15,8 +14,6 @@ pub struct SymbolicateJsStacktraces {
     pub source: Arc<SentrySourceConfig>,
     pub release: Option<String>,
     pub dist: Option<String>,
-    pub debug_id_index: Option<Url>,
-    pub url_index: Option<Url>,
     pub stacktraces: Vec<JsStacktrace>,
     pub modules: Vec<RawObjectInfo>,
     pub scraping: ScrapingConfig,
@@ -235,8 +232,6 @@ pub enum ResolvedWith {
     Url,
     /// Found the Bundle via API Lookup via Database Index
     Index,
-    /// Found the File in a Flat File / Bundle Index
-    BundleIndex,
     /// Found the Bundle via API Lookup as an ArtifactBundle
     Release,
     /// Found the Bundle via API Lookup as a ReleaseFile

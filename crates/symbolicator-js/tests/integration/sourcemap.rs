@@ -40,8 +40,6 @@ fn make_js_request(
         source: Arc::new(source),
         release: release.into(),
         dist: dist.into(),
-        debug_id_index: None,
-        url_index: None,
         scraping: ScrapingConfig {
             enabled: false,
             ..Default::default()
@@ -666,29 +664,6 @@ async fn sorted_bundles() {
         // The `url` contains their `id` as it comes from sentry. This is the best we can do right now.
         Some("test".into())
     );
-}
-
-#[tokio::test]
-async fn bundle_index() {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
-
-    let (_srv, source) = sourcemap_server("bundle_index", |_url, _query| {
-        unreachable!("we should never ask the API")
-    });
-
-    let frames = r#"[{
-        "abs_path": "http://example.com/test.min.js",
-        "lineno": 1,
-        "colno": 183
-    }]"#;
-    let modules = r#"[]"#;
-
-    let mut request = make_js_request(source, frames, modules, String::from("some-release"), None);
-    request.url_index = Some(_srv.url("files/bundle_index.json"));
-
-    let response = symbolication.symbolicate_js(request).await;
-
-    assert_snapshot!(response);
 }
 
 // A manually triggered test that can be used to locally debug monolith behavior. Requires a list
