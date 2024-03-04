@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -93,6 +94,39 @@ pub struct JvmModule {
     pub uuid: DebugId,
 }
 
+/// The type of a [`ProguardError`].
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+pub enum ProguardErrorKind {
+    /// The file couldn't be downloaded.
+    Missing,
+    /// The file is invalid according to [`is_valid`](proguard::ProguardMapping::is_valid).
+    Invalid,
+    /// The file doesn't contain line mapping information.
+    NoLineInfo,
+}
+
+impl fmt::Display for ProguardErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProguardErrorKind::Missing => write!(f, "The proguard mapping file is missing."),
+            ProguardErrorKind::Invalid => write!(f, "The proguard mapping file is invalid."),
+            ProguardErrorKind::NoLineInfo => {
+                write!(f, "The proguard mapping file does not contain line info.")
+            }
+        }
+    }
+}
+
+/// An error that happened when trying to use a proguard mapping file.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ProguardError {
+    /// The UUID of the proguard file.
+    pub uuid: DebugId,
+    /// The type of the error.
+    #[serde(rename = "type")]
+    pub kind: ProguardErrorKind,
+}
+
 // TODO: Expand this
 /// The symbolicated/remapped event data.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -104,5 +138,5 @@ pub struct CompletedJvmSymbolicationResponse {
     /// The original stacktraces, possibly enhanced with source context.
     pub raw_stacktraces: Vec<JvmStacktrace>,
     /// Errors that occurred during symbolication.
-    pub errors: Vec<(DebugId, String)>,
+    pub errors: Vec<JvmError>,
 }
