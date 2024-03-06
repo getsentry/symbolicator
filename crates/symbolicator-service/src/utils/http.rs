@@ -88,6 +88,13 @@ impl Default for DownloadTimeouts {
     }
 }
 
+/// Creates a [`reqwest::Client`] with the provided options.
+///
+/// * `timeouts` controls connection and download timeouts.
+/// * `connect_to_reserved_ips` determines whether the client is allowed to
+///   connect to reserved IPs (as defined in `RESERVED_IP_BLOCKS`).
+/// * `accept_invalid_certs` determines whether the client accepts invalid
+///   SSL certificates.
 pub fn create_client(
     timeouts: &DownloadTimeouts,
     connect_to_reserved_ips: bool,
