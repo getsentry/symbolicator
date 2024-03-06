@@ -230,8 +230,12 @@ impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = DownloadTimeouts::from_config(config);
-        let trusted_client = crate::utils::http::create_client(config, &timeouts, true);
-        let restricted_client = crate::utils::http::create_client(config, &timeouts, false);
+
+        // The trusted client can always connect to reserved IPs. The restricted client only can if it's
+        // explicitly allowed in the config.
+        let trusted_client = crate::utils::http::create_client(&timeouts, true, false);
+        let restricted_client =
+            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, false);
 
         let in_memory = &config.caches.in_memory;
         Arc::new(Self {

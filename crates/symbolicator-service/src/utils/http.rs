@@ -92,15 +92,19 @@ impl Default for DownloadTimeouts {
 }
 
 pub fn create_client(
-    config: &Config,
     timeouts: &DownloadTimeouts,
-    trusted: bool,
+    connect_to_reserved_ips: bool,
+    accept_invalid_certs: bool,
 ) -> reqwest::Client {
-    let mut builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
+    let mut builder = reqwest::ClientBuilder::new()
+        .gzip(true)
+        .trust_dns(true)
+        .danger_accept_invalid_certs(accept_invalid_certs);
 
-    if !(trusted || config.connect_to_reserved_ips) {
+    if !connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
     }
+
     builder = builder
         .connect_timeout(timeouts.connect)
         .timeout(timeouts.max_download)
@@ -227,12 +231,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
-
-        let result = create_client(&config, &Default::default(), false) // untrusted
+        let result = create_client(&Default::default(), false, false) // untrusted
             .get(server.url("/"))
             .send()
             .await;
@@ -245,14 +244,10 @@ mod tests {
         symbolicator_test::setup();
 
         let server = symbolicator_test::Server::new();
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
 
         let mut url = server.url("/");
         url.set_host(Some("127.0.0.1")).unwrap();
-        let result = create_client(&config, &Default::default(), false) // untrusted
+        let result = create_client(&Default::default(), false, false) // untrusted
             .get(url)
             .send()
             .await;
@@ -266,33 +261,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let config = Config {
-            connect_to_reserved_ips: true,
-            ..Config::default()
-        };
-
-        let response = create_client(&config, &Default::default(), false) // untrusted
-            .get(server.url("/garbage_data/OK"))
-            .send()
-            .await
-            .unwrap();
-
-        let text = response.text().await.unwrap();
-        assert_eq!(text, "OK");
-    }
-
-    #[tokio::test]
-    async fn test_trusted() {
-        symbolicator_test::setup();
-
-        let server = symbolicator_test::Server::new();
-
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
-
-        let response = create_client(&config, &Default::default(), true) // trusted
+        let response = create_client(&Default::default(), true, false) // allowed to connect to reserved IPs
             .get(server.url("/garbage_data/OK"))
             .send()
             .await
