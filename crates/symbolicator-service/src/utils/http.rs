@@ -33,13 +33,10 @@ static RESERVED_IP_BLOCKS: Lazy<Vec<Ipv4Network>> = Lazy::new(|| {
 });
 
 fn is_external_ip(ip: std::net::IpAddr) -> bool {
-    let addr = match ip {
-        IpAddr::V4(x) => x,
-        IpAddr::V6(_) => {
-            // We don't know what is an internal service in IPv6 and what is not. Just
-            // bail out. This effectively means that we don't support IPv6.
-            return false;
-        }
+    let IpAddr::V4(addr) = ip else {
+        // We don't know what is an internal service in IPv6 and what is not. Just
+        // bail out. This effectively means that we don't support IPv6.
+        return false;
     };
 
     for network in &*RESERVED_IP_BLOCKS {
@@ -91,20 +88,29 @@ impl Default for DownloadTimeouts {
     }
 }
 
+/// Creates a [`reqwest::Client`] with the provided options.
+///
+/// * `timeouts` controls connection and download timeouts.
+/// * `connect_to_reserved_ips` determines whether the client is allowed to
+///   connect to reserved IPs (as defined in `RESERVED_IP_BLOCKS`).
+/// * `accept_invalid_certs` determines whether the client accepts invalid
+///   SSL certificates.
 pub fn create_client(
-    config: &Config,
     timeouts: &DownloadTimeouts,
-    trusted: bool,
+    connect_to_reserved_ips: bool,
+    accept_invalid_certs: bool,
 ) -> reqwest::Client {
-    let mut builder = reqwest::ClientBuilder::new().gzip(true).trust_dns(true);
-
-    if !(trusted || config.connect_to_reserved_ips) {
-        builder = builder.ip_filter(is_external_ip);
-    }
-    builder = builder
+    let mut builder = reqwest::ClientBuilder::new()
+        .gzip(true)
+        .trust_dns(true)
         .connect_timeout(timeouts.connect)
         .timeout(timeouts.max_download)
-        .pool_idle_timeout(Duration::from_secs(30));
+        .pool_idle_timeout(Duration::from_secs(30))
+        .danger_accept_invalid_certs(accept_invalid_certs);
+
+    if !connect_to_reserved_ips {
+        builder = builder.ip_filter(is_external_ip);
+    }
 
     builder.build().unwrap()
 }
@@ -227,12 +233,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
-
-        let result = create_client(&config, &Default::default(), false) // untrusted
+        let result = create_client(&Default::default(), false, false) // untrusted
             .get(server.url("/"))
             .send()
             .await;
@@ -245,14 +246,10 @@ mod tests {
         symbolicator_test::setup();
 
         let server = symbolicator_test::Server::new();
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
 
         let mut url = server.url("/");
         url.set_host(Some("127.0.0.1")).unwrap();
-        let result = create_client(&config, &Default::default(), false) // untrusted
+        let result = create_client(&Default::default(), false, false) // untrusted
             .get(url)
             .send()
             .await;
@@ -266,33 +263,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let config = Config {
-            connect_to_reserved_ips: true,
-            ..Config::default()
-        };
-
-        let response = create_client(&config, &Default::default(), false) // untrusted
-            .get(server.url("/garbage_data/OK"))
-            .send()
-            .await
-            .unwrap();
-
-        let text = response.text().await.unwrap();
-        assert_eq!(text, "OK");
-    }
-
-    #[tokio::test]
-    async fn test_trusted() {
-        symbolicator_test::setup();
-
-        let server = symbolicator_test::Server::new();
-
-        let config = Config {
-            connect_to_reserved_ips: false,
-            ..Config::default()
-        };
-
-        let response = create_client(&config, &Default::default(), true) // trusted
+        let response = create_client(&Default::default(), true, false) // allowed to connect to reserved IPs
             .get(server.url("/garbage_data/OK"))
             .send()
             .await
