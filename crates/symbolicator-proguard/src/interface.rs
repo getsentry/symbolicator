@@ -101,8 +101,6 @@ pub struct CompletedJvmSymbolicationResponse {
     pub exceptions: Vec<JvmException>,
     /// The stacktraces after remapping.
     pub stacktraces: Vec<JvmStacktrace>,
-    /// The original stacktraces, possibly enhanced with source context.
-    pub raw_stacktraces: Vec<JvmStacktrace>,
     /// Errors that occurred during symbolication.
     pub errors: Vec<(DebugId, String)>,
 }

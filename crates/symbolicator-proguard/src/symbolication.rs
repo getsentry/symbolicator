@@ -51,7 +51,7 @@ impl ProguardService {
             .collect();
 
         let remapped_stacktraces = stacktraces
-            .iter()
+            .into_iter()
             .map(|raw_stacktrace| {
                 let remapped_frames = raw_stacktrace
                     .frames
@@ -69,9 +69,6 @@ impl ProguardService {
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
             stacktraces: remapped_stacktraces,
-            // This is pointless for now—it's just the original stacktraces.
-            // However, it will become relevant when we implement source context.
-            raw_stacktraces: stacktraces,
             errors,
         }
     }
