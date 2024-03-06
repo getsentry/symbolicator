@@ -1,10 +1,11 @@
 use crate::interface::{
-    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmStacktrace,
-    SymbolicateJvmStacktraces,
+    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmStacktrace, ProguardError,
+    ProguardErrorKind, SymbolicateJvmStacktraces,
 };
 use crate::ProguardService;
 
 use futures::future;
+use symbolicator_service::caching::CacheError;
 
 impl ProguardService {
     /// Symbolicates a JVM event.
@@ -38,7 +39,20 @@ impl ProguardService {
             match res {
                 Ok(mapper) => mappers.push(mapper.get()),
                 Err(e) => {
-                    errors.push((*debug_id, e.to_string()));
+                    let kind = match e {
+                        CacheError::Malformed(msg) => match msg.as_str() {
+                            "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
+                            "The ProGuard file doesn't contain any line mappings" => {
+                                ProguardErrorKind::NoLineInfo
+                            }
+                            _ => unreachable!(),
+                        },
+                        _ => ProguardErrorKind::Missing,
+                    };
+                    errors.push(ProguardError {
+                        uuid: *debug_id,
+                        kind,
+                    });
                 }
             }
         }
