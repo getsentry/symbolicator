@@ -14,12 +14,18 @@ use super::USER_AGENT;
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
+    #[allow(unused)]
+    no_ssl_client: Client,
     timeouts: DownloadTimeouts,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client, timeouts: DownloadTimeouts) -> Self {
-        Self { client, timeouts }
+    pub fn new(client: Client, no_ssl_client: Client, timeouts: DownloadTimeouts) -> Self {
+        Self {
+            client,
+            no_ssl_client,
+            timeouts,
+        }
     }
 
     /// Downloads a source hosted on an HTTP server.
@@ -73,7 +79,7 @@ mod tests {
         let loc = SourceLocation::new("hello.txt");
         let file_source = HttpRemoteFile::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(Client::new(), Default::default());
+        let downloader = HttpDownloader::new(Client::new(), Client::new(), Default::default());
         let mut destination = tokio::fs::File::create(&dest).await.unwrap();
         let download_status = downloader
             .download_source("", &file_source, &mut destination)
@@ -100,7 +106,7 @@ mod tests {
         let loc = SourceLocation::new("i-do-not-exist");
         let file_source = HttpRemoteFile::new(http_source, loc);
 
-        let downloader = HttpDownloader::new(Client::new(), Default::default());
+        let downloader = HttpDownloader::new(Client::new(), Client::new(), Default::default());
         let mut destination = tokio::fs::File::create(&dest).await.unwrap();
         let download_status = downloader
             .download_source("", &file_source, &mut destination)

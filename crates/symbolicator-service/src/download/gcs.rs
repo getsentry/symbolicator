@@ -17,16 +17,24 @@ type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheEntry<GcsToken>
 pub struct GcsDownloader {
     token_cache: GcsTokenCache,
     client: reqwest::Client,
+    #[allow(unused)]
+    no_ssl_client: reqwest::Client,
     timeouts: DownloadTimeouts,
 }
 
 impl GcsDownloader {
-    pub fn new(client: reqwest::Client, timeouts: DownloadTimeouts, token_capacity: u64) -> Self {
+    pub fn new(
+        client: reqwest::Client,
+        no_ssl_client: reqwest::Client,
+        timeouts: DownloadTimeouts,
+        token_capacity: u64,
+    ) -> Self {
         Self {
             token_cache: GcsTokenCache::builder()
                 .max_capacity(token_capacity)
                 .build(),
             client,
+            no_ssl_client,
             timeouts,
         }
     }
@@ -106,8 +114,12 @@ mod tests {
         test::setup();
 
         let source = gcs_source(test::gcs_source_key!());
-        let downloader =
-            GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            Client::new(),
+            Default::default(),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -134,8 +146,12 @@ mod tests {
         test::setup();
 
         let source = gcs_source(test::gcs_source_key!());
-        let downloader =
-            GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            Client::new(),
+            Default::default(),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -161,8 +177,12 @@ mod tests {
         };
 
         let source = gcs_source(broken_credentials);
-        let downloader =
-            GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
+        let downloader = GcsDownloader::new(
+            Client::new(),
+            Client::new(),
+            Default::default(),
+            100.try_into().unwrap(),
+        );
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
