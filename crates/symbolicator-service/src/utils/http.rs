@@ -33,13 +33,10 @@ static RESERVED_IP_BLOCKS: Lazy<Vec<Ipv4Network>> = Lazy::new(|| {
 });
 
 fn is_external_ip(ip: std::net::IpAddr) -> bool {
-    let addr = match ip {
-        IpAddr::V4(x) => x,
-        IpAddr::V6(_) => {
-            // We don't know what is an internal service in IPv6 and what is not. Just
-            // bail out. This effectively means that we don't support IPv6.
-            return false;
-        }
+    let IpAddr::V4(addr) = ip else {
+        // We don't know what is an internal service in IPv6 and what is not. Just
+        // bail out. This effectively means that we don't support IPv6.
+        return false;
     };
 
     for network in &*RESERVED_IP_BLOCKS {
@@ -99,16 +96,14 @@ pub fn create_client(
     let mut builder = reqwest::ClientBuilder::new()
         .gzip(true)
         .trust_dns(true)
+        .connect_timeout(timeouts.connect)
+        .timeout(timeouts.max_download)
+        .pool_idle_timeout(Duration::from_secs(30))
         .danger_accept_invalid_certs(accept_invalid_certs);
 
     if !connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
     }
-
-    builder = builder
-        .connect_timeout(timeouts.connect)
-        .timeout(timeouts.max_download)
-        .pool_idle_timeout(Duration::from_secs(30));
 
     builder.build().unwrap()
 }
