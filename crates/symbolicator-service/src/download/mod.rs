@@ -231,11 +231,16 @@ impl DownloadService {
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = DownloadTimeouts::from_config(config);
 
-        // The trusted client can always connect to reserved IPs. The restricted client only can if it's
-        // explicitly allowed in the config.
+        // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
+        // | -----------| ----------------------------|---------------------------|
+        // |   trusted  |             yes             |             no            |
+        // | restricted | according to config setting |             no            |
+        // |   no_ssl   | according to config setting |             yes           |
         let trusted_client = crate::utils::http::create_client(&timeouts, true, false);
         let restricted_client =
             crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, false);
+        let no_ssl_client =
+            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, true);
 
         let in_memory = &config.caches.in_memory;
         Arc::new(Self {
@@ -243,7 +248,7 @@ impl DownloadService {
             timeouts,
             trusted_client: trusted_client.clone(),
             sentry: sentry::SentryDownloader::new(trusted_client, runtime, timeouts, in_memory),
-            http: http::HttpDownloader::new(restricted_client.clone(), timeouts),
+            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
