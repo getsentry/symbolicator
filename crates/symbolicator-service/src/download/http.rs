@@ -14,7 +14,6 @@ use super::USER_AGENT;
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
-    #[allow(unused)]
     no_ssl_client: Client,
     timeouts: DownloadTimeouts,
 }
@@ -38,7 +37,13 @@ impl HttpDownloader {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from `{}`", download_url);
-        let mut builder = self.client.get(download_url);
+
+        // Use `self.no_ssl_client` if the source is configured to accept invalid SSL certs
+        let mut builder = if file_source.source.accept_invalid_certs {
+            self.no_ssl_client.get(download_url)
+        } else {
+            self.client.get(download_url)
+        };
 
         let headers = file_source
             .source

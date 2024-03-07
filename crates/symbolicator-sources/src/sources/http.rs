@@ -22,6 +22,13 @@ pub struct HttpSourceConfig {
     /// Configuration common to all sources.
     #[serde(flatten)]
     pub files: CommonSourceConfig,
+
+    /// If true, it should be possible to download from this source
+    /// even if SSL certificates can't be verified.
+    ///
+    /// Don't use this lightly!
+    #[serde(default)]
+    pub accept_invalid_certs: bool,
 }
 
 /// The HTTP-specific [`RemoteFile`].
@@ -58,6 +65,7 @@ impl HttpRemoteFile {
             url,
             headers: Default::default(),
             files: Default::default(),
+            accept_invalid_certs: false,
         });
         let location = SourceLocation::new("");
 

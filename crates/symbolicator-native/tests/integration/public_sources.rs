@@ -23,6 +23,7 @@ async fn test_nuget_source() {
             .unwrap(),
         headers: Default::default(),
         files: source_config(DirectoryLayoutType::Symstore, vec![FileType::PortablePdb]),
+        accept_invalid_certs: false,
     }));
 
     let request = make_symbolication_request(
@@ -60,6 +61,7 @@ async fn test_ubuntu_source() {
             DirectoryLayoutType::Debuginfod,
             vec![FileType::ElfCode, FileType::ElfDebug],
         ),
+        accept_invalid_certs: false,
     }));
 
     let request = make_symbolication_request(
