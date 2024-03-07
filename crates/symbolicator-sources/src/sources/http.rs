@@ -65,6 +65,7 @@ impl HttpRemoteFile {
             url,
             headers: Default::default(),
             files: Default::default(),
+            accept_invalid_certs: false,
         });
         let location = SourceLocation::new("");
 

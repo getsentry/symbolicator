@@ -127,6 +127,7 @@ pub fn microsoft_symsrv() -> SourceConfig {
             },
             ..Default::default()
         },
+        accept_invalid_certs: false,
     }))
 }
 
@@ -305,6 +306,7 @@ impl Server {
             url: self.url(path),
             headers: Default::default(),
             files,
+            accept_invalid_certs: false,
         }))
     }
 }
@@ -340,6 +342,7 @@ pub fn symbol_server() -> (Server, SourceConfig) {
         url: server.url("symbols/"),
         headers: Default::default(),
         files: Default::default(),
+        accept_invalid_certs: false,
     }));
 
     (server, source)

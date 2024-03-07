@@ -205,6 +205,7 @@ async fn test_reserved_ip_addresses() {
         url: url.clone(),
         headers: Default::default(),
         files: files.clone(),
+        accept_invalid_certs: false,
     })));
 
     url.set_host(Some("127.0.0.1")).unwrap();
@@ -213,6 +214,7 @@ async fn test_reserved_ip_addresses() {
         url: url.clone(),
         headers: Default::default(),
         files: files.clone(),
+        accept_invalid_certs: false,
     })));
 
     url.set_host(Some("localhost")).unwrap();
@@ -221,6 +223,7 @@ async fn test_reserved_ip_addresses() {
         url,
         headers: Default::default(),
         files,
+        accept_invalid_certs: false,
     })));
 
     let request = example_request(sources);
