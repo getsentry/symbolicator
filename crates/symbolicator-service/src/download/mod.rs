@@ -222,7 +222,7 @@ pub struct DownloadService {
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
-    host_deny_list: HostDenyList,
+    host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
 }
 
@@ -252,7 +252,9 @@ impl DownloadService {
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
-            host_deny_list: HostDenyList::from_config(config),
+            host_deny_list: config
+                .deny_list_enable
+                .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
         })
     }
@@ -325,7 +327,12 @@ impl DownloadService {
         // <https://github.com/getsentry/sentry/blob/b27ef04df6ecbaa0a34a472f787a163ca8400cc0/src/sentry/lang/native/sources.py#L17>
         let source_can_be_blocked = source_metric_key == "http";
 
-        if source_can_be_blocked && self.host_deny_list.is_blocked(&host) {
+        if source_can_be_blocked
+            && self
+                .host_deny_list
+                .as_ref()
+                .map_or(false, |deny_list| deny_list.is_blocked(&host))
+        {
             metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
@@ -355,9 +362,10 @@ impl DownloadService {
                 ::sentry::capture_error(e);
             }
 
-            if source_can_be_blocked {
-                self.host_deny_list
-                    .register_failure(&source_metric_key, host);
+            if let Some(ref deny_list) = self.host_deny_list {
+                if source_can_be_blocked {
+                    deny_list.register_failure(&source_metric_key, host);
+                }
             }
         }
 

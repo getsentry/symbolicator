@@ -410,6 +410,12 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub head_timeout: Duration,
 
+    /// Whether to enable the host deny list.
+    ///
+    /// The host deny list temporarily blocks symbol sources when
+    /// they cause too many download failures in a given timespan.
+    pub deny_list_enable: bool,
+
     /// The time window for the host deny list.
     ///
     /// Hosts will be put on the deny list if a certain number of downloads
@@ -531,6 +537,7 @@ impl Default for Config {
             head_timeout: Duration::from_secs(5),
             // Allow a 4MB/s connection to download 1GB without timing out.
             streaming_timeout: Duration::from_secs(250),
+            deny_list_enable: true,
             deny_list_time_window: Duration::from_secs(60),
             deny_list_bucket_size: Duration::from_secs(5),
             deny_list_threshold: 20,
