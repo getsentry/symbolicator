@@ -212,7 +212,7 @@ impl HostDenyList {
 
     /// Returns true if the given `host` is currently blocked.
     fn is_blocked(&self, host: &str) -> bool {
-        self.blocked_hosts.contains_key(host)
+        !self.never_block.contains(host) && self.blocked_hosts.contains_key(host)
     }
 }
 
