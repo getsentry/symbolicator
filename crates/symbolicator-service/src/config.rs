@@ -435,6 +435,9 @@ pub struct Config {
     #[serde(with = "humantime_serde")]
     pub deny_list_block_time: Duration,
 
+    /// A list of hosts to never block regardless of download failures.
+    pub deny_list_never_block_hosts: Vec<String>,
+
     /// The timeout per GB for streaming downloads.
     ///
     /// For downloads with a known size, this timeout applies per individual
@@ -542,6 +545,7 @@ impl Default for Config {
             deny_list_bucket_size: Duration::from_secs(5),
             deny_list_threshold: 20,
             deny_list_block_time: Duration::from_secs(24 * 60 * 60),
+            deny_list_never_block_hosts: Vec::new(),
             max_concurrent_requests: Some(120),
             shared_cache: None,
             _crash_db: None,

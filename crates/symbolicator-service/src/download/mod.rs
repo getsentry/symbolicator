@@ -110,6 +110,7 @@ struct HostDenyList {
     bucket_size_millis: u64,
     failure_threshold: usize,
     block_time: Duration,
+    never_block: Vec<String>,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
@@ -124,6 +125,7 @@ impl HostDenyList {
             bucket_size_millis,
             failure_threshold: config.deny_list_threshold,
             block_time: config.deny_list_block_time,
+            never_block: config.deny_list_never_block_hosts.clone(),
             failures: moka::sync::Cache::builder()
                 .time_to_idle(config.deny_list_time_window)
                 .build(),
@@ -152,6 +154,10 @@ impl HostDenyList {
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
     fn register_failure(&self, source_name: &str, host: String) {
+        if self.never_block.contains(&host) {
+            return;
+        }
+
         let current_ts = SystemTime::now();
 
         tracing::trace!(
@@ -799,6 +805,25 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
 
         // should be unblocked after 100ms have passed
+        assert!(!deny_list.is_blocked(&host));
+    }
+
+    #[test]
+    fn test_host_deny_list_never_block() {
+        let config = Config {
+            deny_list_time_window: Duration::from_secs(5),
+            deny_list_block_time: Duration::from_millis(100),
+            deny_list_bucket_size: Duration::from_secs(1),
+            deny_list_threshold: 2,
+            deny_list_never_block_hosts: vec!["test".to_string()],
+            ..Default::default()
+        };
+        let deny_list = HostDenyList::from_config(&config);
+        let host = String::from("test");
+
+        deny_list.register_failure("test", host.clone());
+        deny_list.register_failure("test", host.clone());
+
         assert!(!deny_list.is_blocked(&host));
     }
 }
