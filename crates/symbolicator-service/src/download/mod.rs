@@ -195,7 +195,7 @@ impl HostDenyList {
         let cutoff = current_ts - self.time_window_millis;
         let total_failures: usize = queue
             .iter()
-            .filter(|failure_count| failure_count.timestamp >= cutoff)
+            .skip_while(|failure_count| failure_count.timestamp < cutoff)
             .map(|failure_count| failure_count.failures)
             .sum();
 
