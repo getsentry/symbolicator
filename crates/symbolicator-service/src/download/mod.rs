@@ -260,7 +260,7 @@ impl DownloadService {
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
-                .deny_list_enable
+                .deny_list_enabled
                 .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
         })
