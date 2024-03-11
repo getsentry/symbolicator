@@ -101,9 +101,11 @@ type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
 /// A structure that keeps track of download failures in a given time interval
 /// and puts hosts on a block list accordingly.
 ///
-/// The logic works like this: if a host has at least `FAILURE_THRESHOLD` download
-/// failures in a window of `TIME_WINDOW` seconds, it will be blocked for a duration of
-/// `BLOCK_TIME`.
+/// The logic works like this: if a host has at least `failure_threshold` download
+/// failures in a window of `time_window_millis` ms, it will be blocked for a duration of
+/// `block_time`.
+///
+/// Hosts included in `never_block` will never be blocked regardless of download_failures.
 #[derive(Clone, Debug)]
 struct HostDenyList {
     time_window_millis: u64,
