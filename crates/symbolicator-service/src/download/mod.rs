@@ -156,10 +156,6 @@ impl HostDenyList {
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
     fn register_failure(&self, source_name: &str, host: String) {
-        if self.never_block.contains(&host) {
-            return;
-        }
-
         let current_ts = SystemTime::now();
 
         tracing::trace!(
@@ -205,8 +201,11 @@ impl HostDenyList {
                 block_time = %humantime::format_duration(self.block_time),
                 "Blocking host due to too many download failures"
             );
-            self.blocked_hosts.insert(host, ());
-            metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
+
+            if !self.never_block.contains(&host) {
+                self.blocked_hosts.insert(host, ());
+                metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
+            }
         }
     }
 
