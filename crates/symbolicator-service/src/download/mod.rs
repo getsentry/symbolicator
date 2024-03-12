@@ -101,15 +101,18 @@ type CountedFailures = Arc<Mutex<VecDeque<FailureCount>>>;
 /// A structure that keeps track of download failures in a given time interval
 /// and puts hosts on a block list accordingly.
 ///
-/// The logic works like this: if a host has at least `FAILURE_THRESHOLD` download
-/// failures in a window of `TIME_WINDOW` seconds, it will be blocked for a duration of
-/// `BLOCK_TIME`.
+/// The logic works like this: if a host has at least `failure_threshold` download
+/// failures in a window of `time_window_millis` ms, it will be blocked for a duration of
+/// `block_time`.
+///
+/// Hosts included in `never_block` will never be blocked regardless of download_failures.
 #[derive(Clone, Debug)]
 struct HostDenyList {
     time_window_millis: u64,
     bucket_size_millis: u64,
     failure_threshold: usize,
     block_time: Duration,
+    never_block: Vec<String>,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, ()>,
 }
@@ -124,6 +127,7 @@ impl HostDenyList {
             bucket_size_millis,
             failure_threshold: config.deny_list_threshold,
             block_time: config.deny_list_block_time,
+            never_block: config.deny_list_never_block_hosts.clone(),
             failures: moka::sync::Cache::builder()
                 .time_to_idle(config.deny_list_time_window)
                 .build(),
@@ -187,7 +191,7 @@ impl HostDenyList {
         let cutoff = current_ts - self.time_window_millis;
         let total_failures: usize = queue
             .iter()
-            .filter(|failure_count| failure_count.timestamp >= cutoff)
+            .skip_while(|failure_count| failure_count.timestamp < cutoff)
             .map(|failure_count| failure_count.failures)
             .sum();
 
@@ -197,8 +201,11 @@ impl HostDenyList {
                 block_time = %humantime::format_duration(self.block_time),
                 "Blocking host due to too many download failures"
             );
-            self.blocked_hosts.insert(host, ());
-            metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
+
+            if !self.never_block.contains(&host) {
+                self.blocked_hosts.insert(host, ());
+                metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
+            }
         }
     }
 
@@ -222,7 +229,7 @@ pub struct DownloadService {
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
-    host_deny_list: HostDenyList,
+    host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
 }
 
@@ -252,7 +259,9 @@ impl DownloadService {
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
-            host_deny_list: HostDenyList::from_config(config),
+            host_deny_list: config
+                .deny_list_enabled
+                .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
         })
     }
@@ -325,7 +334,12 @@ impl DownloadService {
         // <https://github.com/getsentry/sentry/blob/b27ef04df6ecbaa0a34a472f787a163ca8400cc0/src/sentry/lang/native/sources.py#L17>
         let source_can_be_blocked = source_metric_key == "http";
 
-        if source_can_be_blocked && self.host_deny_list.is_blocked(&host) {
+        if source_can_be_blocked
+            && self
+                .host_deny_list
+                .as_ref()
+                .map_or(false, |deny_list| deny_list.is_blocked(&host))
+        {
             metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
                 "Server is temporarily blocked".to_string(),
@@ -355,9 +369,10 @@ impl DownloadService {
                 ::sentry::capture_error(e);
             }
 
-            if source_can_be_blocked {
-                self.host_deny_list
-                    .register_failure(&source_metric_key, host);
+            if let Some(ref deny_list) = self.host_deny_list {
+                if source_can_be_blocked {
+                    deny_list.register_failure(&source_metric_key, host);
+                }
             }
         }
 
@@ -791,6 +806,25 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
 
         // should be unblocked after 100ms have passed
+        assert!(!deny_list.is_blocked(&host));
+    }
+
+    #[test]
+    fn test_host_deny_list_never_block() {
+        let config = Config {
+            deny_list_time_window: Duration::from_secs(5),
+            deny_list_block_time: Duration::from_millis(100),
+            deny_list_bucket_size: Duration::from_secs(1),
+            deny_list_threshold: 2,
+            deny_list_never_block_hosts: vec!["test".to_string()],
+            ..Default::default()
+        };
+        let deny_list = HostDenyList::from_config(&config);
+        let host = String::from("test");
+
+        deny_list.register_failure("test", host.clone());
+        deny_list.register_failure("test", host.clone());
+
         assert!(!deny_list.is_blocked(&host));
     }
 }

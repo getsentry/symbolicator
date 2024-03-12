@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- Allow http symbol sources to indicate that invalid SSL certificates should be accepted (#1405) by @loewenheim
+- Make host deny list optional and allow exclusion of individual hosts (#1407) by @loewenheim
+
 ## 24.2.0
 
 ### Various fixes & improvements
