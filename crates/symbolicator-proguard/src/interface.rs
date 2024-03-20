@@ -96,6 +96,7 @@ pub struct JvmModule {
 
 /// The type of a [`ProguardError`].
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum ProguardErrorKind {
     /// The file couldn't be downloaded.
     Missing,
