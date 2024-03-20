@@ -150,6 +150,7 @@ async fn test_resolving_inline() {
                 function: "onClick".into(),
                 module: "e.a.c.a".into(),
                 lineno: 2,
+                index: 0,
                 ..Default::default()
             },
             JvmFrame {
@@ -157,6 +158,7 @@ async fn test_resolving_inline() {
                 module: "io.sentry.sample.MainActivity".into(),
                 filename: Some("MainActivity.java".into()),
                 lineno: 1,
+                index: 1,
                 ..Default::default()
             },
         ],
@@ -183,14 +185,21 @@ async fn test_resolving_inline() {
         frames[0].module,
         "io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4"
     );
+    assert_eq!(frames[0].index, 0);
+
     assert_eq!(frames[1].filename, Some("MainActivity.java".into()));
     assert_eq!(frames[1].module, "io.sentry.sample.MainActivity");
     assert_eq!(frames[1].function, "onClickHandler");
     assert_eq!(frames[1].lineno, 40);
+    assert_eq!(frames[1].index, 1);
+
     assert_eq!(frames[2].function, "foo");
     assert_eq!(frames[2].lineno, 44);
+    assert_eq!(frames[2].index, 1);
+
     assert_eq!(frames[3].function, "bar");
     assert_eq!(frames[3].lineno, 54);
     assert_eq!(frames[3].filename, Some("MainActivity.java".into()));
     assert_eq!(frames[3].module, "io.sentry.sample.MainActivity");
+    assert_eq!(frames[3].index, 1);
 }

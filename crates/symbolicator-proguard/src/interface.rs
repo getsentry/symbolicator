@@ -66,6 +66,12 @@ pub struct JvmFrame {
     /// Whether the frame is related to app-code (rather than libraries/dependencies).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_app: Option<bool>,
+
+    /// The index of the frame in the stacktrace before filtering and sending to Symbolicator.
+    ///
+    /// When returning frames in a `CompletedJvmSymbolicationResponse`, all frames that were
+    /// expanded from the frame with index `i` will also have index `i`.
+    pub index: usize,
 }
 
 /// An exception in a JVM event.
