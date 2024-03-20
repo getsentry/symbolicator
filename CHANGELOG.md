@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- proguard: Added a mandatory `index` field to `JvmFrame` (#1411) by @loewenheim
+
 ## 24.3.0
 
 ### Various fixes & improvements
