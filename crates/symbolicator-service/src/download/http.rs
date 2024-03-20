@@ -35,6 +35,8 @@ impl HttpDownloader {
         destination: &mut File,
     ) -> CacheEntry {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
+        let has_http_scheme = download_url.scheme() == "http";
+        let mut has_upgrade_header = false;
 
         tracing::debug!("Fetching debug file from `{}`", download_url);
 
@@ -52,10 +54,15 @@ impl HttpDownloader {
             .chain(file_source.headers.iter());
         for (key, value) in headers {
             if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
+                has_upgrade_header |= key == header::UPGRADE;
                 builder = builder.header(key, value.as_str());
             }
         }
         builder = builder.header(header::USER_AGENT, USER_AGENT);
+
+        if has_http_scheme && has_upgrade_header {
+            tracing::debug!("Request will be upgraded from HTTP1.1");
+        }
 
         super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
