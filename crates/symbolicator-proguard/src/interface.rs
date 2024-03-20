@@ -98,6 +98,14 @@ pub struct JvmModule {
     ///
     /// This is used to download the file from symbol sources.
     pub uuid: DebugId,
+    pub r#type: JvmModuleType,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JvmModuleType {
+    Source,
+    Proguard,
 }
 
 /// The type of a [`ProguardError`].

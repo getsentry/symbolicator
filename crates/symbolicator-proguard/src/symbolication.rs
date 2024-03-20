@@ -1,6 +1,6 @@
 use crate::interface::{
-    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmStacktrace, ProguardError,
-    ProguardErrorKind, SymbolicateJvmStacktraces,
+    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
+    ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
 use crate::ProguardService;
 
@@ -26,12 +26,17 @@ impl ProguardService {
             ..
         } = request;
 
-        let maybe_mappers = future::join_all(modules.iter().map(|module| async {
-            let file = self
-                .download_proguard_file(&sources, &scope, module.uuid)
-                .await;
-            (module.uuid, file)
-        }))
+        let maybe_mappers = future::join_all(
+            modules
+                .iter()
+                .filter(|module| module.r#type == JvmModuleType::Proguard)
+                .map(|module| async {
+                    let file = self
+                        .download_proguard_file(&sources, &scope, module.uuid)
+                        .await;
+                    (module.uuid, file)
+                }),
+        )
         .await;
 
         let (mut mappers, mut errors) = (Vec::new(), Vec::new());

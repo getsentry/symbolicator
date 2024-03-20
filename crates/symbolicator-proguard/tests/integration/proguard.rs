@@ -4,8 +4,8 @@ use std::{collections::HashMap, str::FromStr};
 use serde_json::json;
 use symbolic::common::DebugId;
 use symbolicator_proguard::interface::{
-    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModule, JvmStacktrace,
-    SymbolicateJvmStacktraces,
+    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModule, JvmModuleType,
+    JvmStacktrace, SymbolicateJvmStacktraces,
 };
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{SentrySourceConfig, SourceConfig};
@@ -95,7 +95,10 @@ async fn test_remap_exception() {
         sources: Arc::new([source]),
         exceptions: vec![exception.clone()],
         stacktraces: vec![],
-        modules: vec![JvmModule { uuid: debug_id }],
+        modules: vec![JvmModule {
+            uuid: debug_id,
+            r#type: JvmModuleType::Proguard,
+        }],
         apply_source_context: false,
         release_package: None,
     };
@@ -169,7 +172,10 @@ async fn test_resolving_inline() {
         sources: Arc::new([source]),
         exceptions: vec![exception.clone()],
         stacktraces,
-        modules: vec![JvmModule { uuid: debug_id }],
+        modules: vec![JvmModule {
+            uuid: debug_id,
+            r#type: JvmModuleType::Proguard,
+        }],
         apply_source_context: false,
         release_package: None,
     };
