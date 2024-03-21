@@ -251,6 +251,10 @@ impl ProguardService {
         vec![frame.clone()]
     }
 
+    /// Applies source context from the given list of source bundles to a frame.
+    ///
+    /// If one of the source bundles contains the correct file name, we apply it, otherwise
+    /// the frame stays unmodified.
     fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
         let source_file_name = build_source_file_name(frame);
         for session in source_bundles {
@@ -268,6 +272,7 @@ impl ProguardService {
                 frame.pre_context = pre_context;
                 frame.context_line = Some(context_line);
                 frame.post_context = post_context;
+                break;
             }
         }
     }

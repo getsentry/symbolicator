@@ -85,6 +85,7 @@ impl ProguardService {
         self.fetch_file(scope, remote_file).await
     }
 
+    /// Downloads a source bundle for the given scope and debug id.
     pub async fn download_source_bundle(
         &self,
         sources: Arc<[SourceConfig]>,
