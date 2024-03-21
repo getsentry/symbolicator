@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
@@ -7,6 +8,9 @@ use symbolicator_service::caching::{
     CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
 };
 use symbolicator_service::download::{fetch_file, DownloadService};
+use symbolicator_service::objects::{
+    FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,
+};
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
@@ -16,6 +20,7 @@ use tempfile::NamedTempFile;
 pub struct ProguardService {
     pub(crate) download_svc: Arc<DownloadService>,
     pub(crate) cache: Arc<Cacher<FetchProguard>>,
+    pub(crate) objects: ObjectsActor,
 }
 
 impl ProguardService {
@@ -23,12 +28,14 @@ impl ProguardService {
         let caches = &services.caches;
         let shared_cache = services.shared_cache.clone();
         let download_svc = services.download_svc.clone();
+        let objects = services.objects.clone();
 
         let cache = Arc::new(Cacher::new(caches.proguard.clone(), shared_cache));
 
         Self {
             download_svc,
             cache,
+            objects,
         }
     }
 
@@ -76,6 +83,34 @@ impl ProguardService {
             .ok_or(CacheError::NotFound)?;
 
         self.fetch_file(scope, remote_file).await
+    }
+
+    pub async fn download_source_bundle(
+        &self,
+        sources: Arc<[SourceConfig]>,
+        scope: &Scope,
+        debug_id: DebugId,
+    ) -> CacheEntry<Arc<ObjectHandle>> {
+        let identifier = ObjectId {
+            debug_id: Some(debug_id),
+            ..Default::default()
+        };
+        let find_request = FindObject {
+            filetypes: &[FileType::SourceBundle],
+            purpose: ObjectPurpose::Source,
+            identifier,
+            sources: sources.clone(),
+            scope: scope.clone(),
+        };
+
+        let FindResult { meta, .. } = self.objects.find(find_request).await;
+        match meta {
+            Some(meta) => match meta.handle {
+                Ok(handle) => self.objects.fetch(handle).await,
+                Err(err) => Err(err),
+            },
+            None => Err(CacheError::NotFound),
+        }
     }
 }
 
