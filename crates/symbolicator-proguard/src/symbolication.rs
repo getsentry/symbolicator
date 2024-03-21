@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
@@ -7,9 +5,9 @@ use crate::interface::{
 use crate::ProguardService;
 
 use futures::future;
+use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::objects::ObjectHandle;
 use symbolicator_service::source_context::get_context_lines;
 
 impl ProguardService {
@@ -83,7 +81,24 @@ impl ProguardService {
 
         let source_bundles: Vec<_> = maybe_source_bundles
             .into_iter()
-            .filter_map(|(_debug_id, maybe_bundle)| maybe_bundle.ok())
+            .filter_map(|(debug_id, maybe_bundle)| match maybe_bundle {
+                Ok(b) => Some((debug_id, b)),
+                Err(e) => {
+                    tracing::debug!(%debug_id, error=%e, "Failed to download source bundle");
+                    None
+                }
+            })
+            .collect();
+
+        let source_bundle_sessions: Vec<_> = source_bundles
+            .iter()
+            .filter_map(|(debug_id, bundle)| match bundle.object().debug_session() {
+                Ok(ObjectDebugSession::SourceBundle(session)) => Some(session),
+                _ => {
+                    tracing::debug!(%debug_id, "Failed to open debug session for source bundle");
+                    None
+                }
+            })
             .collect();
 
         let remapped_exceptions = exceptions
@@ -103,7 +118,7 @@ impl ProguardService {
                         Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
                     })
                     .map(|mut frame| {
-                        Self::apply_source_context(&source_bundles, &mut frame);
+                        Self::apply_source_context(&source_bundle_sessions, &mut frame);
                         frame
                     })
                     .collect();
@@ -236,18 +251,10 @@ impl ProguardService {
         vec![frame.clone()]
     }
 
-    fn apply_source_context(source_bundles: &[Arc<ObjectHandle>], frame: &mut JvmFrame) {
+    fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
         let source_file_name = build_source_file_name(frame);
-        for source_bundle in source_bundles {
-            let Ok(ObjectDebugSession::SourceBundle(session)) =
-                source_bundle.object().debug_session()
-            else {
-                // TODO: Do this right
-                continue;
-            };
-
+        for session in source_bundles {
             let Ok(Some(source)) = session.source_by_url(&source_file_name) else {
-                // TODO: Same
                 continue;
             };
 
