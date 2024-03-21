@@ -157,8 +157,6 @@ impl SentryDownloader {
         object_id: &ObjectId,
         file_types: &[FileType],
     ) -> CacheEntry<Vec<RemoteFile>> {
-        dbg!(file_types);
-        dbg!(object_id);
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -223,7 +221,7 @@ impl SentryDownloader {
                 }
             }
 
-            dbg!(result)
+            result
         });
 
         let entries = self
