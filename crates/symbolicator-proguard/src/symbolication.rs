@@ -266,6 +266,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 function: "onClick".to_owned(),
                 module: "e.a.c.a".to_owned(),
                 lineno: 2,
+                index: 0,
                 ..Default::default()
             },
             JvmFrame {
@@ -273,6 +274,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 module: "io.sentry.sample.MainActivity".to_owned(),
                 filename: Some("MainActivity.java".to_owned()),
                 lineno: 1,
+                index: 1,
                 ..Default::default()
             },
         ];
@@ -292,6 +294,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             mapped_frames[0].module,
             "io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4"
         );
+        assert_eq!(mapped_frames[0].index, 0);
 
         assert_eq!(
             mapped_frames[1].filename,
@@ -300,9 +303,11 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         assert_eq!(mapped_frames[1].module, "io.sentry.sample.MainActivity");
         assert_eq!(mapped_frames[1].function, "onClickHandler");
         assert_eq!(mapped_frames[1].lineno, 40);
+        assert_eq!(mapped_frames[1].index, 1);
 
         assert_eq!(mapped_frames[2].function, "foo");
         assert_eq!(mapped_frames[2].lineno, 44);
+        assert_eq!(mapped_frames[2].index, 1);
 
         assert_eq!(mapped_frames[3].function, "bar");
         assert_eq!(mapped_frames[3].lineno, 54);
@@ -311,6 +316,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             Some("MainActivity.java".to_owned())
         );
         assert_eq!(mapped_frames[3].module, "io.sentry.sample.MainActivity");
+        assert_eq!(mapped_frames[3].index, 1);
     }
 
     // based on the Python test `test_sets_inapp_after_resolving`.
