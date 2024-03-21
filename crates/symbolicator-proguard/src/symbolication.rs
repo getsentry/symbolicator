@@ -7,6 +7,7 @@ use crate::interface::{
 use crate::ProguardService;
 
 use futures::future;
+use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::objects::ObjectHandle;
 use symbolicator_service::source_context::get_context_lines;
@@ -238,12 +239,14 @@ impl ProguardService {
     fn apply_source_context(source_bundles: &[Arc<ObjectHandle>], frame: &mut JvmFrame) {
         let source_file_name = build_source_file_name(frame);
         for source_bundle in source_bundles {
-            let Ok(session) = source_bundle.object().debug_session() else {
+            let Ok(ObjectDebugSession::SourceBundle(session)) =
+                source_bundle.object().debug_session()
+            else {
                 // TODO: Do this right
                 continue;
             };
 
-            let Ok(Some(source)) = session.source_by_path(&source_file_name) else {
+            let Ok(Some(source)) = session.source_by_url(&source_file_name) else {
                 // TODO: Same
                 continue;
             };
