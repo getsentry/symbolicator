@@ -263,6 +263,10 @@ impl ProguardService {
     }
 }
 
+/// Checks whether `abs_path` is a valid path, and if so, returns the part
+/// of `abs_path` before the rightmost `.`.
+///
+/// An `abs_path` is valid if it contains a `.` and doesn't contain a `$`.
 fn is_valid_path(abs_path: &str) -> Option<&str> {
     if abs_path.contains('$') {
         return None;
@@ -271,6 +275,7 @@ fn is_valid_path(abs_path: &str) -> Option<&str> {
     Some(before)
 }
 
+/// Constructs a source file name out of a frame's `abs_path` and `module`.
 fn build_source_file_name(frame: &JvmFrame) -> String {
     let abs_path = frame.abs_path.as_deref();
     let module = &frame.module;
