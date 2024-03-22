@@ -26,7 +26,7 @@ impl ProguardService {
             stacktraces,
             modules,
             release_package,
-            ..
+            apply_source_context,
         } = request;
 
         let maybe_mappers = future::join_all(
@@ -108,7 +108,7 @@ impl ProguardService {
             })
             .collect();
 
-        let remapped_stacktraces = stacktraces
+        let mut remapped_stacktraces: Vec<_> = stacktraces
             .into_iter()
             .map(|raw_stacktrace| {
                 let remapped_frames = raw_stacktrace
@@ -117,16 +117,21 @@ impl ProguardService {
                     .flat_map(|frame| {
                         Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
                     })
-                    .map(|mut frame| {
-                        Self::apply_source_context(&source_bundle_sessions, &mut frame);
-                        frame
-                    })
                     .collect();
                 JvmStacktrace {
                     frames: remapped_frames,
                 }
             })
             .collect();
+
+        if apply_source_context {
+            for frame in remapped_stacktraces
+                .iter_mut()
+                .flat_map(|st| st.frames.iter_mut())
+            {
+                Self::apply_source_context(&source_bundle_sessions, frame);
+            }
+        }
 
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
