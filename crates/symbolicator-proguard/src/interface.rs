@@ -49,7 +49,11 @@ pub struct JvmFrame {
     pub abs_path: Option<String>,
 
     /// The line number within the source file, starting at `1` for the first line.
-    pub lineno: u32,
+    ///
+    /// If a frame doesn't have a line number, only its class name can be remapped,
+    /// and source context won't work at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lineno: Option<u32>,
 
     /// Source context before the context line.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

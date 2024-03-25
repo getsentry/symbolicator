@@ -184,53 +184,56 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
-        let proguard_frame =
-            proguard::StackFrame::new(&frame.module, &frame.function, frame.lineno as usize);
-        let mut mapped_frames = Vec::new();
+        // First, try to remap the whole frame. This only works if it has a line number.
+        if let Some(lineno) = frame.lineno {
+            let proguard_frame =
+                proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize);
+            let mut mapped_frames = Vec::new();
 
-        // first, try to remap complete frames
-        for mapper in mappers {
-            mapped_frames.clear();
-            mapped_frames.extend(mapper.remap_frame(&proguard_frame));
+            for mapper in mappers {
+                mapped_frames.clear();
+                mapped_frames.extend(mapper.remap_frame(&proguard_frame));
 
-            if mapped_frames.is_empty() {
-                continue;
-            }
+                if mapped_frames.is_empty() {
+                    continue;
+                }
 
-            let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
+                let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
 
-            // sentry expects stack traces in reverse order
-            return mapped_frames
-                .iter()
-                .rev()
-                .map(|new_frame| {
-                    let mut mapped_frame = JvmFrame {
-                        module: new_frame.class().to_owned(),
-                        function: new_frame.method().to_owned(),
-                        lineno: new_frame.line() as u32,
-                        ..frame.clone()
-                    };
+                // sentry expects stack traces in reverse order
+                return mapped_frames
+                    .iter()
+                    .rev()
+                    .map(|new_frame| {
+                        let mut mapped_frame = JvmFrame {
+                            module: new_frame.class().to_owned(),
+                            function: new_frame.method().to_owned(),
+                            lineno: Some(new_frame.line() as u32),
+                            ..frame.clone()
+                        };
 
-                    // clear the filename for all *foreign* classes
-                    if mapped_frame.module != bottom_class {
-                        mapped_frame.filename = None;
-                        mapped_frame.abs_path = None;
-                    }
-
-                    // mark the frame as in_app after deobfuscation based on the release package name
-                    // only if it's not present
-                    if let Some(package) = release_package {
-                        if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none()
-                        {
-                            mapped_frame.in_app = Some(true);
+                        // clear the filename for all *foreign* classes
+                        if mapped_frame.module != bottom_class {
+                            mapped_frame.filename = None;
+                            mapped_frame.abs_path = None;
                         }
-                    }
-                    mapped_frame
-                })
-                .collect();
+
+                        // mark the frame as in_app after deobfuscation based on the release package name
+                        // only if it's not present
+                        if let Some(package) = release_package {
+                            if mapped_frame.module.starts_with(package)
+                                && mapped_frame.in_app.is_none()
+                            {
+                                mapped_frame.in_app = Some(true);
+                            }
+                        }
+                        mapped_frame
+                    })
+                    .collect();
+            }
         }
 
-        // second, if that is not possible, try to re-map only the class-name
+        // Second, if that is not possible, try to re-map only the class-name.
         for mapper in mappers {
             let Some(mapped_class) = mapper.remap_class(&frame.module) else {
                 continue;
@@ -261,6 +264,11 @@ impl ProguardService {
     /// If one of the source bundles contains the correct file name, we apply it, otherwise
     /// the frame stays unmodified.
     fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
+        let Some(lineno) = frame.lineno else {
+            // can't apply source context without line number
+            return;
+        };
+
         let source_file_name = build_source_file_name(frame);
         for session in source_bundles {
             let Ok(Some(source)) = session.source_by_url(&source_file_name) else {
@@ -272,7 +280,7 @@ impl ProguardService {
             };
 
             if let Some((pre_context, context_line, post_context)) =
-                get_context_lines(contents, frame.lineno as usize, None, None)
+                get_context_lines(contents, lineno as usize, None, None)
             {
                 frame.pre_context = pre_context;
                 frame.context_line = Some(context_line);
@@ -380,7 +388,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             JvmFrame {
                 function: "onClick".to_owned(),
                 module: "e.a.c.a".to_owned(),
-                lineno: 2,
+                lineno: Some(2),
                 index: 0,
                 ..Default::default()
             },
@@ -388,7 +396,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 function: "t".to_owned(),
                 module: "io.sentry.sample.MainActivity".to_owned(),
                 filename: Some("MainActivity.java".to_owned()),
-                lineno: 1,
+                lineno: Some(1),
                 index: 1,
                 ..Default::default()
             },
@@ -417,15 +425,15 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         );
         assert_eq!(mapped_frames[1].module, "io.sentry.sample.MainActivity");
         assert_eq!(mapped_frames[1].function, "onClickHandler");
-        assert_eq!(mapped_frames[1].lineno, 40);
+        assert_eq!(mapped_frames[1].lineno, Some(40));
         assert_eq!(mapped_frames[1].index, 1);
 
         assert_eq!(mapped_frames[2].function, "foo");
-        assert_eq!(mapped_frames[2].lineno, 44);
+        assert_eq!(mapped_frames[2].lineno, Some(44));
         assert_eq!(mapped_frames[2].index, 1);
 
         assert_eq!(mapped_frames[3].function, "bar");
-        assert_eq!(mapped_frames[3].lineno, 54);
+        assert_eq!(mapped_frames[3].lineno, Some(54));
         assert_eq!(
             mapped_frames[3].filename,
             Some("MainActivity.java".to_owned())
@@ -454,33 +462,33 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$a".to_owned(),
-                lineno: 67,
+                lineno: Some(67),
                 ..Default::default()
             },
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$a".to_owned(),
-                lineno: 69,
+                lineno: Some(69),
                 in_app: Some(false),
                 ..Default::default()
             },
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$a".to_owned(),
-                lineno: 68,
+                lineno: Some(68),
                 in_app: Some(true),
                 ..Default::default()
             },
             JvmFrame {
                 function: "init".to_owned(),
                 module: "com.android.Zygote".to_owned(),
-                lineno: 62,
+                lineno: Some(62),
                 ..Default::default()
             },
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$b".to_owned(),
-                lineno: 70,
+                lineno: Some(70),
                 ..Default::default()
             },
         ];
