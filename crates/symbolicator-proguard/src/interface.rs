@@ -91,20 +91,26 @@ pub struct JvmStacktrace {
     pub frames: Vec<JvmFrame>,
 }
 
-/// A JVM module (proguard file).
+/// A JVM module (source bundle or proguard file).
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmModule {
     /// The file's UUID.
     ///
     /// This is used to download the file from symbol sources.
     pub uuid: DebugId,
+    /// The file's type.
     pub r#type: JvmModuleType,
 }
 
+/// The type of a [`JvmModule`].
+///
+/// For JVM symbolication we only use proguard files and source bundles.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum JvmModuleType {
+    /// A source bundle.
     Source,
+    /// A proguard mapping file.
     Proguard,
 }
 
