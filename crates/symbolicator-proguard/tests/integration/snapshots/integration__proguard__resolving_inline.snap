@@ -1,0 +1,30 @@
+---
+source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 232
+expression: response
+---
+exceptions:
+  - type: g$a
+    module: org.a.b
+stacktraces:
+  - frames:
+      - function: onClick
+        module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
+        lineno: 2
+        index: 0
+      - function: onClickHandler
+        filename: MainActivity.java
+        module: io.sentry.sample.MainActivity
+        lineno: 40
+        index: 1
+      - function: foo
+        filename: MainActivity.java
+        module: io.sentry.sample.MainActivity
+        lineno: 44
+        index: 1
+      - function: bar
+        filename: MainActivity.java
+        module: io.sentry.sample.MainActivity
+        lineno: 54
+        index: 1
+errors: []

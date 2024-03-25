@@ -103,15 +103,9 @@ async fn test_remap_exception() {
         release_package: None,
     };
 
-    let CompletedJvmSymbolicationResponse { exceptions, .. } =
-        symbolication.symbolicate_jvm(request).await;
+    let response = symbolication.symbolicate_jvm(request).await;
 
-    let remapped_exception = JvmException {
-        ty: "Util$ClassContextSecurityManager".into(),
-        module: "org.slf4j.helpers".into(),
-    };
-
-    assert_eq!(exceptions, [remapped_exception]);
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -180,34 +174,9 @@ async fn test_resolving_inline() {
         release_package: None,
     };
 
-    let CompletedJvmSymbolicationResponse { stacktraces, .. } =
-        symbolication.symbolicate_jvm(request).await;
+    let response = symbolication.symbolicate_jvm(request).await;
 
-    let frames = &stacktraces[0].frames;
-
-    assert_eq!(frames.len(), 4);
-    assert_eq!(frames[0].function, "onClick");
-    assert_eq!(
-        frames[0].module,
-        "io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4"
-    );
-    assert_eq!(frames[0].index, 0);
-
-    assert_eq!(frames[1].filename, Some("MainActivity.java".into()));
-    assert_eq!(frames[1].module, "io.sentry.sample.MainActivity");
-    assert_eq!(frames[1].function, "onClickHandler");
-    assert_eq!(frames[1].lineno, 40);
-    assert_eq!(frames[1].index, 1);
-
-    assert_eq!(frames[2].function, "foo");
-    assert_eq!(frames[2].lineno, 44);
-    assert_eq!(frames[2].index, 1);
-
-    assert_eq!(frames[3].function, "bar");
-    assert_eq!(frames[3].lineno, 54);
-    assert_eq!(frames[3].filename, Some("MainActivity.java".into()));
-    assert_eq!(frames[3].module, "io.sentry.sample.MainActivity");
-    assert_eq!(frames[3].index, 1);
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -321,174 +290,9 @@ async fn test_basic_source_lookup() {
         release_package: None,
     };
 
-    let CompletedJvmSymbolicationResponse {
-        stacktraces,
-        exceptions,
-        ..
-    } = symbolication.symbolicate_jvm(request).await;
+    let response = symbolication.symbolicate_jvm(request).await;
 
-    let exc = &exceptions[0];
-    let frames = &stacktraces[0].frames;
-
-    assert_eq!(exc.ty, "RuntimeException");
-    assert_eq!(exc.module, "io.sentry.samples");
-
-    assert_eq!(frames[0].function, "otherMethod");
-    assert_eq!(frames[0].module, "OtherActivity");
-    assert_eq!(frames[0].lineno, 100);
-    assert!(frames[0].context_line.is_none());
-    assert!(frames[0].pre_context.is_empty());
-    assert!(frames[0].post_context.is_empty());
-
-    assert_eq!(frames[1].function, "differentMethod");
-    assert_eq!(frames[1].module, "DifferentActivity");
-    assert_eq!(frames[1].lineno, 200);
-    assert!(frames[1].context_line.is_none());
-    assert!(frames[1].pre_context.is_empty());
-    assert!(frames[1].post_context.is_empty());
-
-    assert_eq!(frames[2].function, "onCreate");
-    assert_eq!(frames[2].module, "io.sentry.samples.MainActivity");
-    assert_eq!(frames[2].lineno, 11);
-    assert_eq!(
-        frames[2].context_line,
-        Some("        InnerClass().whoops()".into())
-    );
-    assert_eq!(
-        frames[2].pre_context,
-        [
-            "",
-            "class MainActivity : ComponentActivity() {",
-            "    override fun onCreate(savedInstanceState: Bundle?) {",
-            "        super.onCreate(savedInstanceState)",
-            "        setContentView(R.layout.activity_main)",
-        ]
-    );
-    assert_eq!(
-        frames[2].post_context,
-        [
-            "",
-            "        val list = findViewById<RecyclerView>(R.id.list)",
-            "        list.layoutManager = LinearLayoutManager(this)",
-            "        list.adapter = TrackAdapter()",
-            "    }",
-        ]
-    );
-
-    assert_eq!(frames[3].function, "whoops");
-    assert_eq!(
-        frames[3].module,
-        "io.sentry.samples.MainActivity$InnerClass"
-    );
-    assert_eq!(frames[3].lineno, 20);
-    assert_eq!(
-        frames[3].context_line,
-        Some("            AnotherInnerClass().whoops2()".into())
-    );
-    assert_eq!(
-        frames[3].pre_context,
-        [
-            "        list.adapter = TrackAdapter()",
-            "    }",
-            "",
-            "    class InnerClass {",
-            "        fun whoops() {",
-        ]
-    );
-    assert_eq!(
-        frames[3].post_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class AnotherInnerClass {",
-            "        fun whoops2() {",
-        ]
-    );
-
-    assert_eq!(frames[4].function, "whoops2");
-    assert_eq!(
-        frames[4].module,
-        "io.sentry.samples.MainActivity$AnotherInnerClass"
-    );
-    assert_eq!(frames[4].lineno, 26);
-    assert_eq!(
-        frames[4].context_line,
-        Some("            AdditionalInnerClass().whoops3()".into())
-    );
-    assert_eq!(
-        frames[4].pre_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class AnotherInnerClass {",
-            "        fun whoops2() {",
-        ]
-    );
-    assert_eq!(
-        frames[4].post_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class AdditionalInnerClass {",
-            "        fun whoops3() {",
-        ]
-    );
-
-    assert_eq!(frames[5].function, "whoops3");
-    assert_eq!(
-        frames[5].module,
-        "io.sentry.samples.MainActivity$AdditionalInnerClass"
-    );
-    assert_eq!(frames[5].lineno, 32);
-    assert_eq!(
-        frames[5].context_line,
-        Some("            OneMoreInnerClass().whoops4()".into())
-    );
-    assert_eq!(
-        frames[5].pre_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class AdditionalInnerClass {",
-            "        fun whoops3() {",
-        ]
-    );
-    assert_eq!(
-        frames[5].post_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class OneMoreInnerClass {",
-            "        fun whoops4() {",
-        ]
-    );
-
-    assert_eq!(frames[6].function, "whoops4");
-    assert_eq!(
-        frames[6].module,
-        "io.sentry.samples.MainActivity$OneMoreInnerClass"
-    );
-    assert_eq!(frames[6].lineno, 38);
-    assert_eq!(
-        frames[6].context_line,
-        Some(r#"            throw RuntimeException("whoops")"#.into())
-    );
-    assert_eq!(
-        frames[6].pre_context,
-        [
-            "        }",
-            "    }",
-            "",
-            "    class OneMoreInnerClass {",
-            "        fun whoops4() {",
-        ]
-    );
-    assert_eq!(frames[6].post_context, ["        }", "    }", "}", ""]);
+    assert_snapshot!(response);
 }
 
 #[tokio::test]
@@ -497,6 +301,7 @@ async fn test_source_lookup_with_proguard() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
 
     let proguard_id = "05d96b1c-1786-477c-8615-d3cf83e027c7".parse().unwrap();
+    let missing_proguard_id = "8236f5cf-52c8-4e35-a7cf-01421e4c2c88".parse().unwrap();
     let source_id1 = DebugId::from_uuid(Uuid::new_v4());
     let source_id2 = DebugId::from_uuid(Uuid::new_v4());
 
@@ -734,16 +539,12 @@ async fn test_source_lookup_with_proguard() {
             uuid: source_id2,
         },
         JvmModule {
-            r#type: JvmModuleType::Source,
-            uuid: DebugId::from(Uuid::new_v4()),
-        },
-        JvmModule {
             r#type: JvmModuleType::Proguard,
             uuid: proguard_id,
         },
         JvmModule {
             r#type: JvmModuleType::Proguard,
-            uuid: DebugId::from(Uuid::new_v4()),
+            uuid: missing_proguard_id,
         },
     ];
 
@@ -757,147 +558,7 @@ async fn test_source_lookup_with_proguard() {
         release_package: None,
     };
 
-    let CompletedJvmSymbolicationResponse {
-        stacktraces,
-        exceptions,
-        ..
-    } = symbolication.symbolicate_jvm(request).await;
+    let response = symbolication.symbolicate_jvm(request).await;
 
-    let exc = &exceptions[0];
-    let frames = &stacktraces[0].frames;
-
-    assert_eq!(exc.ty, "RuntimeException");
-    assert_eq!(exc.module, "java.lang");
-
-    assert_eq!(frames[18].function, "onMenuItemClick");
-    assert_eq! (
-            frames[18].module,
-            "io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0"
-        );
-    assert_eq!(frames[18].lineno, 0);
-    assert!(frames[18].context_line.is_none());
-    assert!(frames[18].pre_context.is_empty());
-    assert!(frames[18].post_context.is_empty());
-
-    assert_eq!(frames[19].function, "onCreate$lambda-1");
-    assert_eq!(
-        frames[19].module,
-        "io.sentry.samples.instrumentation.ui.EditActivity"
-    );
-    assert_eq!(frames[19].lineno, 37);
-    assert_eq!(
-        frames[19].context_line,
-        Some("                    SomeService().helloThere()".into())
-    );
-    assert_eq!(
-        frames[19].pre_context,
-        [
-            "        }",
-            "",
-            "        findViewById<Toolbar>(R.id.toolbar).setOnMenuItemClickListener {",
-            "            if (it.itemId == R.id.action_save) {",
-            "                try {",
-        ]
-    );
-    assert_eq!(
-        frames[19].post_context,
-        [
-            "                } catch (e: Exception) {",
-            "                    Sentry.captureException(e)",
-            "                }",
-            "",
-            "                val transaction = Sentry.startTransaction(",
-        ]
-    );
-
-    assert_eq!(frames[20].function, "helloThere");
-    assert_eq!(
-        frames[20].module,
-        "io.sentry.samples.instrumentation.ui.SomeService"
-    );
-    assert_eq!(frames[20].lineno, 5);
-    assert_eq!(
-        frames[20].context_line,
-        Some("        InnerClassOfSomeService().helloInner()".into())
-    );
-    assert_eq!(
-        frames[20].pre_context,
-        [
-            "package io.sentry.samples.instrumentation.ui",
-            "",
-            "class SomeService {",
-            "    fun helloThere() {",
-        ]
-    );
-    assert_eq!(
-        frames[20].post_context,
-        [
-            "    }",
-            "",
-            "    class InnerClassOfSomeService {",
-            "        fun helloInner() {",
-            "            AnotherClassInSameFile().helloOther()",
-        ]
-    );
-
-    assert_eq!(frames[21].function, "helloInner");
-    assert_eq!(
-        frames[21].module,
-        "io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService"
-    );
-    assert_eq!(frames[21].lineno, 10);
-    assert_eq!(
-        frames[21].context_line,
-        Some("            AnotherClassInSameFile().helloOther()".into())
-    );
-    assert_eq!(
-        frames[21].pre_context,
-        [
-            "        InnerClassOfSomeService().helloInner()",
-            "    }",
-            "",
-            "    class InnerClassOfSomeService {",
-            "        fun helloInner() {",
-        ]
-    );
-    assert_eq!(
-        frames[21].post_context,
-        [
-            "        }",
-            "    }",
-            "}",
-            "",
-            "class AnotherClassInSameFile {",
-        ]
-    );
-
-    assert_eq!(frames[22].function, "helloOther");
-    assert_eq!(
-        frames[22].module,
-        "io.sentry.samples.instrumentation.ui.AnotherClassInSameFile"
-    );
-    assert_eq!(frames[22].lineno, 17);
-    assert!(frames[22].context_line.is_none());
-    assert!(frames[22].pre_context.is_empty());
-    assert!(frames[22].post_context.is_empty());
-
-    assert_eq!(frames[23].function, "otherFun");
-    assert_eq!(
-        frames[23].module,
-        "io.sentry.samples.instrumentation.ui.AnotherClassInSameFile"
-    );
-    assert_eq!(frames[23].lineno, 21);
-    assert!(frames[23].context_line.is_none());
-    assert!(frames[23].pre_context.is_empty());
-    assert!(frames[23].post_context.is_empty());
-
-    assert_eq!(frames[24].function, "helloOtherInner");
-    assert_eq!(
-        frames[24].module,
-        "io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass"
-    );
-    assert_eq!(frames[24].lineno, 26);
-    assert!(frames[24].context_line.is_none());
-    assert!(frames[24].pre_context.is_empty());
-    assert!(frames[24].post_context.is_empty());
+    assert_snapshot!(response);
 }

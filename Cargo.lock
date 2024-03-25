@@ -4457,6 +4457,7 @@ name = "symbolicator-proguard"
 version = "24.3.0"
 dependencies = [
  "futures",
+ "insta",
  "proguard",
  "serde",
  "serde_json",
