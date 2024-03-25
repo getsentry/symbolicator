@@ -1,10 +1,11 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 133
+assertion_line: 122
 expression: response
 ---
 exceptions:
   - type: Util$ClassContextSecurityManager
     module: org.slf4j.helpers
-stacktraces: []
+stacktraces:
+  - frames: []
 errors: []
