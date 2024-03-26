@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 588
+assertion_line: 474
 expression: response
 ---
 exceptions:
@@ -26,7 +26,6 @@ stacktraces:
       - function: invoke
         filename: Method.java
         module: java.lang.reflect.Method
-        lineno: 0
         index: 3
       - function: main
         filename: ActivityThread.java

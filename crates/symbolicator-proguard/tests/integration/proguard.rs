@@ -351,7 +351,6 @@ async fn test_source_lookup_with_proguard() {
         "filename": "Method.java",
         "function": "invoke",
         "module": "java.lang.reflect.Method",
-        "lineno": 0,
         "index": 3
     }, {
         "filename": "ActivityThread.java",
