@@ -25,6 +25,11 @@ pub struct SymbolicateJvmStacktraces {
     ///
     /// This is used to set a remapped frame's `in_app` field.
     pub release_package: Option<String>,
+    ///Whether to deobfuscate based on parameters mapping
+    ///
+    /// This has to be set if we want to deobfuscate frames
+    /// based on the method parameters (lineno not available)
+    pub use_param_mapping: bool,
 }
 
 /// A stack frame in a JVM stacktrace.
@@ -76,6 +81,14 @@ pub struct JvmFrame {
     /// When returning frames in a `CompletedJvmSymbolicationResponse`, all frames that were
     /// expanded from the frame with index `i` will also have index `i`.
     pub index: usize,
+
+    /// Comma separated list of method's parameters.
+    ///
+    /// This has to be set when we want to deobfuscate based on the function parameters
+    /// instead of using line numbers.
+    ///
+    /// example of parameters list: `okio.Buffer,long`
+    pub parameters: Option<String>,
 }
 
 /// An exception in a JVM event.

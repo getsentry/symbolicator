@@ -27,6 +27,7 @@ impl ProguardService {
             modules,
             release_package,
             apply_source_context,
+            use_param_mapping,
         } = request;
 
         let maybe_mappers = future::join_all(
@@ -35,7 +36,7 @@ impl ProguardService {
                 .filter(|module| module.r#type == JvmModuleType::Proguard)
                 .map(|module| async {
                     let file = self
-                        .download_proguard_file(&sources, &scope, module.uuid)
+                        .download_proguard_file(&sources, &scope, module.uuid, use_param_mapping)
                         .await;
                     (module.uuid, file)
                 }),
@@ -184,10 +185,25 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
-        // First, try to remap the whole frame. This only works if it has a line number.
-        if let Some(lineno) = frame.lineno {
-            let proguard_frame =
-                proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize);
+        let stack_frame = if let Some(lineno) = frame.lineno {
+            Some(proguard::StackFrame::new(
+                &frame.module,
+                &frame.function,
+                lineno as usize,
+            ))
+        } else {
+            frame.parameters.as_ref().map(|params| {
+                proguard::StackFrame::with_parameters(
+                    &frame.module,
+                    &frame.function,
+                    params.as_str(),
+                )
+            })
+        };
+
+        // First, try to remap the whole frame.
+        // This only works if it has a line number or params.
+        if let Some(proguard_frame) = stack_frame {
             let mut mapped_frames = Vec::new();
 
             for mapper in mappers {
