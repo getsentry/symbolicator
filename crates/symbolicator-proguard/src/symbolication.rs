@@ -27,7 +27,6 @@ impl ProguardService {
             modules,
             release_package,
             apply_source_context,
-            use_param_mapping,
         } = request;
 
         let maybe_mappers = future::join_all(
@@ -36,7 +35,7 @@ impl ProguardService {
                 .filter(|module| module.r#type == JvmModuleType::Proguard)
                 .map(|module| async {
                     let file = self
-                        .download_proguard_file(&sources, &scope, module.uuid, use_param_mapping)
+                        .download_proguard_file(&sources, &scope, module.uuid)
                         .await;
                     (module.uuid, file)
                 }),

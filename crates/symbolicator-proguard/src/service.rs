@@ -54,18 +54,12 @@ impl ProguardService {
     /// Retrieves the given [`RemoteFile`] from cache, or fetches it and persists it according
     /// to the provided [`Scope`].
     /// It is possible to avoid using the shared cache using the `use_shared_cache` parameter.
-    pub async fn fetch_file(
-        &self,
-        scope: &Scope,
-        file: RemoteFile,
-        use_param_mapping: bool,
-    ) -> CacheEntry<ProguardMapper> {
+    pub async fn fetch_file(&self, scope: &Scope, file: RemoteFile) -> CacheEntry<ProguardMapper> {
         let cache_key = CacheKey::from_scoped_file(scope, &file);
 
         let request = FetchProguard {
             file,
             download_svc: Arc::clone(&self.download_svc),
-            use_param_mapping,
         };
 
         self.cache.compute_memoized(request, cache_key).await
@@ -76,7 +70,6 @@ impl ProguardService {
         sources: &[SourceConfig],
         scope: &Scope,
         debug_id: DebugId,
-        use_param_mapping: bool,
     ) -> CacheEntry<ProguardMapper> {
         let identifier = ObjectId {
             debug_id: Some(debug_id),
@@ -88,7 +81,7 @@ impl ProguardService {
             .await
             .ok_or(CacheError::NotFound)?;
 
-        self.fetch_file(scope, remote_file, use_param_mapping).await
+        self.fetch_file(scope, remote_file).await
     }
 
     /// Downloads a source bundle for the given scope and debug id.
@@ -161,7 +154,6 @@ impl ProguardMapper {
 pub struct FetchProguard {
     file: RemoteFile,
     download_svc: Arc<DownloadService>,
-    use_param_mapping: bool,
 }
 
 impl CacheItemRequest for FetchProguard {
@@ -192,7 +184,7 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(Self::Item::new(byteview, self.use_param_mapping))
+        Ok(Self::Item::new(byteview, true))
     }
 
     fn use_shared_cache(&self) -> bool {

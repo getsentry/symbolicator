@@ -26,8 +26,6 @@ pub struct JvmSymbolicationRequestBody {
     pub release_package: Option<String>,
     #[serde(default)]
     pub options: JvmRequestOptions,
-    #[serde(default)]
-    pub use_param_mapping: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -65,7 +63,6 @@ pub async fn handle_symbolication_request(
         modules,
         release_package,
         options,
-        use_param_mapping,
     } = body;
 
     let request_id = service.symbolicate_jvm_stacktraces(SymbolicateJvmStacktraces {
@@ -76,7 +73,6 @@ pub async fn handle_symbolication_request(
         modules,
         release_package,
         apply_source_context: options.apply_source_context,
-        use_param_mapping,
     })?;
 
     match service.get_response(request_id, params.timeout).await {

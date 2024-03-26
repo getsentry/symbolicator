@@ -25,11 +25,6 @@ pub struct SymbolicateJvmStacktraces {
     ///
     /// This is used to set a remapped frame's `in_app` field.
     pub release_package: Option<String>,
-    /// Whether to deobfuscate based on parameters mappings.
-    ///
-    /// This has to be set if we want to deobfuscate frames
-    /// based on the method parameters (lineno not available)
-    pub use_param_mapping: bool,
 }
 
 /// A stack frame in a JVM stacktrace.
