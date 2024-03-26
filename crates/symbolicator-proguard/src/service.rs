@@ -42,7 +42,7 @@ impl ProguardService {
     /// [`ProguardMapper`].
     pub async fn download_proguard_file(
         &self,
-        sources: Arc<[SourceConfig]>,
+        sources: &[SourceConfig],
         scope: &Scope,
         debug_id: DebugId,
     ) -> CacheEntry<ProguardMapper> {
@@ -53,7 +53,7 @@ impl ProguardService {
 
         let file = self
             .download_svc
-            .list_files(&sources, &[FileType::Proguard], &identifier)
+            .list_files(sources, &[FileType::Proguard], &identifier)
             .await
             .into_iter()
             .next()
