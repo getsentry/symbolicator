@@ -20,4 +20,4 @@ tracing = "0.1.34"
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
 symbolicator-test = { path = "../symbolicator-test" }
-tokio = { version = "1.24.2", features = ["rt", "macros", "fs"] }
+tokio = { workspace = true, features = ["rt", "macros", "fs"] }

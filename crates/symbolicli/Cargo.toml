@@ -20,7 +20,7 @@ symbolicator-native = { path = "../symbolicator-native" }
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.3.0"
-tokio = { version = "1.24.2", features = ["rt-multi-thread", "macros", "time", "sync"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }
 toml = "0.8.0"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
