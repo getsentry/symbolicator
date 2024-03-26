@@ -8,6 +8,12 @@
 - proguard: Support for source contex (#1414) by @loewenheim
 - proguard: Field `lineno` on `JvmFrame` is now optional (#1417) by @loewenheim
 
+### Dependencies
+
+- Bump Native SDK from v0.7.0 to v0.7.1 ([#1416](https://github.com/getsentry/symbolicator/pull/1416))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#071)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.7.0...0.7.1)
+
 ## 24.3.0
 
 ### Various fixes & improvements
