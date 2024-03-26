@@ -185,21 +185,20 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
-        let stack_frame = if let Some(lineno) = frame.lineno {
-            Some(proguard::StackFrame::new(
-                &frame.module,
-                &frame.function,
-                lineno as usize,
-            ))
-        } else {
-            frame.parameters.as_ref().map(|params| {
-                proguard::StackFrame::with_parameters(
-                    &frame.module,
-                    &frame.function,
-                    params.as_str(),
-                )
+        let stack_frame = frame
+            .lineno
+            .map(|lineno| {
+                proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
             })
-        };
+            .or_else(|| {
+                frame.parameters.as_ref().map(|params| {
+                    proguard::StackFrame::with_parameters(
+                        &frame.module,
+                        &frame.function,
+                        params.as_str(),
+                    )
+                })
+            });
 
         // First, try to remap the whole frame.
         // This only works if it has a line number or params.
