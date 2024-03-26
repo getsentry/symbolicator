@@ -7,6 +7,7 @@
 - proguard: Added a mandatory `index` field to `JvmFrame` (#1411) by @loewenheim
 - proguard: Support for source contex (#1414) by @loewenheim
 - proguard: Field `lineno` on `JvmFrame` is now optional (#1417) by @loewenheim
+- proguard: support method deobfuscation based on parameters mapping ([1418](https://github.com/getsentry/symbolicator/pull/1418))
 
 ## 24.3.0
 
