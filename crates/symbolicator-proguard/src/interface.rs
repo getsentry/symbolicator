@@ -88,6 +88,7 @@ pub struct JvmFrame {
     /// instead of using line numbers.
     ///
     /// example of parameters list: `okio.Buffer,long`
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<String>,
 }
 
