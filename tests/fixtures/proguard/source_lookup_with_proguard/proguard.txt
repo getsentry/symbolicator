@@ -1,0 +1,139 @@
+io.sentry.samples.instrumentation.ui.EditActivity -> io.sentry.samples.instrumentation.ui.EditActivity:
+# {"id":"sourceFile","fileName":"EditActivity.kt"}
+    int $r8$clinit -> a
+    0:65535:void <init>():15:15 -> <init>
+    1:6:void onCreate(android.os.Bundle):18:18 -> onCreate
+    7:12:void onCreate(android.os.Bundle):19:19 -> onCreate
+    13:22:void onCreate(android.os.Bundle):21:21 -> onCreate
+    23:32:void onCreate(android.os.Bundle):22:22 -> onCreate
+    33:42:void onCreate(android.os.Bundle):23:23 -> onCreate
+    43:49:void onCreate(android.os.Bundle):24:24 -> onCreate
+    50:71:void onCreate(android.os.Bundle):26:26 -> onCreate
+    72:73:java.lang.String io.sentry.samples.instrumentation.data.Track.getName():46:46 -> onCreate
+    72:73:void onCreate(android.os.Bundle):28 -> onCreate
+    74:76:void onCreate(android.os.Bundle):28:28 -> onCreate
+    77:78:java.lang.String io.sentry.samples.instrumentation.data.Track.getComposer():48:48 -> onCreate
+    77:78:void onCreate(android.os.Bundle):29 -> onCreate
+    79:81:void onCreate(android.os.Bundle):29:29 -> onCreate
+    82:83:long io.sentry.samples.instrumentation.data.Track.getMillis():51:51 -> onCreate
+    82:83:void onCreate(android.os.Bundle):30 -> onCreate
+    84:90:void onCreate(android.os.Bundle):30:30 -> onCreate
+    91:92:float io.sentry.samples.instrumentation.data.Track.getPrice():53:53 -> onCreate
+    91:92:void onCreate(android.os.Bundle):31 -> onCreate
+    93:102:void onCreate(android.os.Bundle):31:31 -> onCreate
+    103:119:void onCreate(android.os.Bundle):34:34 -> onCreate
+io.sentry.samples.instrumentation.ui.EditActivity$$ExternalSyntheticLambda0 -> io.sentry.samples.instrumentation.ui.g:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    android.widget.EditText io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$4 -> e
+    android.widget.EditText io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$3 -> d
+    android.widget.EditText io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$2 -> c
+    io.sentry.samples.instrumentation.data.Track io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$0 -> a
+    android.widget.EditText io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$1 -> b
+    io.sentry.samples.instrumentation.ui.EditActivity io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.f$5 -> f
+    void io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.<init>(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity) -> <init>
+      # {"id":"com.android.tools.r8.synthesized"}
+    19:21:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):0:0 -> onMenuItemClick
+    19:21:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    22:35:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):35:35 -> onMenuItemClick
+    22:35:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    36:44:void io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass.helloOtherInner():26:26 -> onMenuItemClick
+    36:44:void io.sentry.samples.instrumentation.ui.AnotherClassInSameFile.otherFun():21 -> onMenuItemClick
+    36:44:void io.sentry.samples.instrumentation.ui.AnotherClassInSameFile.helloOther():17 -> onMenuItemClick
+    36:44:void io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService.helloInner():10 -> onMenuItemClick
+    36:44:void io.sentry.samples.instrumentation.ui.SomeService.helloThere():5 -> onMenuItemClick
+    36:44:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):37 -> onMenuItemClick
+    36:44:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    45:58:io.sentry.protocol.SentryId io.sentry.Sentry.captureException(java.lang.Throwable):433:433 -> onMenuItemClick
+    45:58:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):39 -> onMenuItemClick
+    45:58:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    59:68:io.sentry.ITransaction io.sentry.Sentry.startTransaction(java.lang.String,java.lang.String,boolean):697:697 -> onMenuItemClick
+    59:68:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):42 -> onMenuItemClick
+    59:68:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    69:71:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):42:42 -> onMenuItemClick
+    69:71:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    72:79:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):48:48 -> onMenuItemClick
+    72:79:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    80:87:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):49:49 -> onMenuItemClick
+    80:87:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    88:95:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):50:50 -> onMenuItemClick
+    88:95:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    96:103:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):51:51 -> onMenuItemClick
+    96:103:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    104:125:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):52:52 -> onMenuItemClick
+    104:125:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    126:142:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):53:53 -> onMenuItemClick
+    126:142:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    143:164:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):54:54 -> onMenuItemClick
+    143:164:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    165:175:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):64:64 -> onMenuItemClick
+    165:175:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    176:187:void io.sentry.samples.instrumentation.ui.EditActivity.addNewTrack(java.lang.String,java.lang.String,long,float):84:84 -> onMenuItemClick
+    176:187:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):64 -> onMenuItemClick
+    176:187:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    188:190:void io.sentry.samples.instrumentation.data.Track.<init>(long,java.lang.String,java.lang.Long,java.lang.String,java.lang.Long,java.lang.Long,long,java.lang.Long,float,int,kotlin.jvm.internal.DefaultConstructorMarker):43:43 -> onMenuItemClick
+    188:190:void io.sentry.samples.instrumentation.ui.EditActivity.addNewTrack(java.lang.String,java.lang.String,long,float):84 -> onMenuItemClick
+    188:190:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):64 -> onMenuItemClick
+    188:190:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    191:198:void io.sentry.samples.instrumentation.ui.EditActivity.addNewTrack(java.lang.String,java.lang.String,long,float):94:94 -> onMenuItemClick
+    191:198:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):64 -> onMenuItemClick
+    191:198:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    199:211:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):66:66 -> onMenuItemClick
+    199:211:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    212:227:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):67:67 -> onMenuItemClick
+    212:227:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    228:238:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):69:69 -> onMenuItemClick
+    228:238:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    239:250:io.sentry.samples.instrumentation.data.Track io.sentry.samples.instrumentation.data.Track.copy$default(io.sentry.samples.instrumentation.data.Track,long,java.lang.String,java.lang.Long,java.lang.String,java.lang.Long,java.lang.Long,long,java.lang.Long,float,int,java.lang.Object):0:0 -> onMenuItemClick
+    239:250:void io.sentry.samples.instrumentation.ui.EditActivity.update(io.sentry.samples.instrumentation.data.Track,java.lang.String,java.lang.String,long,float):100 -> onMenuItemClick
+    239:250:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):69 -> onMenuItemClick
+    239:250:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    251:265:io.sentry.samples.instrumentation.data.Track io.sentry.samples.instrumentation.data.Track.copy(long,java.lang.String,java.lang.Long,java.lang.String,java.lang.Long,java.lang.Long,long,java.lang.Long,float):0:0 -> onMenuItemClick
+    251:265:io.sentry.samples.instrumentation.data.Track io.sentry.samples.instrumentation.data.Track.copy$default(io.sentry.samples.instrumentation.data.Track,long,java.lang.String,java.lang.Long,java.lang.String,java.lang.Long,java.lang.Long,long,java.lang.Long,float,int,java.lang.Object):0 -> onMenuItemClick
+    251:265:void io.sentry.samples.instrumentation.ui.EditActivity.update(io.sentry.samples.instrumentation.data.Track,java.lang.String,java.lang.String,long,float):100 -> onMenuItemClick
+    251:265:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):69 -> onMenuItemClick
+    251:265:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    266:273:void io.sentry.samples.instrumentation.ui.EditActivity.update(io.sentry.samples.instrumentation.data.Track,java.lang.String,java.lang.String,long,float):106:106 -> onMenuItemClick
+    266:273:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):69 -> onMenuItemClick
+    266:273:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    274:286:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):71:71 -> onMenuItemClick
+    274:286:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    287:301:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):72:72 -> onMenuItemClick
+    287:301:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    302:306:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):74:74 -> onMenuItemClick
+    302:306:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    307:312:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):75:75 -> onMenuItemClick
+    307:312:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    313:316:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):56:56 -> onMenuItemClick
+    313:316:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}
+    317:320:boolean io.sentry.samples.instrumentation.ui.EditActivity.onCreate$lambda-1(io.sentry.samples.instrumentation.data.Track,android.widget.EditText,android.widget.EditText,android.widget.EditText,android.widget.EditText,io.sentry.samples.instrumentation.ui.EditActivity,android.view.MenuItem):61:61 -> onMenuItemClick
+    317:320:boolean io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0.onMenuItemClick(android.view.MenuItem):0 -> onMenuItemClick
+      # {"id":"com.android.tools.r8.synthesized"}

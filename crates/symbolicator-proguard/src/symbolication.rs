@@ -1,11 +1,14 @@
 use crate::interface::{
-    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmStacktrace, ProguardError,
-    ProguardErrorKind, SymbolicateJvmStacktraces,
+    CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
+    ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
 use crate::ProguardService;
 
 use futures::future;
+use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
+use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::CacheError;
+use symbolicator_service::source_context::get_context_lines;
 
 impl ProguardService {
     /// Symbolicates a JVM event.
@@ -23,15 +26,20 @@ impl ProguardService {
             stacktraces,
             modules,
             release_package,
-            ..
+            apply_source_context,
         } = request;
 
-        let maybe_mappers = future::join_all(modules.iter().map(|module| async {
-            let file = self
-                .download_proguard_file(&sources, &scope, module.uuid)
-                .await;
-            (module.uuid, file)
-        }))
+        let maybe_mappers = future::join_all(
+            modules
+                .iter()
+                .filter(|module| module.r#type == JvmModuleType::Proguard)
+                .map(|module| async {
+                    let file = self
+                        .download_proguard_file(&sources, &scope, module.uuid)
+                        .await;
+                    (module.uuid, file)
+                }),
+        )
         .await;
 
         let (mut mappers, mut errors) = (Vec::new(), Vec::new());
@@ -58,6 +66,41 @@ impl ProguardService {
             }
         }
 
+        let maybe_source_bundles = future::join_all(
+            modules
+                .iter()
+                .filter(|module| module.r#type == JvmModuleType::Source)
+                .map(|module| async {
+                    let file = self
+                        .download_source_bundle(sources.clone(), &scope, module.uuid)
+                        .await;
+                    (module.uuid, file)
+                }),
+        )
+        .await;
+
+        let source_bundles: Vec<_> = maybe_source_bundles
+            .into_iter()
+            .filter_map(|(debug_id, maybe_bundle)| match maybe_bundle {
+                Ok(b) => Some((debug_id, b)),
+                Err(e) => {
+                    tracing::debug!(%debug_id, error=%e, "Failed to download source bundle");
+                    None
+                }
+            })
+            .collect();
+
+        let source_bundle_sessions: Vec<_> = source_bundles
+            .iter()
+            .filter_map(|(debug_id, bundle)| match bundle.object().debug_session() {
+                Ok(ObjectDebugSession::SourceBundle(session)) => Some(session),
+                _ => {
+                    tracing::debug!(%debug_id, "Failed to open debug session for source bundle");
+                    None
+                }
+            })
+            .collect();
+
         let remapped_exceptions = exceptions
             .into_iter()
             .map(|raw_exception| {
@@ -65,7 +108,7 @@ impl ProguardService {
             })
             .collect();
 
-        let remapped_stacktraces = stacktraces
+        let mut remapped_stacktraces: Vec<_> = stacktraces
             .into_iter()
             .map(|raw_stacktrace| {
                 let remapped_frames = raw_stacktrace
@@ -80,6 +123,15 @@ impl ProguardService {
                 }
             })
             .collect();
+
+        if apply_source_context {
+            for frame in remapped_stacktraces
+                .iter_mut()
+                .flat_map(|st| st.frames.iter_mut())
+            {
+                Self::apply_source_context(&source_bundle_sessions, frame);
+            }
+        }
 
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
@@ -203,6 +255,69 @@ impl ProguardService {
         // Return the raw frame if remapping didn't work
         vec![frame.clone()]
     }
+
+    /// Applies source context from the given list of source bundles to a frame.
+    ///
+    /// If one of the source bundles contains the correct file name, we apply it, otherwise
+    /// the frame stays unmodified.
+    fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
+        let source_file_name = build_source_file_name(frame);
+        for session in source_bundles {
+            let Ok(Some(source)) = session.source_by_url(&source_file_name) else {
+                continue;
+            };
+
+            let Some(contents) = source.contents() else {
+                continue;
+            };
+
+            if let Some((pre_context, context_line, post_context)) =
+                get_context_lines(contents, frame.lineno as usize, None, None)
+            {
+                frame.pre_context = pre_context;
+                frame.context_line = Some(context_line);
+                frame.post_context = post_context;
+                break;
+            }
+        }
+    }
+}
+
+/// Checks whether `abs_path` is a valid path, and if so, returns the part
+/// of `abs_path` before the rightmost `.`.
+///
+/// An `abs_path` is valid if it contains a `.` and doesn't contain a `$`.
+fn is_valid_path(abs_path: &str) -> Option<&str> {
+    if abs_path.contains('$') {
+        return None;
+    }
+    let (before, _) = abs_path.rsplit_once('.')?;
+    Some(before)
+}
+
+/// Constructs a source file name out of a frame's `abs_path` and `module`.
+fn build_source_file_name(frame: &JvmFrame) -> String {
+    let abs_path = frame.abs_path.as_deref();
+    let module = &frame.module;
+    let mut source_file_name = String::from("~/");
+
+    match abs_path.and_then(is_valid_path) {
+        Some(abs_path_before_dot) => {
+            if let Some((module_before_dot, _)) = module.rsplit_once('.') {
+                source_file_name.push_str(&module_before_dot.replace('.', "/"));
+                source_file_name.push('/');
+            }
+            source_file_name.push_str(abs_path_before_dot);
+        }
+        None => {
+            let module_before_dollar = module.rsplit_once('$').map(|p| p.0).unwrap_or(module);
+            source_file_name.push_str(&module_before_dollar.replace('.', "/"));
+        }
+    };
+
+    // fake extension because we don't know whether it's .java, .kt or something else
+    source_file_name.push_str(".jvm");
+    source_file_name
 }
 
 #[cfg(test)]
