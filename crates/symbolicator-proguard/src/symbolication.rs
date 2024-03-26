@@ -35,7 +35,7 @@ impl ProguardService {
                 .filter(|module| module.r#type == JvmModuleType::Proguard)
                 .map(|module| async {
                     let file = self
-                        .download_proguard_file(&sources, &scope, module.uuid)
+                        .download_proguard_file(sources.clone(), &scope, module.uuid)
                         .await;
                     (module.uuid, file)
                 }),
