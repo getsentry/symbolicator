@@ -132,11 +132,10 @@ pub struct ProguardMapper {
 }
 
 impl ProguardMapper {
-    pub fn new(byteview: ByteView<'static>, use_param_mapping: bool) -> Self {
+    pub fn new(byteview: ByteView<'static>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapper =
-                proguard::ProguardMapper::new_with_param_mapping(mapping, use_param_mapping);
+            let mapper = proguard::ProguardMapper::new_with_param_mapping(mapping, true);
             ProguardInner { mapper }
         });
 
@@ -184,7 +183,7 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(Self::Item::new(byteview, true))
+        Ok(Self::Item::new(byteview))
     }
 
     fn use_shared_cache(&self) -> bool {
