@@ -39,7 +39,7 @@ impl ProguardService {
     }
 
     /// Downloads a proguard file for the given scope and debug id and converts it into a
-    /// [`ProguardMapper`].
+    /// `ProguardMapper`.
     pub async fn download_proguard_file(
         &self,
         sources: &[SourceConfig],
