@@ -135,7 +135,7 @@ impl ProguardMapper {
     pub fn new(byteview: ByteView<'static>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapper = proguard::ProguardMapper::new(mapping);
+            let mapper = proguard::ProguardMapper::new_with_param_mapping(mapping, true);
             ProguardInner { mapper }
         });
 
