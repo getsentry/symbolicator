@@ -38,33 +38,8 @@ impl ProguardService {
         }
     }
 
-    async fn find_proguard_file(
-        &self,
-        sources: &[SourceConfig],
-        identifier: &ObjectId,
-    ) -> Option<RemoteFile> {
-        let file_ids = self
-            .download_svc
-            .list_files(sources, &[FileType::Proguard], identifier)
-            .await;
-
-        file_ids.into_iter().next()
-    }
-
-    /// Retrieves the given [`RemoteFile`] from cache, or fetches it and persists it according
-    /// to the provided [`Scope`].
-    /// It is possible to avoid using the shared cache using the `use_shared_cache` parameter.
-    pub async fn fetch_file(&self, scope: &Scope, file: RemoteFile) -> CacheEntry<ProguardMapper> {
-        let cache_key = CacheKey::from_scoped_file(scope, &file);
-
-        let request = FetchProguard {
-            file,
-            download_svc: Arc::clone(&self.download_svc),
-        };
-
-        self.cache.compute_memoized(request, cache_key).await
-    }
-
+    /// Downloads a proguard file for the given scope and debug id and converts it into a
+    /// `ProguardMapper`.
     pub async fn download_proguard_file(
         &self,
         sources: &[SourceConfig],
@@ -76,12 +51,22 @@ impl ProguardService {
             ..Default::default()
         };
 
-        let remote_file = self
-            .find_proguard_file(sources, &identifier)
+        let file = self
+            .download_svc
+            .list_files(sources, &[FileType::Proguard], &identifier)
             .await
+            .into_iter()
+            .next()
             .ok_or(CacheError::NotFound)?;
 
-        self.fetch_file(scope, remote_file).await
+        let cache_key = CacheKey::from_scoped_file(scope, &file);
+
+        let request = FetchProguard {
+            file,
+            download_svc: Arc::clone(&self.download_svc),
+        };
+
+        self.cache.compute_memoized(request, cache_key).await
     }
 
     /// Downloads a source bundle for the given scope and debug id.
