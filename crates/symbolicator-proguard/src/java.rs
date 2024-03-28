@@ -56,7 +56,7 @@ fn byte_code_type_to_java_type(
 
 // parse_obfuscated_bytecode_signature will parse an obfuscated signatures into parameter
 // and return types that can be then deobfuscated
-fn parse_obfuscated_bytecode_signature(signature: &String) -> Option<(Vec<String>, String)> {
+fn parse_obfuscated_bytecode_signature(signature: &str) -> Option<(Vec<String>, String)> {
     let mut chrs = signature.chars();
 
     let token = chrs.next();
@@ -91,7 +91,7 @@ fn parse_obfuscated_bytecode_signature(signature: &String) -> Option<(Vec<String
             }
         } else if token == 'L' {
             tmp_buf.push(token);
-            while let Some(c) = param_chrs.next() {
+            for c in param_chrs.by_ref() {
                 tmp_buf.push(c);
                 if c == ';' {
                     break;
