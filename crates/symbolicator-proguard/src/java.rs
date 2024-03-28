@@ -115,7 +115,7 @@ fn parse_obfuscated_bytecode_signature(signature: &str) -> Option<(Vec<String>, 
 // returns a tuple where the first element is the list of the function
 // parameters and the second one is the return type
 pub fn deobfuscate_bytecode_signature(
-    signature: &String,
+    signature: &str,
     mappers: &[&proguard::ProguardMapper],
 ) -> Option<(Vec<String>, String)> {
     if let Some((parameter_types, return_type)) = parse_obfuscated_bytecode_signature(signature) {
@@ -222,7 +222,7 @@ mod tests {
         ]);
 
         for (obfuscated, expected) in tests {
-            let signature = deobfuscate_bytecode_signature(&obfuscated.to_string(), &[&mapper]);
+            let signature = deobfuscate_bytecode_signature(obfuscated, &[&mapper]);
             assert_eq!(format_signature(&signature), expected.to_string(),);
         }
     }
