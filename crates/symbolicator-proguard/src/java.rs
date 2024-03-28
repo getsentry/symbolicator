@@ -54,7 +54,7 @@ fn byte_code_type_to_java_type(
     byte_code_type
 }
 
-// parse_obfuscated_signature will parse an obfuscated signatures into parameter
+// parse_obfuscated_bytecode_signature will parse an obfuscated signatures into parameter
 // and return types that can be then deobfuscated
 fn parse_obfuscated_bytecode_signature(signature: &String) -> Option<(Vec<String>, String)> {
     let mut chrs = signature.chars();
