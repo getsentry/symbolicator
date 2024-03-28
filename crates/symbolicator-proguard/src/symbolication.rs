@@ -2,6 +2,7 @@ use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
+use crate::java::{deobfuscate_bytecode_signature, format_signature};
 use crate::ProguardService;
 
 use futures::future;
@@ -184,23 +185,34 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
+        let mut mapped_signature = frame.signature.clone();
+        let mut parameters: String = String::new();
+
         let stack_frame = frame
             .lineno
             .map(|lineno| {
                 proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
             })
             .or_else(|| {
-                frame.parameters.as_ref().map(|params| {
-                    proguard::StackFrame::with_parameters(
-                        &frame.module,
-                        &frame.function,
-                        params.as_str(),
-                    )
-                })
+                if let Some(signature) = &frame.signature {
+                    let types = deobfuscate_bytecode_signature(signature, mappers);
+                    mapped_signature = Some(format_signature(&types));
+
+                    types.map(|(params, _)| {
+                        parameters = params.join(",");
+                        proguard::StackFrame::with_parameters(
+                            &frame.module,
+                            &frame.function,
+                            parameters.as_str(),
+                        )
+                    })
+                } else {
+                    None
+                }
             });
 
         // First, try to remap the whole frame.
-        // This only works if it has a line number or params.
+        // This only works if it has a line number or signature.
         if let Some(proguard_frame) = stack_frame {
             let mut mapped_frames = Vec::new();
 
@@ -223,6 +235,7 @@ impl ProguardService {
                             module: new_frame.class().to_owned(),
                             function: new_frame.method().to_owned(),
                             lineno: Some(new_frame.line() as u32),
+                            signature: mapped_signature.clone(),
                             ..frame.clone()
                         };
 

@@ -1,4 +1,5 @@
 pub mod interface;
+mod java;
 mod service;
 mod symbolication;
 
