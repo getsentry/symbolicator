@@ -8,6 +8,7 @@
 - proguard: Support for source contex (#1414) by @loewenheim
 - proguard: Field `lineno` on `JvmFrame` is now optional (#1417) by @loewenheim
 - proguard: support method deobfuscation based on parameters mapping (#1418) by @viglia
+- proguard: Add signature support and remove parameters from JvmFrame (#1421) by @viglia
 
 ### Dependencies
 
