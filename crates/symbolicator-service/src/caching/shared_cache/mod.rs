@@ -6,7 +6,6 @@
 //! caches may also be saved via this shared cache.
 
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -91,7 +90,7 @@ impl GcsState {
         let auth_manager = match config.service_account_path {
             Some(ref path) => {
                 let service_account = CustomServiceAccount::from_file(path)?;
-                AuthenticationManager::from(service_account)
+                AuthenticationManager::try_from(service_account)?
             }
             None => {
                 // For fresh k8s pods the GKE metadata server may not accept connections
@@ -805,7 +804,6 @@ impl SharedCacheService {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::NamedTempFile;
     use uuid::Uuid;
 
     use symbolicator_test::TestGcsCredentials;

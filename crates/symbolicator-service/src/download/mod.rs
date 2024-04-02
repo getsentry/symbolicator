@@ -4,7 +4,6 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::collections::VecDeque;
-use std::convert::TryInto;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -699,8 +698,6 @@ fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Dura
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
-
-    use symbolicator_sources::{HttpRemoteFile, ObjectType, SourceConfig};
 
     use super::*;
 

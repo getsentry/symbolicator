@@ -93,7 +93,6 @@
 //!          +-----------+
 //! ```
 
-use std::convert::TryFrom;
 use std::fmt;
 
 use symbolic::common::ByteView;

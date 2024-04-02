@@ -288,7 +288,9 @@ fn symbolicate_frame(
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
         .ok_or(FrameStatus::UnknownImage)?;
 
-    frame.package = lookup_result.object_info.raw.code_file.clone();
+    frame
+        .package
+        .clone_from(&lookup_result.object_info.raw.code_file);
 
     match lookup_result.cache {
         Ok(CacheFileEntry::SymCache(symcache)) => {

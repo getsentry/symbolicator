@@ -114,7 +114,6 @@ impl fmt::Write for CacheKeyBuilder {
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use std::sync::Arc;
 
     use symbolicator_sources::{
         FilesystemRemoteFile, FilesystemSourceConfig, SourceId, SourceLocation,

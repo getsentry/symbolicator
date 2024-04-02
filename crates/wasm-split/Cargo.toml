@@ -10,4 +10,4 @@ anyhow = "1.0.57"
 clap = { version = "4.3.2", features = ["derive"] }
 hex = "0.4.2"
 uuid = { version = "1.0.0", features = ["v4"] }
-wasmbin = "0.6.0"
+wasmbin = "0.8.1"
