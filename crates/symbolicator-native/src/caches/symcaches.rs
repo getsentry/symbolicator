@@ -275,19 +275,18 @@ fn write_symcache(
 mod tests {
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::time::Duration;
 
     use symbolic::common::{DebugId, Uuid};
-
-    use super::*;
     use symbolicator_service::caching::Caches;
     use symbolicator_service::config::{CacheConfigs, Config};
     use symbolicator_service::download::DownloadService;
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceConfig, SourceId,
+        CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceId,
     };
     use symbolicator_test::{self as test, fixture};
+
+    use super::*;
 
     /// Creates a `SymCacheActor` with the given cache directory
     /// and timeout for download cache misses.

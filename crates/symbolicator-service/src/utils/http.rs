@@ -102,7 +102,7 @@ pub fn create_client(
 ) -> reqwest::Client {
     let mut builder = reqwest::ClientBuilder::new()
         .gzip(true)
-        .trust_dns(true)
+        .hickory_dns(true)
         .connect_timeout(timeouts.connect)
         .timeout(timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30))

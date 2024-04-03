@@ -565,7 +565,7 @@ pub fn record_task_metrics(name: &str, metrics: &tokio_metrics::TaskMetrics) {
 #[cfg(test)]
 mod tests {
     use symbolicator_native::interface::{
-        CompleteObjectInfo, RawFrame, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
+        CompleteObjectInfo, RawFrame, RawStacktrace, StacktraceOrigin,
     };
     use symbolicator_service::types::RawObjectInfo;
     use symbolicator_service::utils::hex::HexValue;

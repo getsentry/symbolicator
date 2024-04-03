@@ -207,7 +207,7 @@ impl std::hash::Hash for S3SourceKey {
 mod tests {
     use super::*;
 
-    use crate::{SourceConfig, SourceId};
+    use crate::SourceConfig;
 
     #[test]
     fn test_s3_config_builtin_region() {

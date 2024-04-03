@@ -239,20 +239,18 @@ impl CacheItemRequest for FetchFileDataRequest {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::time::Duration;
 
+    use symbolic::common::DebugId;
     use symbolicator_sources::FileType;
+    use tempfile::TempDir;
 
-    use super::*;
     use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::download::DownloadService;
     use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
 
-    use symbolic::common::DebugId;
-    use tempfile::TempDir;
+    use super::*;
 
     async fn make_objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let config = Config {

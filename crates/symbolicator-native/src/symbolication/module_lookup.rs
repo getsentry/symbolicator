@@ -476,7 +476,6 @@ impl ModuleLookup {
 
 #[cfg(test)]
 mod tests {
-    use symbolicator_service::types::RawObjectInfo;
     use symbolicator_service::utils::hex::HexValue;
 
     use super::*;

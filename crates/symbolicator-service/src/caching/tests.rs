@@ -1,8 +1,7 @@
-use std::convert::TryInto;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
-use std::sync::atomic::{AtomicIsize, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
 
@@ -14,14 +13,12 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use crate::config::{
-    CacheConfig, CacheConfigs, Config, DerivedCacheConfig, DiagnosticsCacheConfig,
-    DownloadedCacheConfig,
+    CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
 };
 use crate::test;
 
 use super::cache_error::cache_entry_from_bytes;
-use super::fs::ExpirationStrategy;
-use super::shared_cache::config::{SharedCacheBackendConfig, SharedCacheConfig};
+use super::shared_cache::config::SharedCacheBackendConfig;
 use super::*;
 
 fn tempdir() -> io::Result<tempfile::TempDir> {

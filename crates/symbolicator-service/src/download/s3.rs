@@ -81,7 +81,7 @@ impl S3Downloader {
 
     async fn create_s3_client(
         &self,
-        provider: impl ProvideCredentials + Send + Sync + 'static,
+        provider: impl ProvideCredentials + 'static,
         region: &S3Region,
     ) -> Client {
         let mut config_loader = aws_config::from_env()
@@ -214,7 +214,6 @@ mod tests {
 
     use crate::test;
 
-    use aws_sdk_s3::client::Client;
     use aws_sdk_s3::primitives::ByteStream;
     use sha1::{Digest as _, Sha1};
 
