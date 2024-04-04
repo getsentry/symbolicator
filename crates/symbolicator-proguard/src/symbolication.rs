@@ -184,19 +184,35 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
+        let deobfuscated_signature: Option<proguard::DeobfuscatedSignature> =
+            frame.signature.as_ref().and_then(|signature| {
+                for mapper in mappers {
+                    if let Some(deobfuscated_signature) = mapper.deobfuscate_signature(signature) {
+                        return Some(deobfuscated_signature);
+                    }
+                }
+                None
+            });
+        let params = deobfuscated_signature
+            .as_ref()
+            .map_or(String::new(), |sig| {
+                String::from_iter(sig.parameters_types().map(|param| format!("{},", param)))
+            });
         let stack_frame = frame
             .lineno
             .map(|lineno| {
                 proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
             })
             .or_else(|| {
-                frame.parameters.as_ref().map(|params| {
-                    proguard::StackFrame::with_parameters(
+                if deobfuscated_signature.as_ref().is_some() {
+                    Some(proguard::StackFrame::with_parameters(
                         &frame.module,
                         &frame.function,
                         params.as_str(),
-                    )
-                })
+                    ))
+                } else {
+                    None
+                }
             });
 
         // First, try to remap the whole frame.
@@ -240,6 +256,12 @@ impl ProguardService {
                             {
                                 mapped_frame.in_app = Some(true);
                             }
+                        }
+                        // if there is a signature that has been deobfuscated,
+                        // add it to the mapped frame
+                        if deobfuscated_signature.is_some() {
+                            mapped_frame.signature =
+                                Some(deobfuscated_signature.as_ref().unwrap().format_signature());
                         }
                         mapped_frame
                     })
