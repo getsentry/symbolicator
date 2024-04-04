@@ -193,9 +193,9 @@ impl ProguardService {
                 }
                 None
             });
-        let mut params = deobfuscated_signature.as_ref().map(|sig| {
-            String::from_iter(sig.parameters_types().map(|param| format!("{},", param)))
-        });
+        let mut params = deobfuscated_signature
+            .as_ref()
+            .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
         let stack_frame = frame
             .lineno
             .map(|lineno| {
@@ -203,7 +203,6 @@ impl ProguardService {
             })
             .or_else(|| {
                 params.as_mut().map(|p| {
-                    p.pop();
                     proguard::StackFrame::with_parameters(
                         &frame.module,
                         &frame.function,
