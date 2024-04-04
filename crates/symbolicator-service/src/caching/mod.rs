@@ -295,10 +295,7 @@ impl Caches {
                 config,
                 config.caches.downloaded.into(),
                 max_lazy_redownloads,
-                // We use 2GiB as the in-memory cache size for Proguard files.
-                // Note that a Proguard mapper can take up hundreds of MB
-                // in memory.
-                2 * 1024 * 1024 * 1024,
+                in_memory.proguard_capacity,
             )?,
         })
     }
