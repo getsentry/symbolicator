@@ -66,7 +66,10 @@ impl ProguardService {
             download_svc: Arc::clone(&self.download_svc),
         };
 
-        self.cache.compute_memoized(request, cache_key).await
+        self.cache
+            .compute_memoized(request, cache_key)
+            .await
+            .map(|item| item.1)
     }
 
     /// Downloads a source bundle for the given scope and debug id.
@@ -141,7 +144,9 @@ pub struct FetchProguard {
 }
 
 impl CacheItemRequest for FetchProguard {
-    type Item = ProguardMapper;
+    /// The first component is the estimated memory footprint of the mapper,
+    /// computed as 2x the size of the mapping file on disk.
+    type Item = (u32, ProguardMapper);
 
     const VERSIONS: CacheVersions = PROGUARD_CACHE_VERSIONS;
 
@@ -168,10 +173,18 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        Ok(Self::Item::new(byteview))
+        let weight = byteview.len().try_into().unwrap_or(u32::MAX);
+        // NOTE: In an extremely unscientific test, the proguard mapper was slightly less
+        // than twice as big in memory as the file on disk.
+        let weight = weight.saturating_mul(2);
+        Ok((weight, ProguardMapper::new(byteview)))
     }
 
     fn use_shared_cache(&self) -> bool {
         false
+    }
+
+    fn weight(item: &Self::Item) -> u32 {
+        item.0.max(std::mem::size_of::<Self::Item>() as u32)
     }
 }

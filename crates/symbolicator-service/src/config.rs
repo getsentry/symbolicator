@@ -314,6 +314,13 @@ pub struct InMemoryCacheConfig {
     ///
     /// Defaults to `3 GiB (= 3_221_225_472)`
     pub fileinbundle_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory proguard mapper cache.
+    ///
+    /// The in-memory size limit is a best-effort approximation, and not an exact limit.
+    ///
+    /// Defaults to `2 GiB`.
+    pub proguard_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
@@ -330,6 +337,10 @@ impl Default for InMemoryCacheConfig {
             // We noticed a significant reduction in CPU usage with a cache size of ~2G, which
             // resulted in a hit ratio of ~60-65%. Lets give it a bit more then and see what happens.
             fileinbundle_capacity: 3 * 1024 * meg,
+            // We use 2GiB as the in-memory cache size for Proguard files.
+            // Note that a Proguard mapper can take up hundreds of MB
+            // in memory.
+            proguard_capacity: 2 * 1024 * meg,
         }
     }
 }

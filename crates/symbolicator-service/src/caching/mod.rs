@@ -195,6 +195,7 @@ pub struct Caches {
     pub sourcefiles: Cache,
     /// Store for minidump data symbolicator failed to process, for diagnostics purposes
     pub diagnostics: Cache,
+    /// Proguard mapping files.
     pub proguard: Cache,
 }
 
@@ -294,7 +295,7 @@ impl Caches {
                 config,
                 config.caches.downloaded.into(),
                 max_lazy_redownloads,
-                default_cap,
+                in_memory.proguard_capacity,
             )?,
         })
     }
