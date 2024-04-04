@@ -193,26 +193,23 @@ impl ProguardService {
                 }
                 None
             });
-        let params = deobfuscated_signature
-            .as_ref()
-            .map_or(String::new(), |sig| {
-                String::from_iter(sig.parameters_types().map(|param| format!("{},", param)))
-            });
+        let mut params = deobfuscated_signature.as_ref().map(|sig| {
+            String::from_iter(sig.parameters_types().map(|param| format!("{},", param)))
+        });
         let stack_frame = frame
             .lineno
             .map(|lineno| {
                 proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
             })
             .or_else(|| {
-                if deobfuscated_signature.as_ref().is_some() {
-                    Some(proguard::StackFrame::with_parameters(
+                params.as_mut().map(|p| {
+                    p.pop();
+                    proguard::StackFrame::with_parameters(
                         &frame.module,
                         &frame.function,
-                        params.as_str(),
-                    ))
-                } else {
-                    None
-                }
+                        p.as_str(),
+                    )
+                })
             });
 
         // First, try to remap the whole frame.
@@ -259,9 +256,8 @@ impl ProguardService {
                         }
                         // if there is a signature that has been deobfuscated,
                         // add it to the mapped frame
-                        if deobfuscated_signature.is_some() {
-                            mapped_frame.signature =
-                                Some(deobfuscated_signature.as_ref().unwrap().format_signature());
+                        if let Some(signature) = &deobfuscated_signature {
+                            mapped_frame.signature = Some(signature.format_signature());
                         }
                         mapped_frame
                     })
@@ -436,17 +432,24 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 index: 1,
                 ..Default::default()
             },
+            JvmFrame {
+                function: "t".to_owned(),
+                module: "io.sentry.sample.MainActivity".to_owned(),
+                signature: Some("(Landroid/view/View;)V".to_owned()),
+                index: 2,
+                ..Default::default()
+            },
         ];
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new(mapping);
+        let mapper = ProguardMapper::new_with_param_mapping(mapping, true);
 
         let mapped_frames: Vec<_> = frames
             .iter()
             .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
             .collect();
 
-        assert_eq!(mapped_frames.len(), 4);
+        assert_eq!(mapped_frames.len(), 5);
 
         assert_eq!(mapped_frames[0].function, "onClick");
         assert_eq!(
@@ -476,6 +479,12 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         );
         assert_eq!(mapped_frames[3].module, "io.sentry.sample.MainActivity");
         assert_eq!(mapped_frames[3].index, 1);
+
+        assert_eq!(mapped_frames[4].function, "onClickHandler");
+        assert_eq!(
+            mapped_frames[4].signature.as_ref().unwrap(),
+            "(android.view.View)"
+        );
     }
 
     // based on the Python test `test_sets_inapp_after_resolving`.
