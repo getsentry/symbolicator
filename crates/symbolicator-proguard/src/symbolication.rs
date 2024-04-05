@@ -445,6 +445,10 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 ..Default::default()
             },
             JvmFrame {
+                // this function map is onClickHandler(android.view.View):40 -> t
+                // not onClickHandler(android.view.View):40 -> onClickHandler
+                // hence the whole frame remapping should fail,
+                // but the signature should still be properly translated to java type
                 function: "onClickHandler".to_owned(),
                 module: "io.sentry.sample.MainActivity".to_owned(),
                 signature: Some("(Landroid/view/View;)V".to_owned()),
