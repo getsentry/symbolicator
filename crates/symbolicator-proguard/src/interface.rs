@@ -77,14 +77,12 @@ pub struct JvmFrame {
     /// expanded from the frame with index `i` will also have index `i`.
     pub index: usize,
 
-    /// Comma separated list of method's parameters.
+    /// Method signature.
     ///
     /// This has to be set when we want to deobfuscate based on the function parameters
     /// instead of using line numbers.
-    ///
-    /// example of parameters list: `okio.Buffer,long`
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<String>,
+    pub signature: Option<String>,
 }
 
 /// An exception in a JVM event.
