@@ -292,7 +292,13 @@ impl ProguardService {
         }
 
         // Return the raw frame if remapping didn't work
-        vec![frame.clone()]
+        // but add the signature if we received one and we were
+        // able to translate/deobfuscate it
+        let mut frame = frame.clone();
+        if let Some(signature) = &deobfuscated_signature {
+            frame.signature = Some(signature.format_signature());
+        }
+        vec![frame]
     }
 
     /// Applies source context from the given list of source bundles to a frame.
@@ -447,12 +453,22 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             JvmFrame {
                 // this function map is onClickHandler(android.view.View):40 -> t
                 // not onClickHandler(android.view.View):40 -> onClickHandler
-                // hence the whole frame remapping should fail,
+                // hence the class remapping should fail,
                 // but the signature should still be properly translated to java type
                 function: "onClickHandler".to_owned(),
                 module: "io.sentry.sample.MainActivity".to_owned(),
                 signature: Some("(Landroid/view/View;)V".to_owned()),
                 index: 3,
+                ..Default::default()
+            },
+            JvmFrame {
+                // this module (Class) does not exist in the mapping,
+                // hence the whole frame remapping should fail,
+                // but the signature should still be properly translated to java type
+                function: "onClickHandler".to_owned(),
+                module: "io.sentry.sample.ClassDoesNotExist".to_owned(),
+                signature: Some("(Landroid/view/View;)V".to_owned()),
+                index: 4,
                 ..Default::default()
             },
         ];
@@ -465,7 +481,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
             .collect();
 
-        assert_eq!(mapped_frames.len(), 6);
+        assert_eq!(mapped_frames.len(), 7);
 
         assert_eq!(mapped_frames[0].function, "onClick");
         assert_eq!(
@@ -505,6 +521,12 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         assert_eq!(mapped_frames[5].function, "onClickHandler");
         assert_eq!(
             mapped_frames[5].signature.as_ref().unwrap(),
+            "(android.view.View)"
+        );
+
+        assert_eq!(mapped_frames[6].function, "onClickHandler");
+        assert_eq!(
+            mapped_frames[6].signature.as_ref().unwrap(),
             "(android.view.View)"
         );
     }
