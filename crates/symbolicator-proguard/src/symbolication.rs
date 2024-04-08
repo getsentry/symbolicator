@@ -294,14 +294,11 @@ impl ProguardService {
         // Return the raw frame if remapping didn't work
         // but add the signature if we received one and we were
         // able to translate/deobfuscate it
+        let mut frame = frame.clone();
         if let Some(signature) = &deobfuscated_signature {
-            //frame.signature = Some(signature.format_signature());
-            return vec![JvmFrame {
-                signature: Some(signature.format_signature()),
-                ..frame.clone()
-            }];
+            frame.signature = Some(signature.format_signature());
         }
-        vec![frame.clone()]
+        vec![frame]
     }
 
     /// Applies source context from the given list of source bundles to a frame.
