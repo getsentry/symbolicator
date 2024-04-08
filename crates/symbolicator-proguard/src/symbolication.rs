@@ -283,6 +283,11 @@ impl ProguardService {
                 }
             }
 
+            // if there is a signature that has been deobfuscated,
+            // add it to the mapped frame
+            if let Some(signature) = &deobfuscated_signature {
+                mapped_frame.signature = Some(signature.format_signature());
+            }
             return vec![mapped_frame];
         }
 
@@ -439,6 +444,17 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
                 index: 2,
                 ..Default::default()
             },
+            JvmFrame {
+                // this function map is onClickHandler(android.view.View):40 -> t
+                // not onClickHandler(android.view.View):40 -> onClickHandler
+                // hence the whole frame remapping should fail,
+                // but the signature should still be properly translated to java type
+                function: "onClickHandler".to_owned(),
+                module: "io.sentry.sample.MainActivity".to_owned(),
+                signature: Some("(Landroid/view/View;)V".to_owned()),
+                index: 3,
+                ..Default::default()
+            },
         ];
 
         let mapping = ProguardMapping::new(proguard_source);
@@ -449,7 +465,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
             .collect();
 
-        assert_eq!(mapped_frames.len(), 5);
+        assert_eq!(mapped_frames.len(), 6);
 
         assert_eq!(mapped_frames[0].function, "onClick");
         assert_eq!(
@@ -483,6 +499,12 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         assert_eq!(mapped_frames[4].function, "onClickHandler");
         assert_eq!(
             mapped_frames[4].signature.as_ref().unwrap(),
+            "(android.view.View)"
+        );
+
+        assert_eq!(mapped_frames[5].function, "onClickHandler");
+        assert_eq!(
+            mapped_frames[5].signature.as_ref().unwrap(),
             "(android.view.View)"
         );
     }
