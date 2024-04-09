@@ -190,15 +190,11 @@ impl ProguardService {
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
-        let deobfuscated_signature: Option<proguard::DeobfuscatedSignature> =
-            frame.signature.as_ref().and_then(|signature| {
-                for mapper in mappers {
-                    if let Some(deobfuscated_signature) = mapper.deobfuscate_signature(signature) {
-                        return Some(deobfuscated_signature);
-                    }
-                }
-                None
-            });
+        let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
+            mappers
+                .iter()
+                .find_map(|mapper| mapper.deobfuscate_signature(signature))
+        });
 
         let params = deobfuscated_signature
             .as_ref()
@@ -311,6 +307,10 @@ impl ProguardService {
                     module: new_frame.class().to_owned(),
                     function: new_frame.method().to_owned(),
                     lineno: Some(new_frame.line() as u32),
+                    filename: new_frame
+                        .file()
+                        .map(String::from)
+                        .or_else(|| original_frame.filename.clone()),
                     ..original_frame.clone()
                 };
 
