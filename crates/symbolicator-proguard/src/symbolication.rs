@@ -696,6 +696,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         let frame = JvmFrame {
             function: "onCreate".into(),
             module: "com.example.App".into(),
+            abs_path: Some("App.java".into()),
+            filename: Some("App.java".into()),
             index: 0,
             ..Default::default()
         };
@@ -710,6 +712,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
                 function: "onCreate".into(),
                 module: "com.example.App".into(),
                 lineno: Some(0),
+                abs_path: Some("App.java".into()),
+                filename: Some("App.java".into()),
                 index: 0,
                 ..Default::default()
             }
@@ -725,6 +729,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
                 function: "barInternalInject".into(),
                 module: "com.example.App".into(),
                 lineno: Some(0),
+                abs_path: Some("App.java".into()),
+                filename: Some("App.java".into()),
                 index: 0,
                 ..Default::default()
             }
@@ -757,6 +763,8 @@ y.b -> y.b:
         let frame = JvmFrame {
             function: "run".into(),
             module: "com.google.firebase.concurrent.a".into(),
+            abs_path: Some("CustomThreadFactory".into()),
+            filename: Some("CustomThreadFactory".into()),
             index: 0,
             ..Default::default()
         };
@@ -775,6 +783,8 @@ y.b -> y.b:
                 // also returns this, no matter whether you give it line 0 or no line at all.
                 module: "com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0".into(),
                 lineno: Some(0),
+                abs_path: Some("CustomThreadFactory".into()),
+                filename: Some("CustomThreadFactory".into()),
                 index: 0,
                 ..Default::default()
             }
@@ -792,6 +802,124 @@ y.b -> y.b:
         assert_eq!(
             build_source_file_name(&frame),
             "~/com/foo/bar/ui/activities/base/BaseActivity.jvm"
+        );
+    }
+
+    #[test]
+    fn remap_filename() {
+        let proguard_source = br#"# compiler: R8
+# compiler_version: 8.3.36
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 48ffd94
+# pg_map_hash: SHA-256 48ffd9478fda293e1c713db4cc7c449781a9e799fa504e389ee32ed19775a3ba
+io.wzieba.r8fullmoderenamessources.Foobar -> a.a:
+# {"id":"sourceFile","fileName":"Foobar.kt"}
+    1:3:void <init>():3:3 -> <init>
+    4:11:void <init>():5:5 -> <init>
+    1:7:void foo():9:9 -> a
+    8:15:void foo():10:10 -> a
+io.wzieba.r8fullmoderenamessources.FoobarKt -> a.b:
+# {"id":"sourceFile","fileName":"Foobar.kt"}
+    1:5:void main():15:15 -> a
+    6:9:void main():16:16 -> a
+    1:4:void main(java.lang.String[]):0:0 -> b
+io.wzieba.r8fullmoderenamessources.MainActivity -> io.wzieba.r8fullmoderenamessources.MainActivity:
+# {"id":"sourceFile","fileName":"MainActivity.kt"}
+    1:4:void <init>():7:7 -> <init>
+    1:1:void $r8$lambda$pOQDVg57r6gG0-DzwbGf17BfNbs(android.view.View):0:0 -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:9:void onCreate$lambda$1$lambda$0(android.view.View):14:14 -> b
+    1:3:void onCreate(android.os.Bundle):10:10 -> onCreate
+    4:8:void onCreate(android.os.Bundle):12:12 -> onCreate
+    9:16:void onCreate(android.os.Bundle):13:13 -> onCreate
+    17:20:void onCreate(android.os.Bundle):12:12 -> onCreate
+io.wzieba.r8fullmoderenamessources.MainActivity$$ExternalSyntheticLambda0 -> a.c:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    1:4:void onClick(android.view.View):0:0 -> onClick
+      # {"id":"com.android.tools.r8.synthesized"}
+io.wzieba.r8fullmoderenamessources.R -> a.d:
+    void <init>() -> <init>
+      # {"id":"com.android.tools.r8.synthesized"}"#;
+
+        let mapping = ProguardMapping::new(proguard_source);
+        assert!(mapping.is_valid());
+        assert!(mapping.has_line_info());
+        let mapper = ProguardMapper::new(mapping);
+
+        let frames: Vec<JvmFrame> = serde_json::from_str(
+            r#"[{
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "a.a",
+            "filename": "SourceFile",
+            "lineno": 12,
+            "index": 0
+        }, {
+            "function": "b",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 6,
+            "index": 1
+        }, {
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 1,
+            "index": 2
+        }, {
+            "function": "onClick",
+            "abs_path": "SourceFile",
+            "module": "a.c",
+            "filename": "SourceFile",
+            "lineno": 1,
+            "index": 3
+        }, {
+            "function": "performClick",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7659,
+            "index": 4
+        }, {
+            "function": "performClickInternal",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7636,
+            "index": 5
+        }, {
+            "function": "performClickInternal",
+            "abs_path": "Unknown Source",
+            "module": "android.view.View.-$$Nest$m",
+            "filename": "Unknown Source",
+            "lineno": 0,
+            "index": 6
+        }]"#,
+        )
+        .unwrap();
+
+        let remapped_filenames: Vec<_> = frames
+            .iter()
+            .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
+            .map(|frame| frame.filename.unwrap())
+            .collect();
+
+        assert_eq!(
+            remapped_filenames,
+            [
+                "Foobar.kt",
+                "MainActivity.kt",
+                "MainActivity.kt",
+                "MainActivity",
+                "View.java",
+                "View.java",
+                "Unknown Source"
+            ]
         );
     }
 }
