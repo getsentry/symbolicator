@@ -307,6 +307,10 @@ impl ProguardService {
                     module: new_frame.class().to_owned(),
                     function: new_frame.method().to_owned(),
                     lineno: Some(new_frame.line() as u32),
+                    abs_path: new_frame
+                        .file()
+                        .map(String::from)
+                        .or_else(|| original_frame.abs_path.clone()),
                     filename: new_frame
                         .file()
                         .map(String::from)
@@ -903,14 +907,27 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let remapped_filenames: Vec<_> = frames
+        let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
             .iter()
             .flat_map(|frame| ProguardService::map_frame(&[&mapper], frame, None).into_iter())
-            .map(|frame| frame.filename.unwrap())
-            .collect();
+            .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
+            .unzip();
 
         assert_eq!(
             remapped_filenames,
+            [
+                "Foobar.kt",
+                "MainActivity.kt",
+                "MainActivity.kt",
+                "MainActivity",
+                "View.java",
+                "View.java",
+                "Unknown Source"
+            ]
+        );
+
+        assert_eq!(
+            remapped_abs_paths,
             [
                 "Foobar.kt",
                 "MainActivity.kt",
