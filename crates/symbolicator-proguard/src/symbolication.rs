@@ -198,6 +198,10 @@ impl ProguardService {
             .as_ref()
             .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
 
+        // We create the proguard frame according to these priorities:
+        // * Use the frame's line number if it exists
+        // * Use the frame's parameters if they exist
+        // * Use line number 0
         let proguard_frame = frame
             .lineno
             .map(|lineno| {
@@ -211,17 +215,15 @@ impl ProguardService {
                         p.as_str(),
                     )
                 })
-            });
+            })
+            .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
 
         // First, try to remap the whole frame.
-        // This only works if it has a line number or params.
-        let mut frames = proguard_frame
-            .and_then(|proguard_frame| {
-                let mut mapped_frames = Vec::new();
-
-                mappers.iter().find_map(|mapper| {
-                    Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
-                })
+        let mut mapped_frames = Vec::new();
+        let mut frames = mappers
+            .iter()
+            .find_map(|mapper| {
+                Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
             })
             // Second, try to remap the frame's method.
             .or_else(|| {
