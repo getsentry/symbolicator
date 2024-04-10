@@ -223,18 +223,22 @@ impl ProguardService {
                     Self::map_full_frame(mapper, frame, &stack_frame, &mut mapped_frames)
                 })
             })
+            // Second, try to remap the frame's method.
             .or_else(|| {
                 mappers
                     .iter()
-                    .find_map(|mapper| Self::map_method(mapper, frame))
+                    .find_map(|mapper| Self::map_class_method(mapper, frame))
             })
+            // Third, try to remap just the frame's class.
             .or_else(|| {
                 mappers
                     .iter()
                     .find_map(|mapper| Self::map_class(mapper, frame))
             })
+            // If all else fails, just return the original frame.
             .unwrap_or_else(|| vec![frame.clone()]);
 
+        // Fix up the frames
         for frame in &mut frames {
             // mark the frame as in_app after deobfuscation based on the release package name
             // only if it's not present
@@ -253,12 +257,18 @@ impl ProguardService {
         frames
     }
 
+    /// Tries to remap a `JvmFrame` using a `proguard::StackFrame`
+    /// constructed from it.
+    ///
+    /// The `buf` parameter is used as a buffer for the frames returned
+    /// by `remap_frame`.
     fn map_full_frame<'a>(
         mapper: &'a proguard::ProguardMapper<'a>,
         original_frame: &JvmFrame,
         proguard_frame: &proguard::StackFrame<'a>,
         buf: &mut Vec<proguard::StackFrame<'a>>,
     ) -> Option<Vec<JvmFrame>> {
+        buf.clear();
         buf.extend(mapper.remap_frame(proguard_frame));
 
         if buf.is_empty() {
@@ -291,7 +301,11 @@ impl ProguardService {
         Some(res)
     }
 
-    fn map_method(mapper: &proguard::ProguardMapper, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
+    /// Tries to remap a frame's class and method.
+    fn map_class_method(
+        mapper: &proguard::ProguardMapper,
+        frame: &JvmFrame,
+    ) -> Option<Vec<JvmFrame>> {
         let (mapped_class, mapped_method) = mapper.remap_method(&frame.module, &frame.function)?;
 
         Some(vec![JvmFrame {
@@ -301,6 +315,7 @@ impl ProguardService {
         }])
     }
 
+    /// Tries to remap a frame's class.
     fn map_class(mapper: &proguard::ProguardMapper, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
         let mapped_class = mapper.remap_class(&frame.module)?;
 
