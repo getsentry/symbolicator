@@ -198,7 +198,7 @@ impl ProguardService {
             .as_ref()
             .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
 
-        let stack_frame = frame
+        let proguard_frame = frame
             .lineno
             .map(|lineno| {
                 proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
@@ -215,12 +215,12 @@ impl ProguardService {
 
         // First, try to remap the whole frame.
         // This only works if it has a line number or params.
-        let mut frames = stack_frame
-            .and_then(|stack_frame| {
+        let mut frames = proguard_frame
+            .and_then(|proguard_frame| {
                 let mut mapped_frames = Vec::new();
 
                 mappers.iter().find_map(|mapper| {
-                    Self::map_full_frame(mapper, frame, &stack_frame, &mut mapped_frames)
+                    Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
                 })
             })
             // Second, try to remap the frame's method.
