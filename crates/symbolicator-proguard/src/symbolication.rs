@@ -215,122 +215,99 @@ impl ProguardService {
 
         // First, try to remap the whole frame.
         // This only works if it has a line number or params.
-        if let Some(proguard_frame) = stack_frame {
-            let mut mapped_frames = Vec::new();
+        let mut frames = stack_frame
+            .and_then(|stack_frame| {
+                let mut mapped_frames = Vec::new();
 
-            for mapper in mappers {
-                mapped_frames.clear();
-                mapped_frames.extend(mapper.remap_frame(&proguard_frame));
-
-                if mapped_frames.is_empty() {
-                    continue;
-                }
-
-                let bottom_class = mapped_frames[mapped_frames.len() - 1].class();
-
-                // sentry expects stack traces in reverse order
-                return mapped_frames
+                mappers.iter().find_map(|mapper| {
+                    Self::map_full_frame(mapper, frame, &stack_frame, &mut mapped_frames)
+                })
+            })
+            .or_else(|| {
+                mappers
                     .iter()
-                    .rev()
-                    .map(|new_frame| {
-                        let mut mapped_frame = JvmFrame {
-                            module: new_frame.class().to_owned(),
-                            function: new_frame.method().to_owned(),
-                            lineno: Some(new_frame.line() as u32),
-                            ..frame.clone()
-                        };
+                    .find_map(|mapper| Self::map_method(mapper, frame))
+            })
+            .or_else(|| {
+                mappers
+                    .iter()
+                    .find_map(|mapper| Self::map_class(mapper, frame))
+            })
+            .unwrap_or_else(|| vec![frame.clone()]);
 
-                        // clear the filename for all *foreign* classes
-                        if mapped_frame.module != bottom_class {
-                            mapped_frame.filename = None;
-                            mapped_frame.abs_path = None;
-                        }
-
-                        // mark the frame as in_app after deobfuscation based on the release package name
-                        // only if it's not present
-                        if let Some(package) = release_package {
-                            if mapped_frame.module.starts_with(package)
-                                && mapped_frame.in_app.is_none()
-                            {
-                                mapped_frame.in_app = Some(true);
-                            }
-                        }
-                        // if there is a signature that has been deobfuscated,
-                        // add it to the mapped frame
-                        if let Some(signature) = &deobfuscated_signature {
-                            mapped_frame.signature = Some(signature.format_signature());
-                        }
-                        mapped_frame
-                    })
-                    .collect();
-            }
-        }
-
-        // Second, try to remap the method.
-        for mapper in mappers {
-            let Some((mapped_class, mapped_method)) =
-                mapper.remap_method(&frame.module, &frame.function)
-            else {
-                continue;
-            };
-
-            let mut mapped_frame = JvmFrame {
-                module: mapped_class.to_owned(),
-                function: mapped_method.to_owned(),
-                ..frame.clone()
-            };
-
+        for frame in &mut frames {
             // mark the frame as in_app after deobfuscation based on the release package name
             // only if it's not present
             if let Some(package) = release_package {
-                if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none() {
-                    mapped_frame.in_app = Some(true);
+                if frame.module.starts_with(package) && frame.in_app.is_none() {
+                    frame.in_app = Some(true);
                 }
             }
-
-            // if there is a signature that has been deobfuscated,
-            // add it to the mapped frame
+            // add the signature if we received one and we were
+            // able to translate/deobfuscate it
             if let Some(signature) = &deobfuscated_signature {
-                mapped_frame.signature = Some(signature.format_signature());
+                frame.signature = Some(signature.format_signature());
             }
-            return vec![mapped_frame];
         }
 
-        // Third, try to remap only the class name.
-        for mapper in mappers {
-            let Some(mapped_class) = mapper.remap_class(&frame.module) else {
-                continue;
-            };
+        frames
+    }
 
-            let mut mapped_frame = JvmFrame {
-                module: mapped_class.to_owned(),
-                ..frame.clone()
-            };
+    fn map_full_frame<'a>(
+        mapper: &'a proguard::ProguardMapper<'a>,
+        original_frame: &JvmFrame,
+        proguard_frame: &proguard::StackFrame<'a>,
+        buf: &mut Vec<proguard::StackFrame<'a>>,
+    ) -> Option<Vec<JvmFrame>> {
+        buf.extend(mapper.remap_frame(proguard_frame));
 
-            // mark the frame as in_app after deobfuscation based on the release package name
-            // only if it's not present
-            if let Some(package) = release_package {
-                if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none() {
-                    mapped_frame.in_app = Some(true);
+        if buf.is_empty() {
+            return None;
+        }
+
+        let bottom_class = buf[buf.len() - 1].class();
+
+        // sentry expects stack traces in reverse order
+        let res = buf
+            .iter()
+            .rev()
+            .map(|new_frame| {
+                let mut mapped_frame = JvmFrame {
+                    module: new_frame.class().to_owned(),
+                    function: new_frame.method().to_owned(),
+                    lineno: Some(new_frame.line() as u32),
+                    ..original_frame.clone()
+                };
+
+                // clear the filename for all *foreign* classes
+                if mapped_frame.module != bottom_class {
+                    mapped_frame.filename = None;
+                    mapped_frame.abs_path = None;
                 }
-            }
 
-            // if there is a signature that has been deobfuscated,
-            // add it to the mapped frame
-            if let Some(signature) = &deobfuscated_signature {
-                mapped_frame.signature = Some(signature.format_signature());
-            }
-            return vec![mapped_frame];
-        }
+                mapped_frame
+            })
+            .collect();
+        Some(res)
+    }
 
-        // Return the raw frame if remapping didn't work
-        // but add the signature if we received one and we were
-        // able to translate/deobfuscate it
-        let mut frame = frame.clone();
-        if let Some(signature) = &deobfuscated_signature {
-            frame.signature = Some(signature.format_signature());
-        }
-        vec![frame]
+    fn map_method(mapper: &proguard::ProguardMapper, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
+        let (mapped_class, mapped_method) = mapper.remap_method(&frame.module, &frame.function)?;
+
+        Some(vec![JvmFrame {
+            module: mapped_class.to_owned(),
+            function: mapped_method.to_owned(),
+            ..frame.clone()
+        }])
+    }
+
+    fn map_class(mapper: &proguard::ProguardMapper, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
+        let mapped_class = mapper.remap_class(&frame.module)?;
+
+        Some(vec![JvmFrame {
+            module: mapped_class.to_owned(),
+            ..frame.clone()
+        }])
     }
 
     /// Applies source context from the given list of source bundles to a frame.
