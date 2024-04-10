@@ -193,9 +193,11 @@ impl ProguardService {
                 }
                 None
             });
+
         let params = deobfuscated_signature
             .as_ref()
             .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
+
         let stack_frame = frame
             .lineno
             .map(|lineno| {
@@ -264,7 +266,37 @@ impl ProguardService {
             }
         }
 
-        // Second, if that is not possible, try to re-map only the class-name.
+        // Second, try to remap the method.
+        for mapper in mappers {
+            let Some((mapped_class, mapped_method)) =
+                mapper.remap_method(&frame.module, &frame.function)
+            else {
+                continue;
+            };
+
+            let mut mapped_frame = JvmFrame {
+                module: mapped_class.to_owned(),
+                function: mapped_method.to_owned(),
+                ..frame.clone()
+            };
+
+            // mark the frame as in_app after deobfuscation based on the release package name
+            // only if it's not present
+            if let Some(package) = release_package {
+                if mapped_frame.module.starts_with(package) && mapped_frame.in_app.is_none() {
+                    mapped_frame.in_app = Some(true);
+                }
+            }
+
+            // if there is a signature that has been deobfuscated,
+            // add it to the mapped frame
+            if let Some(signature) = &deobfuscated_signature {
+                mapped_frame.signature = Some(signature.format_signature());
+            }
+            return vec![mapped_frame];
+        }
+
+        // Third, try to remap only the class name.
         for mapper in mappers {
             let Some(mapped_class) = mapper.remap_class(&frame.module) else {
                 continue;
