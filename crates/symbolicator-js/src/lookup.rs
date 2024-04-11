@@ -748,7 +748,7 @@ impl ArtifactFetcher {
         let cache_key = cache_busting_key(url.as_str(), timestamp, SCRAPE_FILES_EVERY);
         url.set_fragment(Some(&cache_key.to_string()));
 
-        let mut remote_file = HttpRemoteFile::from_url(url);
+        let mut remote_file = HttpRemoteFile::from_url(url, self.scraping.verify_ssl);
         remote_file.headers.extend(
             self.scraping
                 .headers

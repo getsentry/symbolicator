@@ -49,7 +49,8 @@ impl SymbolicationActor {
                 remote_sources
                     .into_iter()
                     .map(|((source_scope, url), frames)| async move {
-                        let mut remote_file = HttpRemoteFile::from_url(url.clone());
+                        let mut remote_file =
+                            HttpRemoteFile::from_url(url.clone(), scraping.verify_ssl);
 
                         if scraping.enabled && is_valid_origin(&url, &scraping.allowed_origins) {
                             remote_file.headers.extend(

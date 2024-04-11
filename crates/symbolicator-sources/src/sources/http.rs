@@ -59,13 +59,13 @@ impl HttpRemoteFile {
 
     /// Creates a new [`HttpRemoteFile`] from the given [`Url`].
     /// This internally creates a bogus [`HttpSourceConfig`].
-    pub fn from_url(url: Url) -> Self {
+    pub fn from_url(url: Url, verify_ssl: bool) -> Self {
         let source = Arc::new(HttpSourceConfig {
             id: SourceId::new("web-scraping"),
             url,
             headers: Default::default(),
             files: Default::default(),
-            accept_invalid_certs: false,
+            accept_invalid_certs: !verify_ssl,
         });
         let location = SourceLocation::new("");
 
