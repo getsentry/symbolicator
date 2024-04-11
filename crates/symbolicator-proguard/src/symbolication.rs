@@ -221,6 +221,7 @@ impl ProguardService {
             // See the `line_0_1` and `line_0_2` unit tests in this file for examples of the results this produces.
             //
             // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
+            // The PR that introduced this was https://github.com/getsentry/symbolicator/pull/1434.
             .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
 
         // First, try to remap the whole frame.
