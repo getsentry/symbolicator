@@ -218,7 +218,7 @@ impl ProguardService {
             })
             // This is for parity with the Python implementation. It's unclear why remapping a frame with line 0
             // would produce useful information, and I have no conclusive evidence that it does.
-            // See the `test_line_0` and `test_line_0_2` integration tests for examples of the results this produces.
+            // See the `line_0_1` and `line_0_2` unit tests in this file for examples of the results this produces.
             //
             // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
             .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
@@ -629,5 +629,114 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         // this must happen somewhere else in `sentry`.
         // assert_eq!(mapped_frames[3].in_app, Some(false));
         assert_eq!(mapped_frames[4].in_app, Some(true));
+    }
+
+    #[test]
+    fn line_0_1() {
+        let proguard_source = br#"com.example.App -> com.example.App:
+# {"id":"sourceFile","fileName":"App.java"}
+    boolean injected -> g
+    foo.bar.android.internal.managers.ApplicationComponentManager componentManager -> h
+    0:3:void <init>():18:18 -> <init>
+    4:5:void <init>():19:19 -> <init>
+    6:18:void <init>():21:21 -> <init>
+    1:1:foo.bar.internal.GeneratedComponentManager componentManager():17:17 -> componentManager
+    2:2:foo.bar.android.internal.managers.ApplicationComponentManager componentManager():31:31 -> componentManager
+    0:6:java.lang.Object generatedComponent():36:36 -> generatedComponent
+    0:4:void barInternalInject():47:47 -> onCreate
+    0:4:void onCreate():42 -> onCreate
+    5:6:void barInternalInject():48:48 -> onCreate
+    5:6:void onCreate():42 -> onCreate
+    7:12:java.lang.Object generatedComponent():36:36 -> onCreate
+    7:12:void barInternalInject():51 -> onCreate
+    7:12:void onCreate():42 -> onCreate
+    13:20:void barInternalInject():51:51 -> onCreate
+    13:20:void onCreate():42 -> onCreate
+    21:24:void onCreate():43:43 -> onCreate
+"#;
+
+        let mapping = ProguardMapping::new(proguard_source);
+        let mapper = ProguardMapper::new(mapping);
+
+        let frame = JvmFrame {
+            function: "onCreate".into(),
+            module: "com.example.App".into(),
+            index: 0,
+            ..Default::default()
+        };
+
+        let mapped_frames = ProguardService::map_frame(&[&mapper], &frame, None);
+
+        assert_eq!(mapped_frames.len(), 2);
+
+        assert_eq!(
+            mapped_frames[0],
+            JvmFrame {
+                function: "onCreate".into(),
+                module: "com.example.App".into(),
+                lineno: Some(0),
+                index: 0,
+                ..Default::default()
+            }
+        );
+
+        // Without the "line 0" change, this frame doesn't exist.
+        assert_eq!(
+            mapped_frames[1],
+            JvmFrame {
+                function: "barInternalInject".into(),
+                module: "com.example.App".into(),
+                lineno: Some(0),
+                index: 0,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn line_0_2() {
+        let proguard_source = br#"com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0 -> com.google.firebase.concurrent.a:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    int com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.$r8$classId -> d
+    com.google.firebase.concurrent.CustomThreadFactory com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.f$0 -> e
+    java.lang.Runnable com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.f$1 -> f
+    0:9:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.<init>(com.google.firebase.concurrent.CustomThreadFactory,java.lang.Runnable):0:0 -> <init>
+    0:9:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.$r8$init$synthetic(java.lang.Object,java.lang.Object,int):0 -> <init>
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(ILjava/lang/Object;Ljava/lang/Object;)V"}
+    0:25:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.run$bridge():0:0 -> run
+      # {"id":"com.android.tools.r8.synthesized"}
+y.b -> y.b:
+# {"id":"sourceFile","fileName":"FutureExt.kt"}
+    0:4:void a(com.google.common.util.concurrent.ListenableFuture,com.drivit.core.DrivitCloud$OperationListener):1:1 -> a
+    5:8:void a(com.google.common.util.concurrent.ListenableFuture,com.drivit.core.DrivitCloud$OperationListener):2:2 -> a
+"#;
+
+        let mapping = ProguardMapping::new(proguard_source);
+        let mapper = ProguardMapper::new(mapping);
+
+        let frame = JvmFrame {
+            function: "run".into(),
+            module: "com.google.firebase.concurrent.a".into(),
+            index: 0,
+            ..Default::default()
+        };
+
+        let mapped_frames = ProguardService::map_frame(&[&mapper], &frame, None);
+
+        assert_eq!(mapped_frames.len(), 1);
+
+        assert_eq!(
+            mapped_frames[0],
+            JvmFrame {
+                function: "run$bridge".into(),
+                // Without the "line 0" change, this is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
+                module: "com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0".into(),
+                lineno: Some(0),
+                index: 0,
+                ..Default::default()
+            }
+        );
     }
 }
