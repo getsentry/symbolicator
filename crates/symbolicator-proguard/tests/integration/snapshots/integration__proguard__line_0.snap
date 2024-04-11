@@ -1,0 +1,25 @@
+---
+source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 1216
+expression: response
+---
+exceptions:
+  - type: ApplicationNotResponding
+    module: io.sentry.android.core
+stacktraces:
+  - frames:
+      - function: onCreate
+        filename: SourceFile
+        module: com.example.App
+        abs_path: SourceFile
+        lineno: 0
+        in_app: true
+        index: 0
+      - function: barInternalInject
+        filename: SourceFile
+        module: com.example.App
+        abs_path: SourceFile
+        lineno: 0
+        in_app: true
+        index: 0
+errors: []
