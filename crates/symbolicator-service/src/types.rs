@@ -66,6 +66,8 @@ pub struct ScrapingConfig {
     pub allowed_origins: Vec<String>,
     /// A map of headers to send with every HTTP request while scraping.
     pub headers: BTreeMap<String, String>,
+    /// Whether Symbolicator should use SSL/TLS when scraping from the web.
+    pub use_ssl: bool,
 }
 
 impl Default for ScrapingConfig {
@@ -75,6 +77,7 @@ impl Default for ScrapingConfig {
             // verify_ssl: false,
             allowed_origins: vec!["*".to_string()],
             headers: Default::default(),
+            use_ssl: true,
         }
     }
 }
