@@ -218,7 +218,7 @@ impl ProguardService {
             })
             // This is for parity with the Python implementation. It's unclear why remapping a frame with line 0
             // would produce useful information, and I have no conclusive evidence that it does.
-            // See the `test_line_0` integration test for an example of the results this produces.
+            // See the `test_line_0` and `test_line_0_2` integration tests for examples of the results this produces.
             //
             // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
             .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));

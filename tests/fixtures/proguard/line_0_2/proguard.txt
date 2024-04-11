@@ -1,0 +1,16 @@
+com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0 -> com.google.firebase.concurrent.a:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    int com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.$r8$classId -> d
+    com.google.firebase.concurrent.CustomThreadFactory com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.f$0 -> e
+    java.lang.Runnable com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.f$1 -> f
+    0:9:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.<init>(com.google.firebase.concurrent.CustomThreadFactory,java.lang.Runnable):0:0 -> <init>
+    0:9:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.$r8$init$synthetic(java.lang.Object,java.lang.Object,int):0 -> <init>
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.residualsignature","signature":"(ILjava/lang/Object;Ljava/lang/Object;)V"}
+    0:25:void com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0.run$bridge():0:0 -> run
+      # {"id":"com.android.tools.r8.synthesized"}
+y.b -> y.b:
+# {"id":"sourceFile","fileName":"FutureExt.kt"}
+    0:4:void a(com.google.common.util.concurrent.ListenableFuture,com.drivit.core.DrivitCloud$OperationListener):1:1 -> a
+    5:8:void a(com.google.common.util.concurrent.ListenableFuture,com.drivit.core.DrivitCloud$OperationListener):2:2 -> a

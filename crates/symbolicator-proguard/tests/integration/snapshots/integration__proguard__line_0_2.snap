@@ -1,0 +1,18 @@
+---
+source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 1267
+expression: response
+---
+exceptions:
+  - type: foo
+    module: bar
+stacktraces:
+  - frames:
+      - function: run$bridge
+        filename: SourceFile
+        module: com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0
+        abs_path: SourceFile
+        lineno: 0
+        in_app: false
+        index: 0
+errors: []

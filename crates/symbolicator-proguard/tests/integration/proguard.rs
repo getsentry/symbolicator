@@ -524,3 +524,53 @@ async fn test_line_0() {
 
     assert_snapshot!(response);
 }
+
+#[tokio::test]
+async fn test_line_0_2() {
+    symbolicator_test::setup();
+    let proguard_id = "c5870edc-6169-4d0b-9158-0cb98156336d";
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = proguard_server("line_0_2", move |_url, _query| {
+        json!([{
+            "id":"proguard.txt",
+            "uuid":proguard_id,
+            "debugId":proguard_id,
+            "codeId":null,
+            "cpuName":"any",
+            "objectName":"proguard-mapping",
+            "symbolType":"proguard",
+            "headers": {
+                "Content-Type":"text/x-proguard+plain"
+            },
+            "size":3619,
+            "sha1":"deba83e73fd18210a830db372a0e0a2f2293a989",
+            "dateCreated":"2024-02-14T10:49:38.770116Z",
+            "data":{
+                "features":["mapping"]
+            }
+        }])
+    });
+
+    let source = SourceConfig::Sentry(Arc::new(source));
+    // This single frame is expanded into two frames.
+    let frames = r#"[{
+        "function": "run",
+        "module": "com.google.firebase.concurrent.a",
+        "filename": "SourceFile",
+        "abs_path": "SourceFile",
+        "in_app": false,
+        "index": 0
+    }]"#;
+
+    let request = make_jvm_request(
+        source,
+        r#"{"type": "foo", "module": "bar"}"#,
+        frames,
+        &format!(r#"[{{"uuid": "{proguard_id}", "type": "proguard"}}]"#),
+        None,
+    );
+
+    let response = symbolication.symbolicate_jvm(request).await;
+
+    assert_snapshot!(response);
+}
