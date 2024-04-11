@@ -51,8 +51,10 @@ impl fmt::Display for Scope {
 pub struct ScrapingConfig {
     /// Whether scraping should happen at all.
     pub enabled: bool,
-    // TODO: Can we even use this?
-    // pub verify_ssl: bool,
+    /// Whether Symbolicator should verify SSL certs when scraping from the web.
+    ///
+    /// Defaults to `true`, just to be safe.
+    pub verify_ssl: bool,
     /// A list of "allowed origin patterns" that control:
     /// - for sourcemaps: what URLs we are allowed to scrape from.
     /// - for source context: which URLs should be authenticated using attached headers
@@ -66,8 +68,6 @@ pub struct ScrapingConfig {
     pub allowed_origins: Vec<String>,
     /// A map of headers to send with every HTTP request while scraping.
     pub headers: BTreeMap<String, String>,
-    /// Whether Symbolicator should use SSL/TLS when scraping from the web.
-    pub use_ssl: bool,
 }
 
 impl Default for ScrapingConfig {
@@ -77,7 +77,7 @@ impl Default for ScrapingConfig {
             // verify_ssl: false,
             allowed_origins: vec!["*".to_string()],
             headers: Default::default(),
-            use_ssl: true,
+            verify_ssl: true,
         }
     }
 }
