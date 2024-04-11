@@ -54,6 +54,7 @@ pub struct ScrapingConfig {
     /// Whether Symbolicator should verify SSL certs when scraping from the web.
     ///
     /// Defaults to `true`, just to be safe.
+    #[serde(default = "default_verify_ssl")]
     pub verify_ssl: bool,
     /// A list of "allowed origin patterns" that control:
     /// - for sourcemaps: what URLs we are allowed to scrape from.
@@ -80,6 +81,10 @@ impl Default for ScrapingConfig {
             verify_ssl: true,
         }
     }
+}
+
+fn default_verify_ssl() -> bool {
+    true
 }
 
 /// Specification of a module loaded into the process.
