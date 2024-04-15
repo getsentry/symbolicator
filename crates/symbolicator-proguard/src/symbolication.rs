@@ -15,6 +15,12 @@ impl ProguardService {
     ///
     /// "Symbolicate" here means that exceptions and stack
     /// frames are remapped using proguard files.
+    #[tracing::instrument(skip_all,
+        fields(
+            exceptions = request.exceptions.len(),
+            frames = request.stacktraces.iter().map(|st| st.frames.len()).sum::<usize>())
+        )
+    ]
     pub async fn symbolicate_jvm(
         &self,
         request: SymbolicateJvmStacktraces,

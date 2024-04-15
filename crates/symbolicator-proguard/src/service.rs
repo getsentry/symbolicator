@@ -120,6 +120,7 @@ pub struct ProguardMapper {
 }
 
 impl ProguardMapper {
+    #[tracing::instrument(skip_all, fields(size = byteview.len()))]
     pub fn new(byteview: ByteView<'static>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });
