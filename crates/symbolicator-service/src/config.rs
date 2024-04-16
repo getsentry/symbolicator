@@ -319,13 +319,14 @@ pub struct InMemoryCacheConfig {
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
     ///
-    /// Defaults to `2 GiB`.
+    /// Defaults to `5 GiB`.
     pub proguard_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
     fn default() -> Self {
         let meg = 1024 * 1024;
+        let gig = 1024 * 1024 * 1024;
         Self {
             sentry_index_capacity: 100_000.try_into().unwrap(),
             sentry_index_ttl: Duration::from_secs(3600),
@@ -337,10 +338,10 @@ impl Default for InMemoryCacheConfig {
             // We noticed a significant reduction in CPU usage with a cache size of ~2G, which
             // resulted in a hit ratio of ~60-65%. Lets give it a bit more then and see what happens.
             fileinbundle_capacity: 3 * 1024 * meg,
-            // We use 2GiB as the in-memory cache size for Proguard files.
+            // We use 5GiB as the in-memory cache size for Proguard files.
             // Note that a Proguard mapper can take up hundreds of MB
             // in memory.
-            proguard_capacity: 2 * 1024 * meg,
+            proguard_capacity: 5 * gig,
         }
     }
 }
