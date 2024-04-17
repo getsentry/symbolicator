@@ -248,19 +248,27 @@ impl ProguardService {
                 mappers
                     .iter()
                     .find_map(|mapper| Self::map_class(mapper, frame))
-            })
-            // If all else fails, just return the original frame.
-            .unwrap_or_else(|| vec![frame.clone()]);
+            });
 
-        // Fix up the frames
-        for frame in &mut frames {
-            // mark the frame as in_app after deobfuscation based on the release package name
-            // only if it's not present
-            if let Some(package) = release_package {
-                if frame.module.starts_with(package) && frame.in_app.is_none() {
-                    frame.in_app = Some(true);
+        // Fix up the frames' in-app fields only if they were actually mapped
+        if let Some(frames) = frames.as_mut() {
+            for frame in frames {
+                // mark the frame as in_app after deobfuscation based on the release package name
+                // only if it's not present
+                if let Some(package) = release_package {
+                    if dbg!(&frame.module).starts_with(dbg!(package))
+                        && dbg!(frame.in_app).is_none()
+                    {
+                        frame.in_app = Some(true);
+                    }
                 }
             }
+        }
+
+        // If all else fails, just return the original frame.
+        let mut frames = frames.unwrap_or_else(|| vec![frame.clone()]);
+
+        for frame in &mut frames {
             // add the signature if we received one and we were
             // able to translate/deobfuscate it
             if let Some(signature) = &deobfuscated_signature {
