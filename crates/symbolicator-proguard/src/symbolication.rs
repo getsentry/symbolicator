@@ -256,9 +256,7 @@ impl ProguardService {
                 // mark the frame as in_app after deobfuscation based on the release package name
                 // only if it's not present
                 if let Some(package) = release_package {
-                    if dbg!(&frame.module).starts_with(dbg!(package))
-                        && dbg!(frame.in_app).is_none()
-                    {
+                    if frame.module.starts_with(package) && frame.in_app.is_none() {
                         frame.in_app = Some(true);
                     }
                 }
