@@ -399,7 +399,7 @@ fn build_source_file_name(frame: &JvmFrame) -> String {
             source_file_name.push_str(abs_path_before_dot);
         }
         None => {
-            let module_before_dollar = module.rsplit_once('$').map(|p| p.0).unwrap_or(module);
+            let module_before_dollar = module.split_once('$').map(|p| p.0).unwrap_or(module);
             source_file_name.push_str(&module_before_dollar.replace('.', "/"));
         }
     };
@@ -744,6 +744,20 @@ y.b -> y.b:
                 index: 0,
                 ..Default::default()
             }
+        );
+    }
+
+    #[test]
+    fn test_build_source_file_name() {
+        let frame = JvmFrame {
+            function: "run".into(),
+            module: "com.foo.bar.ui.activities.base.BaseActivity$$ExternalSyntheticLambda2".into(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            build_source_file_name(&frame),
+            "~/com/foo/bar/ui/activities/base/BaseActivity.jvm"
         );
     }
 }
