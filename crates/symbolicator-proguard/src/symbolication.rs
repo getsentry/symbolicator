@@ -639,6 +639,23 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     }
 
     #[test]
+    fn doesnt_set_in_app_if_not_resolved() {
+        let frame = JvmFrame {
+            function: "main".into(),
+            module: "android.app.ActivityThread".into(),
+            lineno: Some(8918),
+            ..Default::default()
+        };
+
+        let remapped = ProguardService::map_frame(&[], &frame, Some("android".into()));
+
+        assert_eq!(remapped.len(), 1);
+        // The frame didn't get mapped, so we shouldn't set `in_app` even though
+        // the condition is satisfied.
+        assert!(remapped[0].in_app.is_none());
+    }
+
+    #[test]
     fn line_0_1() {
         let proguard_source = br#"com.example.App -> com.example.App:
 # {"id":"sourceFile","fileName":"App.java"}
