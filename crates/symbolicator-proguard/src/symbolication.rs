@@ -746,4 +746,18 @@ y.b -> y.b:
             }
         );
     }
+
+    #[test]
+    fn test_build_source_file_name() {
+        let frame = JvmFrame {
+            function: "run".into(),
+            module: "com.foo.bar.ui.activities.base.BaseActivity$$ExternalSyntheticLambda2".into(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            build_source_file_name(&frame),
+            "~/com/foo/bar/ui/activities/base/BaseActivity.jvm"
+        );
+    }
 }
