@@ -655,7 +655,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped = ProguardService::map_frame(&[], &frame, Some("android".into()));
+        let remapped = ProguardService::map_frame(&[], &frame, Some("android"));
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
