@@ -399,7 +399,7 @@ fn build_source_file_name(frame: &JvmFrame) -> String {
             source_file_name.push_str(abs_path_before_dot);
         }
         None => {
-            let module_before_dollar = module.rsplit_once('$').map(|p| p.0).unwrap_or(module);
+            let module_before_dollar = module.split_once('$').map(|p| p.0).unwrap_or(module);
             source_file_name.push_str(&module_before_dollar.replace('.', "/"));
         }
     };
