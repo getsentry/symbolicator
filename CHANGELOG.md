@@ -1,5 +1,16 @@
 # Changelog
 
+## 24.4.1
+
+### Various fixes & improvements
+
+- fix: Always trim source context lines (#1443) by @loewenheim
+- fix(symbolicli): Add C# platform (#1442) by @loewenheim
+- fix(proguard): Don't set `in_app` if frame wasn't mapped (#1440) by @loewenheim
+- fix(proguard): Correctly compute source file name (#1441) by @loewenheim
+- Do a `cargo update` (#1439) by @Swatinem
+- ref(proguard): Increase in-memory cache size to 5GiB (#1438) by @loewenheim
+
 ## 24.4.0
 
 ### Various fixes & improvements
