@@ -367,7 +367,7 @@ impl ProguardService {
             };
 
             if let Some((pre_context, context_line, post_context)) =
-                get_context_lines(contents, lineno as usize, None, None)
+                get_context_lines(contents, lineno as usize, Some(0), None)
             {
                 frame.pre_context = pre_context;
                 frame.context_line = Some(context_line);
