@@ -4,14 +4,15 @@ pub const DEFAULT_CONTEXT_LINES: usize = 5;
 ///
 /// N (`context_lines`) lines of context will be resolved in addition to `lineno`.
 /// This defaults to [`DEFAULT_CONTEXT_LINES`].
-/// If `trim_to_column` is provided, every output line will be truncated to ~150 characters
-/// centered around the provided column number, and a `{snip}` marker is added at the trimmed edges.
+/// Every output line will be truncated to ~150 characters, centered as best as possible
+/// around `trim_to_column`, and a `{snip}` marker is added at the trimmed edges.
+/// To simply cut off lines after ~150 characters, pass 0.
 ///
 /// If no source line for `lineno` is found in `source`, it will return [`None`] instead.
 pub fn get_context_lines(
     source: &str,
     lineno: usize,
-    trim_to_column: Option<usize>,
+    trim_to_column: usize,
     context_lines: Option<usize>,
 ) -> Option<(Vec<String>, String, Vec<String>)> {
     let context_lines = context_lines.unwrap_or(DEFAULT_CONTEXT_LINES);
@@ -19,18 +20,12 @@ pub fn get_context_lines(
     let start_line = lineno.saturating_sub(context_lines).saturating_sub(1);
     let line_diff = (lineno - start_line).saturating_sub(1);
 
-    let maybe_trim_line = |line: &str| {
-        if let Some(column) = trim_to_column {
-            trim_context_line(line, column)
-        } else {
-            line.to_string()
-        }
-    };
+    let trim_line = |line: &str| trim_context_line(line, trim_to_column);
 
     let mut lines = source.lines().skip(start_line);
-    let pre_context = (&mut lines).take(line_diff).map(maybe_trim_line).collect();
-    let context = maybe_trim_line(lines.next()?);
-    let post_context = lines.take(context_lines).map(maybe_trim_line).collect();
+    let pre_context = (&mut lines).take(line_diff).map(trim_line).collect();
+    let context = trim_line(lines.next()?);
+    let post_context = lines.take(context_lines).map(trim_line).collect();
 
     Some((pre_context, context, post_context))
 }
