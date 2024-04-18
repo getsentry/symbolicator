@@ -115,4 +115,33 @@ mod tests {
             "{snip} 🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛💚💙💜.❤️🧡💛 {snip}"
         );
     }
+
+    #[test]
+    fn test_get_context_lines() {
+        let source = "\
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Sit amet mattis vulputate enim nulla aliquet porttitor. Dis parturient montes nascetur ridiculus mus mauris vitae ultricies. Eget lorem dolor sed viverra ipsum. Tempor id eu nisl nunc mi ipsum faucibus vitae aliquet. Aliquam etiam erat velit scelerisque in dictum non. Blandit aliquam etiam erat velit. Maecenas sed enim ut sem viverra. Facilisi nullam vehicula ipsum a arcu cursus vitae. Non enim praesent elementum facilisis leo vel. Egestas congue quisque egestas diam in arcu cursus euismod quis. Malesuada fames ac turpis egestas maecenas. Non quam lacus suspendisse faucibus interdum posuere lorem ipsum. Felis eget nunc lobortis mattis aliquam faucibus purus in massa. Posuere morbi leo urna molestie at elementum eu facilisis sed. Cras ornare arcu dui vivamus arcu felis bibendum ut. Nibh tortor id aliquet lectus proin nibh nisl condimentum id.
+
+Netus et malesuada fames ac turpis egestas. Id eu nisl nunc mi ipsum faucibus vitae aliquet nec. Adipiscing commodo elit at imperdiet dui accumsan sit amet. Dui id ornare arcu odio ut sem. In nisl nisi scelerisque eu. Consequat semper viverra nam libero. Lacus laoreet non curabitur gravida arcu ac tortor dignissim convallis. At augue eget arcu dictum. Ac turpis egestas maecenas pharetra. Nisi est sit amet facilisis magna etiam tempor orci. Eget arcu dictum varius duis. Nunc lobortis mattis aliquam faucibus purus in massa tempor. Id leo in vitae turpis. Et malesuada fames ac turpis egestas. Dictum fusce ut placerat orci nulla pellentesque. Cras pulvinar mattis nunc sed blandit libero volutpat sed cras.
+
+Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar elementum integer enim neque volutpat ac. Mollis aliquam ut porttitor leo a diam sollicitudin. Velit ut tortor pretium viverra suspendisse potenti nullam. Viverra tellus in hac habitasse platea dictumst vestibulum rhoncus. Dictum non consectetur a erat nam at lectus urna duis. Condimentum vitae sapien pellentesque habitant morbi tristique senectus et. Tempus urna et pharetra pharetra massa massa ultricies. Integer malesuada nunc vel risus commodo viverra maecenas. Neque viverra justo nec ultrices dui sapien. Fermentum leo vel orci porta non. A diam maecenas sed enim ut sem viverra aliquet eget. Tincidunt ornare massa eget egestas purus. Curabitur gravida arcu ac tortor dignissim convallis aenean.
+";
+
+        // trim to column 0
+        let (before, line, after) = get_context_lines(source, 3, 0, Some(2)).unwrap();
+        assert_eq!(before, vec!["Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Sit amet mattis  {snip}", ""]);
+        assert_eq!(line, "Netus et malesuada fames ac turpis egestas. Id eu nisl nunc mi ipsum faucibus vitae aliquet nec. Adipiscing commodo elit at imperdiet dui ac {snip}");
+        assert_eq!(after, vec!["", "Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar elementum integer enim neque volutpat ac. Mollis aliquam ut po {snip}"]);
+
+        // trim to column 500
+        let (before, line, after) = get_context_lines(source, 3, 500, Some(2)).unwrap();
+        assert_eq!(before, vec!["{snip} enim ut sem viverra. Facilisi nullam vehicula ipsum a arcu cursus vitae. Non enim praesent elementum facilisis leo vel. Egestas congue quisq {snip}", ""]);
+        assert_eq!(line, "{snip} ci. Eget arcu dictum varius duis. Nunc lobortis mattis aliquam faucibus purus in massa tempor. Id leo in vitae turpis. Et malesuada fames ac {snip}");
+        assert_eq!(after, vec!["", "{snip} rna et pharetra pharetra massa massa ultricies. Integer malesuada nunc vel risus commodo viverra maecenas. Neque viverra justo nec ultrices  {snip}"]);
+
+        // trim to column 1000
+        let (before, line, after) = get_context_lines(source, 3, 1000, Some(2)).unwrap();
+        assert_eq!(before, vec!["{snip} ementum eu facilisis sed. Cras ornare arcu dui vivamus arcu felis bibendum ut. Nibh tortor id aliquet lectus proin nibh nisl condimentum id.", ""]);
+        assert_eq!(line, "{snip} a fames ac turpis egestas. Dictum fusce ut placerat orci nulla pellentesque. Cras pulvinar mattis nunc sed blandit libero volutpat sed cras.");
+        assert_eq!(after, vec!["", "{snip} ed enim ut sem viverra aliquet eget. Tincidunt ornare massa eget egestas purus. Curabitur gravida arcu ac tortor dignissim convallis aenean."]);
+    }
 }
