@@ -228,6 +228,11 @@ impl ProguardService {
             //
             // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
             // The PR that introduced this was https://github.com/getsentry/symbolicator/pull/1434.
+            //
+            // UPDATE(@loewenheim): The retrace implementation at https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+            // returns the same value whether you give it line 0 or no line at all, and it is the same result that our implementation
+            // gives with line 0. This indicates that the _behavior_ is correct, but we should be able to get there without
+            // backfilling the line number with 0.
             .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
 
         // First, try to remap the whole frame.
@@ -711,6 +716,9 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         );
 
         // Without the "line 0" change, this frame doesn't exist.
+        // The `retrace` implementation at
+        // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+        // also returns this, no matter whether you give it line 0 or no line at all.
         assert_eq!(
             mapped_frames[1],
             JvmFrame {
@@ -762,6 +770,9 @@ y.b -> y.b:
             JvmFrame {
                 function: "run$bridge".into(),
                 // Without the "line 0" change, this is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
+                // The `retrace` implementation at
+                // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+                // also returns this, no matter whether you give it line 0 or no line at all.
                 module: "com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0".into(),
                 lineno: Some(0),
                 index: 0,
