@@ -118,17 +118,26 @@ async fn symbolicate_js_frame(
 
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
-    match &module.minified_source.entry {
+    let mut frame = match &module.minified_source.entry {
         Ok(minified_source) => {
+            // Clone the frame before applying source context to the raw frame.
+            // If we apply source context first, this can lead to the following confusing situation:
+            // 1. Apply source context to the minified frame
+            // 2. Clone it for the unminified frame
+            // 3. We don't have unminified source
+            // 4. The unminified frame contains the minified source context
+            let frame = raw_frame.clone();
             if should_apply_source_context {
                 apply_source_context(raw_frame, minified_source.contents())?
             }
+
+            frame
         }
         Err(CacheError::DownloadError(msg)) if msg == "Scraping disabled" => {
             return Err(JsModuleErrorKind::ScrapingDisabled);
         }
         Err(_) => return Err(JsModuleErrorKind::MissingSource),
-    }
+    };
 
     let sourcemap_label = &module
         .minified_source
@@ -159,7 +168,6 @@ async fn symbolicate_js_frame(
         None => return Ok(raw_frame.clone()),
     };
 
-    let mut frame = raw_frame.clone();
     frame.data.sourcemap = Some(sourcemap_label.clone());
     frame.data.resolved_with = Some(resolved_with);
 
