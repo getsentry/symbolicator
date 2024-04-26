@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 574
 expression: response
 ---
 stacktraces:
@@ -25,6 +26,11 @@ stacktraces:
         in_app: true
         data:
           sourcemap: "app:///_next/server/pages/test.min.js.map"
+          sourcemap_origin:
+            bundled:
+              - "sentry://project_debug_file/1"
+              - source_map:
+                  abs_path: "app:///_next/server/pages/test.min.js.map"
           resolved_with: release
           symbolicated: true
 raw_stacktraces:
@@ -41,4 +47,3 @@ scraping_attempts:
     status: not_attempted
   - url: "app:///_next/server/pages/test.min.js.map"
     status: not_attempted
-

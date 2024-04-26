@@ -8,6 +8,8 @@ use symbolicator_service::caching::CacheError;
 use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_sources::{SentryFileId, SentrySourceConfig};
 
+use crate::lookup::CachedFileUri;
+
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
     pub scope: Scope,
@@ -211,6 +213,8 @@ pub struct JsFrame {
 pub struct JsFrameData {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sourcemap: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sourcemap_origin: Option<CachedFileUri>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resolved_with: Option<ResolvedWith>,
     #[serde(default)]
