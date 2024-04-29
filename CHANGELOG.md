@@ -1,5 +1,12 @@
 # Changelog
 
+## 24.4.2
+
+### Various fixes & improvements
+
+- fix(js): Don't apply minified source context to symbolicated frame (#1449) by @loewenheim
+- meta(proguard:) Update comments about remapping (#1444) by @loewenheim
+
 ## 24.4.1
 
 ### Various fixes & improvements
