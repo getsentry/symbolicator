@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 552
+assertion_line: 553
 expression: response
 ---
 stacktraces:
@@ -19,6 +19,7 @@ stacktraces:
         colno: 9
         data:
           sourcemap: "http://example.com/embedded.js.map"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
 raw_stacktraces:
