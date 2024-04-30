@@ -17,6 +17,7 @@
 - fix(proguard): Correctly compute source file name (#1441) by @loewenheim
 - Do a `cargo update` (#1439) by @Swatinem
 - ref(proguard): Increase in-memory cache size to 5GiB (#1438) by @loewenheim
+- feat(js): JS frames have a new field `data.sourcemap_origin` containing information about where the sourcemap used to symbolicate the frame came frmo (#1447) by @loewenheim
 
 ## 24.4.0
 

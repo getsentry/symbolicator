@@ -148,13 +148,14 @@ async fn symbolicate_js_frame(
         .flatten()
         .unwrap_or_else(|| raw_frame.abs_path.clone());
 
-    let (smcache, resolved_with) = match &module.smcache {
+    let (smcache, resolved_with, sourcemap_origin) = match &module.smcache {
         Some(smcache) => match &smcache.entry {
-            Ok(entry) => (entry, smcache.resolved_with),
+            Ok(entry) => (entry, smcache.resolved_with, smcache.uri.clone()),
             Err(CacheError::Malformed(_)) => {
                 // If we successfully resolved the sourcemap but it's broken somehow,
                 // We should still record that we resolved it.
                 raw_frame.data.resolved_with = Some(smcache.resolved_with);
+                raw_frame.data.sourcemap_origin = Some(smcache.uri.clone());
                 return Err(JsModuleErrorKind::MalformedSourcemap {
                     url: sourcemap_label.to_owned(),
                 });
@@ -169,6 +170,7 @@ async fn symbolicate_js_frame(
     };
 
     frame.data.sourcemap = Some(sourcemap_label.clone());
+    frame.data.sourcemap_origin = Some(sourcemap_origin);
     frame.data.resolved_with = Some(resolved_with);
 
     let sp = SourcePosition::new(line - 1, col.saturating_sub(1));

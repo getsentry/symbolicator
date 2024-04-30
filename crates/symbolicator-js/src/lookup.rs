@@ -28,6 +28,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use symbolic::common::{ByteView, DebugId, SelfCell};
 use symbolic::debuginfo::js::discover_sourcemaps_location;
@@ -326,16 +327,20 @@ impl SourceMapUrl {
 pub type ArtifactBundle = SelfCell<Arc<ObjectHandle>, SourceBundleDebugSession<'static>>;
 
 /// The lookup key of an arbitrary file.
-#[derive(Debug, Hash, PartialEq, Eq, Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FileKey {
     /// This key represents a [`SourceFileType::MinifiedSource`].
     MinifiedSource {
         abs_path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
         debug_id: Option<DebugId>,
     },
     /// This key represents a [`SourceFileType::SourceMap`].
     SourceMap {
+        #[serde(skip_serializing_if = "Option::is_none")]
         abs_path: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         debug_id: Option<DebugId>,
     },
     /// This key represents a [`SourceFileType::Source`].
@@ -377,7 +382,8 @@ impl FileKey {
 }
 
 /// The source of an individual file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum CachedFileUri {
     /// The file was an individual artifact fetched using its own URI.
     IndividualFile(RemoteFileUri),

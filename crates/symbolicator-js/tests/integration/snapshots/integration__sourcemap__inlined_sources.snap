@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 261
 expression: response
 ---
 stacktraces:
@@ -13,6 +14,7 @@ stacktraces:
         context_line: "console.log('hello, World!')"
         data:
           sourcemap: "http://example.com/test.min.js"
+          sourcemap_origin: embedded
           resolved_with: release
           symbolicated: true
 raw_stacktraces:
@@ -28,4 +30,3 @@ raw_stacktraces:
 scraping_attempts:
   - url: "http://example.com/test.min.js"
     status: not_attempted
-

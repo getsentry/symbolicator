@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 113
 expression: response
 ---
 stacktraces:
@@ -29,6 +30,7 @@ stacktraces:
           - "})();"
         data:
           sourcemap: "http://example.com/test.min.js.map"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
       - function: invoke
@@ -52,6 +54,7 @@ stacktraces:
           - "    invoke(data);"
         data:
           sourcemap: "http://example.com/test.min.js.map"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
       - function: onFailure
@@ -74,6 +77,7 @@ stacktraces:
           - "    if (data.failed) {"
         data:
           sourcemap: "http://example.com/test.min.js.map"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
 raw_stacktraces:
@@ -118,4 +122,3 @@ scraping_attempts:
     status: not_attempted
   - url: "http://example.com/test.min.js.map"
     status: not_attempted
-

@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 631
 expression: response
 ---
 stacktraces:
@@ -24,6 +25,7 @@ stacktraces:
           - "    if (data.failed) {"
         data:
           sourcemap: "http://localhost:<port>/files/app.js.map"
+          sourcemap_origin: "http://localhost:<port>/files/app.js.map"
           resolved_with: scraping
           symbolicated: true
 raw_stacktraces:
@@ -43,4 +45,3 @@ scraping_attempts:
     status: success
   - url: "http://localhost:<port>/files/app.js.map"
     status: success
-
