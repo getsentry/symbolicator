@@ -1,0 +1,56 @@
+---
+source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 552
+expression: response
+---
+stacktraces:
+  - frames:
+      - function: "function: \"HTMLDocument.<anonymous>\""
+        filename: index.html
+        abs_path: "http://example.com/index.html"
+        lineno: 283
+        colno: 17
+        in_app: false
+      - function: add
+        filename: file1.js
+        module: file1
+        abs_path: "http://example.com/file1.js"
+        lineno: 3
+        colno: 9
+        data:
+          sourcemap: "http://example.com/embedded.js.map"
+          resolved_with: release
+          symbolicated: true
+raw_stacktraces:
+  - frames:
+      - function: "function: \"HTMLDocument.<anonymous>\""
+        filename: index.html
+        abs_path: "http://example.com/index.html"
+        lineno: 283
+        colno: 17
+        in_app: false
+      - filename: embedded.js
+        abs_path: "http://example.com/embedded.js"
+        lineno: 1
+        colno: 39
+        context_line: "function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}"
+        post_context:
+          - "//# sourceMappingURL=embedded.js.map"
+errors:
+  - abs_path: "http://example.com/embedded.js"
+    type: missing_source_content
+    source: "http://example.com/file1.js"
+    sourcemap: "http://example.com/embedded.js.map"
+  - abs_path: "http://example.com/index.html"
+    type: scraping_disabled
+scraping_attempts:
+  - url: "http://example.com/index.html"
+    status: failure
+    reason: disabled
+  - url: "http://example.com/embedded.js"
+    status: not_attempted
+  - url: "http://example.com/embedded.js.map"
+    status: not_attempted
+  - url: "http://example.com/file1.js"
+    status: failure
+    reason: disabled

@@ -514,6 +514,46 @@ async fn test_dart_async_name() {
 }
 
 #[tokio::test]
+async fn test_no_source_contents() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("11_no_source_contents", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/embedded.js"),
+            "abs_path": "~/embedded.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/embedded.js.map"),
+            "abs_path": "~/embedded.js.map",
+            "resolved_with": "release",
+        }])
+    });
+
+    let frames = r#"[{
+        "function": "function: \"HTMLDocument.<anonymous>\"",
+        "abs_path": "http://example.com/index.html",
+        "filename": "index.html",
+        "lineno": 283,
+        "colno": 17,
+        "in_app": false
+    }, {
+        "abs_path": "http://example.com/embedded.js",
+        "filename": "embedded.js",
+        "lineno": 1,
+        "colno": 39
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    // The sourcemap doesn't contain source context, so the symbolicated frame shouldn't have source context.
+    assert_snapshot!(response);
+}
+
+#[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = sourcemap_server("e2e_node_debugid", |url, query| {
