@@ -30,8 +30,7 @@ stacktraces:
           - "})();"
         data:
           sourcemap: "http://example.com/test.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
       - function: invoke
@@ -55,8 +54,7 @@ stacktraces:
           - "    invoke(data);"
         data:
           sourcemap: "http://example.com/test.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
       - function: onFailure
@@ -79,8 +77,7 @@ stacktraces:
           - "    if (data.failed) {"
         data:
           sourcemap: "http://example.com/test.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
 raw_stacktraces:

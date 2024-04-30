@@ -19,8 +19,7 @@ stacktraces:
           - "}"
         data:
           sourcemap: "http://example.com/indexed.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
       - function: multiply
@@ -41,8 +40,7 @@ stacktraces:
           - "\t\treturn multiply(add(a, b), a, b) / c;"
         data:
           sourcemap: "http://example.com/indexed.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
 raw_stacktraces:

@@ -25,8 +25,7 @@ stacktraces:
           - "    if (data.failed) {"
         data:
           sourcemap: "http://localhost:<port>/files/app.js.map"
-          sourcemap_origin:
-            scraped_file: "http://localhost:64973/files/app.js.map#1714123653"
+          sourcemap_origin: "http://localhost:<port>/files/app.js.map"
           resolved_with: scraping
           symbolicated: true
 raw_stacktraces:

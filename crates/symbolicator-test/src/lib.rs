@@ -565,6 +565,15 @@ pub fn redact_localhost_port(
         .into_owned()
 }
 
+/// Helper to redact timestamps used for cache busting in insta snapshots.
+pub fn redact_timestamp(
+    value: insta::internals::Content,
+    _path: insta::internals::ContentPath<'_>,
+) -> impl Into<insta::internals::Content> {
+    let re = ::regex::Regex::new(r"#[0-9]+").unwrap();
+    re.replace(value.as_str().unwrap(), "").into_owned()
+}
+
 #[macro_export]
 macro_rules! assert_snapshot {
     ($e:expr) => {
@@ -577,6 +586,12 @@ macro_rules! assert_snapshot {
             ),
             ".**.data.sourcemap" => ::insta::dynamic_redaction(
                 $crate::redact_localhost_port
+            ),
+            ".**.data.sourcemap_origin" => ::insta::dynamic_redaction(
+                $crate::redact_localhost_port,
+            ),
+            ".**.data.sourcemap_origin" => ::insta::dynamic_redaction(
+                $crate::redact_timestamp,
             ),
             ".**.scraping_attempts[].url" => ::insta::dynamic_redaction(
                 $crate::redact_localhost_port

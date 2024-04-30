@@ -25,8 +25,7 @@ stacktraces:
           - "}"
         data:
           sourcemap: "http://example.com/file.min.js.map"
-          sourcemap_origin:
-            individual_file: "sentry://project_debug_file/2"
+          sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
 raw_stacktraces:
