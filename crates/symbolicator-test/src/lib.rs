@@ -559,19 +559,30 @@ macro_rules! gcs_credentials {
 pub fn redact_localhost_port(
     value: insta::internals::Content,
     _path: insta::internals::ContentPath<'_>,
-) -> impl Into<insta::internals::Content> {
-    let re = ::regex::Regex::new(r"^http://localhost:[0-9]+").unwrap();
-    re.replace(value.as_str().unwrap(), "http://localhost:<port>")
-        .into_owned()
+) -> insta::internals::Content {
+    value
+        .as_str()
+        .map(|value| {
+            let re = ::regex::Regex::new(r"^http://localhost:[0-9]+").unwrap();
+            re.replace(value, "http://localhost:<port>")
+                .into_owned()
+                .into()
+        })
+        .unwrap_or(value)
 }
 
 /// Helper to redact timestamps used for cache busting in insta snapshots.
 pub fn redact_timestamp(
     value: insta::internals::Content,
     _path: insta::internals::ContentPath<'_>,
-) -> impl Into<insta::internals::Content> {
-    let re = ::regex::Regex::new(r"#[0-9]+").unwrap();
-    re.replace(value.as_str().unwrap(), "").into_owned()
+) -> insta::internals::Content {
+    value
+        .as_str()
+        .map(|value| {
+            let re = ::regex::Regex::new(r"#[0-9]+").unwrap();
+            re.replace(value, "").into_owned().into()
+        })
+        .unwrap_or(value)
 }
 
 #[macro_export]
