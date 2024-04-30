@@ -127,7 +127,7 @@ async fn test_deny_list() {
         config.caches.derived.retry_misses_after = Some(Duration::ZERO);
         // FIXME: `object_meta` caches treat download errors as `malformed`
         config.caches.derived.retry_malformed_after = Some(Duration::ZERO);
-        config.max_download_timeout = Duration::from_millis(100);
+        config.max_download_timeout = Duration::from_millis(200);
         config.deny_list_time_window = Duration::from_millis(500);
         config.deny_list_bucket_size = Duration::from_millis(100);
         config.deny_list_threshold = 2;
@@ -203,7 +203,7 @@ async fn test_deny_list() {
                 ObjectFileStatus::Timeout,
                 ObjectUseInfo::None,
                 ObjectDownloadInfo::Error {
-                    details: "download timed out after 100ms".into()
+                    details: "download timed out after 200ms".into()
                 }
             )
         );
