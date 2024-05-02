@@ -210,7 +210,7 @@ impl SourceMapLookup {
                 // NOTE: some older JS SDK versions did not correctly strip a leading `async `
                 // prefix from the `abs_path`, which we will work around here.
                 if let Some(abs_path) = frame.abs_path.strip_prefix("async ") {
-                    abs_path.clone_into(&mut frame.abs_path)
+                    abs_path.clone_into(&mut frame.abs_path);
                 }
                 let abs_path = &frame.abs_path;
                 if self.modules_by_abs_path.contains_key(abs_path) {
