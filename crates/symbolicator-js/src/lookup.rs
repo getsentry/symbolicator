@@ -204,6 +204,8 @@ impl SourceMapLookup {
     }
 
     /// Prepares the modules for processing
+    // This lint is currently buggy
+    #[allow(clippy::assigning_clones)]
     pub fn prepare_modules(&mut self, stacktraces: &mut [JsStacktrace]) {
         for stacktrace in stacktraces {
             for frame in &mut stacktrace.frames {
