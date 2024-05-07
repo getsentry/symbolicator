@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes and improvements
+
+- feat(proguard): Remap filenames and abs_paths (#1432) by @loewenheim
+
 ## 24.4.2
 
 ### Various fixes & improvements
