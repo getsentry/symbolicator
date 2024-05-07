@@ -40,6 +40,7 @@ impl ProguardService {
 
     /// Downloads a proguard file for the given scope and debug id and converts it into a
     /// `ProguardMapper`.
+    #[tracing::instrument(skip_all)]
     pub async fn download_proguard_file(
         &self,
         sources: &[SourceConfig],
@@ -73,6 +74,7 @@ impl ProguardService {
     }
 
     /// Downloads a source bundle for the given scope and debug id.
+    #[tracing::instrument(skip_all)]
     pub async fn download_source_bundle(
         &self,
         sources: Arc<[SourceConfig]>,
@@ -120,7 +122,7 @@ pub struct ProguardMapper {
 }
 
 impl ProguardMapper {
-    #[tracing::instrument(skip_all, fields(size = byteview.len()))]
+    #[tracing::instrument(name = "ProguardMapper::new", skip_all, fields(size = byteview.len()))]
     pub fn new(byteview: ByteView<'static>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });

@@ -150,6 +150,7 @@ impl ProguardService {
     ///
     /// This returns a new exception with the deobfuscated module and class names.
     /// Returns `None` if none of the `mappers` can remap the exception.
+    #[tracing::instrument(skip_all)]
     fn map_exception(
         mappers: &[&proguard::ProguardMapper],
         exception: &JvmException,
@@ -185,6 +186,7 @@ impl ProguardService {
     /// expand a frame into several. The returned list is always
     /// nonempty; if none of the mappers can remap the frame, the original
     /// frame is returned.
+    #[tracing::instrument(skip_all)]
     fn map_frame(
         mappers: &[&proguard::ProguardMapper],
         frame: &JvmFrame,
@@ -283,6 +285,7 @@ impl ProguardService {
     ///
     /// The `buf` parameter is used as a buffer for the frames returned
     /// by `remap_frame`.
+    #[tracing::instrument(skip_all)]
     fn map_full_frame<'a>(
         mapper: &'a proguard::ProguardMapper<'a>,
         original_frame: &JvmFrame,
@@ -331,6 +334,7 @@ impl ProguardService {
     }
 
     /// Tries to remap a frame's class and method.
+    #[tracing::instrument(skip_all)]
     fn map_class_method(
         mapper: &proguard::ProguardMapper,
         frame: &JvmFrame,
@@ -358,6 +362,7 @@ impl ProguardService {
     ///
     /// If one of the source bundles contains the correct file name, we apply it, otherwise
     /// the frame stays unmodified.
+    #[tracing::instrument(skip_all)]
     fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
         let lineno = match frame.lineno {
             // can't apply source context without line number
