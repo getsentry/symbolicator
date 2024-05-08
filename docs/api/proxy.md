@@ -19,6 +19,11 @@ content-type: application/octet-stream
 date: Fri, 19 Apr 2019 22:47:54 GMT
 ```
 
+The layout of a configured source can limit what kind of queries to it will succeed.
+For example, the "unified" layout requires executables to be sorted by their debug IDs, which means
+that querying for a PE file with timestamp and file size, which is supported by SSQP, will not find
+the file. For best results, use the "symstore" layout for sources that you plan to proxy via Symbolicator.
+
 When fetching ELF or MachO symbols the filename can be largely omitted (non
 extension can be substituted with an underscore) when a configured backend uses
 the "native" directory format. In simple terms this means that
