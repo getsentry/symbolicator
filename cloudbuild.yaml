@@ -22,6 +22,8 @@ steps:
         'symbolicator-build',
         '-t',
         'us.gcr.io/$PROJECT_ID/symbolicator:builder',
+        '-t',
+        'us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/builder:latest',
         '--build-arg',
         'BUILDKIT_INLINE_CACHE=1',
         '--cache-from',
@@ -56,6 +58,10 @@ steps:
         'us.gcr.io/$PROJECT_ID/symbolicator:nightly',
         '-t',
         'us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA',
+        '-t',
+        'us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/image:nightly',
+        '-t',
+        'us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/image:$COMMIT_SHA',
         '--build-arg',
         'BUILDKIT_INLINE_CACHE=1',
         '--cache-from',
@@ -83,6 +89,7 @@ steps:
         # Only push to Docker Hub from master
         [ "$BRANCH_NAME" != "master" ] && exit 0
         docker push us.gcr.io/$PROJECT_ID/symbolicator:nightly
+        docker push us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/image:nightly
         echo "$$DOCKER_PASSWORD" | docker login --username=sentrybuilder --password-stdin
         docker tag us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA getsentry/symbolicator:$SHORT_SHA
         docker push getsentry/symbolicator:$SHORT_SHA
@@ -95,6 +102,8 @@ images:
   [
     "us.gcr.io/$PROJECT_ID/symbolicator:builder",
     "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
+    "us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/builder:latest",
+    "us-central1-docker.pkg.dev/$PROJECT_ID/symbolicator/image:$COMMIT_SHA",
   ]
 timeout: 3600s
 options:
