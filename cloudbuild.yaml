@@ -14,34 +14,23 @@ steps:
         git config -f .gitmodules submodule.core.url https://github.com/getsentry/$REPO_NAME.git
         git submodule update --init --recursive
 
-  - name: "gcr.io/cloud-builders/docker"
-    entrypoint: "bash"
-    args:
-      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:nightly || true"]
-
-  # Pull the image with the first build stage
-  - name: "gcr.io/cloud-builders/docker"
-    entrypoint: "bash"
-    args:
-      ["-c", "docker pull us.gcr.io/$PROJECT_ID/symbolicator:builder || true"]
-
-  - name: "gcr.io/cloud-builders/docker"
-    id: builder
+  - name: 'gcr.io/cloud-builders/docker'
     args:
       [
-        "build",
-        "--target",
-        "symbolicator-build",
-        "-t",
-        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-        "--cache-from",
-        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-        ".",
+        'build',
+        '--target',
+        'symbolicator-build',
+        '-t',
+        'us.gcr.io/$PROJECT_ID/symbolicator:builder',
+        '--build-arg',
+        'BUILDKIT_INLINE_CACHE=1',
+        '--cache-from',
+        'us.gcr.io/$PROJECT_ID/symbolicator:builder',
+        '.',
       ]
+    env: [DOCKER_BUILDKIT=1]
 
   - name: "us.gcr.io/$PROJECT_ID/symbolicator:builder"
-    id: builder-extract-difs
-    waitFor: ["builder"]
     entrypoint: "bash"
     args:
       - "-c"
@@ -51,8 +40,6 @@ steps:
   # Uploads DIFs to the deployment pipeline group's private bucket.
   # These are used for sentry releases.
   - name: "gcr.io/cloud-builders/gsutil"
-    id: upload-difs-to-deployment-assets-bucket
-    waitFor: ["builder-extract-difs"]
     entrypoint: "bash"
     args:
       - "-c"
@@ -61,28 +48,29 @@ steps:
         ./symbolicator-debug.zip ./symbolicator.src.zip \
         gs://dicd-team-devinfra-cd--symbolicator/difs/$COMMIT_SHA/
 
-  - name: "gcr.io/cloud-builders/docker"
+  - name: 'gcr.io/cloud-builders/docker'
     args:
       [
-        "build",
-        "-t",
-        "us.gcr.io/$PROJECT_ID/symbolicator:nightly",
-        "-t",
-        "us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA",
-        "--cache-from",
-        "us.gcr.io/$PROJECT_ID/symbolicator:builder",
-        "--cache-from",
-        "us.gcr.io/$PROJECT_ID/symbolicator:nightly",
-        ".",
+        'build',
+        '-t',
+        'us.gcr.io/$PROJECT_ID/symbolicator:nightly',
+        '-t',
+        'us.gcr.io/$PROJECT_ID/symbolicator:$COMMIT_SHA',
+        '--build-arg',
+        'BUILDKIT_INLINE_CACHE=1',
+        '--cache-from',
+        'us.gcr.io/$PROJECT_ID/symbolicator:builder',
+        '--cache-from',
+        'us.gcr.io/$PROJECT_ID/symbolicator:nightly',
+        '.',
       ]
+    env: [DOCKER_BUILDKIT=1]
 
   - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
     args: ["--version"]
-    id: "smoke test 1"
 
   - name: "us.gcr.io/$PROJECT_ID/symbolicator:nightly"
     args: ["--help"]
-    id: "smoke test 2"
 
   # Only tag "nightly" when on master
   - name: "gcr.io/cloud-builders/docker"
