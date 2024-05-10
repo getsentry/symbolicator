@@ -53,7 +53,7 @@ impl ProguardService {
             match res {
                 Ok(mapper) => mappers.push(mapper.get()),
                 Err(e) => {
-                    tracing::error!(%debug_id, error = %e, "Error reading Proguard file");
+                    tracing::error!(%debug_id, "Error reading Proguard file: {e}");
                     let kind = match e {
                         CacheError::Malformed(msg) => match msg.as_str() {
                             "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
