@@ -3,4 +3,4 @@
 /devinfra/scripts/checks/googlecloud/checkcloudbuild.py \
   ${GO_REVISION_SYMBOLICATOR_REPO} \
   sentryio \
-  "us.gcr.io/sentryio/symbolicator"
+  "us-central1-docker.pkg.dev/sentryio/symbolicator/image"
