@@ -6,13 +6,13 @@ title: Symbol Server Proxy
 
 If the symstore proxy is enabled, Symbolicator also acts as a symbol proxy.
 This means that all configured sources are probed for symbol queries below the
-`/symbols` prefix. The path following this prefix needs to be a valid [SSQP
+`/proxy` prefix. The path following this prefix needs to be a valid [SSQP
 query].
 
 Example:
 
 ```
-$ curl -IL http://localhost:3021/symbols/wkernel32.pdb/ff9f9f7841db88f0cdeda9e1e9bff3b51/wkernel32.pdb
+$ curl -IL http://localhost:3021/proxy/wkernel32.pdb/ff9f9f7841db88f0cdeda9e1e9bff3b51/wkernel32.pdb
 HTTP/1.1 200 OK
 content-length: 846848
 content-type: application/octet-stream
