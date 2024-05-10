@@ -659,10 +659,10 @@
 <h1 id="symbol-server-proxy">Symbol Server Proxy</h1>
 <p>If the symstore proxy is enabled, Symbolicator also acts as a symbol proxy.
 This means that all configured sources are probed for symbol queries below the
-<code>/symbols</code> prefix. The path following this prefix needs to be a valid <a href="https://github.com/dotnet/symstore/blob/master/docs/specs/SSQP_Key_Conventions.md">SSQP
+<code>/proxy</code> prefix. The path following this prefix needs to be a valid <a href="https://github.com/dotnet/symstore/blob/master/docs/specs/SSQP_Key_Conventions.md">SSQP
 query</a>.</p>
 <p>Example:</p>
-<div class="codehilite"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>-IL<span class="w"> </span>http://localhost:3021/symbols/wkernel32.pdb/ff9f9f7841db88f0cdeda9e1e9bff3b51/wkernel32.pdb
+<div class="codehilite"><pre><span></span><code>$<span class="w"> </span>curl<span class="w"> </span>-IL<span class="w"> </span>http://localhost:3021/proxy/wkernel32.pdb/ff9f9f7841db88f0cdeda9e1e9bff3b51/wkernel32.pdb
 HTTP/1.1<span class="w"> </span><span class="m">200</span><span class="w"> </span>OK
 content-length:<span class="w"> </span><span class="m">846848</span>
 content-type:<span class="w"> </span>application/octet-stream
