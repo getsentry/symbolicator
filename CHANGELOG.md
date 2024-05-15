@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 24.5.0
 
 ### Various fixes and improvements
 

@@ -1,6 +1,6 @@
 [package]
 name = "wasm-split"
-version = "24.4.2"
+version = "24.5.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
