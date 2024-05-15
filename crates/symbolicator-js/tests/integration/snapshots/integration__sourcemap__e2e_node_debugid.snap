@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 544
+assertion_line: 584
 expression: response
 ---
 stacktraces:
@@ -46,6 +46,8 @@ raw_stacktraces:
           - exports.main = main;
           - "//# sourceMappingURL=entrypoint1.js.map"
           - ""
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js
     status: not_attempted

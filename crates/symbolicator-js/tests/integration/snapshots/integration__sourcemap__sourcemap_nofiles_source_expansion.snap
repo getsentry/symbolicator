@@ -32,6 +32,8 @@ raw_stacktraces:
           - "}"
           - "function multiply(a, b) {"
           - "  'use strict';"
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "app:///nofiles.js"
     status: not_attempted

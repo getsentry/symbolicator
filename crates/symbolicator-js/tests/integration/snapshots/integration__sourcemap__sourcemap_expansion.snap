@@ -10,6 +10,8 @@ stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 6
         colno: 7
+        data:
+          symbolicated: false
       - function: test
         filename: test.js
         module: test
@@ -87,6 +89,8 @@ raw_stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 6
         colno: 7
+        data:
+          symbolicated: false
       - function: i
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -95,6 +99,8 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+        data:
+          symbolicated: false
       - function: r
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -103,6 +109,8 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+        data:
+          symbolicated: false
       - function: e
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -111,6 +119,8 @@ raw_stacktraces:
         context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+        data:
+          symbolicated: false
 errors:
   - abs_path: "http://example.com/index.html"
     type: scraping_disabled

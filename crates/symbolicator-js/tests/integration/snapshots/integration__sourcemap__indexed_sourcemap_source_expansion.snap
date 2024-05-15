@@ -53,6 +53,8 @@ raw_stacktraces:
         post_context:
           - "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
           - "//# sourceMappingURL=indexed.min.js.map"
+        data:
+          symbolicated: false
       - filename: indexed.min.js
         abs_path: "http://example.com/indexed.min.js"
         lineno: 2
@@ -62,6 +64,8 @@ raw_stacktraces:
         context_line: "function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multiply(add(a,b),a,b)/c}catch(e){Raven.captureE {snip}"
         post_context:
           - "//# sourceMappingURL=indexed.min.js.map"
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "http://example.com/indexed.min.js"
     status: not_attempted
