@@ -63,6 +63,8 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test1.min.js.map"
+        data:
+          symbolicated: false
       - function: i
         filename: test2.min.js
         abs_path: "http://example.com/test2.min.js"
@@ -71,6 +73,8 @@ raw_stacktraces:
         context_line: "{snip} row new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)}function i(){var n={failed:true,value:42};r(n)}return i}();"
         post_context:
           - "//# sourceMappingURL=test2.min.js.map"
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "http://example.com/test1.min.js"
     status: not_attempted

@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 574
+assertion_line: 614
 expression: response
 ---
 stacktraces:
@@ -42,6 +42,8 @@ raw_stacktraces:
         context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
         post_context:
           - "//# sourceMappingURL=test.min.js.map"
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "app:///_next/server/pages/_error.js"
     status: not_attempted

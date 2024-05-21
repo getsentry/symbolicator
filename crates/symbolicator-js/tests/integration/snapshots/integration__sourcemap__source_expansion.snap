@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 235
 expression: response
 ---
 stacktraces:
@@ -15,6 +16,8 @@ stacktraces:
           - l
           - o
           - " "
+        data:
+          symbolicated: false
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
@@ -30,6 +33,8 @@ stacktraces:
           - w
           - o
           - r
+        data:
+          symbolicated: false
 raw_stacktraces:
   - frames:
       - filename: foo.js
@@ -43,6 +48,8 @@ raw_stacktraces:
           - l
           - o
           - " "
+        data:
+          symbolicated: false
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
@@ -58,7 +65,8 @@ raw_stacktraces:
           - w
           - o
           - r
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "http://example.com/foo.js"
     status: not_attempted
-

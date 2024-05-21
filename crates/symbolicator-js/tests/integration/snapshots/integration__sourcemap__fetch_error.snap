@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 391
 expression: response
 ---
 stacktraces:
@@ -8,20 +9,28 @@ stacktraces:
         abs_path: "http://localhost:<port>/assets/missing_foo.js"
         lineno: 1
         colno: 0
+        data:
+          symbolicated: false
       - filename: foo.js
         abs_path: "http://localhost:<port>/assets/missing_bar.js"
         lineno: 4
         colno: 0
+        data:
+          symbolicated: false
 raw_stacktraces:
   - frames:
       - filename: foo.js
         abs_path: "http://localhost:<port>/assets/missing_foo.js"
         lineno: 1
         colno: 0
+        data:
+          symbolicated: false
       - filename: foo.js
         abs_path: "http://localhost:<port>/assets/missing_bar.js"
         lineno: 4
         colno: 0
+        data:
+          symbolicated: false
 errors:
   - abs_path: "http://localhost:<port>/assets/missing_bar.js"
     type: missing_source
@@ -34,4 +43,3 @@ scraping_attempts:
   - url: "http://localhost:<port>/assets/missing_bar.js"
     status: failure
     reason: not_found
-
