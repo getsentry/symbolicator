@@ -303,6 +303,10 @@ mod tests {
                 let err = S3Error::from(err);
                 match err {
                     S3Error::NotFound(_) => {}
+                    // work around https://github.com/awslabs/aws-sdk-rust/issues/1148#issuecomment-2124123894:
+                    // we seem to get a bogus `ContentLengthError` because *obviously*
+                    // the `HEAD` request returns an empty body while another header reports an expected `content-length`.
+                    _ if format!("{err:?}").contains("ContentLengthError") => {}
                     err => {
                         panic!("failed to check S3 object: {err:?}");
                     }
@@ -313,8 +317,8 @@ mod tests {
         s3_client
             .put_object()
             .bucket(S3_BUCKET.to_owned())
-            .body(ByteStream::from(test::read_fixture(fixture)))
             .key(key)
+            .body(ByteStream::from(test::read_fixture(fixture)))
             .send()
             .await
             .unwrap();
