@@ -13,7 +13,6 @@ anyhow = "1.0.57"
 aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.0.1", features = ["hardcoded-credentials"] }
 aws-sdk-s3 = "1.4.0"
-aws-types = "1.0.1"
 cadence = "1.0.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 crossbeam-utils = "0.8.19"
