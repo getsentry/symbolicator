@@ -558,7 +558,7 @@ impl Default for Config {
             deny_list_threshold: 20,
             deny_list_block_time: Duration::from_secs(24 * 60 * 60),
             deny_list_never_block_hosts: Vec::new(),
-            max_concurrent_requests: Some(120),
+            max_concurrent_requests: Some(200),
             shared_cache: None,
             _crash_db: None,
         }
