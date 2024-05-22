@@ -4644,7 +4644,6 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-s3",
- "aws-types",
  "cadence",
  "chrono",
  "crossbeam-utils",
@@ -4716,7 +4715,6 @@ dependencies = [
  "sketches-ddsketch",
  "symbolicator-js",
  "symbolicator-native",
- "symbolicator-proguard",
  "symbolicator-service",
  "symbolicator-test",
  "tempfile",
@@ -4752,7 +4750,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "serde_yaml",
  "symbolic",
  "symbolicator-js",
  "symbolicator-native",
@@ -4763,7 +4760,6 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "url",
 ]
 
 [[package]]
