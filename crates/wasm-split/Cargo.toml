@@ -6,8 +6,8 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.57"
-clap = { version = "4.3.2", features = ["derive"] }
-hex = "0.4.2"
-uuid = { version = "1.0.0", features = ["v4"] }
-wasmbin = "0.8.1"
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+hex = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+wasmbin = { workspace = true }

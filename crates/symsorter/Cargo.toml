@@ -6,17 +6,17 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-anyhow = "1.0.57"
-chrono = { version = "0.4.19", default-features = false, features = ["clock", "serde", "std"]  }
-clap = { version = "4.3.2", features = ["derive"] }
-console = "0.15.0"
-once_cell = "1.18.0"
-rayon = "1.5.2"
-regex = "1.5.5"
-serde = { version = "1.0.137", features = ["derive"] }
-serde_json = "1.0.81"
-symbolic = { version = "12.7.1", features = ["debuginfo-serde"] }
-walkdir = "2.3.1"
+anyhow = { workspace = true }
+chrono = { workspace = true, features = ["clock", "serde", "std"] }
+clap = { workspace = true, features = ["derive"] }
+console = { workspace = true }
+once_cell = { workspace = true }
+rayon = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+symbolic = { workspace = true, features = ["debuginfo-serde"] }
+walkdir = { workspace = true }
 # NOTE: zip:0.6 by default depends on a version of zstd which conflicts with our other dependencies
-zip = { version = "0.6.2", default-features = false, features = ["deflate", "bzip2"] }
-zstd = "0.13.0"
+zip = { workspace = true, features = ["deflate", "bzip2"] }
+zstd = { workspace = true }

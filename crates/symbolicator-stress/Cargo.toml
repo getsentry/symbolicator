@@ -5,21 +5,21 @@ version = "24.5.0"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.57"
-axum = "0.7.2"
-clap = { version = "4.3.2", features = ["derive"] }
-futures = "0.3.12"
-humantime = "2.0.1"
-sentry = { version = "0.32.1", features = ["anyhow", "debug-images", "tracing"] }
-serde = { version = "1.0.137", features = ["derive"] }
-serde_json = "1.0.81"
-serde_yaml = "0.9.14"
-sketches-ddsketch = "0.2.2"
-symbolicator-js = { path = "../symbolicator-js" }
-symbolicator-native = { path = "../symbolicator-native" }
-symbolicator-service = { path = "../symbolicator-service" }
-symbolicator-test = { path = "../symbolicator-test" }
-tempfile = "3.2.0"
+anyhow = { workspace = true }
+axum = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+futures = { workspace = true }
+humantime = { workspace = true }
+sentry = { workspace = true, features = ["anyhow", "debug-images", "tracing"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sketches-ddsketch = { workspace = true }
+symbolicator-js = { workspace = true }
+symbolicator-native = { workspace = true }
+symbolicator-service = { workspace = true }
+symbolicator-test = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "sync"] }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
