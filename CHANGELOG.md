@@ -1,5 +1,15 @@
 # Changelog
 
+## 24.5.1
+
+### Various fixes & improvements
+
+- fix: Don't report max requests errors to Sentry (#1471) by @loewenheim
+- config: Turn max_concurrent_requests up to 200 (#1467) by @loewenheim
+- Do a `cargo update` (#1468) by @Swatinem
+- ref(proguard): Don't log "not found" errors (#1469) by @loewenheim
+- ref(js): Always serialize `symbolicated` flag (#1465) by @loewenheim
+
 ## 24.5.0
 
 ### Various fixes and improvements
