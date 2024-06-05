@@ -70,7 +70,7 @@ impl CacheError {
     /// * If `self` is [`InternalError`](Self::InternalError), it does nothing.
     /// * If `self` is [`NotFound`](Self::NotFound), it empties the file.
     /// * In all other cases, it writes the corresponding marker, followed by the error
-    /// details, and truncates the file.
+    ///   details, and truncates the file.
     pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
         if let Self::InternalError = self {
             tracing::error!("A `CacheError::InternalError` should never be written out");
