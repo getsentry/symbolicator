@@ -439,6 +439,12 @@ pub fn get_directory_paths(
         DirectoryLayoutType::Unified => {
             get_unified_path(filetype, identifier).into_iter().collect()
         }
+        DirectoryLayoutType::SlashSymbols => identifier
+            .code_id
+            .as_ref()
+            .map(|code_id| format!("{}/symbols", code_id.as_str()))
+            .into_iter()
+            .collect(),
     };
 
     for path in paths.iter_mut() {
@@ -725,6 +731,20 @@ mod tests {
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_/_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"li/libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_/_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
+    }
+
+    #[test]
+    fn test_slash_symbols() {
+        let paths = get_directory_paths(
+            DirectoryLayout {
+                ty: DirectoryLayoutType::SlashSymbols,
+                ..Default::default()
+            },
+            FileType::ElfCode,
+            &ELF_OBJECT_ID,
+        );
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0], "dfb85de42daffd09640c8fe377d572de3e168920/symbols");
     }
 
     #[test]

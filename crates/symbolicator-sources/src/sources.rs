@@ -191,6 +191,9 @@ pub enum DirectoryLayoutType {
     /// Unified sentry proprietary bucket format.
     #[serde(rename = "unified")]
     Unified,
+    /// A simple symbol source using the `{code_id}/symbols` as its search path.
+    #[serde(rename = "slashsymbols")]
+    SlashSymbols,
 }
 
 /// Casing of filenames on the symbol server
