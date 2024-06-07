@@ -145,6 +145,7 @@ static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
 /// * Trimming off the initial /
 /// * Trimming off the file extension
 /// * Removes off useless folder prefixes
+///
 /// e.g. `http://google.com/js/v1.0/foo/bar/baz.js` -> `foo/bar/baz`
 pub fn generate_module(abs_path: &str) -> String {
     let path = strip_hostname(abs_path);
