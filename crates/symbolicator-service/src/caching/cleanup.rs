@@ -129,7 +129,7 @@ impl Cache {
             stats.removed_bytes
         );
 
-        metric!(gauge("cache.size") = stats.retained_bytes, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size") = stats.retained_bytes, "cache" => self.name.as_ref());
 
         Ok(())
     }
