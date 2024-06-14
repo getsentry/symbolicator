@@ -129,7 +129,10 @@ impl Cache {
             stats.removed_bytes
         );
 
-        metric!(gauge("caches.size") = stats.retained_bytes, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size.files") = stats.retained_files as u64, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size.bytes") = stats.retained_bytes, "cache" => self.name.as_ref());
+        metric!(counter("caches.cleanup.files") += stats.removed_files as i64, "cache" => self.name.as_ref());
+        metric!(counter("caches.cleanup.bytes") += stats.removed_bytes as i64, "cache" => self.name.as_ref());
 
         Ok(())
     }
