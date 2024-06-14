@@ -414,6 +414,12 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
 }
 
+fn get_slashsymbols_path(identifier: &ObjectId) -> Option<String> {
+    let code_id = identifier.code_id.as_ref()?;
+    let code_file = identifier.validated_code_file_basename()?;
+    Some(format!("{code_file}/{code_id}/symbols"))
+}
+
 /// Determines the paths for an object file in the given layout.
 ///
 /// The vector is ordered from lower priority to highest priority.
@@ -438,6 +444,9 @@ pub fn get_directory_paths(
             .collect(),
         DirectoryLayoutType::Unified => {
             get_unified_path(filetype, identifier).into_iter().collect()
+        }
+        DirectoryLayoutType::SlashSymbols => {
+            get_slashsymbols_path(identifier).into_iter().collect()
         }
     };
 
@@ -725,6 +734,23 @@ mod tests {
         path_test!(FileType::MachDebug, MACHO_OBJECT_ID, @"_/_.dwarf/mach-uuid-sym-67e9247c814e392ba027dbde6748fcbf/_.dwarf");
         path_test!(FileType::ElfCode, ELF_OBJECT_ID, @"li/libm-2.23.so/elf-buildid-dfb85de42daffd09640c8fe377d572de3e168920/libm-2.23.so");
         path_test!(FileType::ElfDebug, ELF_OBJECT_ID, @"_/_.debug/elf-buildid-sym-dfb85de42daffd09640c8fe377d572de3e168920/_.debug");
+    }
+
+    #[test]
+    fn test_slash_symbols() {
+        let paths = get_directory_paths(
+            DirectoryLayout {
+                ty: DirectoryLayoutType::SlashSymbols,
+                ..Default::default()
+            },
+            FileType::ElfCode,
+            &ELF_OBJECT_ID,
+        );
+        assert_eq!(paths.len(), 1);
+        assert_eq!(
+            paths[0],
+            "libm-2.23.so/dfb85de42daffd09640c8fe377d572de3e168920/symbols"
+        );
     }
 
     #[test]

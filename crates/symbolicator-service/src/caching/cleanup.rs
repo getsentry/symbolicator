@@ -7,6 +7,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 
 use crate::config::Config;
+use crate::metric;
 
 use super::fs::catch_not_found;
 use super::{Cache, Caches};
@@ -127,6 +128,11 @@ impl Cache {
             stats.removed_files,
             stats.removed_bytes
         );
+
+        metric!(gauge("caches.size.files") = stats.retained_files as u64, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size.bytes") = stats.retained_bytes, "cache" => self.name.as_ref());
+        metric!(counter("caches.size.files_removed") += stats.removed_files as i64, "cache" => self.name.as_ref());
+        metric!(counter("caches.size.bytes_removed") += stats.removed_bytes as i64, "cache" => self.name.as_ref());
 
         Ok(())
     }

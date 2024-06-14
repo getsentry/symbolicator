@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 608
+assertion_line: 648
 expression: response
 ---
 stacktraces:
@@ -27,6 +27,8 @@ raw_stacktraces:
       - abs_path: "app:///index.android.bundle"
         lineno: 1
         colno: 11940
+        data:
+          symbolicated: false
 scraping_attempts:
   - url: "app:///index.android.bundle"
     status: not_attempted

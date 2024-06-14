@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump Native SDK from v0.7.2 to v0.7.5 ([#1475](https://github.com/getsentry/symbolicator/pull/1475))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#075)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.7.2...0.7.5)
+
+## 24.5.1
+
+### Various fixes & improvements
+
+- fix: Don't report max requests errors to Sentry (#1471) by @loewenheim
+- config: Turn max_concurrent_requests up to 200 (#1467) by @loewenheim
+- Do a `cargo update` (#1468) by @Swatinem
+- ref(proguard): Don't log "not found" errors (#1469) by @loewenheim
+- ref(js): Always serialize `symbolicated` flag (#1465) by @loewenheim
+
+## 24.5.0
+
+### Various fixes and improvements
+
+- feat(proguard): Remap filenames and abs_paths (#1432) by @loewenheim
+
 ## 24.4.2
 
 ### Various fixes & improvements

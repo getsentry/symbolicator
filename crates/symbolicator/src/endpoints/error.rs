@@ -93,7 +93,10 @@ impl From<HttpError> for ResponseError {
 
 impl IntoResponse for ResponseError {
     fn into_response(self) -> Response {
-        if self.status.is_server_error() {
+        // "Service unavailable" only happens when we reject a request because there are already
+        // too many concurrent requests (see `RequestService::create_symbolication_request`).
+        // This is a routine occurrence and shouldn't be reported to Sentry as an error.
+        if self.status.is_server_error() && self.status != StatusCode::SERVICE_UNAVAILABLE {
             capture_anyhow(&self.err);
         }
         let mut response = Json(ApiErrorResponse::from(self.err)).into_response();

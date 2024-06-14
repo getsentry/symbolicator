@@ -1,7 +1,7 @@
 [package]
 name = "symbolicator-stress"
 publish = false
-version = "24.4.2"
+version = "24.5.1"
 edition = "2021"
 
 [dependencies]
@@ -17,7 +17,6 @@ serde_yaml = "0.9.14"
 sketches-ddsketch = "0.2.2"
 symbolicator-js = { path = "../symbolicator-js" }
 symbolicator-native = { path = "../symbolicator-native" }
-symbolicator-proguard = { path = "../symbolicator-proguard" }
 symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-test = { path = "../symbolicator-test" }
 tempfile = "3.2.0"

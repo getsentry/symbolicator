@@ -19,11 +19,11 @@ targets:
           cacheControl: public, max-age=600
   - id: release
     name: docker
-    source: us.gcr.io/sentryio/symbolicator
+    source: us-central1-docker.pkg.dev/sentryio/symbolicator/image
     target: getsentry/symbolicator
   - id: latest
     name: docker
-    source: us.gcr.io/sentryio/symbolicator
+    source: us-central1-docker.pkg.dev/sentryio/symbolicator/image
     target: getsentry/symbolicator
     targetFormat: '{{{target}}}:latest'
 requireNames:

@@ -1,4 +1,0 @@
-deploy:
-  services:
-    - name: symbolicator
-      healthcheck: sleep 3 && curl -fi 127.0.0.1:10234/healthcheck

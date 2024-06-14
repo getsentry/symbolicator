@@ -205,7 +205,7 @@ pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_app: Option<bool>,
 
-    #[serde(default, skip_serializing_if = "JsFrameData::is_empty")]
+    #[serde(default)]
     pub data: JsFrameData,
 }
 
@@ -245,12 +245,6 @@ pub enum ResolvedWith {
     /// Unknown
     #[default]
     Unknown,
-}
-
-impl JsFrameData {
-    pub fn is_empty(&self) -> bool {
-        *self == Self::default()
-    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]

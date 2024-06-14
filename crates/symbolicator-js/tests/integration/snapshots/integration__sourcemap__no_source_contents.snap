@@ -11,6 +11,8 @@ stacktraces:
         lineno: 283
         colno: 17
         in_app: false
+        data:
+          symbolicated: false
       - function: add
         filename: file1.js
         module: file1
@@ -30,6 +32,8 @@ raw_stacktraces:
         lineno: 283
         colno: 17
         in_app: false
+        data:
+          symbolicated: false
       - filename: embedded.js
         abs_path: "http://example.com/embedded.js"
         lineno: 1
@@ -37,6 +41,8 @@ raw_stacktraces:
         context_line: "function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}"
         post_context:
           - "//# sourceMappingURL=embedded.js.map"
+        data:
+          symbolicated: false
 errors:
   - abs_path: "http://example.com/embedded.js"
     type: missing_source_content
