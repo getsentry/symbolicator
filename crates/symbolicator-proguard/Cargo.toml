@@ -1,7 +1,7 @@
 [package]
 name = "symbolicator-proguard"
 publish = false
-version = "24.5.1"
+version = "24.6.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
