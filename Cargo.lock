@@ -3255,7 +3255,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4612,7 +4612,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4650,7 +4650,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -4658,7 +4658,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "data-url",
  "futures",
@@ -4684,7 +4684,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -4715,7 +4715,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "futures",
  "insta",
@@ -4733,7 +4733,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -4780,7 +4780,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -4795,7 +4795,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4818,7 +4818,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "axum",
  "humantime",
@@ -4836,7 +4836,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4859,7 +4859,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5581,7 +5581,7 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "wasm-split"
-version = "24.5.1"
+version = "24.6.0"
 dependencies = [
  "anyhow",
  "clap",
