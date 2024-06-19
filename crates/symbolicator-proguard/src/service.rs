@@ -1,8 +1,10 @@
-use std::fmt::Write;
+use std::fmt::{Debug, Write as _};
+use std::io::{Cursor, Write};
 use std::ops::Range;
 use std::sync::Arc;
 
 use futures::future::{self, BoxFuture};
+use proguard::ClassIndex;
 use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
@@ -16,8 +18,15 @@ use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
+use zip::write::SimpleFileOptions;
+use zip::{ZipArchive, ZipWriter};
 
 use crate::interface::{ProguardError, ProguardErrorKind};
+
+/// The name of a proguard mapping file within a mapping + index zip archive.
+const ZIP_PROGUARD_FILE_NAME: &str = "proguard.txt";
+/// The name of a proguard class index within a mapping + index zip archive.
+const ZIP_CLASS_INDEX_FILE_NAME: &str = "class_index.txt";
 
 #[derive(Debug, Clone)]
 pub struct ProguardService {
@@ -216,7 +225,7 @@ impl ProguardMapper {
     pub fn new(byteview: ByteView<'static>, range: Range<usize>) -> Self {
         let inner = SelfCell::new(byteview, |data| {
             let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapping = mapping.section(range.start, range.end);
+            let mapping = mapping.section(range);
             let mapper = proguard::ProguardMapper::new_with_param_mapping(mapping, true);
             ProguardInner { mapper }
         });
@@ -241,15 +250,27 @@ pub struct FetchProguard {
 impl CacheItemRequest for FetchProguard {
     /// The first component is the estimated memory footprint of the mapper,
     /// computed as 2x the size of the relevant section of the mapping ifle in bytes.
+    /// `None` means that no mapper exists for the given class name.
     type Item = Option<(u32, ProguardMapper)>;
 
     const VERSIONS: CacheVersions = PROGUARD_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
         let fut = async {
-            fetch_file(self.download_svc.clone(), self.file.clone(), temp_file).await?;
+            // Download to another temp file, we want to use `temp_file` for the zip archive.
+            let mut download_file = match temp_file.as_ref().parent() {
+                Some(dir) => NamedTempFile::new_in(dir)?,
+                None => NamedTempFile::new()?,
+            };
 
-            let view = ByteView::map_file_ref(temp_file.as_file())?;
+            fetch_file(
+                self.download_svc.clone(),
+                self.file.clone(),
+                &mut download_file,
+            )
+            .await?;
+
+            let view = ByteView::map_file_ref(download_file.as_file())?;
 
             let mapping = proguard::ProguardMapping::new(&view);
             if !mapping.is_valid() {
@@ -264,25 +285,48 @@ impl CacheItemRequest for FetchProguard {
                 ));
             }
 
+            // Combine the mapping file and the index into a zip archive
+            let mut archive = ZipWriter::new(temp_file);
+            archive
+                .start_file(ZIP_PROGUARD_FILE_NAME, SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(&view)?;
+
+            archive
+                .start_file(ZIP_CLASS_INDEX_FILE_NAME, SimpleFileOptions::default())
+                .unwrap();
+            let index = mapping.create_class_index();
+            index.write(&mut archive)?;
+            archive.finish().unwrap();
+
             Ok(())
         };
         Box::pin(fut)
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        let mapping = proguard::ProguardMapping::new(&byteview);
-        // TODO(sebastian): Creating the index every time we want to load a class from a file is obviously
-        // wasteful, we should cache this.
-        let index = mapping.create_class_index();
-        let Some(range) = index.get(self.class_name.as_ref()).cloned() else {
+        let view = Cursor::new(&byteview);
+        let mut archive = ZipArchive::new(view).map_err(|_| CacheError::InternalError)?;
+        let index = archive
+            .by_name(ZIP_CLASS_INDEX_FILE_NAME)
+            .map_err(|_| CacheError::InternalError)?;
+        let index = ByteView::read(index)?;
+        let index = ClassIndex::parse(&index).ok_or(CacheError::InternalError)?;
+
+        let Some(range) = index.get(self.class_name.as_ref()) else {
             return Ok(None);
         };
+
+        let mapping = archive
+            .by_name(ZIP_PROGUARD_FILE_NAME)
+            .map_err(|_| CacheError::InternalError)?;
+        let mapping = ByteView::read(mapping)?;
 
         // NOTE: In an extremely unscientific test, the proguard mapper was slightly less
         // than twice as big in memory as the file on disk.
         let weight = ((range.end - range.start) as u32).saturating_mul(2);
 
-        Ok(Some((weight, ProguardMapper::new(byteview, range))))
+        Ok(Some((weight, ProguardMapper::new(mapping, range))))
     }
 
     fn use_shared_cache(&self) -> bool {
