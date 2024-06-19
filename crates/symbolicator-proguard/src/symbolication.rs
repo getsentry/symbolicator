@@ -1,13 +1,14 @@
+use std::sync::Arc;
+
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
-    ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
+    SymbolicateJvmStacktraces,
 };
 use crate::ProguardService;
 
 use futures::future;
 use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolic::debuginfo::ObjectDebugSession;
-use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
 
 impl ProguardService {
@@ -35,44 +36,28 @@ impl ProguardService {
             apply_source_context,
         } = request;
 
-        let maybe_mappers = future::join_all(
-            modules
-                .iter()
-                .filter(|module| module.r#type == JvmModuleType::Proguard)
-                .map(|module| async {
-                    let file = self
-                        .download_proguard_file(&sources, &scope, module.uuid)
-                        .await;
-                    (module.uuid, file)
-                }),
-        )
-        .await;
+        let proguard_ids: Arc<[_]> = modules
+            .iter()
+            .filter_map(|m| (m.r#type == JvmModuleType::Proguard).then_some(m.uuid))
+            .collect();
 
-        let (mut mappers, mut errors) = (Vec::new(), Vec::new());
-        for (debug_id, res) in &maybe_mappers {
-            match res {
-                Ok(mapper) => mappers.push(mapper.get()),
-                Err(e) => {
-                    if !matches!(e, CacheError::NotFound) {
-                        tracing::error!(%debug_id, "Error reading Proguard file: {e}");
-                    }
-                    let kind = match e {
-                        CacheError::Malformed(msg) => match msg.as_str() {
-                            "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
-                            "The ProGuard file doesn't contain any line mappings" => {
-                                ProguardErrorKind::NoLineInfo
-                            }
-                            _ => unreachable!(),
-                        },
-                        _ => ProguardErrorKind::Missing,
-                    };
-                    errors.push(ProguardError {
-                        uuid: *debug_id,
-                        kind,
-                    });
-                }
-            }
-        }
+        let class_names: Vec<Arc<str>> = exceptions
+            .iter()
+            .map(|e| Arc::from(format!("{}.{}", e.module, e.ty)))
+            .chain(
+                stacktraces
+                    .iter()
+                    .flat_map(|st| st.frames.iter().map(|f| Arc::from(&f.module[..]))),
+            )
+            .collect();
+
+        let (mappers, errors) = self
+            .download_proguard_files(Arc::clone(&sources), &scope, proguard_ids, &class_names)
+            .await;
+
+        let mappers: Vec<_> = mappers.iter().map(|m| m.get()).collect();
+
+        dbg!(mappers.len());
 
         let maybe_source_bundles = future::join_all(
             modules

@@ -39,7 +39,7 @@ pub struct JvmFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
-    /// The frame's method name.
+    /// The frame's module name.
     ///
     /// For a JVM frame, this is a fully qualified class name.
     pub module: String,
