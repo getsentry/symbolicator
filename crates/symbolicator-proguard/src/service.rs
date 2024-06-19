@@ -68,7 +68,7 @@ impl ProguardService {
         };
 
         self.cache
-            .compute_memoized(request, cache_key)
+            .compute_memoized(request, cache_key.clone(), cache_key)
             .await
             .map(|item| item.1)
     }

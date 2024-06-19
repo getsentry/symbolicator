@@ -187,7 +187,9 @@ impl SymCacheActor {
                 secondary_sources,
                 object_meta: Arc::clone(&handle),
             };
-            self.symcaches.compute_memoized(request, cache_key).await
+            self.symcaches
+                .compute_memoized(request, cache_key.clone(), cache_key)
+                .await
         })
         .await
     }

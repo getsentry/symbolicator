@@ -288,11 +288,25 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// The computation itself is done by [`T::compute`](CacheItemRequest::compute), but only if it
     /// was not already in the cache.
     ///
+    /// # `memory_cache_key` vs. `file_cache_key`
+    ///
+    /// There are two different keys for looking up the results: `memory_cache_key` and
+    /// `file_cache_key`. As the names suggest, the former is used to look up the result in
+    /// the in-memory cache and the latter in the filesystem cache. In most cases the two keys
+    /// will be the same because items in memory and on disk correspond one to one, but we can
+    /// also account for the case where different in-memory items are derived from the same file
+    /// on disk.
+    ///
     /// # Errors
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
-    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
+    pub async fn compute_memoized(
+        &self,
+        request: T,
+        memory_cache_key: CacheKey,
+        file_cache_key: CacheKey,
+    ) -> CacheEntry<T::Item> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_ref());
 
@@ -310,7 +324,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         &self.config,
                         shared_cache,
                         cache_dir,
-                        &cache_key.cache_path(version),
+                        &file_cache_key.cache_path(version),
                         is_current_version,
                     ) {
                         Err(CacheError::NotFound) => continue,
@@ -331,7 +345,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             "version" => &version.to_string(),
                             "cache" => name.as_ref(),
                         );
-                        self.spawn_refresh(cache_key.clone(), request);
+                        self.spawn_refresh(file_cache_key.clone(), request);
                     }
 
                     return item;
@@ -343,7 +357,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
 
             let item = self
-                .compute(request, &cache_key, false)
+                .compute(request, &file_cache_key, false)
                 // NOTE: We have seen this deadlock with an SDK that was deadlocking on
                 // out-of-order Scope pops.
                 // To guarantee that this does not happen is really the responsibility of
@@ -359,7 +373,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let entry = self
             .cache
-            .entry_by_ref(&cache_key)
+            .entry_by_ref(&memory_cache_key)
             .or_insert_with(init)
             .await;
 

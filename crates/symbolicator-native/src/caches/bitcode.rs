@@ -228,7 +228,7 @@ impl BitcodeService {
             };
             let cache_key = CacheKey::from_scoped_file(&scope, &request.file_source);
             self.cache
-                .compute_memoized(request, cache_key)
+                .compute_memoized(request, cache_key.clone(), cache_key)
                 .bind_hub(hub)
         });
 

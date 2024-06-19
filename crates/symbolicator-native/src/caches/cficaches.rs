@@ -159,7 +159,10 @@ impl CfiCacheActor {
                 meta_handle,
             };
             async {
-                let entry = self.cficaches.compute_memoized(request, cache_key).await;
+                let entry = self
+                    .cficaches
+                    .compute_memoized(request, cache_key.clone(), cache_key)
+                    .await;
 
                 entry.map(|item| item.1)
             }

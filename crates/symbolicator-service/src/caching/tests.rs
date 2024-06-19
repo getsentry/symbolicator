@@ -805,15 +805,21 @@ async fn test_cache_fallback() {
     .unwrap();
     let cacher = Cacher::new(cache, Default::default());
 
-    let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
+    let first_result = cacher
+        .compute_memoized(request.clone(), key.clone(), key.clone())
+        .await;
     assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
 
-    let second_result = cacher.compute_memoized(request.clone(), key.clone()).await;
+    let second_result = cacher
+        .compute_memoized(request.clone(), key.clone(), key.clone())
+        .await;
     assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let third_result = cacher.compute_memoized(request.clone(), key).await;
+    let third_result = cacher
+        .compute_memoized(request.clone(), key.clone(), key)
+        .await;
     assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
 
     // we only want to have the actual computation be done a single time
@@ -854,7 +860,9 @@ async fn test_cache_fallback_notfound() {
     .unwrap();
     let cacher = Cacher::new(cache, Default::default());
 
-    let first_result = cacher.compute_memoized(request.clone(), key).await;
+    let first_result = cacher
+        .compute_memoized(request.clone(), key.clone(), key)
+        .await;
     assert_eq!(first_result, Err(CacheError::NotFound));
 
     // no computation should be done
@@ -892,7 +900,9 @@ async fn test_lazy_computation_limit() {
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
-        let result = cacher.compute_memoized(request.clone(), key).await;
+        let result = cacher
+            .compute_memoized(request.clone(), key.clone(), key)
+            .await;
         assert_eq!(result.unwrap().as_str(), "some old cached contents");
     }
 
@@ -909,7 +919,9 @@ async fn test_lazy_computation_limit() {
         let request = request.clone();
         let key = CacheKey::for_testing(*key);
 
-        let result = cacher.compute_memoized(request.clone(), key).await;
+        let result = cacher
+            .compute_memoized(request.clone(), key.clone(), key)
+            .await;
         if result.unwrap().as_str() == "some old cached contents" {
             num_outdated += 1;
         }

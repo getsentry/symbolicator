@@ -85,7 +85,9 @@ impl SourceFilesCache {
             use_shared_cache,
         };
 
-        self.cache.compute_memoized(request, cache_key).await
+        self.cache
+            .compute_memoized(request, cache_key.clone(), cache_key)
+            .await
     }
 }
 

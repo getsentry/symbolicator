@@ -1136,7 +1136,9 @@ impl ArtifactFetcher {
                         source: source_content,
                         sourcemap,
                     };
-                    self.sourcemap_caches.compute_memoized(req, cache_key).await
+                    self.sourcemap_caches
+                        .compute_memoized(req, cache_key.clone(), cache_key)
+                        .await
                 }
                 Err(err) => Err(err),
             },

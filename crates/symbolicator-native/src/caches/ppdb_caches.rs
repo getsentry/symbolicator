@@ -71,7 +71,8 @@ impl PortablePdbCacheActor {
                 objects_actor: self.objects.clone(),
                 object_meta,
             };
-            self.ppdb_caches.compute_memoized(request, cache_key)
+            self.ppdb_caches
+                .compute_memoized(request, cache_key.clone(), cache_key)
         })
         .await
     }

@@ -144,7 +144,7 @@ impl Il2cppService {
                 download_svc: self.download_svc.clone(),
             };
             self.cache
-                .compute_memoized(request, cache_key)
+                .compute_memoized(request, cache_key.clone(), cache_key)
                 .bind_hub(hub)
         });
 
