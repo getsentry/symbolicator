@@ -3355,7 +3355,7 @@ dependencies = [
 [[package]]
 name = "proguard"
 version = "5.4.1"
-source = "git+https://github.com/getsentry/rust-proguard.git?branch=feat/class-index#67b62d9dd352f62409b0ce6acee4c989d15bbc6c"
+source = "git+https://github.com/getsentry/rust-proguard.git?branch=feat/class-index#b295986737c1f5a8a538534c3e18ef9f7b809df0"
 
 [[package]]
 name = "psm"

@@ -311,7 +311,8 @@ impl CacheItemRequest for FetchProguard {
             .by_name(ZIP_CLASS_INDEX_FILE_NAME)
             .map_err(|_| CacheError::InternalError)?;
         let index = ByteView::read(index)?;
-        let index = ClassIndex::parse(&index).ok_or(CacheError::InternalError)?;
+        let index = std::str::from_utf8(&index).map_err(|_| CacheError::InternalError)?;
+        let index = ClassIndex::parse(index).ok_or(CacheError::InternalError)?;
 
         let Some(range) = index.get(self.class_name.as_ref()) else {
             return Ok(None);
