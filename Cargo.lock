@@ -5581,7 +5581,7 @@ checksum = "af190c94f2773fdb3729c55b007a722abb5384da03bc0986df4c289bf5567e96"
 
 [[package]]
 name = "wasm-split"
-version = "24.6.0"
+version = "24.6.1"
 dependencies = [
  "anyhow",
  "clap",
