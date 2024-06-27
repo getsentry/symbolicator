@@ -287,13 +287,15 @@ impl CacheItemRequest for FetchProguard {
 
             // Combine the mapping file and the index into a zip archive
             let mut archive = ZipWriter::new(temp_file);
-            archive
-                .start_file(ZIP_PROGUARD_FILE_NAME, SimpleFileOptions::default())
-                .unwrap();
+            // We don't care about disk so much, so we store the files uncompressed in the interest
+            // of extraction speed.
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            archive.start_file(ZIP_PROGUARD_FILE_NAME, options).unwrap();
             archive.write_all(&view)?;
 
             archive
-                .start_file(ZIP_CLASS_INDEX_FILE_NAME, SimpleFileOptions::default())
+                .start_file(ZIP_CLASS_INDEX_FILE_NAME, options)
                 .unwrap();
             let index = mapping.create_class_index();
             index.write(&mut archive)?;
