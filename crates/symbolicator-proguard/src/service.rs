@@ -1,12 +1,14 @@
+use std::io::{BufWriter, Write};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
+use proguard::{write_proguard_cache, ProguardCache};
 use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
 };
-use symbolicator_service::download::{fetch_file, DownloadService};
+use symbolicator_service::download::{fetch_file, tempfile_in_parent, DownloadService};
 use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
@@ -105,7 +107,7 @@ impl ProguardService {
 }
 
 struct ProguardInner<'a> {
-    mapper: proguard::ProguardMapper<'a>,
+    cache: proguard::ProguardCache<'a>,
 }
 
 impl<'slf, 'a: 'slf> AsSelf<'slf> for ProguardInner<'a> {
@@ -123,20 +125,22 @@ pub struct ProguardMapper {
 
 impl ProguardMapper {
     #[tracing::instrument(name = "ProguardMapper::new", skip_all, fields(size = byteview.len()))]
-    pub fn new(byteview: ByteView<'static>) -> Self {
-        let inner = SelfCell::new(byteview, |data| {
-            let mapping = proguard::ProguardMapping::new(unsafe { &*data });
-            let mapper = proguard::ProguardMapper::new_with_param_mapping(mapping, true);
-            ProguardInner { mapper }
-        });
+    pub fn new(byteview: ByteView<'static>) -> Result<Self, CacheError> {
+        let inner = SelfCell::try_new::<CacheError, _>(byteview, |data| {
+            let cache = ProguardCache::parse(unsafe { &*data }).map_err(|e| {
+                tracing::error!(error = %e);
+                CacheError::InternalError
+            })?;
+            Ok(ProguardInner { cache })
+        })?;
 
-        Self {
+        Ok(Self {
             inner: Arc::new(inner),
-        }
+        })
     }
 
-    pub fn get(&self) -> &proguard::ProguardMapper {
-        &self.inner.get().mapper
+    pub fn get(&self) -> &proguard::ProguardCache {
+        &self.inner.get().cache
     }
 }
 
@@ -169,6 +173,12 @@ impl CacheItemRequest for FetchProguard {
                     "The ProGuard file doesn't contain any line mappings".into(),
                 ))
             } else {
+                let cache_temp_file = tempfile_in_parent(temp_file)?;
+                let mut writer = BufWriter::new(cache_temp_file);
+                write_proguard_cache(&mapping, &mut writer)?;
+                let mut cache_temp_file =
+                    writer.into_inner().map_err(|_| CacheError::InternalError)?;
+                std::mem::swap(temp_file, &mut cache_temp_file);
                 Ok(())
             }
         };
@@ -180,7 +190,7 @@ impl CacheItemRequest for FetchProguard {
         // NOTE: In an extremely unscientific test, the proguard mapper was slightly less
         // than twice as big in memory as the file on disk.
         let weight = weight.saturating_mul(2);
-        Ok((weight, ProguardMapper::new(byteview)))
+        Ok((weight, ProguardMapper::new(byteview)?))
     }
 
     fn use_shared_cache(&self) -> bool {
