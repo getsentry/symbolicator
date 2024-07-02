@@ -1,8 +1,8 @@
-use std::io::{BufWriter, Write};
+use std::io::BufWriter;
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use proguard::{write_proguard_cache, ProguardCache};
+use proguard::ProguardCache;
 use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
@@ -48,7 +48,7 @@ impl ProguardService {
         sources: &[SourceConfig],
         scope: &Scope,
         debug_id: DebugId,
-    ) -> CacheEntry<ProguardMapper> {
+    ) -> CacheEntry<OwnedProguardCache> {
         let identifier = ObjectId {
             debug_id: Some(debug_id),
             ..Default::default()
@@ -69,10 +69,7 @@ impl ProguardService {
             download_svc: Arc::clone(&self.download_svc),
         };
 
-        self.cache
-            .compute_memoized(request, cache_key)
-            .await
-            .map(|item| item.1)
+        self.cache.compute_memoized(request, cache_key).await
     }
 
     /// Downloads a source bundle for the given scope and debug id.
@@ -119,12 +116,12 @@ impl<'slf, 'a: 'slf> AsSelf<'slf> for ProguardInner<'a> {
 }
 
 #[derive(Clone)]
-pub struct ProguardMapper {
+pub struct OwnedProguardCache {
     inner: Arc<SelfCell<ByteView<'static>, ProguardInner<'static>>>,
 }
 
-impl ProguardMapper {
-    #[tracing::instrument(name = "ProguardMapper::new", skip_all, fields(size = byteview.len()))]
+impl OwnedProguardCache {
+    #[tracing::instrument(name = "OwnedProguardCache::new", skip_all, fields(size = byteview.len()))]
     pub fn new(byteview: ByteView<'static>) -> Result<Self, CacheError> {
         let inner = SelfCell::try_new::<CacheError, _>(byteview, |data| {
             let cache = ProguardCache::parse(unsafe { &*data }).map_err(|e| {
@@ -151,9 +148,7 @@ pub struct FetchProguard {
 }
 
 impl CacheItemRequest for FetchProguard {
-    /// The first component is the estimated memory footprint of the mapper,
-    /// computed as 2x the size of the mapping file on disk.
-    type Item = (u32, ProguardMapper);
+    type Item = OwnedProguardCache;
 
     const VERSIONS: CacheVersions = PROGUARD_CACHE_VERSIONS;
 
@@ -175,7 +170,7 @@ impl CacheItemRequest for FetchProguard {
             } else {
                 let cache_temp_file = tempfile_in_parent(temp_file)?;
                 let mut writer = BufWriter::new(cache_temp_file);
-                write_proguard_cache(&mapping, &mut writer)?;
+                ProguardCache::write(&mapping, &mut writer)?;
                 let mut cache_temp_file =
                     writer.into_inner().map_err(|_| CacheError::InternalError)?;
                 std::mem::swap(temp_file, &mut cache_temp_file);
@@ -186,18 +181,10 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
-        let weight = byteview.len().try_into().unwrap_or(u32::MAX);
-        // NOTE: In an extremely unscientific test, the proguard mapper was slightly less
-        // than twice as big in memory as the file on disk.
-        let weight = weight.saturating_mul(2);
-        Ok((weight, ProguardMapper::new(byteview)?))
+        OwnedProguardCache::new(byteview)
     }
 
     fn use_shared_cache(&self) -> bool {
         false
-    }
-
-    fn weight(item: &Self::Item) -> u32 {
-        item.0.max(std::mem::size_of::<Self::Item>() as u32)
     }
 }

@@ -112,12 +112,7 @@ impl ProguardService {
         let remapped_exceptions = exceptions
             .into_iter()
             .map(|raw_exception| {
-                let key = format!("{}.{}", raw_exception.module, raw_exception.ty);
-                let Some(mapper) = mappers.iter().find_map(|mapper| mapper.get_mapper(&key)) else {
-                    println!("no mapper for class {key}");
-                    return raw_exception;
-                };
-                Self::map_exception(mapper, &raw_exception).unwrap_or(raw_exception)
+                Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception)
             })
             .collect();
 
@@ -128,14 +123,7 @@ impl ProguardService {
                     .frames
                     .iter()
                     .flat_map(|frame| {
-                        let Some(mapper) = mappers
-                            .iter()
-                            .find_map(|mapper| mapper.get_mapper(&frame.module))
-                        else {
-                            println!("no mapper for class {}", frame.module);
-                            return vec![frame.clone()].into_iter();
-                        };
-                        Self::map_frame(mapper, frame, release_package.as_deref()).into_iter()
+                        Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
                     })
                     .collect();
                 JvmStacktrace {
@@ -166,12 +154,16 @@ impl ProguardService {
     /// Returns `None` if none of the `mappers` can remap the exception.
     #[tracing::instrument(skip_all)]
     fn map_exception(
-        mapper: &proguard::ProguardMapper,
+        mappers: &[&proguard::ProguardCache],
         exception: &JvmException,
     ) -> Option<JvmException> {
+        if mappers.is_empty() {
+            return None;
+        }
+
         let key = format!("{}.{}", exception.module, exception.ty);
 
-        let mapped = mapper.remap_class(&key)?;
+        let mapped = mappers.iter().find_map(|mapper| mapper.remap_class(&key))?;
 
         // In the Python implementation, we just split by `.` here with no check. I assume
         // this error can not actually occur.
@@ -198,14 +190,15 @@ impl ProguardService {
     /// frame is returned.
     #[tracing::instrument(skip_all)]
     fn map_frame(
-        mapper: &proguard::ProguardMapper,
+        mappers: &[&proguard::ProguardCache],
         frame: &JvmFrame,
         release_package: Option<&str>,
     ) -> Vec<JvmFrame> {
-        let deobfuscated_signature = frame
-            .signature
-            .as_ref()
-            .and_then(|signature| mapper.deobfuscate_signature(signature));
+        let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
+            mappers
+                .iter()
+                .find_map(|mapper| mapper.deobfuscate_signature(signature))
+        });
 
         let params = deobfuscated_signature
             .as_ref()
@@ -244,11 +237,23 @@ impl ProguardService {
 
         // First, try to remap the whole frame.
         let mut mapped_frames = Vec::new();
-        let mut frames = Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
+        let mut frames = mappers
+            .iter()
+            .find_map(|mapper| {
+                Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
+            })
             // Second, try to remap the frame's method.
-            .or_else(|| Self::map_class_method(mapper, frame))
+            .or_else(|| {
+                mappers
+                    .iter()
+                    .find_map(|mapper| Self::map_class_method(mapper, frame))
+            })
             // Third, try to remap just the frame's class.
-            .or_else(|| Self::map_class(mapper, frame));
+            .or_else(|| {
+                mappers
+                    .iter()
+                    .find_map(|mapper| Self::map_class(mapper, frame))
+            });
 
         // Fix up the frames' in-app fields only if they were actually mapped
         if let Some(frames) = frames.as_mut() {
@@ -284,7 +289,7 @@ impl ProguardService {
     /// by `remap_frame`.
     #[tracing::instrument(skip_all)]
     fn map_full_frame<'a>(
-        mapper: &'a proguard::ProguardMapper<'a>,
+        mapper: &'a proguard::ProguardCache<'a>,
         original_frame: &JvmFrame,
         proguard_frame: &proguard::StackFrame<'a>,
         buf: &mut Vec<proguard::StackFrame<'a>>,
@@ -333,7 +338,7 @@ impl ProguardService {
     /// Tries to remap a frame's class and method.
     #[tracing::instrument(skip_all)]
     fn map_class_method(
-        mapper: &proguard::ProguardMapper,
+        mapper: &proguard::ProguardCache,
         frame: &JvmFrame,
     ) -> Option<Vec<JvmFrame>> {
         let (mapped_class, mapped_method) = mapper.remap_method(&frame.module, &frame.function)?;
@@ -346,7 +351,7 @@ impl ProguardService {
     }
 
     /// Tries to remap a frame's class.
-    fn map_class(mapper: &proguard::ProguardMapper, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
+    fn map_class(mapper: &proguard::ProguardCache, frame: &JvmFrame) -> Option<Vec<JvmFrame>> {
         let mapped_class = mapper.remap_class(&frame.module)?;
 
         Some(vec![JvmFrame {
@@ -429,7 +434,7 @@ fn build_source_file_name(frame: &JvmFrame) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proguard::{ProguardMapper, ProguardMapping};
+    use proguard::{ProguardCache, ProguardMapping};
 
     #[test]
     fn remap_exception_simple() {
@@ -449,9 +454,12 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         };
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new(mapping);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
-        let exception = ProguardService::map_exception(&mapper, &exception).unwrap();
+        let exception = ProguardService::map_exception(&[&cache], &exception).unwrap();
 
         assert_eq!(exception.ty, "Util$ClassContextSecurityManager");
         assert_eq!(exception.module, "org.slf4j.helpers");
@@ -529,11 +537,14 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         ];
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new_with_param_mapping(mapping, true);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
         let mapped_frames: Vec<_> = frames
             .iter()
-            .flat_map(|frame| ProguardService::map_frame(&mapper, frame, None).into_iter())
+            .flat_map(|frame| ProguardService::map_frame(&[&cache], frame, None).into_iter())
             .collect();
 
         assert_eq!(mapped_frames.len(), 7);
@@ -600,7 +611,10 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
 ";
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new(mapping);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
         let frames = [
             JvmFrame {
@@ -640,7 +654,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         let mapped_frames: Vec<_> = frames
             .iter()
             .flat_map(|frame| {
-                ProguardService::map_frame(&mapper, frame, Some("org.slf4j")).into_iter()
+                ProguardService::map_frame(&[&cache], frame, Some("org.slf4j")).into_iter()
             })
             .collect();
 
@@ -664,11 +678,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped = ProguardService::map_frame(
-            &ProguardMapper::new(ProguardMapping::new(b"")),
-            &frame,
-            Some("android"),
-        );
+        let remapped = ProguardService::map_frame(&[], &frame, Some("android"));
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -701,7 +711,10 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
 "#;
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new(mapping);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
         let frame = JvmFrame {
             function: "onCreate".into(),
@@ -712,7 +725,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&mapper, &frame, None);
+        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None);
 
         assert_eq!(mapped_frames.len(), 2);
 
@@ -768,7 +781,10 @@ y.b -> y.b:
 "#;
 
         let mapping = ProguardMapping::new(proguard_source);
-        let mapper = ProguardMapper::new(mapping);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
         let frame = JvmFrame {
             function: "run".into(),
@@ -779,7 +795,7 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&mapper, &frame, None);
+        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None);
 
         assert_eq!(mapped_frames.len(), 1);
 
@@ -857,7 +873,10 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         let mapping = ProguardMapping::new(proguard_source);
         assert!(mapping.is_valid());
         assert!(mapping.has_line_info());
-        let mapper = ProguardMapper::new(mapping);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
 
         let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[{
@@ -915,7 +934,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
 
         let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
             .iter()
-            .flat_map(|frame| ProguardService::map_frame(&mapper, frame, None).into_iter())
+            .flat_map(|frame| ProguardService::map_frame(&[&cache], frame, None).into_iter())
             .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
             .unzip();
 
