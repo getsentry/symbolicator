@@ -16,7 +16,6 @@ symbolicator-service = { path = "../symbolicator-service" }
 symbolicator-sources = { path = "../symbolicator-sources" }
 tempfile = "3.10.0"
 tracing = "0.1.34"
-zip = "2.1.3"
 
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
