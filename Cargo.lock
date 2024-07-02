@@ -3355,6 +3355,7 @@ dependencies = [
 [[package]]
 name = "proguard"
 version = "5.4.1"
+source = "git+https://github.com/getsentry/rust-proguard?branch=feat/cache#beab1645ffd66c49b16db76bac3330aa510492bb"
 dependencies = [
  "thiserror",
  "watto",
