@@ -3277,8 +3277,9 @@ dependencies = [
 
 [[package]]
 name = "proguard"
-version = "5.4.1"
-source = "git+https://github.com/getsentry/rust-proguard#60a5ea7ca6a02f4ed55869f057c8b4442132cfb0"
+version = "5.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bafe48b490e1b00c4b69f24f9ec2957dd850930460515802f5a7399e015f18ed"
 dependencies = [
  "thiserror",
  "watto",

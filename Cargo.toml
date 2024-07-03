@@ -43,7 +43,6 @@ reqwest = { git = "https://github.com/getsentry/reqwest", branch = "restricted-c
 # This patch adds limited "templated lambdas" demangling support
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches" }
 
-proguard = { git = "https://github.com/getsentry/rust-proguard"}
 # For local development: uncomment the following three lines (and adjust the path if necessary)
 # to use a local symbolic checkout everywhere.
 # This only works for the very specific crate listed here, and not for its dependency tree.
