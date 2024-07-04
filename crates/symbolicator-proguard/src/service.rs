@@ -185,6 +185,6 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn use_shared_cache(&self) -> bool {
-        false
+        true
     }
 }
