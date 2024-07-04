@@ -142,7 +142,8 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// Proguard Cache, with the following versions:
 ///
 /// - `1`: Initial version.
+/// - `2`: Use proguard cache format (<https://github.com/getsentry/symbolicator/pull/1491>).
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
+    current: 2,
     fallbacks: &[],
 };

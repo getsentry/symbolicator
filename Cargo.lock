@@ -3277,9 +3277,13 @@ dependencies = [
 
 [[package]]
 name = "proguard"
-version = "5.4.1"
+version = "5.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88dddb086b00f5539a95d2c7a2373358fd8bfadb7b1297cc29e0196403a1b98"
+checksum = "bafe48b490e1b00c4b69f24f9ec2957dd850930460515802f5a7399e015f18ed"
+dependencies = [
+ "thiserror",
+ "watto",
+]
 
 [[package]]
 name = "psm"
