@@ -295,7 +295,7 @@ impl Caches {
                 config,
                 config.caches.downloaded.into(),
                 max_lazy_redownloads,
-                in_memory.proguard_capacity,
+                default_cap,
             )?,
         })
     }
