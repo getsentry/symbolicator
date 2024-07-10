@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context as _, Error, Result};
 use futures::{Future, TryStreamExt};
-use gcp_auth::{AuthenticationManager, CustomServiceAccount, Token};
+use gcp_auth::{CustomServiceAccount, Token, TokenProvider};
 use reqwest::{Body, Client, StatusCode};
 use sentry::protocol::Context;
 use sentry::{Hub, SentryFutureExt};
@@ -56,7 +56,7 @@ enum CacheError {
 struct GcsState {
     config: GcsSharedCacheConfig,
     client: Client,
-    auth_manager: AuthenticationManager,
+    token_provider: Arc<dyn TokenProvider>,
 }
 
 impl fmt::Debug for GcsState {
@@ -64,7 +64,7 @@ impl fmt::Debug for GcsState {
         f.debug_struct("GcsState")
             .field("config", &self.config)
             .field("client", &self.client)
-            .field("auth_manager", &"<AuthenticationManager>")
+            .field("token_provider", &"<AuthenticationManager>")
             .finish()
     }
 }
@@ -87,10 +87,10 @@ where
 
 impl GcsState {
     pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
-        let auth_manager = match config.service_account_path {
+        let token_provider = match config.service_account_path {
             Some(ref path) => {
                 let service_account = CustomServiceAccount::from_file(path)?;
-                AuthenticationManager::try_from(service_account)?
+                Arc::new(service_account)
             }
             None => {
                 // For fresh k8s pods the GKE metadata server may not accept connections
@@ -100,7 +100,7 @@ impl GcsState {
                 let start = Instant::now();
                 loop {
                     let future = async move {
-                        AuthenticationManager::new()
+                        gcp_auth::provider()
                             .await
                             .context("Failed to initialise authentication token")
                     };
@@ -109,7 +109,7 @@ impl GcsState {
                         .unwrap_or_else(|_elapsed| {
                             Err(Error::msg("Timeout initialising GCS authentication token"))
                         }) {
-                        Ok(auth_manager) => break auth_manager,
+                        Ok(token_provider) => break token_provider,
                         Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
                         Err(err) => {
                             let remaining = MAX_DELAY - start.elapsed();
@@ -141,17 +141,17 @@ impl GcsState {
         Ok(Self {
             config,
             client: Client::new(),
-            auth_manager,
+            token_provider,
         })
     }
 
     /// Returns a GCP authentication token, with timeout and error handling.
     ///
     /// Refreshing tokens involves talking to services over networks, this might fail.
-    async fn get_token(&self) -> Result<Token> {
+    async fn get_token(&self) -> Result<Arc<Token>> {
         let future = async {
-            self.auth_manager
-                .get_token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+            self.token_provider
+                .token(&["https://www.googleapis.com/auth/devstorage.read_write"])
                 .await
                 .context("Failed to get authentication token")
         };
