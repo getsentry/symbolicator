@@ -4057,10 +4057,8 @@ version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "161283cfe8e99c8f6f236a402b9ccf726b201f365988b5bb637ebca0abbd4a30"
 dependencies = [
- "crc32fast",
  "once_cell",
  "rand",
- "regex",
  "sentry-types",
  "serde",
  "serde_json",

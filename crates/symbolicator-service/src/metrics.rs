@@ -10,15 +10,9 @@ use std::time::Duration;
 use cadence::{BufferedUdpMetricSink, MetricSink, QueuingMetricSink, StatsdClient};
 use crossbeam_utils::CachePadded;
 use rustc_hash::FxHashMap;
-use sentry::metrics::MetricBuilder;
 use thread_local::ThreadLocal;
 
 static METRICS_CLIENT: OnceLock<MetricsWrapper> = OnceLock::new();
-
-/// The metrics prelude that is necessary to use the client.
-pub mod prelude {
-    pub use cadence::prelude::*;
-}
 
 #[derive(Debug, Clone)]
 struct Sink(Arc<QueuingMetricSink>);
@@ -102,13 +96,6 @@ fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> L
                 formatted_metric.push_str(&prefix);
                 formatted_metric.push_str(name);
 
-                let sentry_metric = if ty == "|c" {
-                    sentry::metrics::Metric::incr(formatted_metric.clone(), value as f64)
-                } else {
-                    sentry::metrics::Metric::gauge(formatted_metric.clone(), value as f64)
-                };
-                submit_sentry_metric(sentry_metric, &formatted_global_tags, tags.as_deref());
-
                 let _ = write!(&mut formatted_metric, ":{value}{ty}{formatted_global_tags}");
 
                 if let Some(tags) = tags {
@@ -129,20 +116,6 @@ fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> L
             // we do this in a batched manner, as we do not actually *aggregate* them,
             // but still send each value individually.
             for (AggregationKey { ty, name, tags }, value) in total_distributions {
-                formatted_metric.push_str(&prefix);
-                formatted_metric.push_str(name);
-                for value in &value {
-                    let sentry_metric = if ty == "|ms" {
-                        let secs = value / 1_000.;
-                        let duration = Duration::from_secs_f64(secs);
-                        sentry::metrics::Metric::timing(formatted_metric.clone(), duration)
-                    } else {
-                        sentry::metrics::Metric::distribution(formatted_metric.clone(), *value)
-                    };
-                    submit_sentry_metric(sentry_metric, &formatted_global_tags, tags.as_deref());
-                }
-                formatted_metric.clear();
-
                 suffix.push_str(&formatted_global_tags);
                 if let Some(tags) = tags {
                     if formatted_global_tags.is_empty() {
@@ -179,32 +152,6 @@ fn make_aggregator(prefix: &str, formatted_global_tags: String, sink: Sink) -> L
         .unwrap();
 
     local_aggregators
-}
-
-/// Submits the given `metric` to Sentry after adding all the necessary tags.
-fn submit_sentry_metric(
-    mut metric: MetricBuilder,
-    formatted_global_tags: &str,
-    formatted_tags: Option<&str>,
-) {
-    // All the tags have been pre-formatted into a StatsD-like string to avoid excessive allocations
-    // in the thread-local aggregator. However that means we have to parse those from strings again
-    // and copy that into a fresh `String` because the Sentry API expects them that way.
-    fn add_tags(mut metric: MetricBuilder, formatted_tags: &str) -> MetricBuilder {
-        for (tag_key, tag_value) in formatted_tags.split(',').filter_map(|t| t.split_once(':')) {
-            metric = metric.with_tag(tag_key.to_owned(), tag_value.to_owned());
-        }
-        metric
-    }
-
-    if let Some(formatted_global_tags) = formatted_global_tags.strip_prefix("|#") {
-        metric = add_tags(metric, formatted_global_tags);
-    }
-    if let Some(formatted_tags) = formatted_tags {
-        metric = add_tags(metric, formatted_tags);
-    }
-
-    metric.send()
 }
 
 fn aggregate_all(aggregators: &LocalAggregators) -> (AggregatedCounters, AggregatedDistributions) {
