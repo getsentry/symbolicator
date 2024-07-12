@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 122
 expression: response
 ---
 exceptions:
@@ -8,4 +7,5 @@ exceptions:
     module: org.slf4j.helpers
 stacktraces:
   - frames: []
+classes: {}
 errors: []

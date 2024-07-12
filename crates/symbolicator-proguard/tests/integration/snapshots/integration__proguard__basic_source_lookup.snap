@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 517
 expression: response
 ---
 exceptions:
@@ -110,4 +109,5 @@ stacktraces:
           - "}"
           - ""
         index: 6
+classes: {}
 errors: []
