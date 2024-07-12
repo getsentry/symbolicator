@@ -33,6 +33,7 @@ fn make_jvm_request(
         exceptions,
         stacktraces,
         modules,
+        classes: Vec::new(),
     }
 }
 
