@@ -51,7 +51,7 @@ jobs:
     # and ARM binaries into one universal one. This need will go away once
     # https://github.com/rust-lang/cargo/issues/8875 is resolved.
     name: Build Binary on MacOS
-    runs-on: macos-11
+    runs-on: macos-14
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
