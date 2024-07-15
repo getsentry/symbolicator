@@ -8,6 +8,10 @@
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#076)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.7.5...0.7.6)
 
+### Various fixes & improvements
+
+- The `symbolicate-jvm` endpoint now additionally accepts a list
+  `classes` of class names to deobfuscate. ([#1496](https://github.com/getsentry/symbolicator/pull/1496))
 ## 24.6.0
 
 ### Dependencies
