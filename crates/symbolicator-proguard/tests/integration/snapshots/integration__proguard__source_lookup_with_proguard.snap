@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 474
 expression: response
 ---
 exceptions:
@@ -172,6 +171,7 @@ stacktraces:
         lineno: 26
         in_app: true
         index: 18
+classes: {}
 errors:
   - uuid: 8236f5cf-52c8-4e35-a7cf-01421e4c2c88
     type: missing

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
@@ -33,6 +35,7 @@ impl ProguardService {
             modules,
             release_package,
             apply_source_context,
+            classes,
         } = request;
 
         let maybe_mappers = future::join_all(
@@ -141,9 +144,20 @@ impl ProguardService {
             }
         }
 
+        let remapped_classes = classes
+            .into_iter()
+            .filter_map(|class| {
+                let remapped = mappers
+                    .iter()
+                    .find_map(|mapper| mapper.remap_class(&class))?;
+                Some((class, Arc::from(remapped)))
+            })
+            .collect();
+
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
             stacktraces: remapped_stacktraces,
+            classes: remapped_classes,
             errors,
         }
     }

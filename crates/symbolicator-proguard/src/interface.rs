@@ -1,5 +1,5 @@
-use std::fmt;
 use std::sync::Arc;
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use symbolic::common::DebugId;
@@ -25,6 +25,8 @@ pub struct SymbolicateJvmStacktraces {
     ///
     /// This is used to set a remapped frame's `in_app` field.
     pub release_package: Option<String>,
+    /// An list of additional class names that should be remapped.
+    pub classes: Vec<Arc<str>>,
 }
 
 /// A stack frame in a JVM stacktrace.
@@ -159,7 +161,6 @@ pub struct ProguardError {
     pub kind: ProguardErrorKind,
 }
 
-// TODO: Expand this
 /// The symbolicated/remapped event data.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct CompletedJvmSymbolicationResponse {
@@ -167,6 +168,8 @@ pub struct CompletedJvmSymbolicationResponse {
     pub exceptions: Vec<JvmException>,
     /// The stacktraces after remapping.
     pub stacktraces: Vec<JvmStacktrace>,
+    /// A mapping from obfuscated to remapped classes.
+    pub classes: HashMap<Arc<str>, Arc<str>>,
     /// Errors that occurred during symbolication.
     pub errors: Vec<ProguardError>,
 }

@@ -25,6 +25,8 @@ pub struct JvmSymbolicationRequestBody {
     #[serde(default)]
     pub release_package: Option<String>,
     #[serde(default)]
+    pub classes: Vec<Arc<str>>,
+    #[serde(default)]
     pub options: JvmRequestOptions,
 }
 
@@ -62,6 +64,7 @@ pub async fn handle_symbolication_request(
         stacktraces,
         modules,
         release_package,
+        classes,
         options,
     } = body;
 
@@ -72,6 +75,7 @@ pub async fn handle_symbolication_request(
         stacktraces,
         modules,
         release_package,
+        classes,
         apply_source_context: options.apply_source_context,
     })?;
 
