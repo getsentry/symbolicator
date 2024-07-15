@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 24.7.0
 
 ### Dependencies
 
@@ -12,6 +12,7 @@
 
 - The `symbolicate-jvm` endpoint now additionally accepts a list
   `classes` of class names to deobfuscate. ([#1496](https://github.com/getsentry/symbolicator/pull/1496))
+
 ## 24.6.0
 
 ### Dependencies
