@@ -1,5 +1,9 @@
 # Changelog
 
+## 24.7.1
+
+- No documented changes.
+
 ## 24.7.0
 
 ### Dependencies
