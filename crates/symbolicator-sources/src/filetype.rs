@@ -88,6 +88,7 @@ impl FileType {
         &[
             Self::SourceBundle,
             Self::PortablePdb,
+            // DWARF files can contain sources as of https://github.com/getsentry/symbolic/pull/849.
             Self::ElfDebug,
             Self::WasmDebug,
         ]
