@@ -85,7 +85,13 @@ impl FileType {
     /// Source providing file types.
     #[inline]
     pub fn sources() -> &'static [Self] {
-        &[FileType::SourceBundle, FileType::PortablePdb]
+        &[
+            Self::SourceBundle,
+            Self::PortablePdb,
+            // DWARF files can contain sources as of https://github.com/getsentry/symbolic/pull/849.
+            Self::ElfDebug,
+            Self::WasmDebug,
+        ]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
