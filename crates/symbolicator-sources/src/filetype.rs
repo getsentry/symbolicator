@@ -85,7 +85,12 @@ impl FileType {
     /// Source providing file types.
     #[inline]
     pub fn sources() -> &'static [Self] {
-        &[FileType::SourceBundle, FileType::PortablePdb]
+        &[
+            Self::SourceBundle,
+            Self::PortablePdb,
+            Self::ElfDebug,
+            Self::WasmDebug,
+        ]
     }
 
     /// Given an object type, returns filetypes in the order they should be tried.
