@@ -1,6 +1,6 @@
 [package]
 name = "symsorter"
-version = "24.7.0"
+version = "24.7.1"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
@@ -19,7 +19,7 @@ rayon = "1.5.2"
 regex = "1.5.5"
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
-symbolic = { version = "12.9.2", features = ["debuginfo-serde"] }
+symbolic = { version = "12.10.0", features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 # NOTE: zip:0.6 by default depends on a version of zstd which conflicts with our other dependencies
 zip = { version = "2.1.1", default-features = false, features = [
