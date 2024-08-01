@@ -9,7 +9,7 @@ use crate::api_lookup::ArtifactHeaders;
 use crate::lookup::SourceMapUrl;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^webpack://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
+    Lazy::new(|| Regex::new(r"^webpack(-internal)?://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
 static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bnode_modules/").unwrap());
 
 // Names that do not provide any reasonable value, and that can possibly obstruct
@@ -103,6 +103,8 @@ pub fn fixup_webpack_filename(filename: &str) -> String {
     } else if WEBPACK_NAMESPACE_RE.is_match(filename) {
         WEBPACK_NAMESPACE_RE.replace(filename, "./").to_string()
     } else if let Some(rest) = filename.strip_prefix("webpack:///") {
+        rest.to_string()
+    } else if let Some(rest) = filename.strip_prefix("webpack-internal:///") {
         rest.to_string()
     } else {
         filename.to_string()
@@ -691,6 +693,9 @@ mod tests {
             fixup_webpack_filename(filename),
             "./app/utils/requestError/createRequestError.tsx"
         );
+
+        let filename = "webpack-internal:///./src/App.jsx";
+        assert_eq!(fixup_webpack_filename(filename), "./src/App.jsx");
     }
 
     #[test]
