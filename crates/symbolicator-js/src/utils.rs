@@ -719,11 +719,19 @@ mod tests {
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
 
-        let abs_path = "webpack:///@sentry/browser/esm/helpers.js";
-        let filename = "@sentry/browser/esm/helpers.js";
+        let abs_path = "webpack:///foo/bar/src/App.jsx";
+        let filename = "foo/bar/src/App.jsx";
 
+        // Here we have a discrepancy because the behavior of `is_in_app`
+        // longer aligns with that of the original Python version.
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
+
+        let abs_path = "webpack:///./foo/bar/App.tsx";
+        let filename = "./foo/bar/src/App.jsx";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
 
         let abs_path = "webpack:///./node_modules/@sentry/browser/esm/helpers.js";
         let filename = "./node_modules/@sentry/browser/esm/helpers.js";
