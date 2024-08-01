@@ -111,7 +111,9 @@ pub fn fixup_webpack_filename(filename: &str) -> String {
 
 pub fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
     if abs_path.starts_with("webpack:") {
-        Some(filename.starts_with("./") && !filename.contains("/node_modules/"))
+        // This diverges from the original logic. Previously we would only consider
+        // a filename starting with `./` as in-app, but that seems to be overly strict.
+        Some(!filename.starts_with("~/") && !filename.contains("/node_modules/"))
     } else if abs_path.starts_with("app:") {
         Some(!NODE_MODULES_RE.is_match(filename))
     } else if abs_path.contains("/node_modules/") {
@@ -712,6 +714,12 @@ mod tests {
 
         assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
+
+        let abs_path = "webpack:///@sentry/browser/esm/helpers.js";
+        let filename = "@sentry/browser/esm/helpers.js";
+
+        assert_eq!(is_in_app(abs_path, filename), Some(true));
+        assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "webpack:///./node_modules/@sentry/browser/esm/helpers.js";
         let filename = "./node_modules/@sentry/browser/esm/helpers.js";
