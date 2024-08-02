@@ -483,7 +483,7 @@ impl ModuleLookup {
             return;
         };
 
-        entry.object_info.candidates.merge_one(&candidate);
+        entry.object_info.candidates.merge_one(candidate);
     }
 }
 
