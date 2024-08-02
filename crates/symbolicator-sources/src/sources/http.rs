@@ -72,7 +72,8 @@ impl HttpRemoteFile {
         HttpRemoteFile::new(source, location)
     }
 
-    pub(crate) fn uri(&self) -> RemoteFileUri {
+    /// Returns a [`RemoteFileUri`] for the file.
+    pub fn uri(&self) -> RemoteFileUri {
         match self.url() {
             Ok(url) => url.as_ref().into(),
             Err(_) => "".into(),

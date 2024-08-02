@@ -1,6 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/public_sources.rs
-assertion_line: 48
+source: crates/symbolicator-native/tests/integration/public_sources.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -56,4 +55,12 @@ modules:
             has_sources: true
         debug:
           status: ok
-
+      - source: sourcelink
+        location: "https://raw.githubusercontent.com/mattjohnsonpint/TimeZoneConverter/dab355a1e878bfbfd4c659ddb568ca69961d579e/src/TimeZoneConverter/TZConvert.cs"
+        download:
+          status: ok
+          features:
+            has_debug_info: false
+            has_unwind_info: false
+            has_symbols: false
+            has_sources: true

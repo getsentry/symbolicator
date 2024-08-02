@@ -222,25 +222,36 @@ impl AllObjectCandidates {
     /// `other` if they are not [`ObjectUseInfo::None`].
     pub fn merge(&mut self, other: &AllObjectCandidates) {
         for other_info in &other.0 {
-            let key = (&other_info.source, &other_info.location);
-            let found_pos = self
-                .0
-                .binary_search_by_key(&key, |candidate| (&candidate.source, &candidate.location));
-            match found_pos {
-                Ok(index) => {
-                    if let Some(info) = self.0.get_mut(index) {
-                        info.download = other_info.download.clone();
-                        if other_info.unwind != ObjectUseInfo::None {
-                            info.unwind = other_info.unwind.clone();
-                        }
-                        if other_info.debug != ObjectUseInfo::None {
-                            info.debug = other_info.debug.clone();
-                        }
+            self.merge_one(other_info);
+        }
+    }
+
+    /// Merges another candidate into this collection.
+    ///
+    /// If `candidate` already existed in the collection all data which is present in both
+    /// will be overwritten by the data in `candidate`.  Practically that means
+    /// [`ObjectCandidate::download`] will be overwritten by `candidate` and for
+    /// [`ObjectCandidate::unwind`] and [`ObjectCandidate::debug`] it will be overwritten by
+    /// `candidate` if they are not [`ObjectUseInfo::None`].
+    pub fn merge_one(&mut self, candidate: &ObjectCandidate) {
+        let key = (&candidate.source, &candidate.location);
+        let found_pos = self
+            .0
+            .binary_search_by_key(&key, |candidate| (&candidate.source, &candidate.location));
+        match found_pos {
+            Ok(index) => {
+                if let Some(info) = self.0.get_mut(index) {
+                    info.download = candidate.download.clone();
+                    if candidate.unwind != ObjectUseInfo::None {
+                        info.unwind = candidate.unwind.clone();
+                    }
+                    if candidate.debug != ObjectUseInfo::None {
+                        info.debug = candidate.debug.clone();
                     }
                 }
-                Err(index) => {
-                    self.0.insert(index, other_info.clone());
-                }
+            }
+            Err(index) => {
+                self.0.insert(index, candidate.clone());
             }
         }
     }
