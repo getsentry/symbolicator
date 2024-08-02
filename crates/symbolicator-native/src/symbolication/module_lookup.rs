@@ -7,8 +7,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::{CacheEntry, CacheError};
 use symbolicator_service::objects::{
-    AllObjectCandidates, FindObject, FindResult, ObjectFeatures, ObjectHandle, ObjectPurpose,
-    ObjectsActor,
+    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
+    ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
@@ -389,12 +389,14 @@ impl ModuleLookup {
     }
 
     /// Update the frame with source context, if available.
-    /// Returns an `Url` in case the source code has to be fetched.
+    ///
+    /// Return a triple of scope, URL, and module index
+    /// in case the source code has to be fetched.
     pub(crate) fn try_set_source_context(
         &self,
         debug_sessions: &DebugSessions<'_>,
         frame: &mut RawFrame,
-    ) -> Option<(Scope, url::Url)> {
+    ) -> Option<(Scope, url::Url, usize)> {
         let abs_path = frame.abs_path.as_ref()?;
 
         // Short-circuit here before accessing the source. Line number is required to resolve the context.
@@ -425,7 +427,7 @@ impl ModuleLookup {
             None
         } else {
             // Let caller know this source code may be resolved from a remote URL.
-            filtered_url.map(|url| (session.0.clone(), url))
+            filtered_url.map(|url| (session.0.clone(), url, entry.module_index))
         }
     }
 
@@ -471,6 +473,17 @@ impl ModuleLookup {
                 .iter()
                 .find(|entry| entry.module_index == this_module_index),
         }
+    }
+
+    /// Adds an `ObjectCandidate` to the module with index `idx`.
+    ///
+    /// If there is no module at that index, this is a no-op.
+    pub fn add_candidate(&mut self, idx: usize, candidate: &ObjectCandidate) {
+        let Some(entry) = self.modules.get_mut(idx) else {
+            return;
+        };
+
+        entry.object_info.candidates.merge_one(&candidate);
     }
 }
 
