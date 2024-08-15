@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 24.8.0
 
 ### Dependencies
 
