@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+- In native symbolication, trying to download a source file from a
+  sourcelink now creates a candidate ([#1507](https://github.com/getsentry/symbolicator/pull/1510)).
+
 ### Dependencies
 
 - Bump Native SDK from v0.7.7 to v0.7.8 ([#1510](https://github.com/getsentry/symbolicator/pull/1510))
