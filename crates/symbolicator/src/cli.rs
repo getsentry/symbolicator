@@ -140,6 +140,20 @@ pub fn execute() -> Result<()> {
             }
         };
 
+        if let Some(platform_tag) = config.metrics.platform_tag.clone() {
+            if tags.contains_key(&platform_tag) {
+                tracing::warn!(
+                    "tag {} defined both as platform tag and as a custom tag",
+                    platform_tag
+                );
+            }
+            if let Some(platform) = get_platform() {
+                tags.insert(platform_tag, platform.to_string());
+            } else {
+                tracing::error!("platform not available");
+            }
+        };
+
         metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 
@@ -149,4 +163,17 @@ pub fn execute() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Determines a Symbolicator's platform (`"js"`, `"jvm"`, or `"native"`)
+/// according to the hostname.
+fn get_platform() -> Option<&'static str> {
+    let hostname = hostname::get().ok().and_then(|s| s.into_string().ok())?;
+    if hostname.contains("js") {
+        Some("js")
+    } else if hostname.contains("jvm") {
+        Some("jvm")
+    } else {
+        Some("native")
+    }
 }
