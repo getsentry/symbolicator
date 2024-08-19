@@ -4,6 +4,14 @@
 
 ### Dependencies
 
+- Bump Native SDK from v0.7.7 to v0.7.8 ([#1510](https://github.com/getsentry/symbolicator/pull/1510))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#078)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.7.7...0.7.8)
+
+## 24.8.0
+
+### Dependencies
+
 - Bump Native SDK from v0.7.6 to v0.7.7 ([#1502](https://github.com/getsentry/symbolicator/pull/1502))
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#077)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.7.6...0.7.7)
