@@ -2,77 +2,77 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://getsentry.github.io/symbolicator/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/background-and-principles/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/caching/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/shared-cache/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/source-bundles/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/symbol-lookup/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/system-architecture/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/applecrashreport/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/minidump/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/proxy/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/response/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/sourcemaps/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/symbolication/</loc>
-         <lastmod>2024-08-19</lastmod>
+         <lastmod>2024-08-26</lastmod>
          <changefreq>daily</changefreq>
     </url>
 </urlset>
