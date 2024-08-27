@@ -147,7 +147,7 @@ pub fn execute() -> Result<()> {
                     platform_tag
                 );
             }
-            if let Some(platform) = get_platform() {
+            if let Ok(platform) = std::env::var("SYMBOLICATOR_PLATFORM") {
                 tags.insert(platform_tag, platform.to_string());
             } else {
                 tracing::error!("platform not available");
@@ -163,17 +163,4 @@ pub fn execute() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Determines a Symbolicator's platform (`"js"`, `"jvm"`, or `"native"`)
-/// according to the hostname.
-fn get_platform() -> Option<&'static str> {
-    let hostname = hostname::get().ok().and_then(|s| s.into_string().ok())?;
-    if hostname.contains("js") {
-        Some("js")
-    } else if hostname.contains("jvm") {
-        Some("jvm")
-    } else {
-        Some("native")
-    }
 }
