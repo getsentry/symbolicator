@@ -140,6 +140,20 @@ pub fn execute() -> Result<()> {
             }
         };
 
+        if let Some(platform_tag) = config.metrics.platform_tag.clone() {
+            if tags.contains_key(&platform_tag) {
+                tracing::warn!(
+                    "tag {} defined both as platform tag and as a custom tag",
+                    platform_tag
+                );
+            }
+            if let Ok(platform) = std::env::var("SYMBOLICATOR_PLATFORM") {
+                tags.insert(platform_tag, platform.to_string());
+            } else {
+                tracing::error!("platform not available");
+            }
+        };
+
         metrics::configure_statsd(&config.metrics.prefix, statsd, tags);
     }
 

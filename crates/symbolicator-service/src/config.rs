@@ -91,6 +91,11 @@ pub struct Metrics {
     pub hostname_tag: Option<String>,
     /// A tag name to report the environment to, for each metric. Defaults to not sending such a tag.
     pub environment_tag: Option<String>,
+    /// A tag name to report the platform to, for each metric. Defaults to not sending such a tag.
+    ///
+    /// If this is set, the platform will be read from the `SYMBOLICLATOR_PLATFORM`
+    /// environment variable.
+    pub platform_tag: Option<String>,
     /// A map containing custom tags and their values.
     ///
     /// These tags will be appended to every metric.
@@ -107,6 +112,7 @@ impl Default for Metrics {
             prefix: "symbolicator".into(),
             hostname_tag: None,
             environment_tag: None,
+            platform_tag: None,
             custom_tags: BTreeMap::new(),
         }
     }
