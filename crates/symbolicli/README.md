@@ -46,3 +46,8 @@ See `symboliclirc.example` for an exapmle `.symboliclirc` file.
 # Logging
 You can control the level of logging output by passing the desired log level to the `--log-level` option.
 Available levels are `off`, `error`, `warn`, `info`, `debug`, `trace`. The default is `info`.
+
+# Local Symbols
+The `--symbols` option allows you to supply a local directory containing debug files to use
+in addition to the configured sources. The directory must be sorted according to the
+`unified` layout. The easiest way to accomplish that is using `symsorter`.
