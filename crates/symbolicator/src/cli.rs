@@ -147,10 +147,13 @@ pub fn execute() -> Result<()> {
                     platform_tag
                 );
             }
-            if let Ok(platform) = std::env::var("SYMBOLICATOR_PLATFORM") {
-                tags.insert(platform_tag, platform.to_string());
-            } else {
-                tracing::error!("platform not available");
+            match std::env::var("SYMBOLICATOR_PLATFORM") {
+                Ok(platform) => {
+                    tags.insert(platform_tag, platform.to_string());
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "platform not available");
+                }
             }
         };
 
