@@ -87,20 +87,11 @@ pub fn execute() -> Result<()> {
         release,
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
-        traces_sampler: Some(Arc::new(|ctx| {
+        traces_sampler: Some(Arc::new(move |ctx| {
             if Some(true) == ctx.sampled() {
                 1.0
             } else if ctx.operation() != "http.server" {
-                // Symbolicator receives at peak:
-                // - ~3_000 `symbolicate_js`,
-                // - ~800 `symbolicater`, and
-                // - ~40 `minidump_stackwalk` requests per second.
-                //
-                // round that up to ~4_000 total requests per second, with a 5% sample rate,
-                // we end up with ~200 sampled transactions per second, or ~12_000 per minute.
-                // We only do this for the "real" transactions and not the http frontend that
-                // just spawns these computations.
-                0.05
+                config.transaction_sample_rate
             } else {
                 0.0
             }

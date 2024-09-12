@@ -13,6 +13,9 @@ cache_dir: cache
 logging:
   level: error
 
+# The sample rate for transactions. (0.0 - 1.0, defaults to 0.05)
+transaction_sample_rate: 0.05
+
 # Configure some default symbol sources:
 sources:
   # You can use symsorter to correctly sort symbols into the local filesystem source:
