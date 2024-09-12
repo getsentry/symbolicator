@@ -91,6 +91,7 @@ pub fn execute() -> Result<()> {
             if Some(true) == ctx.sampled() {
                 1.0
             } else if ctx.operation() != "http.server" {
+                // TODO: Think about what to do with this comment now:
                 // Symbolicator receives at peak:
                 // - ~3_000 `symbolicate_js`,
                 // - ~800 `symbolicater`, and
@@ -101,9 +102,7 @@ pub fn execute() -> Result<()> {
                 // We only do this for the "real" transactions and not the http frontend that
                 // just spawns these computations.
 
-                // TODO: Think about if moving the the above comment to the Config is now more
-                // appropriate?
-                config.sample_rate
+                config.transaction_sample_rate
             } else {
                 0.0
             }

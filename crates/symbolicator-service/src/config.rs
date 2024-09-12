@@ -474,9 +474,8 @@ pub struct Config {
     #[serde(default)]
     pub _crash_db: Option<PathBuf>,
 
-    // TODO: 1) Discuss the name for this, currently  the name in the sdk, not sure if that is what we want
-    // TODO: 2) Add documentation to this explaining nicely what ir does.
-    pub sample_rate: f32,
+    /// The sample rate for transactions. (0.0 - 1.0, defaults to 0.05)
+    pub transaction_sample_rate: f32,
 }
 
 impl Config {
@@ -560,7 +559,7 @@ impl Default for Config {
             max_concurrent_requests: Some(200),
             shared_cache: None,
             _crash_db: None,
-            sample_rate: 0.05,
+            transaction_sample_rate: 0.05,
         }
     }
 }
