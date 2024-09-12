@@ -87,7 +87,7 @@ pub fn execute() -> Result<()> {
         release,
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
-        traces_sampler: Some(Arc::new(|ctx| {
+        traces_sampler: Some(Arc::new(move |ctx| {
             if Some(true) == ctx.sampled() {
                 1.0
             } else if ctx.operation() != "http.server" {
@@ -100,7 +100,10 @@ pub fn execute() -> Result<()> {
                 // we end up with ~200 sampled transactions per second, or ~12_000 per minute.
                 // We only do this for the "real" transactions and not the http frontend that
                 // just spawns these computations.
-                0.05
+
+                // TODO: Think about if moving the the above comment to the Config is now more
+                // appropriate?
+                config.sample_rate
             } else {
                 0.0
             }

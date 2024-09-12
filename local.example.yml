@@ -13,6 +13,10 @@ cache_dir: cache
 logging:
   level: error
 
+# TODO: Add some documentation for this here.
+# The sample rate for event submission. (0.0 - 1.0, defaults to 0.05)
+sample_rate: 0.05
+
 # Configure some default symbol sources:
 sources:
   # You can use symsorter to correctly sort symbols into the local filesystem source:

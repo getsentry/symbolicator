@@ -473,6 +473,10 @@ pub struct Config {
     /// cached on disk. The path is created if it doesn't exist. Path must be UTF-8.
     #[serde(default)]
     pub _crash_db: Option<PathBuf>,
+
+    // TODO: 1) Discuss the name for this, currently  the name in the sdk, not sure if that is what we want
+    // TODO: 2) Add documentation to this explaining nicely what ir does.
+    pub sample_rate: f32,
 }
 
 impl Config {
@@ -556,6 +560,7 @@ impl Default for Config {
             max_concurrent_requests: Some(200),
             shared_cache: None,
             _crash_db: None,
+            sample_rate: 0.05,
         }
     }
 }
