@@ -4,6 +4,7 @@
 
 ### Various fixes & improvements
 
+- Transaction sample rate is now configurable through the config file ([#1517](https://github.com/getsentry/symbolicator/pull/1517)).
 - In native symbolication, trying to download a source file from a
   sourcelink now creates a candidate ([#1507](https://github.com/getsentry/symbolicator/pull/1510)).
 

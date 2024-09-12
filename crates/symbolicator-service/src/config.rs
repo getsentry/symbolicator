@@ -559,6 +559,15 @@ impl Default for Config {
             max_concurrent_requests: Some(200),
             shared_cache: None,
             _crash_db: None,
+            // Symbolicator receives at peak:
+            // - ~3_000 `symbolicate_js`,
+            // - ~800 `symbolicater`, and
+            // - ~40 `minidump_stackwalk` requests per second.
+            //
+            // round that up to ~4_000 total requests per second, with a 5% sample rate,
+            // we end up with ~200 sampled transactions per second, or ~12_000 per minute.
+            // We only do this for the "real" transactions and not the http frontend that
+            // just spawns these computations.
             transaction_sample_rate: 0.05,
         }
     }
