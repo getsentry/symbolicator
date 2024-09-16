@@ -1,6 +1,6 @@
 [package]
 name = "symsorter"
-version = "24.8.0"
+version = "24.9.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
