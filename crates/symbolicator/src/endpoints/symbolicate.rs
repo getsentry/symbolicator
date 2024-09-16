@@ -178,7 +178,9 @@ mod tests {
             "sources": []
         }"#;
         let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
-        payload.sources = Some(vec![test::microsoft_symsrv()]);
+
+        let (_srv, source) = test::symbol_server();
+        payload.sources = Some(vec![source]);
 
         let response = Client::new()
             .post(server.url("/symbolicate"))
