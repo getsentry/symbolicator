@@ -83,6 +83,7 @@ metrics:
   `true`.
 - `connect_to_reserved_ips`: Allow reserved IP addresses for requests to
   sources. See [Security](#security). Defaults to `false`.
+- `transaction_sample_rate`: The sample rate for transactions sent to Sentry. Should be a value between 0.0 and 1.0. Defaults to 0.05.
 - `max_concurrent_requests`: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
   Set it to `null` to turn off the limit. Defaults to 120.
 
