@@ -165,20 +165,22 @@ mod tests {
         let payload = r#"{
             "stacktraces": [{
               "registers": {"eip": "0x0000000001509530"},
-              "frames": [{"instruction_addr": "0x749e8630"}]
+              "frames": [{"instruction_addr": "0x749d37f2"}]
             }],
             "modules": [{
               "type": "pe",
-              "debug_id": "ff9f9f78-41db-88f0-cded-a9e1e9bff3b5-1",
+              "debug_id": "3249d99d-0c40-4931-8610-f4e4fb0b6936-1",
               "code_file": "C:\\Windows\\System32\\kernel32.dll",
-              "debug_file": "C:\\Windows\\System32\\wkernel32.pdb",
+              "debug_file": "C:\\Windows\\System32\\crash.pdb",
               "image_addr": "0x749d0000",
               "image_size": 851968
             }],
             "sources": []
         }"#;
         let mut payload: SymbolicationRequestBody = serde_json::from_str(payload).unwrap();
-        payload.sources = Some(vec![test::microsoft_symsrv()]);
+
+        let (_srv, source) = test::symbol_server();
+        payload.sources = Some(vec![source]);
 
         let response = Client::new()
             .post(server.url("/symbolicate"))
