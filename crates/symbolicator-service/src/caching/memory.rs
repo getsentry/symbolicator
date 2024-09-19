@@ -282,16 +282,12 @@ impl<T: CacheItemRequest> Cacher<T> {
                             CacheStoreReason::New,
                         );
                     }
-                    Err(CacheError::NotFound)
-                    | Err(CacheError::PermissionDenied(_))
-                    | Err(CacheError::Timeout(_))
-                    | Err(CacheError::DownloadError(_))
-                    | Err(CacheError::Malformed(_)) => {
+                    Err(CacheError::InternalError) => {} /*  Not intended to be persisted to caches */
+                    Err(_) => {
                         if let Some(byte_view) = error_byte_view {
                             shared_cache.store(name, &cache_path, byte_view, CacheStoreReason::New);
                         };
                     }
-                    Err(_) => {}
                 }
             }
         }
