@@ -187,6 +187,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.config.tempfile()?;
+        let mut error_byte_view = None;
 
         let shared_cache = self.shared_cache(&request);
         let shared_cache_hit = if let Some(shared_cache) = shared_cache {
@@ -215,6 +216,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 Err(err) => {
                     let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
                     err.write(&mut temp_fd).await?;
+                    error_byte_view = Some(ByteView::map_file_ref(temp_file.as_file())?);
 
                     entry = Err(err);
                 }
@@ -270,9 +272,26 @@ impl<T: CacheItemRequest> Cacher<T> {
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
         if !shared_cache_hit {
-            if let Ok(byteview) = &entry {
-                if let Some(shared_cache) = shared_cache {
-                    shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
+            if let Some(shared_cache) = shared_cache {
+                match &entry {
+                    Ok(byteview) => {
+                        shared_cache.store(
+                            name,
+                            &cache_path,
+                            byteview.clone(),
+                            CacheStoreReason::New,
+                        );
+                    }
+                    Err(CacheError::NotFound)
+                    | Err(CacheError::PermissionDenied(_))
+                    | Err(CacheError::Timeout(_))
+                    | Err(CacheError::DownloadError(_))
+                    | Err(CacheError::Malformed(_)) => {
+                        if let Some(byte_view) = error_byte_view {
+                            shared_cache.store(name, &cache_path, byte_view, CacheStoreReason::New);
+                        };
+                    }
+                    Err(_) => {}
                 }
             }
         }
