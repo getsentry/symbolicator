@@ -2,15 +2,6 @@
 title: POST /symbolicate-jvm
 ---
 
-TODO:
-- [ ] Ensure that this is working like it should by posting it against the endpoint
-- [ ] Find out why only here sources are a list (not for the docs but for personal understanding)
-- [ ] Check if we can only get progard files from sentry and if so mention that
-- [ ] Find an example of a release package and where it is is being used
-- [ ] Find an example for the classes, must be some logic for them somewhere
-- [ ] Update the descriptions of the individual things
-- [ ] Update the response
-
 # Symbolication Request
 
 
@@ -57,7 +48,7 @@ Content-Type: application/json
             "uuid": "05d96b1c-1786-477c-8615-d3cf83e027c7"
         }
     ],
-    "release_package": "TODO",
+    "release_package": "some_release",
     "classes": [],
     "options": {
         "apply_source_context": true
@@ -77,16 +68,15 @@ Content-Type: application/json
 ## Request Body
 
 - `source`: A descriptor for the Sentry source to be used for symbolication. See
-  [Sentry](index.md) source.
-- `exceptions`: TODO: fill in a description.
+  [Sentry](index.md) source. Note that only progaurd files uploaded to Sentry are supported at the moment.
+- `exceptions`: A list of exceptions which will have their module and type fields remapped.
 - `modules`: A list of source code files with a corresponding debug id that
   were loaded during JVM code execution. The list is handled by the Sentry source.
 - `stacktrace`: A list of stacktraces to symbolicate.
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
     and other optional fields like `colno` or minified `function` name.
 - `release_package`: Name of Sentry `release` for the processed request.
-- `dist`: Name of Sentry `dist` for the processed request.
-- `classes` TODO: Fill in a description
+- `classes`: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.
 - `options`: Symbolication-specific options which control the endpoint's behavior.
   - `apply_source_context`: Whether to apply source context for the stack frames.
 
