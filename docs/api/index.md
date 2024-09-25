@@ -13,6 +13,7 @@ or full stack traces. There are the following endpoints:
 - `POST /minidump`: Symbolicate a minidump and extract information
 - `POST /applecrashreport`: Symbolicate an Apple Crash Report
 - `POST /symbolicate-js`: Symbolicate JavaScript stacktrace
+- `POST /symbolicate-jvm`: Symbolicate JVM stacktrace  (TODO: Decide if we want to talk about the deobfuscating view hierarchies)
 - `GET /requests/:id`: Status update on running symbolication jobs
 - `GET /healthcheck`: System status and health monitoring
 

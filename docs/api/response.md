@@ -185,3 +185,12 @@ and an optional list of errors that happened during symbolication.
   ]
 }
 ```
+
+## JVM Response
+
+TODO: Discuss what can be seen in the response.
+
+```javascript
+TODO: Seems like there are a couple responses to choose from in integration/snapshots
+Decide on which one would be the most sensible.
+```
