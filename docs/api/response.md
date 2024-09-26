@@ -185,3 +185,63 @@ and an optional list of errors that happened during symbolication.
   ]
 }
 ```
+
+## JVM Response
+
+The response to a JVM symbolication request is a JSON object which contains
+a list of processed stack traces, exceptions and classes as well as an optional list of error that happen during symbolication.
+
+```javascript
+{
+  "exceptions": [
+    {
+      "type": "RuntimeException",
+      "module": "java.lang"
+    }
+  ],
+  "stacktraces": [
+    {
+      "frames": [
+        {
+          "function": "onMenuItemClick",
+          "filename": "EditActivity",
+          "module": "io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0",
+          "abs_path": "EditActivity",
+          "lineno": 0,
+          "in_app": true,
+          "index": 18
+        },
+        {
+          "function": "onCreate$lambda-1",
+          "module": "io.sentry.samples.instrumentation.ui.EditActivity",
+          "lineno": 37,
+          "pre_context": [
+            "        }",
+            "",
+            "        findViewById<Toolbar>(R.id.toolbar).setOnMenuItemClickListener {",
+            "            if (it.itemId == R.id.action_save) {",
+            "                try {"
+          ],
+          "context_line": "                    SomeService().helloThere()",
+          "post_context": [
+            "                } catch (e: Exception) {",
+            "                    Sentry.captureException(e)",
+            "                }",
+            "",
+            "                val transaction = Sentry.startTransaction("
+          ],
+          "in_app": true,
+          "index": 18
+        }
+      ]
+    }
+  ],
+  "classes": {},
+  "errors": [
+    {
+      "uuid": "8236f5cf-52c8-4e35-a7cf-01421e4c2c88",
+      "type": "missing"
+    }
+  ]
+}
+```
