@@ -20,7 +20,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.35">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.38">
     
     
       
@@ -28,7 +28,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.35f28582.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.8c3ca2c6.min.css">
       
       
 
@@ -675,6 +675,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#jvm-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      JVM Response
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -793,6 +802,15 @@
   <a href="#javascript-response" class="md-nav__link">
     <span class="md-ellipsis">
       JavaScript Response
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#jvm-response" class="md-nav__link">
+    <span class="md-ellipsis">
+      JVM Response
     </span>
   </a>
   
@@ -980,6 +998,63 @@ and an optional list of errors that happened during symbolication.</p>
 <span class="p">}</span>
 </code></pre></div>
 
+<h2 id="jvm-response">JVM Response</h2>
+<p>The response to a JVM symbolication request is a JSON object which contains
+a list of processed stack traces, exceptions and classes as well as an optional list of error that happen during symbolication.</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="s2">&quot;exceptions&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;type&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;RuntimeException&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;module&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;java.lang&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="s2">&quot;stacktraces&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;frames&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="s2">&quot;function&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;onMenuItemClick&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;filename&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;EditActivity&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;module&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;abs_path&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;EditActivity&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;lineno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">0</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;in_app&quot;</span><span class="o">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;index&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">18</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="s2">&quot;function&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;onCreate$lambda-1&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;module&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;io.sentry.samples.instrumentation.ui.EditActivity&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;lineno&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">37</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;pre_context&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;        }&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;        findViewById&lt;Toolbar&gt;(R.id.toolbar).setOnMenuItemClickListener {&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;            if (it.itemId == R.id.action_save) {&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;                try {&quot;</span>
+<span class="w">          </span><span class="p">],</span>
+<span class="w">          </span><span class="s2">&quot;context_line&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;                    SomeService().helloThere()&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;post_context&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">            </span><span class="s2">&quot;                } catch (e: Exception) {&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;                    Sentry.captureException(e)&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;                }&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="s2">&quot;                val transaction = Sentry.startTransaction(&quot;</span>
+<span class="w">          </span><span class="p">],</span>
+<span class="w">          </span><span class="s2">&quot;in_app&quot;</span><span class="o">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">          </span><span class="s2">&quot;index&quot;</span><span class="o">:</span><span class="w"> </span><span class="mf">18</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="s2">&quot;classes&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">  </span><span class="s2">&quot;errors&quot;</span><span class="o">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="s2">&quot;uuid&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;8236f5cf-52c8-4e35-a7cf-01421e4c2c88&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;type&quot;</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;missing&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
 
 
 
@@ -1031,7 +1106,7 @@ and an optional list of errors that happened during symbolication.</p>
     <script id="__config" type="application/json">{"base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.56dfad97.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d6f25eb3.min.js"></script>
       
     
   </body>

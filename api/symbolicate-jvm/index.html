@@ -10,13 +10,9 @@
         <meta name="author" content="Sentry">
       
       
-        <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/sourcemaps/">
+        <link rel="canonical" href="https://getsentry.github.io/symbolicator/api/symbolicate-jvm/">
       
       
-        <link rel="prev" href="../applecrashreport/">
-      
-      
-        <link rel="next" href="../response/">
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
@@ -24,7 +20,7 @@
     
     
       
-        <title>POST /symbolicate-js - Sentry Symbolicator</title>
+        <title>POST /symbolicate-jvm - Sentry Symbolicator</title>
       
     
     
@@ -103,7 +99,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              POST /symbolicate-js
+              POST /symbolicate-jvm
             
           </span>
         </div>
@@ -425,19 +421,17 @@
       
   
   
-    
   
   
-  
     
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
         
           
           <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
@@ -451,7 +445,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             API
@@ -546,30 +540,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    POST /symbolicate-js
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../sourcemaps/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -578,53 +552,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#query-parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      Query Parameters
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#request-body" class="md-nav__link">
-    <span class="md-ellipsis">
-      Request Body
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#response" class="md-nav__link">
-    <span class="md-ellipsis">
-      Response
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -751,43 +678,53 @@
 
 
 <h1 id="symbolication-request">Symbolication Request</h1>
-<div class="codehilite"><pre><span></span><code><span class="nf">POST</span> <span class="nn">/symbolicate-js?timeout=123&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
+<div class="codehilite"><pre><span></span><code><span class="nf">POST</span> <span class="nn">/symbolicate-jvm?timeout=123&amp;scope=123</span> <span class="kr">HTTP</span><span class="o">/</span><span class="m">1.1</span>
 <span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
 
 <span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://sentry.io/api/0/projects/sentry-org/sentry-project/artifact-lookup/&quot;</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret&quot;</span>
-<span class="w">  </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">&quot;stacktraces&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span>
-<span class="w">          </span><span class="nt">&quot;function&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;module&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;filename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;abs_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;x&quot;</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;lineno&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;colno&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
-<span class="w">          </span><span class="nt">&quot;in_app&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;s3&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://sentry.io/api/0/projects/sentry-org/sentry-project/artifact-lookup/&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;token&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;secret&quot;</span>
 <span class="w">        </span><span class="p">}</span>
-<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;exceptions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RuntimeException&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;module&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;io.sentry.samples&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;stacktraces&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                </span><span class="p">{</span>
+<span class="w">                    </span><span class="nt">&quot;function&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;otherMethod&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;filename&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OtherActivity.java&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;module&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OtherActivity&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;abs_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;OtherActivity.java&quot;</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;lineno&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span>
+<span class="w">                    </span><span class="nt">&quot;index&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">                </span><span class="p">}</span>
+<span class="w">            </span><span class="p">]</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;modules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;source&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;uuid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;246fb328-fc4e-406a-87ff-fc35f6149d8f&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;proguard&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;uuid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;05d96b1c-1786-477c-8615-d3cf83e027c7&quot;</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;release_package&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some_release&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;classes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;modules&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
-<span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;code_file&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-code-file&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;debug_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some-debug-id&quot;</span><span class="p">,</span>
-<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;debug_id&quot;</span>
-<span class="w">    </span><span class="p">}</span>
-<span class="w">  </span><span class="p">],</span>
-<span class="w">  </span><span class="nt">&quot;dist&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;production&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;release&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.33.1&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;scraping&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;allowed_origins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.domain.com&quot;</span><span class="p">]</span>
-<span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
 
@@ -799,30 +736,17 @@
   each other</li>
 </ul>
 <h2 id="request-body">Request Body</h2>
-<p>A JSON payload describing the stack traces and code modules for symbolication,
-as well as configuration for scraping sources from external servers:</p>
 <ul>
 <li><code>source</code>: A descriptor for the Sentry source to be used for symbolication. See
-  <a href="../">Sentry</a> source.</li>
+  <a href="../">Sentry</a> source. Note that only proguard files uploaded to Sentry are supported at the moment.</li>
+<li><code>exceptions</code>: A list of exceptions which will have their module and type fields remapped.</li>
 <li><code>modules</code>: A list of source code files with a corresponding debug id that
-  were loaded during JS code execution. The list is handled by the Sentry source.</li>
+  were loaded during JVM code execution. The list is handled by the Sentry source.</li>
 <li><code>stacktrace</code>: A list of stacktraces to symbolicate.</li>
 <li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
     and other optional fields like <code>colno</code> or minified <code>function</code> name.</li>
-<li><code>release</code>: Name of Sentry <code>release</code> for the processed request.</li>
-<li><code>dist</code>: Name of Sentry <code>dist</code> for the processed request.</li>
-<li><code>scraping</code>: Configuration for scraping of JS sources and sourcemaps from the web.</li>
-<li><code>enabled</code>: Whether scraping should happen at all.</li>
-<li><code>allowed_origins</code>: A list of "allowed origin patterns" that control what
-    URLs we are allowed to scrape from. Allowed origins may be defined in several ways:<ul>
-<li><code>http://domain.com[:port]</code>: Exact match for base URI (must include port).</li>
-<li><code>*</code>: Allow any domain.</li>
-<li><code>*.domain.com</code>: Matches domain.com and all subdomains, on any port.</li>
-<li><code>domain.com</code>: Matches domain.com on any port.</li>
-<li><code>*:port</code>: Wildcard on hostname, but explicit match on port.</li>
-</ul>
-</li>
-<li><code>headers</code>: A map of headers to send with every HTTP request while scraping.</li>
+<li><code>release_package</code>: Name of Sentry <code>release</code> for the processed request.</li>
+<li><code>classes</code>: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.</li>
 <li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
 <li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
 </ul>
