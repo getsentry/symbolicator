@@ -68,7 +68,7 @@ Content-Type: application/json
 ## Request Body
 
 - `source`: A descriptor for the Sentry source to be used for symbolication. See
-  [Sentry](index.md) source. Note that only progaurd files uploaded to Sentry are supported at the moment.
+  [Sentry](index.md) source. Note that only proguard files uploaded to Sentry are supported at the moment.
 - `exceptions`: A list of exceptions which will have their module and type fields remapped.
 - `modules`: A list of source code files with a corresponding debug id that
   were loaded during JVM code execution. The list is handled by the Sentry source.
