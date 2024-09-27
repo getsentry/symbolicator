@@ -827,7 +827,8 @@ settings in this case.</p>
   <code>true</code>.</li>
 <li><code>connect_to_reserved_ips</code>: Allow reserved IP addresses for requests to
   sources. See <a href="#security">Security</a>. Defaults to <code>false</code>.</li>
-<li><code>transaction_sample_rate</code>: The sample rate for transactions sent to Sentry. Should be a value between 0.0 and 1.0. Defaults to 0.05.</li>
+<li><code>traces_sample_rate</code>: The sample rate for traces sent to Sentry. Should be a value between <code>0.0</code> and <code>1.0</code>. Defaults to <code>0.05</code>.</li>
+<li><code>propagate_traces</code>: When tracing is enabled, inherit the sample rate from incoming parent traces and if Sentry is used as a symbol source also propagate traces back to Sentry. Defaults to <code>true</code>.</li>
 <li><code>max_concurrent_requests</code>: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
   Set it to <code>null</code> to turn off the limit. Defaults to 120.</li>
 </ul>
