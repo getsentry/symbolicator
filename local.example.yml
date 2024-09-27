@@ -14,7 +14,7 @@ logging:
   level: error
 
 # The sample rate for transactions. (0.0 - 1.0, defaults to 0.05)
-transaction_sample_rate: 0.05
+traces_sample_rate: 0.05
 
 # Configure some default symbol sources:
 sources:

@@ -88,10 +88,10 @@ pub fn execute() -> Result<()> {
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
         traces_sampler: Some(Arc::new(move |ctx| {
-            if Some(true) == ctx.sampled() {
+            if Some(true) == ctx.sampled() && config.propagate_traces {
                 1.0
             } else if ctx.operation() != "http.server" {
-                config.transaction_sample_rate
+                config.traces_sample_rate
             } else {
                 0.0
             }
