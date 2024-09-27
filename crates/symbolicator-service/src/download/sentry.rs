@@ -89,6 +89,7 @@ pub struct SentryDownloader {
     runtime: tokio::runtime::Handle,
     dif_cache: SentryDifCache,
     timeouts: DownloadTimeouts,
+    propagate_traces: bool,
 }
 
 impl fmt::Debug for SentryDownloader {
@@ -96,6 +97,7 @@ impl fmt::Debug for SentryDownloader {
         f.debug_struct("SentryDownloader")
             .field("dif_cache", &self.dif_cache.entry_count())
             .field("timeouts", &self.timeouts)
+            .field("propagate_traces", &self.propagate_traces)
             .finish()
     }
 }
@@ -106,6 +108,7 @@ impl SentryDownloader {
         runtime: tokio::runtime::Handle,
         timeouts: DownloadTimeouts,
         in_memory: &InMemoryCacheConfig,
+        propagate_traces: bool,
     ) -> Self {
         let dif_cache = SentryDifCache::builder()
             .max_capacity(in_memory.sentry_index_capacity)
@@ -116,6 +119,7 @@ impl SentryDownloader {
             runtime,
             dif_cache,
             timeouts,
+            propagate_traces,
         }
     }
 
@@ -124,6 +128,7 @@ impl SentryDownloader {
     pub async fn fetch_sentry_json<T>(
         client: &reqwest::Client,
         query: &SearchQuery,
+        propagate_traces: bool,
     ) -> CacheEntry<Arc<[T]>>
     where
         T: DeserializeOwned,
@@ -133,9 +138,12 @@ impl SentryDownloader {
             .bearer_auth(&query.token)
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT);
-        if let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
-            for (k, v) in span.iter_headers() {
-                request = request.header(k, v);
+
+        if propagate_traces {
+            if let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
+                for (k, v) in span.iter_headers() {
+                    request = request.header(k, v);
+                }
             }
         }
 
@@ -198,7 +206,11 @@ impl SentryDownloader {
             let future = {
                 let client = self.client.clone();
                 let query = query.clone();
-                async move { super::retry(|| Self::fetch_sentry_json(&client, &query)).await }
+                let propagate_traces = self.propagate_traces;
+                async move {
+                    super::retry(|| Self::fetch_sentry_json(&client, &query, propagate_traces))
+                        .await
+                }
             };
 
             let future =

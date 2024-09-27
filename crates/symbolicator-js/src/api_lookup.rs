@@ -70,13 +70,15 @@ pub struct SentryLookupApi {
     runtime: tokio::runtime::Handle,
     js_cache: SentryJsCache,
     timeouts: DownloadTimeouts,
+    propagate_traces: bool,
 }
 
 impl fmt::Debug for SentryLookupApi {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SentryDownloader")
+        f.debug_struct("SentryLookupApi")
             .field("js_cache", &self.js_cache.entry_count())
             .field("timeouts", &self.timeouts)
+            .field("propagate_traces", &self.propagate_traces)
             .finish()
     }
 }
@@ -87,6 +89,7 @@ impl SentryLookupApi {
         runtime: tokio::runtime::Handle,
         timeouts: DownloadTimeouts,
         in_memory: &InMemoryCacheConfig,
+        propagate_traces: bool,
     ) -> Self {
         let js_cache = SentryJsCache::builder()
             .max_capacity(in_memory.sentry_index_capacity)
@@ -97,6 +100,7 @@ impl SentryLookupApi {
             runtime,
             js_cache,
             timeouts,
+            propagate_traces,
         }
     }
 
@@ -154,7 +158,11 @@ impl SentryLookupApi {
             let future = {
                 let client = self.client.clone();
                 let query = query.clone();
-                async move { retry(|| SentryDownloader::fetch_sentry_json(&client, &query)).await }
+                let propagate_traces = self.propagate_traces;
+                async move {
+                    retry(|| SentryDownloader::fetch_sentry_json(&client, &query, propagate_traces))
+                        .await
+                }
             };
 
             let future =

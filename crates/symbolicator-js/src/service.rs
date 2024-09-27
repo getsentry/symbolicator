@@ -36,6 +36,7 @@ impl SourceMapService {
             download_svc.runtime.clone(),
             download_svc.timeouts,
             in_memory,
+            services.config.propagate_traces,
         ));
 
         Self {

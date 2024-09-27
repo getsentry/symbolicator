@@ -474,8 +474,12 @@ pub struct Config {
     #[serde(default)]
     pub _crash_db: Option<PathBuf>,
 
-    /// The sample rate for transactions. (0.0 - 1.0, defaults to 0.05)
-    pub transaction_sample_rate: f32,
+    /// The sample rate for Sentry traces. (0.0 - 1.0, defaults to 0.05)
+    #[serde(alias = "transaction_sample_rate")]
+    pub traces_sample_rate: f32,
+
+    /// Whether to inherit traces from incoming requests and propagate them to outgoing requests.
+    pub propagate_traces: bool,
 }
 
 impl Config {
@@ -568,7 +572,8 @@ impl Default for Config {
             // we end up with ~200 sampled transactions per second, or ~12_000 per minute.
             // We only do this for the "real" transactions and not the http frontend that
             // just spawns these computations.
-            transaction_sample_rate: 0.05,
+            traces_sample_rate: 0.05,
+            propagate_traces: true,
         }
     }
 }
