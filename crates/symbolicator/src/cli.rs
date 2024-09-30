@@ -143,7 +143,7 @@ pub fn execute() -> Result<()> {
                     tags.insert(region_tag, platform.to_string());
                 }
                 Err(e) => {
-                    tracing::error!(error = %e, "platform not available");
+                    tracing::error!(error = %e, "region not available");
                 }
             }
         };
