@@ -131,6 +131,23 @@ pub fn execute() -> Result<()> {
             }
         };
 
+        if let Some(region_tag) = config.metrics.region_tag.clone() {
+            if tags.contains_key(&region_tag) {
+                tracing::warn!(
+                    "tag {} defined both as platform tag and as a custom tag",
+                    region_tag
+                );
+            }
+            match std::env::var("SYMBOLICATOR_REGION") {
+                Ok(platform) => {
+                    tags.insert(region_tag, platform.to_string());
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "platform not available");
+                }
+            }
+        };
+
         if let Some(platform_tag) = config.metrics.platform_tag.clone() {
             if tags.contains_key(&platform_tag) {
                 tracing::warn!(
