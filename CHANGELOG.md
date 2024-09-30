@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump Native SDK from v0.7.9 to v0.7.10 ([#1527](https://github.com/getsentry/symbolicator/pull/1527))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0710)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.7.9...0.7.10)
+
 ## 24.9.0
 
 ### Various fixes & improvements
