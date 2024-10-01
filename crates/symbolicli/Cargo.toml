@@ -13,7 +13,7 @@ prettytable-rs = "0.10.0"
 reqwest = { workspace = true, features = ["json"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
-symbolic = "12.11.1"
+symbolic = "12.12.0"
 symbolicator-js = { path = "../symbolicator-js" }
 symbolicator-native = { path = "../symbolicator-native" }
 symbolicator-service = { path = "../symbolicator-service" }
