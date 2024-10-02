@@ -26,15 +26,6 @@ use super::il2cpp::{Il2cppHandle, Il2cppService};
 
 pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 
-fn parse_symcache_owned(byteview: ByteView<'static>) -> Result<OwnedSymCache, CacheError> {
-    SelfCell::try_new(byteview, |p| unsafe {
-        SymCache::parse(&*p).map_err(|e| {
-            tracing::error!(error = %e);
-            CacheError::InternalError
-        })
-    })
-}
-
 #[derive(Clone, Debug)]
 pub struct SymCacheActor {
     symcaches: Arc<Cacher<FetchSymCacheInternal>>,
@@ -99,7 +90,19 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
-        parse_symcache_owned(data)
+        SelfCell::try_new(data, |p| unsafe {
+            SymCache::parse(&*p).map_err(|e| {
+                let object_meta = &self.object_meta;
+                tracing::error!(
+                    scope = %object_meta.scope(),
+                    cache_key = object_meta.cache_key().metadata(),
+                    debug_id = ?object_meta.object_id().debug_id,
+                    code_id = ?object_meta.object_id().code_id,
+                    error = %e
+                );
+                CacheError::InternalError
+            })
+        })
     }
 }
 
