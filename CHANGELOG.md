@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+- Added `dry-run` mode to the `cleanup` command that simulates the cleanup
+  without deleting files. ([#1531](https://github.com/getsentry/symbolicator/pull/1531))
+
 ### Dependencies
 
 - Bump Native SDK from v0.7.9 to v0.7.10 ([#1527](https://github.com/getsentry/symbolicator/pull/1527))

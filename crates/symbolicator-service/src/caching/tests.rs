@@ -109,7 +109,7 @@ fn test_max_unused_for() -> Result<()> {
     sleep(Duration::from_millis(100));
 
     File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
-    cache.cleanup()?;
+    cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
@@ -147,7 +147,7 @@ fn test_retry_misses_after() -> Result<()> {
     sleep(Duration::from_millis(100));
 
     File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"")?;
-    cache.cleanup()?;
+    cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
@@ -192,7 +192,7 @@ fn test_cleanup_malformed() -> Result<()> {
         1024,
     )?;
 
-    cache.cleanup()?;
+    cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
@@ -236,7 +236,7 @@ fn test_cleanup_cache_download() -> Result<()> {
 
     sleep(Duration::from_millis(30));
 
-    cache.cleanup()?;
+    cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
         .map(|x| x.unwrap().file_name().into_string().unwrap())
@@ -444,7 +444,7 @@ fn test_cleanup() {
     assert!(cficaches_entry.is_file());
     assert!(diagnostics_entry.is_file());
 
-    caches.cleanup().unwrap();
+    caches.cleanup(false).unwrap();
 
     assert!(!object_entry.is_file());
     assert!(!object_meta_entry.is_file());
