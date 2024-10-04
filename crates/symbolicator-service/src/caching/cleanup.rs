@@ -15,8 +15,9 @@ use super::{Cache, Caches};
 /// Entry function for the cleanup command.
 ///
 /// This will clean up all caches based on configured cache retention.
-pub fn cleanup(config: Config) -> Result<()> {
-    Caches::from_config(&config)?.cleanup()
+/// If `dry_run` is `true`, no files will actually be deleted.
+pub fn cleanup(config: Config, dry_run: bool) -> Result<()> {
+    Caches::from_config(&config)?.cleanup(dry_run)
 }
 
 impl Caches {
@@ -34,7 +35,11 @@ impl Caches {
         Ok(())
     }
 
-    pub fn cleanup(&self) -> Result<()> {
+    /// Cleans up all caches based on configured cache retention,
+    /// in random order.
+    ///
+    /// If `dry_run` is `true`, no files will actually be deleted.
+    pub fn cleanup(&self, dry_run: bool) -> Result<()> {
         // Destructure so we do not accidentally forget to cleanup one of our members.
         let Self {
             objects,
@@ -75,7 +80,7 @@ impl Caches {
 
         // Collect results so we can fail the entire function.  But we do not want to early
         // return since we should at least attempt to clean up all caches.
-        let results: Vec<_> = caches.into_iter().map(|c| c.cleanup()).collect();
+        let results: Vec<_> = caches.into_iter().map(|c| c.cleanup(dry_run)).collect();
 
         let mut first_error = None;
         for result in results {
@@ -106,14 +111,17 @@ struct CleanupStats {
 }
 
 impl Cache {
-    pub fn cleanup(&self) -> Result<()> {
+    /// Cleans up this cache based on configured cache retention.
+    ///
+    /// If `dry_run` is `true`, no files will actually be deleted.
+    pub fn cleanup(&self, dry_run: bool) -> Result<()> {
         tracing::info!("Cleaning up `{}` cache", self.name);
         let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
 
         let mut stats = CleanupStats::default();
-        self.cleanup_directory_recursive(cache_dir, &mut stats)?;
+        self.cleanup_directory_recursive(cache_dir, &mut stats, dry_run)?;
 
         tracing::info!("Cleaning up `{}` complete", self.name);
         tracing::info!(
@@ -138,10 +146,13 @@ impl Cache {
     }
 
     /// Cleans up the directory recursively, returning `true` if the directory is left empty after cleanup.
+    ///
+    /// If `dry_run` is `true`, no files will actually be deleted.
     fn cleanup_directory_recursive(
         &self,
         directory: &Path,
         stats: &mut CleanupStats,
+        dry_run: bool,
     ) -> Result<bool> {
         let entries = match catch_not_found(|| read_dir(directory))? {
             Some(x) => x,
@@ -156,15 +167,17 @@ impl Cache {
         for entry in entries {
             let path = entry?.path();
             if path.is_dir() {
-                let mut dir_is_empty = self.cleanup_directory_recursive(&path, stats)?;
+                let mut dir_is_empty = self.cleanup_directory_recursive(&path, stats, dry_run)?;
                 if dir_is_empty {
                     tracing::debug!("Removing directory `{}`", directory.display());
-                    if let Err(e) = remove_dir(&path) {
-                        sentry::with_scope(
-                            |scope| scope.set_extra("path", path.display().to_string().into()),
-                            || tracing::error!("Failed to clean cache directory: {:?}", e),
-                        );
-                        dir_is_empty = false;
+                    if !dry_run {
+                        if let Err(e) = remove_dir(&path) {
+                            sentry::with_scope(
+                                |scope| scope.set_extra("path", path.display().to_string().into()),
+                                || tracing::error!("Failed to clean cache directory: {:?}", e),
+                            );
+                            dir_is_empty = false;
+                        }
                     }
                 }
                 if dir_is_empty {
@@ -174,7 +187,7 @@ impl Cache {
                 }
                 is_empty &= dir_is_empty;
             } else {
-                match self.try_cleanup_path(&path, stats) {
+                match self.try_cleanup_path(&path, stats, dry_run) {
                     Err(e) => {
                         sentry::with_scope(
                             |scope| scope.set_extra("path", path.display().to_string().into()),
@@ -190,7 +203,14 @@ impl Cache {
     }
 
     /// Tries to clean up the file at `path`, returning `true` if it was removed.
-    fn try_cleanup_path(&self, path: &Path, stats: &mut CleanupStats) -> Result<bool> {
+    ///
+    /// If `dry_run` is `true`, the file will not actually be deleted.
+    fn try_cleanup_path(
+        &self,
+        path: &Path,
+        stats: &mut CleanupStats,
+        dry_run: bool,
+    ) -> Result<bool> {
         tracing::trace!("Checking file `{}`", path.display());
         let Some(metadata) = catch_not_found(|| path.metadata())? else {
             return Ok(true);
@@ -200,7 +220,9 @@ impl Cache {
 
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
             tracing::debug!("Removing file `{}`", path.display());
-            catch_not_found(|| remove_file(path))?;
+            if !dry_run {
+                catch_not_found(|| remove_file(path))?;
+            }
 
             stats.removed_bytes += size;
             stats.removed_files += 1;
