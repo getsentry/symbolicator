@@ -35,7 +35,11 @@ enum Command {
 
     /// Clean local caches.
     #[command(name = "cleanup")]
-    Cleanup,
+    Cleanup {
+        /// Only simulate the cleanup without deleting any files.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Command line interface parser.
@@ -170,7 +174,9 @@ pub fn execute() -> Result<()> {
 
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
-        Command::Cleanup => caching::cleanup(config).context("failed to clean up caches")?,
+        Command::Cleanup { dry_run } => {
+            caching::cleanup(config, dry_run).context("failed to clean up caches")?
+        }
     }
 
     Ok(())
