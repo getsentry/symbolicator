@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
 use once_cell::sync::Lazy;
-use reqwest::Url;
+use reqwest::{redirect, StatusCode, Url};
 
 use crate::config::Config;
 
@@ -106,7 +106,25 @@ pub fn create_client(
         .connect_timeout(timeouts.connect)
         .timeout(timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30))
-        .danger_accept_invalid_certs(accept_invalid_certs);
+        .danger_accept_invalid_certs(accept_invalid_certs)
+        .redirect(redirect::Policy::custom(|attempt: redirect::Attempt| {
+            // TODO: Decide if we want to have all 3 here or just the one that we are currently encountering.
+            if matches!(
+                attempt.status(),
+                StatusCode::FOUND | StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
+            ) {
+                let is_from_azure = attempt
+                    .previous()
+                    .last()
+                    .and_then(|url| url.host_str())
+                    .map_or(false, |host| host == "dev.azure.com");
+
+                if is_from_azure {
+                    return attempt.stop();
+                }
+            }
+            redirect::Policy::default().redirect(attempt)
+        }));
 
     if !connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
@@ -271,6 +289,24 @@ mod tests {
 
         let text = response.text().await.unwrap();
         assert_eq!(text, "OK");
+    }
+
+    #[tokio::test]
+    async fn test_client_redirect_policy() {
+        let client = create_client(&Default::default(), false, false);
+
+        let response = client
+            .get("https://dev.azure.com/foo/bar.cs")
+            .send()
+            .await
+            .unwrap();
+
+        let status = response.status();
+        let is_redirect = status.is_redirection();
+
+        assert_eq!(status.as_u16(), 302);
+        assert_eq!(is_redirect, true);
+        assert_eq!(status.is_success(), false);
     }
 
     fn is_valid_origin(origin: &str, allowed: &[&str]) -> bool {
