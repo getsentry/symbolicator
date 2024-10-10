@@ -305,8 +305,8 @@ mod tests {
         let is_redirect = status.is_redirection();
 
         assert_eq!(status.as_u16(), 302);
-        assert_eq!(is_redirect, true);
-        assert_eq!(status.is_success(), false);
+        assert!(is_redirect);
+        assert!(!status.is_success());
     }
 
     fn is_valid_origin(origin: &str, allowed: &[&str]) -> bool {
