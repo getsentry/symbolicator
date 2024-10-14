@@ -114,8 +114,6 @@ pub fn create_client(
             // To avoid this, symbolicator's redirect policy is to not follow temporary redirects
             // on hosts that are known to redirect to login pages.
 
-            // TODO: Decide if we want to have this behind an option, such that we don't have this redirection policy for everything.
-            // TODO: Decide if we want to have all 3 here or just the one that we are currently encountering.
             if matches!(
                 attempt.status(),
                 StatusCode::FOUND | StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
