@@ -108,6 +108,13 @@ pub fn create_client(
         .pool_idle_timeout(Duration::from_secs(30))
         .danger_accept_invalid_certs(accept_invalid_certs)
         .redirect(redirect::Policy::custom(|attempt: redirect::Attempt| {
+            // The default redirect policy allows to follow up to 10 redirects. This is problematic
+            // when symbolicator tries to fetch native source files from a web source, as a redirect
+            // might land us on a login page, which is then used for source context.
+            // To avoid this, symbolicator's redirect policy is to not follow temporary redirects
+            // on hosts that are known to redirect to login pages.
+
+            // TODO: Decide if we want to have this behind an option, such that we don't have this redirection policy for everything.
             // TODO: Decide if we want to have all 3 here or just the one that we are currently encountering.
             if matches!(
                 attempt.status(),
