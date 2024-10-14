@@ -114,10 +114,7 @@ pub fn create_client(
             // To avoid this, symbolicator's redirect policy is to not follow temporary redirects
             // on hosts that are known to redirect to login pages.
 
-            if matches!(
-                attempt.status(),
-                StatusCode::FOUND | StatusCode::SEE_OTHER | StatusCode::TEMPORARY_REDIRECT
-            ) {
+            if attempt.status() == StatusCode::FOUND {
                 let is_from_azure = attempt
                     .previous()
                     .last()
@@ -307,10 +304,9 @@ mod tests {
             .unwrap();
 
         let status = response.status();
-        let is_redirect = status.is_redirection();
 
         assert_eq!(status.as_u16(), 302);
-        assert!(is_redirect);
+        assert!(status.is_redirection());
         assert!(!status.is_success());
     }
 
