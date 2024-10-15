@@ -119,4 +119,38 @@ mod tests {
 
         assert_eq!(download_status, Err(CacheError::NotFound));
     }
+
+    #[tokio::test]
+    async fn test_download_azure_file() {
+        test::setup();
+
+        let tmpfile = tempfile::NamedTempFile::new().unwrap();
+        let dest = tmpfile.path();
+
+        // Create HttpSourceConfig directly
+        let azure_source = std::sync::Arc::new(symbolicator_sources::HttpSourceConfig {
+            id: symbolicator_sources::SourceId::new("azure"),
+            url: "https://dev.azure.com/".parse().unwrap(),
+            headers: Default::default(),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        });
+
+        let loc = SourceLocation::new("foo/bar.cs");
+        let file_source = HttpRemoteFile::new(azure_source, loc);
+
+        let restricted_client = crate::utils::http::create_client(&Default::default(), true, false);
+        let no_ssl_client = crate::utils::http::create_client(&Default::default(), true, true);
+
+        let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
+        let mut destination = tokio::fs::File::create(&dest).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
+
+        assert_eq!(
+            download_status,
+            Err(CacheError::DownloadError("302 Found".into()))
+        );
+    }
 }
