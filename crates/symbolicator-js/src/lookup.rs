@@ -485,8 +485,6 @@ impl CachedFile {
             None => None,
         };
 
-        let debug_id = descriptor.debug_id();
-
         let contents = descriptor
             .into_contents()
             .ok_or_else(|| CacheError::Malformed("descriptor should have `contents`".into()))?
@@ -496,7 +494,7 @@ impl CachedFile {
         Ok(Self {
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
-            debug_id,
+            debug_id: None,
         })
     }
 
