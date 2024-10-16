@@ -95,6 +95,8 @@ impl Default for DownloadTimeouts {
 ///   connect to reserved IPs (as defined in `RESERVED_IP_BLOCKS`).
 /// * `accept_invalid_certs` determines whether the client accepts invalid
 ///   SSL certificates.
+/// * Uses a custom redirect policy that limits redirects from certain hosts
+///   to avoid fetching login pages.
 pub fn create_client(
     timeouts: &DownloadTimeouts,
     connect_to_reserved_ips: bool,
