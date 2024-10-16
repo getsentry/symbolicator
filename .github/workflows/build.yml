@@ -41,6 +41,7 @@ jobs:
           mv target/release/symsorter build/symsorter-Linux-x86_64
           mv target/release/symbolicli build/symbolicli-Linux-x86_64
 
+      - uses: actions/upload-artifact@v4
         with:
           name: artifact-linux-${{ github.sha }}
           path: build/*
