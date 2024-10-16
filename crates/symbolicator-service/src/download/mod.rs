@@ -576,6 +576,16 @@ async fn download_reqwest(
         );
 
         Err(CacheError::NotFound)
+    } else if status == StatusCode::FOUND {
+        tracing::debug!(
+            "Potential login page detected when downloading from `{}`: {}",
+            source,
+            status
+        );
+
+        Err(CacheError::PermissionDenied(
+            "Potential login page detected".to_string(),
+        ))
     } else {
         tracing::debug!("Unexpected status code from `{}`: {}", source, status);
 

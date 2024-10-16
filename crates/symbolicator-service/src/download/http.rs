@@ -127,17 +127,8 @@ mod tests {
         let tmpfile = tempfile::NamedTempFile::new().unwrap();
         let dest = tmpfile.path();
 
-        // Create HttpSourceConfig directly
-        let azure_source = std::sync::Arc::new(symbolicator_sources::HttpSourceConfig {
-            id: symbolicator_sources::SourceId::new("azure"),
-            url: "https://dev.azure.com/".parse().unwrap(),
-            headers: Default::default(),
-            files: Default::default(),
-            accept_invalid_certs: false,
-        });
-
-        let loc = SourceLocation::new("foo/bar.cs");
-        let file_source = HttpRemoteFile::new(azure_source, loc);
+        let file_source =
+            HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
 
         let restricted_client = crate::utils::http::create_client(&Default::default(), true, false);
         let no_ssl_client = crate::utils::http::create_client(&Default::default(), true, true);
@@ -150,7 +141,9 @@ mod tests {
 
         assert_eq!(
             download_status,
-            Err(CacheError::DownloadError("302 Found".into()))
+            Err(CacheError::PermissionDenied(
+                "Potential login page detected".into()
+            ))
         );
     }
 }
