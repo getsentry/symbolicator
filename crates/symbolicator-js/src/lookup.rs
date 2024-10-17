@@ -31,7 +31,7 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use symbolic::common::{ByteView, DebugId, SelfCell};
-use symbolic::debuginfo::js::discover_sourcemaps_location;
+use symbolic::debuginfo::js::{discover_debug_id, discover_sourcemaps_location};
 use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
@@ -447,6 +447,7 @@ impl<T> CachedFileEntry<T> {
 pub struct CachedFile {
     pub contents: Option<ByteViewString>,
     sourcemap_url: Option<Arc<SourceMapUrl>>,
+    debug_id: Option<DebugId>,
 }
 
 impl fmt::Debug for CachedFile {
@@ -493,6 +494,7 @@ impl CachedFile {
         Ok(Self {
             contents,
             sourcemap_url: sourcemap_url.map(Arc::new),
+            debug_id: None,
         })
     }
 
@@ -580,11 +582,16 @@ impl ArtifactFetcher {
             self.metrics.record_not_found(SourceFileType::Source);
         }
 
-        // Then fetch the corresponding sourcemap if we have a sourcemap reference
-        let sourcemap_url = match &minified_source.entry {
-            Ok(minified_source) => minified_source.sourcemap_url.as_deref(),
-            Err(_) => None,
+        // Then fetch the corresponding sourcemap reference and debug_id
+        let (sourcemap_url, source_debug_id) = match &minified_source.entry {
+            Ok(minified_source) => (
+                minified_source.sourcemap_url.as_deref(),
+                minified_source.debug_id,
+            ),
+            Err(_) => (None, None),
         };
+
+        let debug_id = debug_id.or(source_debug_id);
 
         // If we don't have sourcemap reference, nor a `DebugId`, we skip creating `SourceMapCache`.
         if sourcemap_url.is_none() && debug_id.is_none() {
@@ -600,6 +607,7 @@ impl ArtifactFetcher {
                 entry: Ok(CachedFile {
                     contents: Some(data.clone()),
                     sourcemap_url: None,
+                    debug_id,
                 }),
                 resolved_with: minified_source.resolved_with,
             },
@@ -781,12 +789,15 @@ impl ArtifactFetcher {
                     .and_then(|sm_ref| SourceMapUrl::parse_with_prefix(abs_path, sm_ref).ok())
                     .map(Arc::new);
 
+                let debug_id = discover_debug_id(&contents);
+
                 self.scraping_attempts
                     .push(JsScrapingAttempt::success(abs_path.to_owned()));
 
                 Ok(CachedFile {
                     contents: Some(contents),
                     sourcemap_url,
+                    debug_id,
                 })
             }
             Err(e) => {
@@ -931,9 +942,11 @@ impl ArtifactFetcher {
 
                 // Get the sourcemap reference from the artifact, either from metadata, or file contents
                 let sourcemap_url = resolve_sourcemap_url(abs_path, &artifact.headers, &contents);
+                let debug_id = discover_debug_id(&contents);
                 CachedFile {
                     contents: Some(contents),
                     sourcemap_url: sourcemap_url.map(Arc::new),
+                    debug_id,
                 }
             }),
             resolved_with: artifact.resolved_with,
