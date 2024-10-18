@@ -119,4 +119,31 @@ mod tests {
 
         assert_eq!(download_status, Err(CacheError::NotFound));
     }
+
+    #[tokio::test]
+    async fn test_download_azure_file() {
+        test::setup();
+
+        let tmpfile = tempfile::NamedTempFile::new().unwrap();
+        let dest = tmpfile.path();
+
+        let file_source =
+            HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
+
+        let restricted_client = crate::utils::http::create_client(&Default::default(), true, false);
+        let no_ssl_client = crate::utils::http::create_client(&Default::default(), true, true);
+
+        let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
+        let mut destination = tokio::fs::File::create(&dest).await.unwrap();
+        let download_status = downloader
+            .download_source("", &file_source, &mut destination)
+            .await;
+
+        assert_eq!(
+            download_status,
+            Err(CacheError::PermissionDenied(
+                "Potential login page detected".into()
+            ))
+        );
+    }
 }
