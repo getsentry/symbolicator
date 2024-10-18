@@ -147,6 +147,7 @@ pub enum ObjectFileStatus {
     FetchingFailed,
     /// Downloading or processing the file took too long.
     Timeout,
+    Unsupported,
     /// An internal error while handling this image.
     Other,
 }
@@ -161,6 +162,7 @@ impl ObjectFileStatus {
             ObjectFileStatus::Malformed => "malformed",
             ObjectFileStatus::FetchingFailed => "fetching_failed",
             ObjectFileStatus::Timeout => "timeout",
+            ObjectFileStatus::Unsupported => "unsupported",
             ObjectFileStatus::Other => "other",
         }
     }
