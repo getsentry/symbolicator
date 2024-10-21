@@ -147,6 +147,11 @@ pub enum ObjectFileStatus {
     FetchingFailed,
     /// Downloading or processing the file took too long.
     Timeout,
+    /// The file could not be used for the purpose for which it was requested.
+    ///
+    /// This is currently only used when we try to symbolicate a .NET event with a Windows
+    /// PDB file. A tracking issue in `symbolic` for supporting this case is
+    /// [here](https://github.com/getsentry/symbolic/issues/871).
     Unsupported,
     /// An internal error while handling this image.
     Other,
