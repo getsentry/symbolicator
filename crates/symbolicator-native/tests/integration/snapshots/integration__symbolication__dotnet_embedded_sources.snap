@@ -1,5 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/symbolication.rs
+source: crates/symbolicator-native/tests/integration/symbolication.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -38,6 +38,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37ffffffff/portable-embedded.pd_"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37ffffffff/portable-embedded.pdb"
         download:
           status: ok
@@ -52,4 +56,3 @@ modules:
         location: "http://localhost:<port>/symbols/portable-embedded.pdb/B6919861510C48879994943F64F70C37ffffffff/portable-embedded.src.zip"
         download:
           status: notfound
-
