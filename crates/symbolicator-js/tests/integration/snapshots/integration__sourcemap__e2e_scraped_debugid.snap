@@ -1,0 +1,47 @@
+---
+source: crates/symbolicator-js/tests/integration/sourcemap.rs
+assertion_line: 702
+expression: response
+---
+stacktraces:
+  - frames:
+      - function: onFailure
+        filename: test.js
+        module: files/test
+        abs_path: "http://localhost:<port>/files/test.js"
+        lineno: 5
+        colno: 11
+        pre_context:
+          - "var makeAFailure = (function() {"
+          - "  function onSuccess(data) {}"
+          - ""
+          - "  function onFailure(data) {"
+        context_line: "    throw new Error('failed!');"
+        post_context:
+          - "  }"
+          - ""
+          - "  function invoke(data) {"
+          - "    var cb = null;"
+          - "    if (data.failed) {"
+        data:
+          sourcemap: "http://localhost:<port>/files/app.js"
+          sourcemap_origin:
+            bundled:
+              - "sentry://project_debug_file/1"
+              - source_map:
+                  debug_id: 2f259f80-58b7-44cb-d7cd-de1505e7e718
+          resolved_with: debug-id
+          symbolicated: true
+raw_stacktraces:
+  - frames:
+      - abs_path: "http://localhost:<port>/files/app.js"
+        lineno: 1
+        colno: 64
+        context_line: "var makeAFailure=function(){function n(n){}function e(n){throw new Error(\"failed!\")}function r(r){var i=null;if(r.failed){i=e}else{i=n}i(r)} {snip}"
+        post_context:
+          - "//# debugId=2f259f80-58b7-44cb-d7cd-de1505e7e718"
+        data:
+          symbolicated: false
+scraping_attempts:
+  - url: "http://localhost:<port>/files/app.js"
+    status: success

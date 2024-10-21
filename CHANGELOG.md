@@ -6,6 +6,8 @@
 
 - Added `dry-run` mode to the `cleanup` command that simulates the cleanup
   without deleting files. ([#1531](https://github.com/getsentry/symbolicator/pull/1531))
+- Parse debug identifiers from scraped JavaScript source files
+  ([#1534](https://github.com/getsentry/symbolicator/pull/1534))
 
 ### Dependencies
 
