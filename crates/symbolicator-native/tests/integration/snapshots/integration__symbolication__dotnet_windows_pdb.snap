@@ -1,0 +1,68 @@
+---
+source: crates/symbolicator-native/tests/integration/symbolication.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: missing
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0xa"
+        function_id: "0x6"
+      - status: missing
+        original_index: 1
+        addr_mode: "rel:0"
+        instruction_addr: "0x6"
+        function_id: "0x5"
+      - status: missing
+        original_index: 2
+        addr_mode: "rel:0"
+        instruction_addr: "0x0"
+        function_id: "0x3"
+      - status: missing
+        original_index: 3
+        addr_mode: "rel:0"
+        instruction_addr: "0x0"
+        function_id: "0x2"
+      - status: missing
+        original_index: 4
+        addr_mode: "rel:0"
+        instruction_addr: "0x2d"
+        function_id: "0x1"
+modules:
+  - debug_status: unsupported
+    features:
+      has_debug_info: true
+      has_unwind_info: true
+      has_symbols: true
+      has_sources: false
+    arch: unknown
+    type: pe_dotnet
+    debug_id: 3249d99d-0c40-4931-8610-f4e4fb0b6936
+    debug_file: crash.pdb
+    image_addr: "0x0"
+    candidates:
+      - source: local
+        location: "http://localhost:<port>/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69360/crash.src.zip"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B6936ffffffff/crash.pd_"
+        download:
+          status: notfound
+      - source: local
+        location: "http://localhost:<port>/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B6936ffffffff/crash.pdb"
+        download:
+          status: ok
+          features:
+            has_debug_info: true
+            has_unwind_info: true
+            has_symbols: true
+            has_sources: false
+        debug:
+          status: error
+          details: "unsupported: Only portable PDB files can be used for .NET symbolication"
+      - source: local
+        location: "http://localhost:<port>/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B6936ffffffff/crash.src.zip"
+        download:
+          status: notfound

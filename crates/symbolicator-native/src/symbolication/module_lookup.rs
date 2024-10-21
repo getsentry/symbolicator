@@ -47,6 +47,7 @@ pub fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> Ob
         }
         Err(CacheError::Timeout(_)) => ObjectFileStatus::Timeout,
         Err(CacheError::Malformed(_)) => ObjectFileStatus::Malformed,
+        Err(CacheError::Unsupported(_)) => ObjectFileStatus::Unsupported,
         Err(CacheError::InternalError) => ObjectFileStatus::Other,
     }
 }

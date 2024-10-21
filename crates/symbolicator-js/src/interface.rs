@@ -142,6 +142,7 @@ impl From<CacheError> for JsScrapingResult {
             ),
             CacheError::DownloadError(details) => (JsScrapingFailureReason::DownloadError, details),
             CacheError::Malformed(details) => (JsScrapingFailureReason::Other, details),
+            CacheError::Unsupported(details) => (JsScrapingFailureReason::Other, details),
             CacheError::InternalError => (JsScrapingFailureReason::Other, String::new()),
         };
 
