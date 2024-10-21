@@ -38,6 +38,12 @@ pub enum CacheError {
     /// during symcache conversion
     #[error("malformed: {0}")]
     Malformed(String),
+    /// The object is of a type that cannot be used for the symbolication task it was
+    /// requested for.
+    ///
+    /// This is currently only used when we try to symbolicate a .NET event with a Windows
+    /// PDB file. A tracking issue in `symbolic` for supporting this case is
+    /// [here](https://github.com/getsentry/symbolic/issues/871).
     #[error("unsupported: {0}")]
     Unsupported(String),
     /// An unexpected error in symbolicator itself.
