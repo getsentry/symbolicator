@@ -165,6 +165,8 @@ impl S3Downloader {
                         Err(CacheError::NotFound)
                     }
                     // Log errors, filtering out some uninteresting ones.
+                    //
+                    // * PermanentRedirect is a user error.
                     _ if !matches!(err.code(), Some("PermanentRedirect")) => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,
