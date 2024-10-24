@@ -164,12 +164,17 @@ impl S3Downloader {
                     _ if matches!(err.code(), Some("NoSuchBucket" | "NoSuchKey" | "NotFound")) => {
                         Err(CacheError::NotFound)
                     }
-                    _ => {
+                    // Log errors, filtering out some uninteresting ones.
+                    _ if !matches!(err.code(), Some("PermanentRedirect")) => {
                         tracing::error!(
                             error = &err as &dyn std::error::Error,
                             "S3 request failed: {:?}",
                             err.code(),
                         );
+                        let details = err.to_string();
+                        Err(CacheError::DownloadError(details))
+                    }
+                    _ => {
                         let details = err.to_string();
                         Err(CacheError::DownloadError(details))
                     }
