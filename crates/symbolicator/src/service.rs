@@ -404,7 +404,7 @@ impl RequestService {
             }
         }
 
-        metric!(counter("requests.accepted") += 1);
+        metric!(counter("requests.accepted") += 1, "task" => task_name);
 
         let request_id = RequestId::new(uuid::Uuid::new_v4());
         requests
@@ -479,7 +479,7 @@ impl RequestService {
             // We stop counting the request as an in-flight request at this point, even though
             // it will stay in the `requests` map for another 90s.
             current_requests.fetch_sub(1, Ordering::Relaxed);
-            metric!(counter("requests.processed") += 1);
+            metric!(counter("requests.processed") += 1, "task" => task_name);
 
             // Wait before removing the channel from the computation map to allow clients to
             // poll the status.
