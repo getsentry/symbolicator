@@ -546,6 +546,7 @@ mod event {
         Javascript,
         Node,
         Csharp,
+        Cocoa,
     }
 
     #[derive(Debug, Deserialize)]
