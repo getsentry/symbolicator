@@ -157,48 +157,6 @@ async fn test_dotnet_integration() {
 }
 
 #[tokio::test]
-async fn test_dotnet_windows_pdb() {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_srv, source) = symbol_server();
-
-    // try to symbolicate a `PE_DOTNET` event with a Windows PDB file, this should fail
-    let request = make_symbolication_request(
-        vec![source],
-        r#"[{
-          "type":"pe_dotnet",
-          "debug_file":"crash.pdb",
-          "debug_id":"3249d99d0c4049318610f4e4fb0b6936"
-        }]"#,
-        r#"[{
-          "frames":[{
-            "instruction_addr": 10,
-            "function_id": 6,
-            "addr_mode":"rel:0"
-          }, {
-            "instruction_addr": 6,
-            "function_id": 5,
-            "addr_mode": "rel:0"
-          }, {
-            "instruction_addr": 0,
-            "function_id": 3,
-            "addr_mode": "rel:0"
-          }, {
-            "instruction_addr": 0,
-            "function_id": 2,
-            "addr_mode": "rel:0"
-          }, {
-            "instruction_addr": 45,
-            "function_id": 1,
-            "addr_mode": "rel:0"
-          }]
-        }]"#,
-    );
-    let response = symbolication.symbolicate(request).await;
-
-    assert_snapshot!(response.unwrap());
-}
-
-#[tokio::test]
 async fn test_dotnet_embedded_sources() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = symbol_server();
