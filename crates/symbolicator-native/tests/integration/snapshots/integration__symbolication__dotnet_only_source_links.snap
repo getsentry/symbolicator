@@ -39,6 +39,10 @@ modules:
         download:
           status: notfound
       - source: local
+        location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.pd_"
+        download:
+          status: notfound
+      - source: local
         location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.pdb"
         download:
           status: ok
