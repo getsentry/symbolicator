@@ -456,7 +456,8 @@ pub struct Config {
 
     /// The maximum number of requests that symbolicator will process concurrently.
     ///
-    /// A value of `None` indicates no limit.
+    /// The default is `Some(200)`. `None` indicates no limit. If you really want that,
+    /// set value to `null` in your config.yml.
     pub max_concurrent_requests: Option<usize>,
 
     /// An optional shared cache between multiple symbolicators.
@@ -559,7 +560,6 @@ impl Default for Config {
             deny_list_threshold: 20,
             deny_list_block_time: Duration::from_secs(24 * 60 * 60),
             deny_list_never_block_hosts: Vec::new(),
-            // This value is tuned according to Symbolicator's observed real-world performance.
             max_concurrent_requests: Some(200),
             shared_cache: None,
             _crash_db: None,
