@@ -38,6 +38,14 @@ pub enum CacheError {
     /// during symcache conversion
     #[error("malformed: {0}")]
     Malformed(String),
+    /// The object is of a type that cannot be used for the symbolication task it was
+    /// requested for.
+    ///
+    /// This is currently only used when we try to symbolicate a .NET event with a Windows
+    /// PDB file. A tracking issue in `symbolic` for supporting this case is
+    /// [here](https://github.com/getsentry/symbolic/issues/871).
+    #[error("unsupported: {0}")]
+    Unsupported(String),
     /// An unexpected error in symbolicator itself.
     ///
     /// This variant is not intended to be persisted to or read from caches.
@@ -64,6 +72,7 @@ impl CacheError {
     pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = b"permissiondenied";
     pub(super) const TIMEOUT_MARKER: &'static [u8] = b"timeout";
     pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = b"downloaderror";
+    pub(super) const UNSUPPORTED_MARKER: &'static [u8] = b"unsupported";
 
     /// Writes error markers and details to a file.
     ///
@@ -97,6 +106,10 @@ impl CacheError {
             }
             CacheError::DownloadError(details) => {
                 file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
+                file.write_all(details.as_bytes()).await?;
+            }
+            CacheError::Unsupported(details) => {
+                file.write_all(Self::UNSUPPORTED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
             }
             CacheError::InternalError => {
@@ -134,6 +147,9 @@ impl CacheError {
         } else if let Some(raw_message) = bytes.strip_prefix(Self::MALFORMED_MARKER) {
             let err_msg = utf8_message(raw_message);
             Some(Self::Malformed(err_msg.into_owned()))
+        } else if let Some(raw_message) = bytes.strip_prefix(Self::UNSUPPORTED_MARKER) {
+            let err_msg = utf8_message(raw_message);
+            Some(Self::Unsupported(err_msg.into_owned()))
         } else if bytes.is_empty() {
             Some(Self::NotFound)
         } else {
