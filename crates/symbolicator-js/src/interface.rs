@@ -94,7 +94,7 @@ pub struct JsModule {
 
 /// The type of a sourcemap module.
 ///
-/// As per https://develop.sentry.dev/sdk/data-model/event-payloads/debugmeta/#source-map-images,
+/// As per <https://develop.sentry.dev/sdk/data-model/event-payloads/debugmeta/#source-map-images>,
 /// this is always `"sourcemap"`.
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
