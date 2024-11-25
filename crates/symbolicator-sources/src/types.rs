@@ -53,10 +53,6 @@ pub enum ObjectType {
     Wasm,
     /// Portable Executable containing .NET code, which has a Portable PDB companion.
     PeDotnet,
-    /// An Object representing the pair of Minified JS + SourceMap.
-    /// See <https://develop.sentry.dev/sdk/event-payloads/debugmeta/#source-map-images>.
-    #[serde(rename = "sourcemap")]
-    SourceMap,
     /// Unknown Object.
     #[default]
     Unknown,
@@ -72,7 +68,6 @@ impl FromStr for ObjectType {
             "pe" => ObjectType::Pe,
             "pe_dotnet" => ObjectType::PeDotnet,
             "wasm" => ObjectType::Wasm,
-            "sourcemap" => ObjectType::SourceMap,
             _ => ObjectType::Unknown,
         })
     }
@@ -96,7 +91,6 @@ impl fmt::Display for ObjectType {
             ObjectType::Pe => write!(f, "pe"),
             ObjectType::PeDotnet => write!(f, "pe_dotnet"),
             ObjectType::Wasm => write!(f, "wasm"),
-            ObjectType::SourceMap => write!(f, "sourcemap"),
             ObjectType::Unknown => write!(f, "unknown"),
         }
     }

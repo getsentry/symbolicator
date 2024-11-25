@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_sources::{SentryFileId, SentrySourceConfig};
 
 use crate::lookup::CachedFileUri;
@@ -17,7 +17,7 @@ pub struct SymbolicateJsStacktraces {
     pub release: Option<String>,
     pub dist: Option<String>,
     pub stacktraces: Vec<JsStacktrace>,
-    pub modules: Vec<RawObjectInfo>,
+    pub modules: Vec<JsModule>,
     pub scraping: ScrapingConfig,
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
@@ -75,6 +75,31 @@ pub struct JsModuleError {
     pub abs_path: String,
     #[serde(flatten)]
     pub kind: JsModuleErrorKind,
+}
+
+/// A JS module (representing a minified file and sourcemap).
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+pub struct JsModule {
+    /// The type of the module.
+    ///
+    /// This field carries no useful information because `JsModuleType`
+    /// only has one variant. It is used to distinguish `JsModule`s from
+    /// JVM and native modules during deserialization.
+    pub r#type: JsModuleType,
+    /// The module's minified code file.
+    pub code_file: String,
+    /// The module's debug ID.
+    pub debug_id: String,
+}
+
+/// The type of a sourcemap module.
+///
+/// As per https://develop.sentry.dev/sdk/data-model/event-payloads/debugmeta/#source-map-images,
+/// this is always `"sourcemap"`.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum JsModuleType {
+    Sourcemap,
 }
 
 /// An attempt to scrape a JS source or sourcemap file from the web.

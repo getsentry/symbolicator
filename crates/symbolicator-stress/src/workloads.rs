@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use symbolicator_js::interface::{JsStacktrace, SymbolicateJsStacktraces};
+use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
 use symbolicator_native::interface::{RawStacktrace, StacktraceOrigin, SymbolicateStacktraces};
 use symbolicator_native::SymbolicationActor;
@@ -41,7 +41,7 @@ struct EventFile {
 #[derive(Debug, Deserialize)]
 struct JsEventFile {
     stacktraces: Vec<JsStacktrace>,
-    modules: Vec<RawObjectInfo>,
+    modules: Vec<JsModule>,
 }
 
 #[derive(Clone)]

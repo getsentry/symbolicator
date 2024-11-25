@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use reqwest::Url;
 use serde_json::json;
-use symbolicator_js::interface::{JsFrame, JsStacktrace, SymbolicateJsStacktraces};
-use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_js::interface::{JsFrame, JsModule, JsStacktrace, SymbolicateJsStacktraces};
+use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_sources::{SentrySourceConfig, SourceId};
 
 use crate::{assert_snapshot, setup_service};
@@ -32,7 +32,7 @@ fn make_js_request(
     dist: impl Into<Option<String>>,
 ) -> SymbolicateJsStacktraces {
     let frames: Vec<JsFrame> = serde_json::from_str(frames).unwrap();
-    let modules: Vec<RawObjectInfo> = serde_json::from_str(modules).unwrap();
+    let modules: Vec<JsModule> = serde_json::from_str(modules).unwrap();
     let stacktraces = vec![JsStacktrace { frames }];
 
     SymbolicateJsStacktraces {

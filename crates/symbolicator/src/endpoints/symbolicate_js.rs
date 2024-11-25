@@ -3,8 +3,7 @@ use std::sync::Arc;
 use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
-use symbolicator_js::interface::{JsStacktrace, SymbolicateJsStacktraces};
-use symbolicator_service::types::RawObjectInfo;
+use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -19,7 +18,7 @@ pub struct JsSymbolicationRequestBody {
     #[serde(default)]
     pub stacktraces: Vec<JsStacktrace>,
     #[serde(default)]
-    pub modules: Vec<RawObjectInfo>,
+    pub modules: Vec<JsModule>,
     #[serde(default)]
     pub release: Option<String>,
     #[serde(default)]
