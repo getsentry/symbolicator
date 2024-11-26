@@ -1,7 +1,7 @@
 [package]
 name = "symbolicator-stress"
 publish = false
-version = "24.11.0"
+version = "24.11.1"
 edition = "2021"
 
 [dependencies]
