@@ -408,7 +408,7 @@ mod event {
     use serde::Deserialize;
     use symbolic::common::Language;
     use symbolicator_js::interface::{
-        JsFrame, JsFrameData, JsStacktrace, SymbolicateJsStacktraces,
+        JsFrame, JsFrameData, JsModule, JsStacktrace, SymbolicateJsStacktraces,
     };
     use symbolicator_native::interface::{
         AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal,
@@ -455,7 +455,14 @@ mod event {
             .filter(|stacktrace| !stacktrace.frames.is_empty())
             .collect();
 
-        let modules: Vec<_> = debug_meta.images.into_iter().collect();
+        let modules: Vec<_> = debug_meta
+            .images
+            .into_iter()
+            .filter_map(|module| match module {
+                Module::Sourcemap(m) => Some(m),
+                _ => None,
+            })
+            .collect();
 
         if stacktraces.is_empty() {
             bail!("Event has no usable frames");
@@ -515,7 +522,10 @@ mod event {
         let modules: Vec<_> = debug_meta
             .images
             .into_iter()
-            .map(CompleteObjectInfo::from)
+            .filter_map(|module| match module {
+                Module::Object(m) => Some(CompleteObjectInfo::from(m)),
+                _ => None,
+            })
             .collect();
 
         if modules.is_empty() {
@@ -570,7 +580,14 @@ mod event {
 
     #[derive(Debug, Deserialize, Default)]
     struct DebugMeta {
-        images: Vec<RawObjectInfo>,
+        images: Vec<Module>,
+    }
+
+    #[derive(Debug, Clone, Deserialize)]
+    #[serde(untagged)]
+    pub enum Module {
+        Object(RawObjectInfo),
+        Sourcemap(JsModule),
     }
 
     #[derive(Debug, Deserialize)]

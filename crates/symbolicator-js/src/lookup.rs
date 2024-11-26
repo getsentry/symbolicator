@@ -38,7 +38,7 @@ use symbolic::debuginfo::sourcebundle::{
 use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::SourceMapCache;
 use symbolicator_sources::{
-    HttpRemoteFile, ObjectType, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
+    HttpRemoteFile, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
 };
 
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
@@ -149,26 +149,10 @@ impl SourceMapLookup {
 
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
-            if module.ty != ObjectType::SourceMap {
-                // TODO(sourcemap): raise an error?
-                continue;
-            }
-            let Some(code_file) = module.code_file.as_ref() else {
-                // TODO(sourcemap): raise an error?
-                continue;
-            };
+            let debug_id = module.debug_id.parse().ok();
+            let cached_module = SourceMapModule::new(&module.code_file, debug_id);
 
-            let debug_id = match &module.debug_id {
-                Some(id) => {
-                    // TODO(sourcemap): raise an error?
-                    id.parse().ok()
-                }
-                None => None,
-            };
-
-            let cached_module = SourceMapModule::new(code_file, debug_id);
-
-            modules_by_abs_path.insert(code_file.to_owned(), cached_module);
+            modules_by_abs_path.insert(module.code_file.to_owned(), cached_module);
         }
 
         let fetcher = ArtifactFetcher {
