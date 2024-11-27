@@ -172,3 +172,113 @@ impl ObjectFileStatus {
         }
     }
 }
+
+/// Possible values for the platform of a native event.
+///
+/// This corresponds to `NATIVE_PLATFORMS` in Sentry.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum NativePlatform {
+    ObjC,
+    Cocoa,
+    Swift,
+    Native,
+    C,
+    CSharp,
+}
+
+impl fmt::Display for NativePlatform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            NativePlatform::ObjC => write!(f, "objc"),
+            NativePlatform::Cocoa => write!(f, "cocoa"),
+            NativePlatform::Swift => write!(f, "swift"),
+            NativePlatform::Native => write!(f, "native"),
+            NativePlatform::C => write!(f, "c"),
+            NativePlatform::CSharp => write!(f, "csharp"),
+        }
+    }
+}
+
+/// Possible values for the platform of a JavaScript event.
+///
+/// This corresponds to the platforms listed in `is_js_event` in Sentry.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum JsPlatform {
+    Node,
+    JavaScript,
+}
+
+impl fmt::Display for JsPlatform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JsPlatform::Node => write!(f, "node"),
+            JsPlatform::JavaScript => write!(f, "javascript"),
+        }
+    }
+}
+
+/// Possible values for the platform of a JVM event.
+///
+/// This corresponds to the platforms listed in `java.processing._handles_frame` in Sentry.
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum JvmPlatform {
+    Java,
+}
+
+impl fmt::Display for JvmPlatform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JvmPlatform::Java => write!(f, "java"),
+        }
+    }
+}
+
+/// Possible values for the platform of an event.
+///
+/// In addition to the native, JS, and JVM cases this also has a catch-all variant for
+/// otherwise unrecognized platforms.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum Platform {
+    Native(NativePlatform),
+    Js(JsPlatform),
+    Jvm(JvmPlatform),
+    Other(String),
+}
+
+impl Platform {
+    /// Returns `true` if this is a native platform.
+    pub fn is_native(&self) -> bool {
+        matches!(self, Self::Native(_))
+    }
+
+    /// Returns `true` if this is a JS platform.
+    pub fn is_js(&self) -> bool {
+        matches!(self, Self::Js(_))
+    }
+
+    /// Returns `true` if this is a JVM platform.
+    pub fn is_jvm(&self) -> bool {
+        matches!(self, Self::Jvm(_))
+    }
+}
+
+impl Default for Platform {
+    fn default() -> Self {
+        Self::Other("unknown".to_owned())
+    }
+}
+
+impl fmt::Display for Platform {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Platform::Native(p) => p.fmt(f),
+            Platform::Js(p) => p.fmt(f),
+            Platform::Jvm(p) => p.fmt(f),
+            Platform::Other(p) => p.fmt(f),
+        }
+    }
+}
