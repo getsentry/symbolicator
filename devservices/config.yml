@@ -25,6 +25,7 @@ services:
       - devservices
     extra_hosts:
       - host.docker.internal:host-gateway # Allow host.docker.internal to resolve to the host machine
+    restart: unless-stopped
 
 volumes:
   symbolicator-data:
