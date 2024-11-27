@@ -18,7 +18,7 @@ use symbolicator_sources::{
     SentrySourceConfig, SourceConfig, SourceId,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use reqwest::header;
 use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
