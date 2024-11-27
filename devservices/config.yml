@@ -1,0 +1,34 @@
+x-sentry-service-config:
+  version: 0.1
+  service_name: symbolicator
+  dependencies:
+    symbolicator:
+      description: A symbolication service for native stacktraces and minidumps with symbol server support
+  modes:
+    default: [symbolicator]
+
+services:
+  symbolicator:
+    image: us-central1-docker.pkg.dev/sentryio/symbolicator/image:nightly
+    volumes:
+      - 'symbolicator-data:/data'
+      - type: bind
+        read_only: true
+        source: ./symbolicator
+        target: /etc/symbolicator
+    command: ["run", "--config", "/etc/symbolicator/config.yml"]
+    ports:
+      - 127.0.0.1:3021:3021
+    volumes:
+      - symbolicator-data:/data
+    networks:
+      - devservices
+    extra_hosts:
+      - host.docker.internal:host-gateway # Allow host.docker.internal to resolve to the host machine
+
+volumes:
+  symbolicator-data:
+
+networks:
+  devservices:
+    name: devservices
