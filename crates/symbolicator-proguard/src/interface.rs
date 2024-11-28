@@ -12,7 +12,8 @@ pub struct SymbolicateJvmStacktraces {
     /// The event's platform.
     ///
     /// `Platform` is actually too lenient of a type here—a legitimate
-    /// JVM event should only have [`Java`](JvmPlatform::Java). However,
+    /// JVM event should only have
+    /// [`Java`](symbolicator_service::types::JvmPlatform::Java). However,
     /// we use the general `Platform` type for now to be resilient against
     /// wrong values making it through.
     pub platform: Option<Platform>,

@@ -15,8 +15,9 @@ pub struct SymbolicateJsStacktraces {
     /// The event's platform.
     ///
     /// `Platform` is actually too lenient of a type here—a legitimate
-    /// JS event should only have [`JavaScript`](JsPlatform::JavaScript)
-    /// or [`Node`](JsPlatform::Node). However,
+    /// JS event should only have
+    /// [`JavaScript`](symbolicator_service::types::JsPlatform::JavaScript)
+    /// or [`Node`](symbolicator_service::types::JsPlatform::Node). However,
     /// we use the general `Platform` type for now to be resilient against
     /// wrong values making it through.
     pub platform: Option<Platform>,

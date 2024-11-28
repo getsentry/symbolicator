@@ -25,8 +25,8 @@ pub struct SymbolicateStacktraces {
     /// The event's platform.
     ///
     /// `Platform` is actually too lenient of a type here—a legitimate
-    /// native event should have a [`NativePlatform`]. However,
-    /// we use the general `Platform` type for now to be resilient against
+    /// native event should have a [`symbolicator_service::types::NativePlatform`].
+    /// However, we use the general `Platform` type for now to be resilient against
     /// wrong values making it through.
     pub platform: Option<Platform>,
     /// The scope of this request which determines access to cached files.
