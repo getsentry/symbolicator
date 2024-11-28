@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating minidump");
             let res = native
-                .process_minidump(scope, minidump_path, dsym_sources, Default::default())
+                .process_minidump(None, scope, minidump_path, dsym_sources, Default::default())
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }
@@ -436,6 +436,7 @@ mod event {
         scraping_enabled: bool,
     ) -> anyhow::Result<SymbolicateJsStacktraces> {
         let Event {
+            platform,
             debug_meta,
             exception,
             threads,
@@ -480,6 +481,7 @@ mod event {
         };
 
         Ok(SymbolicateJsStacktraces {
+            platform: Some(platform),
             scope,
             source,
             release,
@@ -548,6 +550,7 @@ mod event {
         };
 
         Ok(SymbolicateStacktraces {
+            platform: Some(event.platform),
             scope,
             signal,
             sources,
@@ -645,6 +648,7 @@ mod event {
 
     #[derive(Debug, Deserialize)]
     struct Frame {
+        platform: Option<Platform>,
         #[serde(default)]
         addr_mode: AddrMode,
 
@@ -695,6 +699,7 @@ mod event {
 
     fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         Some(RawFrame {
+            platform: value.platform,
             addr_mode: value.addr_mode,
             instruction_addr: value.instruction_addr?,
             adjust_instruction_addr: None,
@@ -718,6 +723,7 @@ mod event {
 
     fn to_js_frame(value: Frame) -> Option<JsFrame> {
         Some(JsFrame {
+            platform: value.platform,
             function: value.function,
             filename: value.filename,
             module: value.module,

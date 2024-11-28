@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- All symbolication endpoints (`symbolicate-{,js,jvm}`, `minidump`, `applecrashreport`)
+  now take an additional `platform` parameter. Stack frames gain this parameter
+  as well. ([#1560](https://github.com/getsentry/symbolicator/pull/1560))
+
 ## 24.11.1
 
 ### Dependencies

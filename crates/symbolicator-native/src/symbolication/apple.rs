@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
-use symbolicator_service::types::{RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{Platform, RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
@@ -23,6 +23,7 @@ impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     fn parse_apple_crash_report(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
@@ -75,6 +76,7 @@ impl SymbolicationActor {
         }
 
         let request = SymbolicateStacktraces {
+            platform,
             modules,
             scope,
             sources,
@@ -124,12 +126,14 @@ impl SymbolicationActor {
 
     pub async fn process_apple_crash_report(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
-        let (request, state) = self.parse_apple_crash_report(scope, report, sources, scraping)?;
+        let (request, state) =
+            self.parse_apple_crash_report(platform, scope, report, sources, scraping)?;
         let mut response = self.symbolicate(request).await?;
 
         state.merge_into(&mut response);

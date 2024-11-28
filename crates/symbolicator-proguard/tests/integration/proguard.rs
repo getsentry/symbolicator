@@ -25,6 +25,7 @@ fn make_jvm_request(
     let stacktraces = vec![JvmStacktrace { frames }];
 
     SymbolicateJvmStacktraces {
+        platform: None,
         scope: Scope::Global,
         sources: Arc::new([source]),
         apply_source_context: true,

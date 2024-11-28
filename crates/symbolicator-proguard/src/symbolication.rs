@@ -36,6 +36,7 @@ impl ProguardService {
             release_package,
             apply_source_context,
             classes,
+            ..
         } = request;
 
         let maybe_mappers = future::join_all(

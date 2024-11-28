@@ -52,6 +52,7 @@ pub fn make_symbolication_request(
     let modules: Vec<RawObjectInfo> = serde_json::from_str(modules).unwrap();
     let stacktraces = serde_json::from_str(stacktraces).unwrap();
     SymbolicateStacktraces {
+        platform: None,
         modules: modules.into_iter().map(From::from).collect(),
         stacktraces,
         signal: None,

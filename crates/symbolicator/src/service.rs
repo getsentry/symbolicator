@@ -37,6 +37,7 @@ use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
+use symbolicator_service::types::Platform;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
@@ -308,6 +309,7 @@ impl RequestService {
     /// maximum number of requests, as configured by the `max_concurrent_requests` option.
     pub fn process_minidump(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
@@ -317,7 +319,7 @@ impl RequestService {
         let slf = self.inner.clone();
         self.create_symbolication_request("minidump_stackwalk", options, async move {
             slf.native
-                .process_minidump(scope, minidump_file, sources, scraping)
+                .process_minidump(platform, scope, minidump_file, sources, scraping)
                 .await
                 .map(CompletedResponse::Native)
         })
@@ -329,6 +331,7 @@ impl RequestService {
     /// maximum number of requests, as configured by the `max_concurrent_requests` option.
     pub fn process_apple_crash_report(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         apple_crash_report: File,
         sources: Arc<[SourceConfig]>,
@@ -338,7 +341,7 @@ impl RequestService {
         let slf = self.inner.clone();
         self.create_symbolication_request("parse_apple_crash_report", options, async move {
             slf.native
-                .process_apple_crash_report(scope, apple_crash_report, sources, scraping)
+                .process_apple_crash_report(platform, scope, apple_crash_report, sources, scraping)
                 .await
                 .map(CompletedResponse::Native)
         })
@@ -605,6 +608,7 @@ mod tests {
         .unwrap();
 
         let request = SymbolicateStacktraces {
+            platform: None,
             modules: Vec::new(),
             stacktraces,
             signal: None,
@@ -631,6 +635,7 @@ mod tests {
 
     fn get_symbolication_request(sources: Vec<SourceConfig>) -> SymbolicateStacktraces {
         SymbolicateStacktraces {
+            platform: None,
             scope: Scope::Global,
             signal: None,
             sources: Arc::from(sources),

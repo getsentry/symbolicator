@@ -10,6 +10,7 @@ POST /symbolicate-jvm?timeout=123&scope=123 HTTP/1.1
 Content-Type: application/json
 
 {
+    "platform": "java",
     "source": [
         {
             "type": "s3",
@@ -67,6 +68,7 @@ Content-Type: application/json
 
 ## Request Body
 
+- `platform`: The event's platform.
 - `source`: A descriptor for the Sentry source to be used for symbolication. See
   [Sentry](index.md) source. Note that only proguard files uploaded to Sentry are supported at the moment.
 - `exceptions`: A list of exceptions which will have their module and type fields remapped.

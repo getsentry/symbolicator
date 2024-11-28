@@ -25,6 +25,7 @@ pub async fn handle_minidump_request(
     let mut sources = service.config().default_sources();
     let mut scraping = Default::default();
     let mut options = RequestOptions::default();
+    let mut platform = None;
 
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
@@ -53,6 +54,10 @@ pub async fn handle_minidump_request(
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 options = serde_json::from_slice(&data)?;
             }
+            Some("platform") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                platform = serde_json::from_slice(&data)?
+            }
             _ => (), // Always ignore unknown fields.
         }
     }
@@ -70,8 +75,14 @@ pub async fn handle_minidump_request(
         )
             .into());
     }
-    let request_id =
-        service.process_minidump(params.scope, minidump_file, sources, scraping, options)?;
+    let request_id = service.process_minidump(
+        platform,
+        params.scope,
+        minidump_file,
+        sources,
+        scraping,
+        options,
+    )?;
 
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),

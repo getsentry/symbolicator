@@ -24,6 +24,11 @@ Content-Type: application/json
   },
   ...
 ]
+
+--xxx
+Content-Disposition: form-data; name="platform"
+"native"
+
 --xxx--
 ```
 
@@ -39,6 +44,7 @@ Content-Type: application/json
 A multipart form data body containing the minidump, as well as the external
 sources to pull symbols from.
 
+- `platform`: The event' platform.
 - `sources`: A list of descriptors for internal or external symbol sources. See
   [Sources](index.md).
 - `upload_file_minidump`: The minidump file to be analyzed.

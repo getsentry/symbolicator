@@ -54,6 +54,7 @@ async fn test_apple_crash_report() {
 
     let response = symbolication
         .process_apple_crash_report(
+            None,
             Scope::Global,
             report_file,
             Arc::new([source]),

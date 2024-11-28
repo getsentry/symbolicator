@@ -36,6 +36,7 @@ fn make_js_request(
     let stacktraces = vec![JsStacktrace { frames }];
 
     SymbolicateJsStacktraces {
+        platform: None,
         scope: Scope::Global,
         source: Arc::new(source),
         release: release.into(),

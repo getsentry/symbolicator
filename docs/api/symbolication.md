@@ -9,6 +9,7 @@ POST /symbolicate?timeout=123&scope=123 HTTP/1.1
 Content-Type: application/json
 
 {
+  "platform": "native",
   "signal": 11,
   "sources": [
     {
@@ -59,6 +60,7 @@ Content-Type: application/json
 A JSON payload describing the stack traces and code modules for symbolication,
 as well as external sources to pull symbols from:
 
+- `platform`: The event's platform.
 - `sources`: A list of descriptors for internal or external symbol sources. See
   [Sources](index.md).
 - `modules`: A list of code modules (aka debug images) that were loaded into the
