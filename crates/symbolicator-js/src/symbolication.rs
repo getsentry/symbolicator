@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::metric;
 use symbolicator_service::source_context::get_context_lines;
 
 use crate::interface::{

@@ -578,7 +578,9 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 
         let mapped_frames: Vec<_> = frames
             .iter()
-            .flat_map(|frame| ProguardService::map_frame(&[&cache], frame, None).into_iter())
+            .flat_map(|frame| {
+                ProguardService::map_frame(&[&cache], frame, None, &mut 0).into_iter()
+            })
             .collect();
 
         assert_eq!(mapped_frames.len(), 7);
@@ -688,7 +690,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         let mapped_frames: Vec<_> = frames
             .iter()
             .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, Some("org.slf4j")).into_iter()
+                ProguardService::map_frame(&[&cache], frame, Some("org.slf4j"), &mut 0).into_iter()
             })
             .collect();
 
@@ -712,7 +714,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped = ProguardService::map_frame(&[], &frame, Some("android"));
+        let remapped = ProguardService::map_frame(&[], &frame, Some("android"), &mut 0);
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -759,7 +761,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None);
+        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None, &mut 0);
 
         assert_eq!(mapped_frames.len(), 2);
 
@@ -829,7 +831,7 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None);
+        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None, &mut 0);
 
         assert_eq!(mapped_frames.len(), 1);
 
@@ -968,7 +970,9 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
 
         let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
             .iter()
-            .flat_map(|frame| ProguardService::map_frame(&[&cache], frame, None).into_iter())
+            .flat_map(|frame| {
+                ProguardService::map_frame(&[&cache], frame, None, &mut 0).into_iter()
+            })
             .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
             .unzip();
 
