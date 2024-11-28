@@ -212,8 +212,9 @@ pub struct JsFrame {
     /// The frame's platform.
     ///
     /// `Platform` is actually too lenient of a type here—a legitimate
-    /// JS frame should only have [`JavaScript`](JsPlatform::JavaScript)
-    /// or [`Node`](JsPlatform::Node). However,
+    /// JS frame should only have
+    /// [`JavaScript`](symbolicator_service::types::JsPlatform::JavaScript)
+    /// or [`Node`](symbolicator_service::types::JsPlatform::Node). However,
     /// we use the general `Platform` type for now to be resilient against
     /// wrong values making it through.
     #[serde(skip_serializing_if = "Option::is_none")]

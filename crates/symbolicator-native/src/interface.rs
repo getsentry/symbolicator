@@ -197,8 +197,8 @@ pub struct RawFrame {
     /// The frame's platform.
     ///
     /// `Platform` is actually too lenient of a type here—a legitimate
-    /// native frame should have a [`NativePlatform`]. However,
-    /// we use the general `Platform` type for now to be resilient against
+    /// native frame should have a [`symbolicator_service::types::NativePlatform`].
+    /// However, we use the general `Platform` type for now to be resilient against
     /// wrong values making it through.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub platform: Option<Platform>,
