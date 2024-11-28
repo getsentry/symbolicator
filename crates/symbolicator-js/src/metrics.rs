@@ -27,9 +27,9 @@
 //!   Should be `0`, as we should find/use files from within bundles or as individual artifacts.
 
 use symbolic::debuginfo::sourcebundle::SourceFileType;
-use symbolicator_service::metrics;
+use symbolicator_service::{metric, metrics};
 
-use crate::interface::ResolvedWith;
+use crate::interface::{JsStacktrace, ResolvedWith};
 
 /// Various metrics we want to capture *per-event* for JS events.
 #[derive(Debug, Default)]
@@ -218,4 +218,21 @@ impl JsMetrics {
             &[("method", "release-old")],
         );
     }
+}
+
+/// Record metrics about stacktraces and frames.
+pub fn record_stacktrace_metrics(
+    stacktraces: &[JsStacktrace],
+    unsymbolicated_frames: u64,
+    missing_sourcescontent: u64,
+) {
+    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+    metric!(
+        time_raw("symbolication.num_frames") = stacktraces
+            .iter()
+            .map(|s| s.frames.len() as u64)
+            .sum::<u64>()
+    );
+    metric!(time_raw("symbolication.unsymbolicated_frames") = unsymbolicated_frames);
+    metric!(time_raw("js.missing_sourcescontent") = missing_sourcescontent);
 }

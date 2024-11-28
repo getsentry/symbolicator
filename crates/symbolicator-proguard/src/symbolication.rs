@@ -4,6 +4,7 @@ use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
+use crate::metrics::record_symbolication_metrics;
 use crate::ProguardService;
 
 use futures::future;
@@ -37,6 +38,8 @@ impl ProguardService {
             apply_source_context,
             classes,
         } = request;
+
+        let mut unsymbolicated_frames = 0;
 
         let maybe_mappers = future::join_all(
             modules
@@ -112,7 +115,7 @@ impl ProguardService {
             })
             .collect();
 
-        let remapped_exceptions = exceptions
+        let remapped_exceptions: Vec<_> = exceptions
             .into_iter()
             .map(|raw_exception| {
                 Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception)
@@ -126,7 +129,13 @@ impl ProguardService {
                     .frames
                     .iter()
                     .flat_map(|frame| {
-                        Self::map_frame(&mappers, frame, release_package.as_deref()).into_iter()
+                        Self::map_frame(
+                            &mappers,
+                            frame,
+                            release_package.as_deref(),
+                            &mut unsymbolicated_frames,
+                        )
+                        .into_iter()
                     })
                     .collect();
                 JvmStacktrace {
@@ -153,6 +162,13 @@ impl ProguardService {
                 Some((class, Arc::from(remapped)))
             })
             .collect();
+
+        record_symbolication_metrics(
+            &remapped_exceptions,
+            &remapped_stacktraces,
+            &remapped_classes,
+            unsymbolicated_frames,
+        );
 
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
@@ -207,6 +223,7 @@ impl ProguardService {
         mappers: &[&proguard::ProguardCache],
         frame: &JvmFrame,
         release_package: Option<&str>,
+        unsymbolicated_frames: &mut u64,
     ) -> Vec<JvmFrame> {
         let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
             mappers
@@ -283,7 +300,10 @@ impl ProguardService {
         }
 
         // If all else fails, just return the original frame.
-        let mut frames = frames.unwrap_or_else(|| vec![frame.clone()]);
+        let mut frames = frames.unwrap_or_else(|| {
+            *unsymbolicated_frames += 1;
+            vec![frame.clone()]
+        });
 
         for frame in &mut frames {
             // add the signature if we received one and we were
