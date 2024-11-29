@@ -755,6 +755,7 @@
 <span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
 
 <span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;id&gt;&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://sentry.io/api/0/projects/sentry-org/sentry-project/artifact-lookup/&quot;</span><span class="p">,</span>
@@ -802,6 +803,7 @@
 <p>A JSON payload describing the stack traces and code modules for symbolication,
 as well as configuration for scraping sources from external servers:</p>
 <ul>
+<li><code>platform</code>: The event's platform.</li>
 <li><code>source</code>: A descriptor for the Sentry source to be used for symbolication. See
   <a href="../">Sentry</a> source.</li>
 <li><code>modules</code>: A list of source code files with a corresponding debug id that

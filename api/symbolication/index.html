@@ -755,6 +755,7 @@
 <span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
 
 <span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;native&quot;</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;signal&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">    </span><span class="p">{</span>
@@ -804,6 +805,7 @@
 <p>A JSON payload describing the stack traces and code modules for symbolication,
 as well as external sources to pull symbols from:</p>
 <ul>
+<li><code>platform</code>: The event's platform.</li>
 <li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
   <a href="../">Sources</a>.</li>
 <li><code>modules</code>: A list of code modules (aka debug images) that were loaded into the

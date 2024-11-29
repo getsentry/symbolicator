@@ -682,6 +682,7 @@
 <span class="na">Content-Type</span><span class="o">:</span> <span class="l">application/json</span>
 
 <span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;java&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;source&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span>
 <span class="w">            </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;s3&quot;</span><span class="p">,</span>
@@ -737,6 +738,7 @@
 </ul>
 <h2 id="request-body">Request Body</h2>
 <ul>
+<li><code>platform</code>: The event's platform.</li>
 <li><code>source</code>: A descriptor for the Sentry source to be used for symbolication. See
   <a href="../">Sentry</a> source. Note that only proguard files uploaded to Sentry are supported at the moment.</li>
 <li><code>exceptions</code>: A list of exceptions which will have their module and type fields remapped.</li>

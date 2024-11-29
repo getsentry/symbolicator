@@ -770,6 +770,11 @@ Content-Type: application/json
   },
   ...
 ]
+
+--xxx
+Content-Disposition: form-data; name=&quot;platform&quot;
+&quot;native&quot;
+
 --xxx--
 </code></pre></div>
 
@@ -784,6 +789,7 @@ Content-Type: application/json
 <p>A multipart form data body containing the minidump, as well as the external
 sources to pull symbols from.</p>
 <ul>
+<li><code>platform</code>: The event' platform.</li>
 <li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
   <a href="../">Sources</a>.</li>
 <li><code>upload_file_minidump</code>: The minidump file to be analyzed.</li>
