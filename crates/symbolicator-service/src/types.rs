@@ -187,16 +187,22 @@ pub enum NativePlatform {
     CSharp,
 }
 
+impl AsRef<str> for NativePlatform {
+    fn as_ref(&self) -> &str {
+        match self {
+            NativePlatform::ObjC => "objc",
+            NativePlatform::Cocoa => "cocoa",
+            NativePlatform::Swift => "swift",
+            NativePlatform::Native => "native",
+            NativePlatform::C => "c",
+            NativePlatform::CSharp => "csharp",
+        }
+    }
+}
+
 impl fmt::Display for NativePlatform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            NativePlatform::ObjC => write!(f, "objc"),
-            NativePlatform::Cocoa => write!(f, "cocoa"),
-            NativePlatform::Swift => write!(f, "swift"),
-            NativePlatform::Native => write!(f, "native"),
-            NativePlatform::C => write!(f, "c"),
-            NativePlatform::CSharp => write!(f, "csharp"),
-        }
+        self.as_ref().fmt(f)
     }
 }
 
@@ -210,12 +216,18 @@ pub enum JsPlatform {
     JavaScript,
 }
 
+impl AsRef<str> for JsPlatform {
+    fn as_ref(&self) -> &str {
+        match self {
+            JsPlatform::Node => "node",
+            JsPlatform::JavaScript => "javascript",
+        }
+    }
+}
+
 impl fmt::Display for JsPlatform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            JsPlatform::Node => write!(f, "node"),
-            JsPlatform::JavaScript => write!(f, "javascript"),
-        }
+        self.as_ref().fmt(f)
     }
 }
 
@@ -228,11 +240,17 @@ pub enum JvmPlatform {
     Java,
 }
 
+impl AsRef<str> for JvmPlatform {
+    fn as_ref(&self) -> &str {
+        match self {
+            JvmPlatform::Java => "java",
+        }
+    }
+}
+
 impl fmt::Display for JvmPlatform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            JvmPlatform::Java => write!(f, "java"),
-        }
+        self.as_ref().fmt(f)
     }
 }
 
@@ -272,13 +290,19 @@ impl Default for Platform {
     }
 }
 
+impl AsRef<str> for Platform {
+    fn as_ref(&self) -> &str {
+        match self {
+            Platform::Native(p) => p.as_ref(),
+            Platform::Js(p) => p.as_ref(),
+            Platform::Jvm(p) => p.as_ref(),
+            Platform::Other(p) => p.as_ref(),
+        }
+    }
+}
+
 impl fmt::Display for Platform {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Platform::Native(p) => p.fmt(f),
-            Platform::Js(p) => p.fmt(f),
-            Platform::Jvm(p) => p.fmt(f),
-            Platform::Other(p) => p.fmt(f),
-        }
+        self.as_ref().fmt(f)
     }
 }
