@@ -1,4 +1,5 @@
 pub mod interface;
+mod metrics;
 mod service;
 mod symbolication;
 

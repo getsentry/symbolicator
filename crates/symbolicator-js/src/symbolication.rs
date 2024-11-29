@@ -2,7 +2,6 @@ use std::collections::BTreeSet;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::metric;
 use symbolicator_service::source_context::get_context_lines;
 
 use crate::interface::{
@@ -10,6 +9,7 @@ use crate::interface::{
     SymbolicateJsStacktraces,
 };
 use crate::lookup::SourceMapLookup;
+use crate::metrics::record_stacktrace_metrics;
 use crate::utils::{
     fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, is_in_app,
     join_paths,
@@ -71,8 +71,7 @@ impl SourceMapService {
         }
 
         lookup.record_metrics();
-        metric!(time_raw("js.unsymbolicated_frames") = unsymbolicated_frames);
-        metric!(time_raw("js.missing_sourcescontent") = missing_sourcescontent);
+        record_stacktrace_metrics(&stacktraces, unsymbolicated_frames, missing_sourcescontent);
 
         let (used_artifact_bundles, scraping_attempts) = lookup.into_records();
 
