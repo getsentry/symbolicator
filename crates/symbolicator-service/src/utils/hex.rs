@@ -42,7 +42,7 @@ impl<'de> Deserialize<'de> for HexValue {
     {
         struct HexVisitor;
 
-        impl<'de> de::Visitor<'de> for HexVisitor {
+        impl de::Visitor<'_> for HexVisitor {
             type Value = HexValue;
 
             fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

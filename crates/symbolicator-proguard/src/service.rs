@@ -110,7 +110,7 @@ struct ProguardInner<'a> {
 impl<'slf, 'a: 'slf> AsSelf<'slf> for ProguardInner<'a> {
     type Ref = ProguardInner<'slf>;
 
-    fn as_self(&'slf self) -> &Self::Ref {
+    fn as_self(&'slf self) -> &'slf Self::Ref {
         self
     }
 }
