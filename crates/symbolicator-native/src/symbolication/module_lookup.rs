@@ -73,7 +73,7 @@ pub struct CacheLookupResult<'a> {
     pub relative_addr: Option<u64>,
 }
 
-impl<'a> CacheLookupResult<'a> {
+impl CacheLookupResult<'_> {
     /// The preferred [`AddrMode`] for this lookup.
     ///
     /// For the symbolicated frame, we generally switch to absolute reporting of addresses. This is

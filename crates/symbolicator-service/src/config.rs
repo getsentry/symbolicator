@@ -604,7 +604,7 @@ impl Config {
 #[derive(Debug)]
 struct LevelFilterVisitor;
 
-impl<'de> de::Visitor<'de> for LevelFilterVisitor {
+impl de::Visitor<'_> for LevelFilterVisitor {
     type Value = LevelFilter;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> std::fmt::Result {
