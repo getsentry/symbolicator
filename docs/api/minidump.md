@@ -23,6 +23,10 @@ Content-Disposition: form-data; name="sources"
   ...
 ]
 
+--xxx
+Content-Disposition: form-data; name="platform"
+"native"
+
 --xxx--
 ```
 
@@ -38,6 +42,7 @@ Content-Disposition: form-data; name="sources"
 A multipart form data body containing the minidump, as well as the external
 sources to pull symbols from.
 
+- `platform`: The event' platform.
 - `sources`: A list of descriptors for internal or external symbol sources. See
   [Sources](index.md).
 - `upload_file_minidump`: The minidump file to be analyzed.

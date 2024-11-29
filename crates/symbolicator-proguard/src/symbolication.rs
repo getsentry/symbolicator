@@ -37,6 +37,7 @@ impl ProguardService {
             release_package,
             apply_source_context,
             classes,
+            ..
         } = request;
 
         let mut unsymbolicated_frames = 0;

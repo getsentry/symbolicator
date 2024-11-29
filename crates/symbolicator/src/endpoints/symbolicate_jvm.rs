@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use symbolicator_proguard::interface::{
     JvmException, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
 };
+use symbolicator_service::types::Platform;
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{RequestService, SymbolicationResponse};
@@ -15,6 +16,7 @@ use crate::endpoints::ResponseError;
 
 #[derive(Serialize, Deserialize)]
 pub struct JvmSymbolicationRequestBody {
+    pub platform: Option<Platform>,
     pub sources: Arc<[SourceConfig]>,
     #[serde(default)]
     pub exceptions: Vec<JvmException>,
@@ -59,6 +61,7 @@ pub async fn handle_symbolication_request(
     params.configure_scope();
 
     let JvmSymbolicationRequestBody {
+        platform,
         sources,
         exceptions,
         stacktraces,
@@ -69,6 +72,7 @@ pub async fn handle_symbolication_request(
     } = body;
 
     let request_id = service.symbolicate_jvm_stacktraces(SymbolicateJvmStacktraces {
+        platform,
         scope: params.scope,
         sources,
         exceptions,

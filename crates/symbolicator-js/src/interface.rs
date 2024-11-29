@@ -5,13 +5,22 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::types::{Scope, ScrapingConfig};
+use symbolicator_service::types::{Platform, Scope, ScrapingConfig};
 use symbolicator_sources::{SentryFileId, SentrySourceConfig};
 
 use crate::lookup::CachedFileUri;
 
 #[derive(Debug, Clone)]
 pub struct SymbolicateJsStacktraces {
+    /// The event's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// JS event should only have
+    /// [`JavaScript`](symbolicator_service::types::JsPlatform::JavaScript)
+    /// or [`Node`](symbolicator_service::types::JsPlatform::Node). However,
+    /// we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    pub platform: Option<Platform>,
     pub scope: Scope,
     pub source: Arc<SentrySourceConfig>,
     pub release: Option<String>,
@@ -200,6 +209,17 @@ pub enum JsScrapingFailureReason {
 
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JsFrame {
+    /// The frame's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// JS frame should only have
+    /// [`JavaScript`](symbolicator_service::types::JsPlatform::JavaScript)
+    /// or [`Node`](symbolicator_service::types::JsPlatform::Node). However,
+    /// we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<Platform>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub function: Option<String>,
 

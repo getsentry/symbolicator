@@ -9,6 +9,7 @@ POST /symbolicate-js?timeout=123&scope=123 HTTP/1.1
 Content-Type: application/json
 
 {
+  "platform": "node",
   "source": {
     "id": "<id>",
     "url": "https://sentry.io/api/0/projects/sentry-org/sentry-project/artifact-lookup/",
@@ -57,6 +58,7 @@ Content-Type: application/json
 A JSON payload describing the stack traces and code modules for symbolication,
 as well as configuration for scraping sources from external servers:
 
+- `platform`: The event's platform.
 - `source`: A descriptor for the Sentry source to be used for symbolication. See
   [Sentry](index.md) source.
 - `modules`: A list of source code files with a corresponding debug id that

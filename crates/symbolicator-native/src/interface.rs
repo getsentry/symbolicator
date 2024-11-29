@@ -10,7 +10,9 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
-use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{
+    ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
+};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
@@ -20,6 +22,13 @@ pub use crate::metrics::StacktraceOrigin;
 #[derive(Debug, Clone)]
 /// A request for symbolication of multiple stack traces.
 pub struct SymbolicateStacktraces {
+    /// The event's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// native event should have a [`symbolicator_service::types::NativePlatform`].
+    /// However, we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    pub platform: Option<Platform>,
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
 
@@ -185,6 +194,14 @@ fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
 /// An unsymbolicated frame from a symbolication request.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RawFrame {
+    /// The frame's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// native frame should have a [`symbolicator_service::types::NativePlatform`].
+    /// However, we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<Platform>,
     /// Controls the addressing mode for [`instruction_addr`](Self::instruction_addr) and
     /// [`sym_addr`](Self::sym_addr).
     ///

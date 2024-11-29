@@ -49,6 +49,7 @@ pub fn symbolicate_native_frame(
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
             raw: RawFrame {
+                platform: frame.platform.clone(),
                 package: lookup_result.object_info.raw.code_file.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,

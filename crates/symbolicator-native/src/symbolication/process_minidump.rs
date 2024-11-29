@@ -17,7 +17,9 @@ use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
 use symbolicator_service::metric;
-use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{
+    ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
+};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tempfile::TempPath;
@@ -461,13 +463,14 @@ impl SymbolicationActor {
 
     pub async fn process_minidump(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
         let (request, state) = self
-            .stackwalk_minidump(scope, minidump_file, sources, scraping)
+            .stackwalk_minidump(platform, scope, minidump_file, sources, scraping)
             .await?;
 
         let mut response = self.symbolicate(request).await?;
@@ -479,6 +482,7 @@ impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     async fn stackwalk_minidump(
         &self,
+        platform: Option<Platform>,
         scope: Scope,
         minidump_file: TempPath,
         sources: Arc<[SourceConfig]>,
@@ -531,6 +535,7 @@ impl SymbolicationActor {
         }
 
         let request = SymbolicateStacktraces {
+            platform,
             modules,
             scope,
             sources,

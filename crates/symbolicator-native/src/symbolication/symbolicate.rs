@@ -100,6 +100,7 @@ impl SymbolicationActor {
             modules,
             apply_source_context,
             scraping,
+            ..
         } = request;
 
         let mut module_lookup = ModuleLookup::new(scope.clone(), sources, modules);

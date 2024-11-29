@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use symbolicator_native::interface::{
     RawStacktrace, Signal, StacktraceOrigin, SymbolicateStacktraces,
 };
-use symbolicator_service::types::RawObjectInfo;
+use symbolicator_service::types::{Platform, RawObjectInfo};
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{
@@ -38,6 +38,7 @@ impl ConfigureScope for SymbolicationRequestQueryParams {
 /// JSON body of the symbolication request.
 #[derive(Serialize, Deserialize)]
 pub struct SymbolicationRequestBody {
+    pub platform: Option<Platform>,
     #[serde(default)]
     pub signal: Option<Signal>,
     #[serde(default)]
@@ -68,6 +69,7 @@ pub async fn symbolicate_frames(
 
     let request_id = service.symbolicate_stacktraces(
         SymbolicateStacktraces {
+            platform: body.platform,
             scope: params.scope,
             signal: body.signal,
             sources,

@@ -18,6 +18,7 @@ macro_rules! stackwalk_minidump {
             minidump_file.write_all(&minidump).unwrap();
             let response = symbolication
                 .process_minidump(
+                    None,
                     Scope::Global,
                     minidump_file.into_temp_path(),
                     Arc::new([source]),

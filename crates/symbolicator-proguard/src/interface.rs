@@ -3,12 +3,20 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use symbolic::common::DebugId;
-use symbolicator_service::types::Scope;
+use symbolicator_service::types::{Platform, Scope};
 use symbolicator_sources::SourceConfig;
 
 /// A request for symbolication/remapping of a JVM event.
 #[derive(Debug, Clone)]
 pub struct SymbolicateJvmStacktraces {
+    /// The event's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// JVM event should only have
+    /// [`Java`](symbolicator_service::types::JvmPlatform::Java). However,
+    /// we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    pub platform: Option<Platform>,
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
     /// A list of external sources to load debug files.
@@ -32,6 +40,16 @@ pub struct SymbolicateJvmStacktraces {
 /// A stack frame in a JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmFrame {
+    /// The frame's platform.
+    ///
+    /// `Platform` is actually too lenient of a type here—a legitimate
+    /// JVM frame should only have
+    /// [`Java`](symbolicator_service::types::JvmPlatform::Java). However,
+    /// we use the general `Platform` type for now to be resilient against
+    /// wrong values making it through.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<Platform>,
+
     /// The frame's function name.
     ///
     /// For a JVM frame, this is always a class method.
