@@ -11,7 +11,7 @@ services:
   symbolicator:
     image: us-central1-docker.pkg.dev/sentryio/symbolicator/image:nightly
     volumes:
-      - 'symbolicator-data:/data'
+      - symbolicator-data:/data
       - type: bind
         read_only: true
         source: ./symbolicator
