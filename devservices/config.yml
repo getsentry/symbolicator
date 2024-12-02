@@ -31,3 +31,4 @@ volumes:
 networks:
   devservices:
     name: devservices
+    external: true
