@@ -19,8 +19,6 @@ services:
     command: ["run", "--config", "/etc/symbolicator/config.yml"]
     ports:
       - 127.0.0.1:3021:3021
-    volumes:
-      - symbolicator-data:/data
     networks:
       - devservices
     extra_hosts:
