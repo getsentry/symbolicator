@@ -212,6 +212,9 @@ impl fmt::Display for NativePlatform {
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum JsPlatform {
+    // Very rarely we see frames with a platform of `"nodejs"`.
+    // We cover this case with an alias just to be sure.
+    #[serde(alias = "nodejs")]
     Node,
     JavaScript,
 }
@@ -233,17 +236,20 @@ impl fmt::Display for JsPlatform {
 
 /// Possible values for the platform of a JVM event.
 ///
-/// This corresponds to the platforms listed in `java.processing._handles_frame` in Sentry.
+/// This covers `"java"` (used in error events) and `"android"` (used in
+/// profiling).
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum JvmPlatform {
     Java,
+    Android,
 }
 
 impl AsRef<str> for JvmPlatform {
     fn as_ref(&self) -> &str {
         match self {
             JvmPlatform::Java => "java",
+            JvmPlatform::Android => "android",
         }
     }
 }
