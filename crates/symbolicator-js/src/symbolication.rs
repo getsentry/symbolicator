@@ -24,6 +24,7 @@ impl SourceMapService {
     ) -> CompletedJsSymbolicationResponse {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
         let apply_source_context = request.apply_source_context;
+        let platform = request.platform.clone();
         let mut lookup = SourceMapLookup::new(self.clone(), request).await;
         lookup.prepare_modules(&mut raw_stacktraces[..]);
 
@@ -71,7 +72,12 @@ impl SourceMapService {
         }
 
         lookup.record_metrics();
-        record_stacktrace_metrics(&stacktraces, unsymbolicated_frames, missing_sourcescontent);
+        record_stacktrace_metrics(
+            platform,
+            &stacktraces,
+            unsymbolicated_frames,
+            missing_sourcescontent,
+        );
 
         let (used_artifact_bundles, scraping_attempts) = lookup.into_records();
 

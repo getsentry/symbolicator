@@ -29,6 +29,7 @@ impl ProguardService {
         request: SymbolicateJvmStacktraces,
     ) -> CompletedJvmSymbolicationResponse {
         let SymbolicateJvmStacktraces {
+            platform,
             scope,
             sources,
             exceptions,
@@ -37,7 +38,6 @@ impl ProguardService {
             release_package,
             apply_source_context,
             classes,
-            ..
         } = request;
 
         let mut unsymbolicated_frames = 0;
@@ -165,6 +165,7 @@ impl ProguardService {
             .collect();
 
         record_symbolication_metrics(
+            platform,
             &remapped_exceptions,
             &remapped_stacktraces,
             &remapped_classes,

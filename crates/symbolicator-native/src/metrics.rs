@@ -1,6 +1,8 @@
+use std::collections::HashMap;
+
 use symbolic::common::DebugId;
-use symbolicator_service::metric;
 use symbolicator_service::types::ObjectFileStatus;
+use symbolicator_service::{metric, types::Platform};
 use symbolicator_sources::ObjectType;
 
 use crate::interface::{CompleteObjectInfo, CompleteStacktrace};
@@ -83,6 +85,7 @@ pub struct StacktraceMetrics {
 }
 
 pub fn record_symbolication_metrics(
+    event_platform: Option<Platform>,
     origin: StacktraceOrigin,
     metrics: StacktraceMetrics,
     modules: &[CompleteObjectInfo],
@@ -90,7 +93,12 @@ pub fn record_symbolication_metrics(
 ) {
     let origin = origin.to_string();
 
-    let platform = modules
+    let event_platform = event_platform
+        .as_ref()
+        .map(|p| p.as_ref())
+        .unwrap_or("none");
+
+    let object_platform = modules
         .iter()
         .find_map(|m| {
             if m.raw.ty == ObjectType::Unknown {
@@ -133,64 +141,79 @@ pub fn record_symbolication_metrics(
 
     metric!(
         time_raw("symbolication.num_modules") = modules.len() as u64,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unusable_modules") = unusable_modules,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unparsable_modules") = unparsable_modules,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
 
     metric!(
         time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.short_stacktraces") = metrics.short_traces,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
 
-    metric!(
-        time_raw("symbolication.num_frames") =
-            stacktraces.iter().map(|s| s.frames.len() as u64).sum::<u64>(),
-        "platform" => &platform, "origin" => &origin
+    // Count number of frames by platform (including no platform)
+    let frames_by_platform = stacktraces.iter().flat_map(|st| st.frames.iter()).fold(
+        HashMap::new(),
+        |mut map, frame| {
+            let platform = frame.raw.platform.as_ref();
+            let count: &mut usize = map.entry(platform).or_default();
+            *count += 1;
+            map
+        },
     );
+
+    for (p, count) in &frames_by_platform {
+        let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none");
+        metric!(
+            time_raw("symbolication.num_frames") =
+                count,
+            "platform" => &object_platform, "origin" => &origin,
+            "frame_platform" => frame_platform, "event_platform" => event_platform
+        );
+    }
     metric!(
         time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unsymbolicated_context_frames") =
             metrics.unsymbolicated_context_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unsymbolicated_cfi_frames") =
             metrics.unsymbolicated_cfi_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unsymbolicated_scanned_frames") =
             metrics.unsymbolicated_scanned_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
     metric!(
         time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
-        "platform" => &platform, "origin" => &origin
+        "platform" => &object_platform, "origin" => &origin
     );
 }

@@ -92,6 +92,7 @@ impl SymbolicationActor {
         request: SymbolicateStacktraces,
     ) -> anyhow::Result<CompletedSymbolicationResponse> {
         let SymbolicateStacktraces {
+            platform,
             stacktraces,
             sources,
             scope,
@@ -133,7 +134,7 @@ impl SymbolicationActor {
 
         // bring modules back into the original order
         let modules = module_lookup.into_inner();
-        record_symbolication_metrics(origin, metrics, &modules, &stacktraces);
+        record_symbolication_metrics(platform, origin, metrics, &modules, &stacktraces);
 
         Ok(CompletedSymbolicationResponse {
             signal,
