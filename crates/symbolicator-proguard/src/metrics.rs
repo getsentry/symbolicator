@@ -17,7 +17,7 @@ pub fn record_symbolication_metrics(
         .map(|p| p.as_ref())
         .unwrap_or("none");
 
-    metric!(time_raw("symbolication.num_exceptions") = exceptions.len() as u64);
+    metric!(time_raw("symbolication.num_exceptions") = exceptions.len() as u64, "event_platform" => event_platform);
     metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
 
     // Count number of frames by platform (including no platform)
@@ -39,6 +39,6 @@ pub fn record_symbolication_metrics(
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
-    metric!(time_raw("symbolication.num_classes") = classes.len() as u64);
+    metric!(time_raw("symbolication.num_classes") = classes.len() as u64, "event_platform" => event_platform);
     metric!(time_raw("symbolication.unsymbolicated_frames") = unsymbolicated_frames);
 }
