@@ -4,7 +4,7 @@ use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
-use crate::metrics::record_symbolication_metrics;
+use crate::metrics::{record_symbolication_metrics, SymbolicationStats};
 use crate::ProguardService;
 
 use futures::future;
@@ -40,7 +40,7 @@ impl ProguardService {
             classes,
         } = request;
 
-        let mut unsymbolicated_frames = 0;
+        let mut stats = SymbolicationStats::default();
 
         let maybe_mappers = future::join_all(
             modules
@@ -118,9 +118,18 @@ impl ProguardService {
 
         let remapped_exceptions: Vec<_> = exceptions
             .into_iter()
-            .map(|raw_exception| {
-                Self::map_exception(&mappers, &raw_exception).unwrap_or(raw_exception)
-            })
+            .map(
+                |raw_exception| match Self::map_exception(&mappers, &raw_exception) {
+                    Some(exc) => {
+                        stats.symbolicated_exceptions += 1;
+                        exc
+                    }
+                    None => {
+                        stats.unsymbolicated_exceptions += 1;
+                        raw_exception
+                    }
+                },
+            )
             .collect();
 
         let mut remapped_stacktraces: Vec<_> = stacktraces
@@ -130,13 +139,8 @@ impl ProguardService {
                     .frames
                     .iter()
                     .flat_map(|frame| {
-                        Self::map_frame(
-                            &mappers,
-                            frame,
-                            release_package.as_deref(),
-                            &mut unsymbolicated_frames,
-                        )
-                        .into_iter()
+                        Self::map_frame(&mappers, frame, release_package.as_deref(), &mut stats)
+                            .into_iter()
                     })
                     .collect();
                 JvmStacktrace {
@@ -157,20 +161,22 @@ impl ProguardService {
         let remapped_classes = classes
             .into_iter()
             .filter_map(|class| {
-                let remapped = mappers
-                    .iter()
-                    .find_map(|mapper| mapper.remap_class(&class))?;
-                Some((class, Arc::from(remapped)))
+                match mappers.iter().find_map(|mapper| mapper.remap_class(&class)) {
+                    Some(remapped) => {
+                        stats.symbolicated_classes += 1;
+                        Some((class, Arc::from(remapped)))
+                    }
+                    None => {
+                        stats.unsymbolicated_classes += 1;
+                        None
+                    }
+                }
             })
             .collect();
 
-        record_symbolication_metrics(
-            platform,
-            &remapped_exceptions,
-            &remapped_stacktraces,
-            &remapped_classes,
-            unsymbolicated_frames,
-        );
+        stats.num_stacktraces = remapped_stacktraces.len() as u64;
+
+        record_symbolication_metrics(platform, stats);
 
         CompletedJvmSymbolicationResponse {
             exceptions: remapped_exceptions,
@@ -225,7 +231,7 @@ impl ProguardService {
         mappers: &[&proguard::ProguardCache],
         frame: &JvmFrame,
         release_package: Option<&str>,
-        unsymbolicated_frames: &mut u64,
+        stats: &mut SymbolicationStats,
     ) -> Vec<JvmFrame> {
         let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
             mappers
@@ -290,7 +296,7 @@ impl ProguardService {
 
         // Fix up the frames' in-app fields only if they were actually mapped
         if let Some(frames) = frames.as_mut() {
-            for frame in frames {
+            for frame in frames.iter_mut() {
                 // mark the frame as in_app after deobfuscation based on the release package name
                 // only if it's not present
                 if let Some(package) = release_package {
@@ -299,11 +305,22 @@ impl ProguardService {
                     }
                 }
             }
+
+            // Also count the frames as symbolicated at this point
+            for frame in frames {
+                *stats
+                    .symbolicated_frames
+                    .entry(frame.platform.clone())
+                    .or_default() += 1;
+            }
         }
 
         // If all else fails, just return the original frame.
         let mut frames = frames.unwrap_or_else(|| {
-            *unsymbolicated_frames += 1;
+            *stats
+                .unsymbolicated_frames
+                .entry(frame.platform.clone())
+                .or_default() += 1;
             vec![frame.clone()]
         });
 
@@ -581,7 +598,8 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         let mapped_frames: Vec<_> = frames
             .iter()
             .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut 0).into_iter()
+                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
+                    .into_iter()
             })
             .collect();
 
@@ -692,7 +710,13 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         let mapped_frames: Vec<_> = frames
             .iter()
             .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, Some("org.slf4j"), &mut 0).into_iter()
+                ProguardService::map_frame(
+                    &[&cache],
+                    frame,
+                    Some("org.slf4j"),
+                    &mut Default::default(),
+                )
+                .into_iter()
             })
             .collect();
 
@@ -716,7 +740,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped = ProguardService::map_frame(&[], &frame, Some("android"), &mut 0);
+        let remapped =
+            ProguardService::map_frame(&[], &frame, Some("android"), &mut Default::default());
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -763,7 +788,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None, &mut 0);
+        let mapped_frames =
+            ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
 
         assert_eq!(mapped_frames.len(), 2);
 
@@ -833,7 +859,8 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames = ProguardService::map_frame(&[&cache], &frame, None, &mut 0);
+        let mapped_frames =
+            ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
 
         assert_eq!(mapped_frames.len(), 1);
 
@@ -973,7 +1000,8 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
             .iter()
             .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut 0).into_iter()
+                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
+                    .into_iter()
             })
             .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
             .unzip();
