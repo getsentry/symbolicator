@@ -9,7 +9,7 @@ use crate::interface::{
     SymbolicateJsStacktraces,
 };
 use crate::lookup::SourceMapLookup;
-use crate::metrics::record_stacktrace_metrics;
+use crate::metrics::{record_stacktrace_metrics, SymbolicationStats};
 use crate::utils::{
     fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, is_in_app,
     join_paths,
@@ -28,8 +28,7 @@ impl SourceMapService {
         let mut lookup = SourceMapLookup::new(self.clone(), request).await;
         lookup.prepare_modules(&mut raw_stacktraces[..]);
 
-        let mut unsymbolicated_frames = 0;
-        let mut missing_sourcescontent = 0;
+        let mut stats = SymbolicationStats::default();
 
         let num_stacktraces = raw_stacktraces.len();
         let mut stacktraces = Vec::with_capacity(num_stacktraces);
@@ -47,16 +46,23 @@ impl SourceMapService {
                     &mut errors,
                     std::mem::take(&mut callsite_fn_name),
                     apply_source_context,
-                    &mut missing_sourcescontent,
+                    &mut stats,
                 )
                 .await
                 {
                     Ok(mut frame) => {
+                        *stats
+                            .symbolicated_frames
+                            .entry(raw_frame.platform.clone())
+                            .or_default() += 1;
                         std::mem::swap(&mut callsite_fn_name, &mut frame.token_name);
                         symbolicated_frames.push(frame);
                     }
                     Err(err) => {
-                        unsymbolicated_frames += 1;
+                        *stats
+                            .unsymbolicated_frames
+                            .entry(raw_frame.platform.clone())
+                            .or_default() += 1;
                         errors.insert(JsModuleError {
                             abs_path: raw_frame.abs_path.clone(),
                             kind: err,
@@ -71,13 +77,10 @@ impl SourceMapService {
             });
         }
 
+        stats.num_stacktraces = stacktraces.len() as u64;
+
         lookup.record_metrics();
-        record_stacktrace_metrics(
-            platform,
-            &stacktraces,
-            unsymbolicated_frames,
-            missing_sourcescontent,
-        );
+        record_stacktrace_metrics(platform, stats);
 
         let (used_artifact_bundles, scraping_attempts) = lookup.into_records();
 
@@ -97,7 +100,7 @@ async fn symbolicate_js_frame(
     errors: &mut BTreeSet<JsModuleError>,
     callsite_fn_name: Option<String>,
     should_apply_source_context: bool,
-    missing_sourcescontent: &mut u64,
+    stats: &mut SymbolicationStats,
 ) -> Result<JsFrame, JsModuleErrorKind> {
     // we check for a valid line (i.e. >= 1) first, as we want to avoid resolving / scraping the minified
     // file in that case. we frequently saw 0 line/col values in combination with non-js files,
@@ -266,7 +269,7 @@ async fn symbolicate_js_frame(
                 });
             }
         } else {
-            *missing_sourcescontent += 1;
+            stats.missing_sourcescontent += 1;
 
             // If we have no source context from within the `SourceMapCache`,
             // fall back to applying the source context from a raw artifact file

@@ -223,38 +223,39 @@ impl JsMetrics {
 }
 
 /// Record metrics about stacktraces and frames.
-pub fn record_stacktrace_metrics(
-    event_platform: Option<Platform>,
-    stacktraces: &[JsStacktrace],
-    unsymbolicated_frames: u64,
-    missing_sourcescontent: u64,
-) {
+pub fn record_stacktrace_metrics(event_platform: Option<Platform>, stats: SymbolicationStats) {
     let event_platform = event_platform
         .as_ref()
         .map(|p| p.as_ref())
         .unwrap_or("none");
 
-    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+    metric!(time_raw("symbolication.num_stacktraces") = stats.num_stacktraces);
 
-    // Count number of frames by platform (including no platform)
-    let frames_by_platform = stacktraces.iter().flat_map(|st| st.frames.iter()).fold(
-        HashMap::new(),
-        |mut map, frame| {
-            let platform = frame.platform.as_ref();
-            let count: &mut usize = map.entry(platform).or_default();
-            *count += 1;
-            map
-        },
-    );
-
-    for (p, count) in &frames_by_platform {
-        let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none");
+    for (p, count) in stats.symbolicated_frames {
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
             time_raw("symbolication.num_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
-    metric!(time_raw("symbolication.unsymbolicated_frames") = unsymbolicated_frames);
-    metric!(time_raw("js.missing_sourcescontent") = missing_sourcescontent);
+
+    for (p, count) in stats.unsymbolicated_frames {
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
+        metric!(
+            time_raw("symbolication.unsymbolicated_frames") =
+                count,
+            "frame_platform" => frame_platform, "event_platform" => event_platform
+        );
+    }
+
+    metric!(time_raw("js.missing_sourcescontent") = stats.missing_sourcescontent);
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SymbolicationStats {
+    pub(crate) symbolicated_frames: HashMap<Option<Platform>, u64>,
+    pub(crate) unsymbolicated_frames: HashMap<Option<Platform>, u64>,
+    pub(crate) num_stacktraces: u64,
+    pub(crate) missing_sourcescontent: u64,
 }
