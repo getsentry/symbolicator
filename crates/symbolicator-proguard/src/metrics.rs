@@ -1,44 +1,51 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use symbolicator_service::{metric, types::Platform};
 
-use crate::interface::{JvmException, JvmStacktrace};
-
 /// Record metrics about exceptions, stacktraces, frames, and remapped classes.
-pub fn record_symbolication_metrics(
+pub(crate) fn record_symbolication_metrics(
     event_platform: Option<Platform>,
-    exceptions: &[JvmException],
-    stacktraces: &[JvmStacktrace],
-    classes: &HashMap<Arc<str>, Arc<str>>,
-    unsymbolicated_frames: u64,
+    stats: SymbolicationStats,
 ) {
     let event_platform = event_platform
         .as_ref()
         .map(|p| p.as_ref())
         .unwrap_or("none");
 
-    metric!(time_raw("symbolication.num_exceptions") = exceptions.len() as u64, "event_platform" => event_platform);
-    metric!(time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64);
+    metric!(time_raw("symbolication.num_exceptions") = stats.symbolicated_exceptions, "event_platform" => event_platform);
+    metric!(time_raw("symbolication.unsymbolicated_exceptions") = stats.unsymbolicated_exceptions, "event_platform" => event_platform);
 
-    // Count number of frames by platform (including no platform)
-    let frames_by_platform = stacktraces.iter().flat_map(|st| st.frames.iter()).fold(
-        HashMap::new(),
-        |mut map, frame| {
-            let platform = frame.platform.as_ref();
-            let count: &mut usize = map.entry(platform).or_default();
-            *count += 1;
-            map
-        },
-    );
+    metric!(time_raw("symbolication.num_stacktraces") = stats.num_stacktraces);
 
-    for (p, count) in &frames_by_platform {
-        let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none");
+    for (p, count) in stats.symbolicated_frames {
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
             time_raw("symbolication.num_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
-    metric!(time_raw("symbolication.num_classes") = classes.len() as u64, "event_platform" => event_platform);
-    metric!(time_raw("symbolication.unsymbolicated_frames") = unsymbolicated_frames);
+
+    for (p, count) in stats.unsymbolicated_frames {
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
+        metric!(
+            time_raw("symbolication.unsymbolicated_frames") =
+                count,
+            "frame_platform" => frame_platform, "event_platform" => event_platform
+        );
+    }
+
+    metric!(time_raw("symbolication.num_classes") = stats.symbolicated_classes, "event_platform" => event_platform);
+    metric!(time_raw("symbolication.unsymbolicated_classes") = stats.unsymbolicated_classes, "event_platform" => event_platform);
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SymbolicationStats {
+    pub(crate) symbolicated_exceptions: u64,
+    pub(crate) unsymbolicated_exceptions: u64,
+    pub(crate) symbolicated_classes: u64,
+    pub(crate) unsymbolicated_classes: u64,
+    pub(crate) symbolicated_frames: HashMap<Option<Platform>, u64>,
+    pub(crate) unsymbolicated_frames: HashMap<Option<Platform>, u64>,
+    pub(crate) num_stacktraces: u64,
 }
