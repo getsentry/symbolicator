@@ -31,7 +31,7 @@ use std::collections::HashMap;
 use symbolic::debuginfo::sourcebundle::SourceFileType;
 use symbolicator_service::{metric, metrics, types::Platform};
 
-use crate::interface::{JsStacktrace, ResolvedWith};
+use crate::interface::ResolvedWith;
 
 /// Various metrics we want to capture *per-event* for JS events.
 #[derive(Debug, Default)]
