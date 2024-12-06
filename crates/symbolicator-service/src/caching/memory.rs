@@ -270,9 +270,25 @@ impl<T: CacheItemRequest> Cacher<T> {
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
         // figure out negative caches.  Maybe put them in redis with a TTL?
         if !shared_cache_hit {
-            if let Ok(byteview) = &entry {
-                if let Some(shared_cache) = shared_cache {
-                    shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
+            if let Some(shared_cache) = shared_cache {
+                match &entry {
+                    Ok(byteview) => {
+                        shared_cache.store(
+                            name,
+                            &cache_path,
+                            byteview.clone(),
+                            CacheStoreReason::New,
+                        );
+                    }
+                    Err(CacheError::NotFound) => {
+                        shared_cache.store(
+                            name,
+                            &cache_path,
+                            ByteView::from_slice(b""), // Store an empty file to indicate source not found.
+                            CacheStoreReason::New,
+                        );
+                    }
+                    Err(_) => {}
                 }
             }
         }
