@@ -8,7 +8,7 @@ on:
 jobs:
   linux:
     name: Build Binary on Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Checkout sources
