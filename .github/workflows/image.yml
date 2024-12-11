@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         arch: [amd64]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     env:
       # IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
       IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
