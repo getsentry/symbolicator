@@ -1,5 +1,11 @@
 # Changelog
 
+## 24.12.0
+
+### Various fixes & improvements
+
+- chore(deps): update Native SDK to v0.7.16 (#1566) by @github-actions
+
 ## 24.11.2
 
 ### Various fixes & improvements
