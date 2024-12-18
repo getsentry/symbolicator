@@ -36,7 +36,7 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
 ///
-/// - `7`: Fixes inlinee lookup. (https://github.com/getsentry/symbolic/pull/883)
+/// - `7`: Fixes inlinee lookup. (<https://github.com/getsentry/symbolic/pull/883>)
 ///
 /// - `6`: Recomputation to use new `CacheKey` format.
 ///
