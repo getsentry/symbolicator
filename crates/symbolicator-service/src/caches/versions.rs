@@ -36,6 +36,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
 ///
+/// - `7`: Fixes inlinee lookup. (<https://github.com/getsentry/symbolic/pull/883>)
+///
 /// - `6`: Recomputation to use new `CacheKey` format.
 ///
 /// - `5`: Proactive bump, as a bug in shared cache could have potentially
@@ -58,8 +60,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 6,
-    fallbacks: &[],
+    current: 7,
+    fallbacks: &[6],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
