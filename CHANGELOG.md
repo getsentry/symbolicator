@@ -1,5 +1,12 @@
 # Changelog
 
+## 24.12.1
+
+### Various fixes & improvements
+
+- feat: Bump symcache version (#1572) by @jjbayer
+- chore(deps): Bump symbolic to 12.12.4 (#1571) by @jjbayer
+
 ## 24.12.0
 
 ### Various fixes & improvements
