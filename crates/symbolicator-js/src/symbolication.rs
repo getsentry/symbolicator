@@ -105,13 +105,20 @@ async fn symbolicate_js_frame(
     // we check for a valid line (i.e. >= 1) first, as we want to avoid resolving / scraping the minified
     // file in that case. we frequently saw 0 line/col values in combination with non-js files,
     // and we want to avoid scraping a bunch of html files in that case.
-    let line = if raw_frame.lineno > 0 {
-        raw_frame.lineno
-    } else {
-        return Err(JsModuleErrorKind::InvalidLocation {
-            line: raw_frame.lineno,
-            col: raw_frame.colno,
-        });
+    let line = match raw_frame.lineno {
+        Some(lineno) if lineno > 0 => lineno,
+        Some(lineno) => {
+            return Err(JsModuleErrorKind::InvalidLocation {
+                line: lineno,
+                col: raw_frame.colno,
+            });
+        }
+        None => {
+            return Err(JsModuleErrorKind::InvalidLocation {
+                line: 0,
+                col: raw_frame.colno,
+            });
+        }
     };
 
     let col = raw_frame.colno.unwrap_or_default();
@@ -255,7 +262,7 @@ async fn symbolicate_js_frame(
         frame.filename = Some(filename);
     }
 
-    frame.lineno = token.line().saturating_add(1);
+    frame.lineno = Some(token.line().saturating_add(1));
     frame.colno = Some(token.column().saturating_add(1));
 
     if !should_apply_source_context {
@@ -309,7 +316,7 @@ async fn symbolicate_js_frame(
 }
 
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
-    let lineno = frame.lineno as usize;
+    let lineno = frame.lineno.map(|line| line as usize).unwrap_or_default();
     let column = frame.colno.map(|col| col as usize).unwrap_or_default();
 
     if let Some((pre_context, context_line, post_context)) =
