@@ -64,7 +64,7 @@ impl SourceMapService {
                             .entry(raw_frame.platform.clone())
                             .or_default() += 1;
                         errors.insert(JsModuleError {
-                            abs_path: raw_frame.abs_path.clone(),
+                            abs_path: raw_frame.abs_path.clone().unwrap_or_default(),
                             kind: err,
                         });
                         symbolicated_frames.push(raw_frame.clone());
@@ -115,11 +115,12 @@ async fn symbolicate_js_frame(
     };
 
     let col = raw_frame.colno.unwrap_or_default();
+    let abs_path = raw_frame.abs_path.clone().unwrap_or_default();
 
-    let module = lookup.get_module(&raw_frame.abs_path).await;
+    let module = lookup.get_module(&abs_path).await;
 
     tracing::trace!(
-        abs_path = &raw_frame.abs_path,
+        abs_path = &abs_path,
         ?module,
         "Module for `abs_path`"
     );
@@ -154,7 +155,7 @@ async fn symbolicate_js_frame(
         .map(|entry| entry.sourcemap_url())
         .ok()
         .flatten()
-        .unwrap_or_else(|| raw_frame.abs_path.clone());
+        .unwrap_or_else(|| raw_frame.abs_path.clone().unwrap_or_default());
 
     let (smcache, resolved_with, sourcemap_origin) = match &module.smcache {
         Some(smcache) => match &smcache.entry {
@@ -229,25 +230,26 @@ async fn symbolicate_js_frame(
 
     if let Some(filename) = token.file_name() {
         let mut filename = filename.to_string();
-        frame.abs_path = module
+        frame.abs_path = Some(module
             .source_file_base()
             .map(|base| join_paths(base, &filename))
-            .unwrap_or_else(|| filename.clone());
+            .unwrap_or_else(|| filename.clone()));
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
             frame.module = Some(generate_module(&filename));
         }
 
-        frame.in_app = is_in_app(&frame.abs_path, &filename);
+        let abs_path = frame.abs_path.clone().unwrap_or_default();
+        frame.in_app = is_in_app(&abs_path, &filename);
 
         if frame.module.is_none()
-            && (frame.abs_path.starts_with("http:")
-                || frame.abs_path.starts_with("https:")
-                || frame.abs_path.starts_with("webpack:")
-                || frame.abs_path.starts_with("app:"))
+            && (abs_path.starts_with("http:")
+                || abs_path.starts_with("https:")
+                || abs_path.starts_with("webpack:")
+                || abs_path.starts_with("app:"))
         {
-            frame.module = Some(generate_module(&frame.abs_path));
+            frame.module = Some(generate_module(&abs_path));
         }
 
         frame.filename = Some(filename);
@@ -264,7 +266,7 @@ async fn symbolicate_js_frame(
         if let Some(file_source) = file.source() {
             if let Err(err) = apply_source_context(&mut frame, file_source) {
                 errors.insert(JsModuleError {
-                    abs_path: raw_frame.abs_path.clone(),
+                    abs_path: raw_frame.abs_path.clone().unwrap_or_default(),
                     kind: err,
                 });
             }
@@ -291,7 +293,7 @@ async fn symbolicate_js_frame(
                 // It's arguable whether we should collect it, but this is what monolith does now,
                 // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
                 errors.insert(JsModuleError {
-                    abs_path: raw_frame.abs_path.clone(),
+                    abs_path: raw_frame.abs_path.clone().unwrap_or_default(),
                     kind: JsModuleErrorKind::MissingSourceContent {
                         source: file_key
                             .and_then(|key| key.abs_path().map(|path| path.to_string()))

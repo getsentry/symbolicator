@@ -229,7 +229,8 @@ pub struct JsFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub module: Option<String>,
 
-    pub abs_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub abs_path: Option<String>,
 
     pub lineno: u32,
 
