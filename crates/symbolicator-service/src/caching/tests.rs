@@ -784,12 +784,9 @@ async fn test_cache_fallback() {
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing("global/some_cache_key");
 
-    {
-        let cache_dir = cache_dir.path().join("objects");
-        let cache_file = cache_dir.join(key.cache_path(0));
-        fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
-        fs::write(cache_file, "some old cached contents").unwrap();
-    }
+    let old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
+    fs::create_dir_all(old_cache_file.parent().unwrap()).unwrap();
+    fs::write(&old_cache_file, "some old cached contents").unwrap();
 
     let config = Config {
         cache_dir: Some(cache_dir.path().to_path_buf()),
@@ -818,6 +815,9 @@ async fn test_cache_fallback() {
 
     // we only want to have the actual computation be done a single time
     assert_eq!(request.computations.load(Ordering::SeqCst), 1);
+
+    // the old cache file should have been removed during the recomputation
+    assert!(!fs::exists(old_cache_file).unwrap());
 }
 
 /// Makes sure that a `NotFound` result does not fall back to older cache versions.
