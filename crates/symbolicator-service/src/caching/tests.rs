@@ -754,8 +754,8 @@ impl CacheItemRequest for TestCacheItem {
     type Item = String;
 
     const VERSIONS: CacheVersions = CacheVersions {
-        current: 1,
-        fallbacks: &[0],
+        current: 2,
+        fallbacks: &[1],
     };
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
@@ -784,12 +784,13 @@ async fn test_cache_fallback() {
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing("global/some_cache_key");
 
-    {
-        let cache_dir = cache_dir.path().join("objects");
-        let cache_file = cache_dir.join(key.cache_path(0));
-        fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
-        fs::write(cache_file, "some old cached contents").unwrap();
-    }
+    let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
+    fs::create_dir_all(very_old_cache_file.parent().unwrap()).unwrap();
+    fs::write(&very_old_cache_file, "some incompatible cached contents").unwrap();
+
+    let old_cache_file = cache_dir.path().join("objects").join(key.cache_path(1));
+    fs::create_dir_all(old_cache_file.parent().unwrap()).unwrap();
+    fs::write(&old_cache_file, "some old cached contents").unwrap();
 
     let config = Config {
         cache_dir: Some(cache_dir.path().to_path_buf()),
@@ -818,6 +819,10 @@ async fn test_cache_fallback() {
 
     // we only want to have the actual computation be done a single time
     assert_eq!(request.computations.load(Ordering::SeqCst), 1);
+
+    // the old cache files should have been removed during the recomputation
+    assert!(!fs::exists(very_old_cache_file).unwrap());
+    assert!(!fs::exists(old_cache_file).unwrap());
 }
 
 /// Makes sure that a `NotFound` result does not fall back to older cache versions.
@@ -831,11 +836,11 @@ async fn test_cache_fallback_notfound() {
 
     {
         let cache_dir = cache_dir.path().join("objects");
-        let cache_file = cache_dir.join(key.cache_path(0));
+        let cache_file = cache_dir.join(key.cache_path(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
-        let cache_file = cache_dir.join(key.cache_path(1));
+        let cache_file = cache_dir.join(key.cache_path(2));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "").unwrap();
     }
@@ -888,7 +893,7 @@ async fn test_lazy_computation_limit() {
         let request = request.clone();
         let key = CacheKey::for_testing(*key);
 
-        let cache_file = cache_dir.join(key.cache_path(0));
+        let cache_file = cache_dir.join(key.cache_path(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 

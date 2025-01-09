@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fs;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -261,6 +262,22 @@ impl<T: CacheItemRequest> Cacher<T> {
             tracing::trace!("Creating {name} at path {:?}", cache_path.display());
 
             persist_tempfile(temp_file, &cache_path)?;
+
+            // Clean up old versions
+            for version in 0..T::VERSIONS.current {
+                let item_path = key.cache_path(version);
+
+                if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
+                    // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::error!(
+                            error = &e as &dyn std::error::Error,
+                            path = item_path,
+                            "Failed to remove old cache file"
+                        );
+                    }
+                }
+            }
 
             #[cfg(debug_assertions)]
             {
