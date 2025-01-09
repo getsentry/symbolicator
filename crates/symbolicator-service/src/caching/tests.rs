@@ -1,5 +1,5 @@
 use std::fs::{self, File};
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
@@ -916,4 +916,80 @@ async fn test_lazy_computation_limit() {
     }
 
     assert_eq!(num_outdated, 2);
+}
+
+/// A request to compute a cache item that always fails.
+#[derive(Clone)]
+struct FailingTestCacheItem(CacheError);
+
+impl CacheItemRequest for FailingTestCacheItem {
+    type Item = String;
+
+    const VERSIONS: CacheVersions = CacheVersions {
+        current: 1,
+        fallbacks: &[],
+    };
+
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+        Box::pin(async move {
+            fs::write(temp_file.path(), "garbage data")?;
+            Err(self.0.clone())
+        })
+    }
+
+    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+        Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
+    }
+}
+
+/// Verifies that an internal error during computation results in the temporary
+/// file being discarded instead of persisted.
+#[tokio::test]
+async fn test_failing_cache_write() {
+    test::setup();
+    let cache_dir = test::tempdir();
+
+    let config = Config {
+        cache_dir: Some(cache_dir.path().to_path_buf()),
+        ..Default::default()
+    };
+    let cache = Cache::from_config(
+        CacheName::Objects,
+        &config,
+        CacheConfig::from(CacheConfigs::default().derived),
+        Arc::new(AtomicIsize::new(1)),
+        1024,
+    )
+    .unwrap();
+    let cacher = Cacher::new(cache, Default::default());
+
+    // Case 1: internal error
+    let request = FailingTestCacheItem(CacheError::InternalError);
+    let key = CacheKey::for_testing("global/internal_error");
+
+    let entry = cacher
+        .compute_memoized(request, key.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(entry, CacheError::InternalError);
+
+    // The computation returned `InternalError`, so the file should not have been
+    // persisted
+    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    assert!(!fs::exists(cache_file_path).unwrap());
+
+    // Case 2: malformed error
+    let request = FailingTestCacheItem(CacheError::Malformed("this is garbage".to_owned()));
+    let key = CacheKey::for_testing("global/malformed");
+
+    let entry = cacher
+        .compute_memoized(request, key.clone())
+        .await
+        .unwrap_err();
+    assert_eq!(entry, CacheError::Malformed("this is garbage".to_owned()));
+
+    // The computation returned `Malformed`, so the file should have been
+    // persisted
+    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    assert!(fs::exists(cache_file_path).unwrap());
 }

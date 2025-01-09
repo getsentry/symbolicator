@@ -104,6 +104,13 @@ fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> Cach
     let file = writer.into_inner().map_err(io::Error::from)?;
     file.sync_all()?;
 
+    // Parse the sourcemapcache file to verify integrity
+    let bv = ByteView::map_file_ref(file)?;
+    if SourceMapCache::parse(&bv).is_err() {
+        tracing::error!("Failed to verify integrity of freshly written SourceMapCache");
+        return Err(CacheError::InternalError);
+    }
+
     Ok(())
 }
 

@@ -212,6 +212,12 @@ impl<T: CacheItemRequest> Cacher<T> {
                     let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
                     entry = Ok(byte_view);
                 }
+                Err(CacheError::InternalError) => {
+                    // If there was an `InternalError` during computation (for instance because
+                    // of an io error), we return immediately without writing the error
+                    // or persisting the temp file.
+                    return Err(CacheError::InternalError);
+                }
                 Err(err) => {
                     let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
                     err.write(&mut temp_fd).await?;
