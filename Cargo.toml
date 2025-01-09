@@ -53,7 +53,9 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 # [patch.crates-io]
 # symbolic-debuginfo = { path = "../symbolic/symbolic-debuginfo" }
 
+
 [workspace.dependencies]
+symbolic = "12.13.1"
 reqwest = "0.12.2"
 tokio = "1.36.0"
 tokio-metrics = "0.3.1"
