@@ -104,6 +104,7 @@ impl ObjectsActor {
     ///
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
+    #[tracing::instrument(skip_all, fields(file_source = ?file_handle.file_source))]
     pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
         let cache_key = CacheKey::from_scoped_file(&file_handle.scope, &file_handle.file_source);
         let request = FetchFileDataRequest(FetchFileMetaRequest {
