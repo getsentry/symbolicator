@@ -196,7 +196,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
         .into_iter()
         .flat_map(WalkDir::new)
         .filter_map(Result::ok)
-        .filter(|entry| entry.metadata().ok().map_or(false, |x| x.is_file()))
+        .filter(|entry| entry.metadata().is_ok_and(|x| x.is_file()))
         .par_bridge()
         .map(|entry| {
             let path = entry.path();

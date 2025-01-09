@@ -343,7 +343,7 @@ impl DownloadService {
             && self
                 .host_deny_list
                 .as_ref()
-                .map_or(false, |deny_list| deny_list.is_blocked(&host))
+                .is_some_and(|deny_list| deny_list.is_blocked(&host))
         {
             metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
             return Err(CacheError::DownloadError(
