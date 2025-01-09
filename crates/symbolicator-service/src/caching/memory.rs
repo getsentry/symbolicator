@@ -444,9 +444,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
                     // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
                     if e.kind() != std::io::ErrorKind::NotFound {
-                        let dynerror = &e as &dyn std::error::Error;
                         tracing::error!(
-                            error = dynerror,
+                            error = &e as &dyn std::error::Error,
                             path = item_path,
                             "Failed to remove old cache file"
                         );
