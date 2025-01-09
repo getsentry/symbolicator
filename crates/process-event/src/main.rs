@@ -9,7 +9,7 @@ use ::reqwest::blocking::multipart;
 use clap::Parser;
 use reqwest::blocking as reqwest;
 use serde_json::{to_string, Map, Value};
-use symbolic_common::split_path;
+use symbolic::common::split_path;
 
 #[path = "../../symbolicator-service/src/utils/hex.rs"]
 mod hex;

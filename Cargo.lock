@@ -3396,7 +3396,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "symbolic-common",
+ "symbolic",
 ]
 
 [[package]]
