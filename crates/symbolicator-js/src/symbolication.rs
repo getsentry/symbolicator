@@ -310,6 +310,10 @@ async fn symbolicate_js_frame(
 }
 
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
+    if frame.lineno.is_none() {
+        return Ok(());
+    }
+
     let lineno = frame.lineno.map(|line| line as usize).unwrap_or_default();
     let column = frame.colno.map(|col| col as usize).unwrap_or_default();
 
