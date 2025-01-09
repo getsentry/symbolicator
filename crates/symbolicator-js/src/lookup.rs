@@ -195,10 +195,8 @@ impl SourceMapLookup {
             for frame in &mut stacktrace.frames {
                 // NOTE: some older JS SDK versions did not correctly strip a leading `async `
                 // prefix from the `abs_path`, which we will work around here.
-                if let Some(abs_path) = &mut frame.abs_path {
-                    if let Some(stripped) = abs_path.strip_prefix("async ") {
-                        *abs_path = stripped.to_owned();
-                    }
+                if let Some(abs_path) = frame.abs_path.and_then(|s| s.strip_prefix("async ")) {
+                    frame.abs_path = Some(abs_path.to_owned());
                 }
 
                 if let Some(abs_path) = &frame.abs_path {
