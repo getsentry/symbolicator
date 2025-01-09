@@ -447,7 +447,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             let value = (expiration.as_instant(), item);
 
             // refresh the memory cache with the newly refreshed result
-            this.cache.insert(cache_key.clone(), value).await;
+            this.cache.insert(cache_key, value).await;
 
             transaction.finish();
         };
