@@ -106,6 +106,7 @@ impl SentryLookupApi {
 
     /// Look up a list of bundles or individual artifact files covering the
     /// `debug_ids` and `file_stems` (using the `release` + `dist`).
+    #[tracing::instrument(skip(self, debug_ids, file_stems))]
     pub async fn lookup_js_artifacts(
         &self,
         source: Arc<SentrySourceConfig>,
