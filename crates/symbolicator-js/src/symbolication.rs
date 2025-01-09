@@ -115,8 +115,14 @@ async fn symbolicate_js_frame(
         }
     };
 
+    let abs_path = match raw_frame.abs_path {
+        Some(ref abs_path) => abs_path,
+        None => {
+            return Err(JsModuleErrorKind::InvalidAbsPath);
+        }
+    };
+
     let col = raw_frame.colno.unwrap_or_default();
-    let abs_path = raw_frame.abs_path.clone().unwrap_or_default();
 
     let module = lookup.get_module(&abs_path).await;
 
