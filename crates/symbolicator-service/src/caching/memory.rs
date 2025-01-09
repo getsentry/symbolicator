@@ -263,6 +263,22 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             persist_tempfile(temp_file, &cache_path)?;
 
+            // Clean up old versions
+            for version in 0..T::VERSIONS.current {
+                let item_path = key.cache_path(version);
+
+                if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
+                    // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::error!(
+                            error = &e as &dyn std::error::Error,
+                            path = item_path,
+                            "Failed to remove old cache file"
+                        );
+                    }
+                }
+            }
+
             #[cfg(debug_assertions)]
             {
                 let mut cache_path = cache_path;
@@ -432,26 +448,6 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // refresh the memory cache with the newly refreshed result
             this.cache.insert(cache_key.clone(), value).await;
-
-            // Clean up old versions
-            let cache_dir = this
-                .config
-                .cache_dir()
-                .expect("cache dir must exist if we're doing recomputations");
-            for &version in T::VERSIONS.fallbacks {
-                let item_path = cache_key.cache_path(version);
-
-                if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
-                    // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
-                    if e.kind() != std::io::ErrorKind::NotFound {
-                        tracing::error!(
-                            error = &e as &dyn std::error::Error,
-                            path = item_path,
-                            "Failed to remove old cache file"
-                        );
-                    }
-                }
-            }
 
             transaction.finish();
         };
