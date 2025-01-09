@@ -107,15 +107,9 @@ async fn symbolicate_js_frame(
     // and we want to avoid scraping a bunch of html files in that case.
     let line = match raw_frame.lineno {
         Some(lineno) if lineno > 0 => lineno,
-        Some(lineno) => {
+        lineno => {
             return Err(JsModuleErrorKind::InvalidLocation {
-                line: lineno,
-                col: raw_frame.colno,
-            });
-        }
-        None => {
-            return Err(JsModuleErrorKind::InvalidLocation {
-                line: 0,
+                line: lineno.unwrap_or(0),
                 col: raw_frame.colno,
             });
         }
