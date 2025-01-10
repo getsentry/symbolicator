@@ -313,7 +313,7 @@ async fn symbolicate_js_frame(
 }
 
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
-    if frame.lineno.is_none() {
+    let Some(lineno) = frame.lineno else {
         return Ok(());
     }
 
