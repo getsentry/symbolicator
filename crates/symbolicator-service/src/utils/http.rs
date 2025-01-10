@@ -121,7 +121,7 @@ pub fn create_client(
                     .previous()
                     .last()
                     .and_then(|url| url.host_str())
-                    .map_or(false, |host| host == "dev.azure.com");
+                    .is_some_and(|host| host == "dev.azure.com");
 
                 if is_from_azure {
                     return attempt.stop();

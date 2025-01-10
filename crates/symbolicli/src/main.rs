@@ -244,7 +244,7 @@ impl Payload {
         }
     }
 
-    async fn get_remote<'a>(client: &reqwest::Client, key: EventKey<'a>) -> Result<Self> {
+    async fn get_remote(client: &reqwest::Client, key: EventKey<'_>) -> Result<Self> {
         tracing::info!("trying to resolve event remotely");
         let event = remote::download_event(client, key).await?;
         tracing::info!("event json file downloaded");
@@ -290,9 +290,9 @@ mod remote {
         id: String,
     }
 
-    pub async fn get_attached_minidump<'a>(
+    pub async fn get_attached_minidump(
         client: &reqwest::Client,
-        key: EventKey<'a>,
+        key: EventKey<'_>,
     ) -> Result<Option<Url>> {
         let EventKey {
             base_url,
@@ -378,7 +378,7 @@ mod remote {
         Ok(temp_file.into_temp_path())
     }
 
-    pub async fn download_event<'a>(client: &reqwest::Client, key: EventKey<'a>) -> Result<Event> {
+    pub async fn download_event(client: &reqwest::Client, key: EventKey<'_>) -> Result<Event> {
         let EventKey {
             base_url,
             org,

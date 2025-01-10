@@ -63,7 +63,7 @@ fn as_custom_section(section: &Section) -> Option<&CustomSection> {
 
 /// Returns `true` if this section should be stripped.
 fn is_strippable_section(section: &Section, strip_names: bool) -> bool {
-    as_custom_section(section).map_or(false, |section| match section {
+    as_custom_section(section).is_some_and(|section| match section {
         CustomSection::Name(_) => strip_names,
         other => other.name().starts_with(".debug_"),
     })

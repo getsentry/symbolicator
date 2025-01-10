@@ -221,7 +221,7 @@ fn symbolicate_stacktrace(
                     |frame: &SymbolicatedFrame| frame.raw.function.as_deref() == Some("_start");
                 if status == FrameStatus::UnknownImage
                     && unsymbolicated_frames_iter.peek().is_none()
-                    && symbolicated_frames.last().map_or(false, is_start)
+                    && symbolicated_frames.last().is_some_and(is_start)
                 {
                     continue;
                 }
