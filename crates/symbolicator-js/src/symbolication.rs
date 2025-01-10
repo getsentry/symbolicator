@@ -159,7 +159,7 @@ async fn symbolicate_js_frame(
         .map(|entry| entry.sourcemap_url())
         .ok()
         .flatten()
-        .unwrap_or_else(|| abs_path.to_owned());
+        .unwrap_or_else(|| raw_frame.abs_path.clone().unwrap_or_default());
 
     let (smcache, resolved_with, sourcemap_origin) = match &module.smcache {
         Some(smcache) => match &smcache.entry {
@@ -315,13 +315,12 @@ async fn symbolicate_js_frame(
 fn apply_source_context(frame: &mut JsFrame, source: &str) -> Result<(), JsModuleErrorKind> {
     let Some(lineno) = frame.lineno else {
         return Ok(());
-    }
+    };
 
-    let lineno = frame.lineno.map(|line| line as usize).unwrap_or_default();
     let column = frame.colno.map(|col| col as usize).unwrap_or_default();
 
     if let Some((pre_context, context_line, post_context)) =
-        get_context_lines(source, lineno, column, None)
+        get_context_lines(source, lineno as usize, column, None)
     {
         frame.pre_context = pre_context;
         frame.context_line = Some(context_line);
