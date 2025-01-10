@@ -159,7 +159,7 @@ async fn symbolicate_js_frame(
         .map(|entry| entry.sourcemap_url())
         .ok()
         .flatten()
-        .unwrap_or_else(|| raw_frame.abs_path.clone().unwrap_or_default());
+        .unwrap_or_else(|| abs_path.to_owned());
 
     let (smcache, resolved_with, sourcemap_origin) = match &module.smcache {
         Some(smcache) => match &smcache.entry {
