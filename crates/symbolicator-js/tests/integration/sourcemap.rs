@@ -364,6 +364,40 @@ async fn test_malformed_abs_path() {
 }
 
 #[tokio::test]
+async fn test_invalid_abs_path() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("", |_url, _query| json!([]));
+
+    let frames = r#"[{
+        "filename": "test.js",
+        "lineno": 1,
+        "colno": 1
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response);
+}
+
+
+#[tokio::test]
+async fn test_invalid_lineno() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("", |_url, _query| json!([]));
+
+    let frames = r#"[{
+        "abs_path": "http//example.com/test.min.js",
+        "filename": "test.js"
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response);
+}
+
+#[tokio::test]
 async fn test_fetch_error() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (srv, source) = sourcemap_server("", |_url, _query| json!([]));
