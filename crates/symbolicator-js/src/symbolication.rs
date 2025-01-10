@@ -102,6 +102,10 @@ async fn symbolicate_js_frame(
     should_apply_source_context: bool,
     stats: &mut SymbolicationStats,
 ) -> Result<JsFrame, JsModuleErrorKind> {
+    let Some(abs_path) = &raw_frame.abs_path else {
+        return Err(JsModuleErrorKind::InvalidAbsPath);
+    };
+
     // we check for a valid line (i.e. >= 1) first, as we want to avoid resolving / scraping the minified
     // file in that case. we frequently saw 0 line/col values in combination with non-js files,
     // and we want to avoid scraping a bunch of html files in that case.
@@ -113,10 +117,6 @@ async fn symbolicate_js_frame(
                 col: raw_frame.colno,
             });
         }
-    };
-
-    let Some(abs_path) = &raw_frame.abs_path else {
-        return Err(JsModuleErrorKind::InvalidAbsPath);
     };
 
     let col = raw_frame.colno.unwrap_or_default();
