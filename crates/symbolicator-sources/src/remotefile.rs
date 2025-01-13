@@ -231,13 +231,12 @@ impl RemoteFile {
     /// If this is a built-in source the source_id is returned, otherwise this falls
     /// back to the source type name.
     pub fn source_metric_key(&self) -> &str {
-        let id = self.source_id().as_str();
         // The IDs of built-in sources (see: SENTRY_BUILTIN_SOURCES in sentry) always start with
         // "sentry:" (e.g. "sentry:electron") and are safe to use as a key. If this is a custom
         // source, then the source_id is a random string which inflates the cardinality of this
         // metric as the tag values will greatly vary.
-        if id.starts_with("sentry:") {
-            return id;
+        if self.is_builtin() {
+            return self.source_id().as_str();
         }
         match self {
             Self::Sentry(..) => "sentry",
@@ -246,6 +245,11 @@ impl RemoteFile {
             Self::Http(..) => "http",
             Self::Filesystem(..) => "filesystem",
         }
+    }
+
+    /// Returns whether a symbol source is builtin (see `SENTRY_BUILTIN_SOURCES` in sentry).
+    pub fn is_builtin(&self) -> bool {
+        self.source_id().as_str().starts_with("sentry:")
     }
 
     /// Returns a URI for the location of the object file.

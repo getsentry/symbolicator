@@ -329,8 +329,7 @@ impl DownloadService {
     ) -> CacheEntry {
         let host = source.host();
 
-        // Check whether `source` is an internal Sentry source. We don't ever
-        // want to put such sources on the block list.
+        let is_builtin_source = source.is_builtin();
         let source_metric_key = source.source_metric_key().to_string();
         // NOTE: This allow-lists every external non-http symbol server.
         // This includes S3, GCS, and builtin http symbol servers that might misbehave.
@@ -379,6 +378,21 @@ impl DownloadService {
                     deny_list.register_failure(&source_metric_key, host);
                 }
             }
+        }
+
+        // Emit metrics about download result for internal sources
+        if is_builtin_source {
+            let status = match result {
+                Ok(_) => "success",
+                Err(CacheError::NotFound) => "notfound",
+                Err(CacheError::PermissionDenied(_)) => "permissiondenied",
+                Err(CacheError::Timeout(_)) => "timeout",
+                Err(CacheError::DownloadError(_)) => "downloaderror",
+                Err(CacheError::Malformed(_)) => "malformed",
+                Err(CacheError::Unsupported(_)) => "unsupported",
+                Err(CacheError::InternalError) => "internalerror",
+            };
+            metric!(counter("service.builtin_source.download") += 1, "source" => &source_metric_key, "status" => status);
         }
 
         result
