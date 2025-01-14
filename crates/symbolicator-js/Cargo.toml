@@ -1,7 +1,7 @@
 [package]
 name = "symbolicator-js"
 publish = false
-version = "24.12.1"
+version = "24.12.2"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
