@@ -380,7 +380,6 @@ async fn test_invalid_abs_path() {
     assert_snapshot!(response);
 }
 
-
 #[tokio::test]
 async fn test_invalid_lineno() {
     let (symbolication, _cache_dir) = setup_service(|_| ());

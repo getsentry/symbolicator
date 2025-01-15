@@ -123,11 +123,7 @@ async fn symbolicate_js_frame(
 
     let module = lookup.get_module(&abs_path).await;
 
-    tracing::trace!(
-        abs_path = &abs_path,
-        ?module,
-        "Module for `abs_path`"
-    );
+    tracing::trace!(abs_path = &abs_path, ?module, "Module for `abs_path`");
 
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
@@ -234,10 +230,12 @@ async fn symbolicate_js_frame(
 
     if let Some(filename) = token.file_name() {
         let mut filename = filename.to_string();
-        frame.abs_path = Some(module
-            .source_file_base()
-            .map(|base| join_paths(base, &filename))
-            .unwrap_or_else(|| filename.clone()));
+        frame.abs_path = Some(
+            module
+                .source_file_base()
+                .map(|base| join_paths(base, &filename))
+                .unwrap_or_else(|| filename.clone()),
+        );
 
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
