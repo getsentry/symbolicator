@@ -121,7 +121,7 @@ async fn symbolicate_js_frame(
 
     let col = raw_frame.colno.unwrap_or_default();
 
-    let module = lookup.get_module(&abs_path).await;
+    let module = lookup.get_module(abs_path).await;
 
     tracing::trace!(abs_path = &abs_path, ?module, "Module for `abs_path`");
 
