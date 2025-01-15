@@ -4612,9 +4612,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a062c2a3b682b35781420cd3fc1dda56c419cf42c95835dd829b3c2623dbd02"
+checksum = "e8fe7a2686a532b572f01681ed824945359d96f7dc04649ddc5be19c488edb05"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4628,9 +4628,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9209bad9c573671055acf43f40caccff9223308451ec5df2837a0ac0b4f0815c"
+checksum = "475d11c5052f701abde08841e1250fb1055addad5ce4fc0c6a1a2e7688d12bb7"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4639,9 +4639,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf08b42a6f9469bd8584daee39a1352c8133ccabc5151ccccb15896ef047d99a"
+checksum = "8150eae9699e3c73a3e6431dc1f80d87748797c0457336af23e94c1de619ed24"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4652,9 +4652,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "642c705d1460886c2d1ba7f83f2bcf6d36c54add05d2eb47368cd75dfce8c58b"
+checksum = "71d378e2f96ba42bf0673ff52a93811107a9d8334ab97016ba204fdf9bfd63fe"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4684,9 +4684,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32f73b5a5bd4da72720c45756a2d11edf110116b87f998bda59b97be8c2c7cf1"
+checksum = "95f4a9846f7a8933b6d198c022faa2c9bd89e1a970bed9d9a98d25708bf8de17"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -4697,9 +4697,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be6237c1fb4d39046849ed8739b25891a81191a77c54ad467c9e5c0b29102089"
+checksum = "c9c0e3e2d225c975048eefb075aeef5f72f8feae1a7728c68658eab3477c1b73"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4709,9 +4709,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82c9bce71f46dfc34bdd968b29db4e23a58c6b435c9fca9b63d77410fd257101"
+checksum = "eb00d3e2eb0ffdb422f2422f95c17ff0fe117e87527b8ede5ed052836e0e68c9"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4725,9 +4725,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ce268087a38b67c10a15d0c7afe65e2397dcd2b8ef29cd6c74229118d8481d6"
+checksum = "7e99b66fd24cc8d6591e988edd9afb9ec61db2f8fff850d8fe73bca57ab8be04"
 dependencies = [
  "itertools 0.13.0",
  "js-source-scopes",
@@ -4740,9 +4740,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "12.13.1"
+version = "12.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0fb529002bf523c838a48f0b2c325fdc5a69c5db6c228cd4615ab37236c7126"
+checksum = "4dee00d80da1038f5357672c165344c16c8b2e1daf467eb487fe21088674b438"
 dependencies = [
  "indexmap",
  "symbolic-common",
