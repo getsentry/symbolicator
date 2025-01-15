@@ -102,7 +102,7 @@ async fn symbolicate_js_frame(
     should_apply_source_context: bool,
     stats: &mut SymbolicationStats,
 ) -> Result<JsFrame, JsModuleErrorKind> {
-    let Some(abs_path) = &raw_frame.abs_path else {
+    let Some(abs_path) = raw_frame.abs_path.clone() else {
         return Err(JsModuleErrorKind::InvalidAbsPath);
     };
 
@@ -155,7 +155,7 @@ async fn symbolicate_js_frame(
         .map(|entry| entry.sourcemap_url())
         .ok()
         .flatten()
-        .unwrap_or_else(|| raw_frame.abs_path.clone().unwrap_or_default());
+        .unwrap_or(abs_path.clone());
 
     let (smcache, resolved_with, sourcemap_origin) = match &module.smcache {
         Some(smcache) => match &smcache.entry {
@@ -268,7 +268,7 @@ async fn symbolicate_js_frame(
         if let Some(file_source) = file.source() {
             if let Err(err) = apply_source_context(&mut frame, file_source) {
                 errors.insert(JsModuleError {
-                    abs_path: raw_frame.abs_path.clone().unwrap_or_default(),
+                    abs_path,
                     kind: err,
                 });
             }
@@ -295,7 +295,7 @@ async fn symbolicate_js_frame(
                 // It's arguable whether we should collect it, but this is what monolith does now,
                 // and it might be useful to indicate incorrect sentry-cli rewrite behavior.
                 errors.insert(JsModuleError {
-                    abs_path: raw_frame.abs_path.clone().unwrap_or_default(),
+                    abs_path,
                     kind: JsModuleErrorKind::MissingSourceContent {
                         source: file_key
                             .and_then(|key| key.abs_path().map(|path| path.to_string()))
