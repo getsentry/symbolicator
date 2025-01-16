@@ -92,6 +92,7 @@ jobs:
           # We cannot execute actions that are not placed under .github of the main repo
           mkdir -p .github/actions/
           cp -r sentry/.github/actions/setup-sentry .github/actions/
+          cd sentry
 
       - name: Setup Sentry
         uses: ./.github/actions/setup-sentry
