@@ -67,7 +67,6 @@ function(region) {
             elastic_profile_id: 'symbolicator',
             tasks: [
               gocdtasks.script(importstr '../bash/github-checks.sh'),
-              gocdtasks.script(importstr '../bash/cloudbuild-checks.sh'),
             ],
           },
         },
