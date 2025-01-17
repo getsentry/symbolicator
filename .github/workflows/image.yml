@@ -164,6 +164,10 @@ jobs:
           # You must use the Cloud SDK version 390.0.0 or later to authenticate the bq and gsutil tools.
           version: ">= 390.0.0"
 
+      - name: Configure Docker
+        run: |
+          gcloud auth configure-docker us-central1-docker.pkg.dev
+
       - name: Push Images
         run: |
           docker buildx imagetools create \
