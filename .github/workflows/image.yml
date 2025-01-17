@@ -111,28 +111,27 @@ jobs:
     name: Assemble for Github Container Registry
     runs-on: ubuntu-20.04
 
+    env:
+      TARGET_IMAGE: ghcr.io/getsentry/symbolicator
+
     steps:
       - name: Docker Login
         run: docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
 
       - name: Assemble Sha Image
         run: |
-          docker manifest create \
-            'ghcr.io/getsentry/symbolicator:${{ github.sha }}' \
+          docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
             'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
             'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-
-          docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
+          docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
-          docker manifest create \
-            'ghcr.io/getsentry/symbolicator:latest' \
+          docker manifest create "${TARGET_IMAGE}:latest" \
             'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
             'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-
-          docker manifest push ghcr.io/getsentry/symbolicator:latest
+          docker manifest push "${TARGET_IMAGE}:latest"
 
   assemble-ar:
     needs: [build-setup, build-image]
@@ -145,6 +144,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+
+    env:
+      TARGET_IMAGE: us-central1-docker.pkg.dev/sentryio/symbolicator/image
 
     steps:
       - name: Google Auth
@@ -163,19 +165,15 @@ jobs:
 
       - name: Assemble Sha Image
         run: |
-          docker manifest create \
-            'us-central1-docker.pkg.dev/sentryio/symbolicator/image:${{ github.sha }}' \
+          docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
             'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
             'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-
-          docker manifest push 'us-central1-docker.pkg.dev/sentryio/symbolicator/image:${{ github.sha }}'
+          docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
-          docker manifest create \
-            'us-central1-docker.pkg.dev/sentryio/symbolicator/image:latest' \
+          docker manifest create "${TARGET_IMAGE}:latest" \
             'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
             'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-
-          docker manifest push 'us-central1-docker.pkg.dev/sentryio/symbolicator/image:latest'
+          docker manifest push "${TARGET_IMAGE}:latest"
