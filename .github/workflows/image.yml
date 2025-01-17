@@ -120,18 +120,16 @@ jobs:
 
       - name: Assemble Sha Image
         run: |
-          docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
+          docker buildx imagetools create -t "${TARGET_IMAGE}:${{ github.sha }}" \
             "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
             "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-          docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
-          docker manifest create "${TARGET_IMAGE}:latest" \
+          docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
             "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
             "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-          docker manifest push "${TARGET_IMAGE}:latest"
 
   assemble-ar:
     needs: [build-setup, build-image]
@@ -177,15 +175,13 @@ jobs:
 
       - name: Assemble Sha Image
         run: |
-          docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
+          docker buildx imagetools create -t "${TARGET_IMAGE}:${{ github.sha }}" \
             "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
             "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-          docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
-          docker manifest create "${TARGET_IMAGE}:latest" \
+          docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
             "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
             "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-          docker manifest push "${TARGET_IMAGE}:latest"
