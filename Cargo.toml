@@ -25,7 +25,7 @@ debug = 1
 [profile.release-lto]
 inherits = "release"
 codegen-units = 1
-lto = true
+lto = "thin"
 
 [profile.local]
 # For running a local symbolicator, we want the best of both worlds: a fast executable, with quick
