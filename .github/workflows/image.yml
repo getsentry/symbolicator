@@ -121,16 +121,16 @@ jobs:
       - name: Assemble Sha Image
         run: |
           docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
-            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
-            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
           docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
           docker manifest create "${TARGET_IMAGE}:latest" \
-            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
-            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
           docker manifest push "${TARGET_IMAGE}:latest"
 
   assemble-ar:
@@ -146,6 +146,7 @@ jobs:
       id-token: write
 
     env:
+      GHCR_IMAGE: ghcr.io/getsentry/symbolicator
       TARGET_IMAGE: us-central1-docker.pkg.dev/sentryio/symbolicator/image
 
     steps:
@@ -163,17 +164,24 @@ jobs:
           # You must use the Cloud SDK version 390.0.0 or later to authenticate the bq and gsutil tools.
           version: ">= 390.0.0"
 
+      - name: Push Images
+        run: |
+          docker buildx imagetools create \
+            --tag "${TARGET_IMAGE}:arm64-${{ github.sha }}" "${GHCR_IMAGE}:arm64-${{ github.sha }}"
+          docker buildx imagetools create \
+            --tag "${TARGET_IMAGE}:amd64-${{ github.sha }}" "${GHCR_IMAGE}:amd64-${{ github.sha }}"
+
       - name: Assemble Sha Image
         run: |
           docker manifest create "${TARGET_IMAGE}:${{ github.sha }}" \
-            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
-            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
           docker manifest push "${TARGET_IMAGE}:${{ github.sha }}"
 
       - name: Assemble Latest Image
         if: github.ref_name == 'master'
         run: |
           docker manifest create "${TARGET_IMAGE}:latest" \
-            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
-            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
           docker manifest push "${TARGET_IMAGE}:latest"
