@@ -74,10 +74,10 @@ jobs:
 
 
   assemble:
-    needs: [build-image]
+    # needs: [build-image]
 
     runs-on: ubuntu-20.04
-    
+
     # if: github.event_name != 'pull_request'
 
     steps:
@@ -86,9 +86,15 @@ jobs:
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
 
+          # docker manifest create \
+          #   'ghcr.io/getsentry/symbolicator:${{ github.sha }}' \
+          #   'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
+          #   'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+
           docker manifest create \
-            'ghcr.io/getsentry/symbolicator:${{ github.sha }}'
-            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}'
-            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-            
-          docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
+            'ghcr.io/getsentry/symbolicator:e980fa196a84f528069c57f57d63cb736d07ee28' \
+            'ghcr.io/getsentry/symbolicator:arm64-e980fa196a84f528069c57f57d63cb736d07ee28' \
+            'ghcr.io/getsentry/symbolicator:amd64-e980fa196a84f528069c57f57d63cb736d07ee28'
+
+          # docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
+          docker manifest push ghcr.io/getsentry/symbolicator:e980fa196a84f528069c57f57d63cb736d07ee28
