@@ -1,5 +1,12 @@
 # CLI
-FROM getsentry/sentry-cli:2 AS sentry-cli
+FROM debian:bookworm-slim AS sentry-cli
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sL https://sentry.io/get-cli/ | sh
 
 # Image with cargo-chef as base image to our builder
 FROM rust:slim-bookworm AS symbolicator-chef
@@ -41,7 +48,7 @@ RUN cp target/release-lto/symbolicator target/release-lto/symbolicator.debug \
     && cp ./target/release-lto/symbolicator /usr/local/bin \
     && zip /opt/symbolicator-debug.zip target/release-lto/symbolicator.debug
 
-COPY --from=sentry-cli /bin/sentry-cli /bin/sentry-cli
+COPY --from=sentry-cli /usr/local/bin/sentry-cli /bin/sentry-cli
 RUN sentry-cli --version \
     && SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources ./target/release-lto/symbolicator.debug)" \
     && mv "$SOURCE_BUNDLE" /opt/symbolicator.src.zip
