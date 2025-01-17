@@ -14,19 +14,24 @@ jobs:
   build-image:
     strategy:
       matrix:
-        arch: [amd64]
-    runs-on: ubuntu-20.04
+        arch: [amd64, arm64]
+
+    runs-on: |-
+      ${{fromJson('{
+        "amd64": "ubuntu-20.04",
+        "arm64": "ubuntu-22.04-arm64-relay"
+      }')[matrix.arch] }}
+
     env:
       # IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
       IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
       NIGHTLY_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-nightly
       BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
+
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - run: docker run --rm --privileged tonistiigi/binfmt --install arm64
-        if: matrix.arch == 'arm64'
 
       - name: build builder img
         run: |
@@ -61,14 +66,29 @@ jobs:
               .
 
       - name: push all images
-        if: github.event_name != 'pull_request'
+      #if: github.event_name != 'pull_request'
         run: |
           set -euxo pipefail
           docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-          docker push "$BUILDER_IMG_CACHE"
-          docker push "$NIGHTLY_IMG_CACHE"
           docker push "$IMG_VERSIONED"
 
-          # for now arm64 is too slow so just retag this as latest
-          docker tag "$IMG_VERSIONED" ghcr.io/getsentry/symbolicator:latest
-          docker push ghcr.io/getsentry/symbolicator:latest
+
+  assemble:
+    needs: [build-image]
+
+    runs-on: ubuntu-20.04
+    
+    # if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Assemble multi arch image
+        run: |
+          set -euxo pipefail
+          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+
+          docker manifest create \
+            'ghcr.io/getsentry/symbolicator:${{ github.sha }}'
+            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}'
+            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+            
+          docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
