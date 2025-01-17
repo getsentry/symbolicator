@@ -1,6 +1,7 @@
 name: image
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - master
@@ -11,10 +12,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-setup:
+    name: Setup build metadata
+    runs-on: ubuntu-latest
+
+    env:
+      FULL_CI: "${{
+        github.event_name != 'pull_request'
+        || contains(github.event.pull_request.labels.*.name, 'Trigger: Full-CI')
+      }}"
+
+    steps:
+      - id: set-outputs
+        run: |
+          echo "full_ci=$FULL_CI" >> $GITHUB_OUTPUT
+
+          if [[ "$FULL_CI" == "true" ]]; then
+            echo "Running full CI"
+            echo 'archs=["amd64", "arm64"]' >> $GITHUB_OUTPUT
+          else
+            echo "Skipping some CI steps"
+            echo 'archs=["amd64"]' >> $GITHUB_OUTPUT
+          fi
+    outputs:
+      archs: "${{ steps.set-outputs.outputs.archs }}"
+      full_ci: "${{ steps.set-outputs.outputs.full_ci }}"
+
+
   build-image:
+    needs: build-setup
+
     strategy:
       matrix:
-        arch: [amd64, arm64]
+        arch: ${{ fromJson(needs.build-setup.outputs.archs) }}
 
     runs-on: |-
       ${{fromJson('{
@@ -68,13 +98,13 @@ jobs:
               .
 
       - name: push all images
-        # if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         run: docker push "$IMG_VERSIONED"
 
 
   assemble:
-    needs: [build-image]
-    # if: github.event_name != 'pull_request'
+    needs: build-image
+    if: github.event_name != 'pull_request'
 
     runs-on: ubuntu-20.04
 
