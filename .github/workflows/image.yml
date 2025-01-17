@@ -23,7 +23,6 @@ jobs:
       }')[matrix.arch] }}
 
     env:
-      # IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-latest
       IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
       NIGHTLY_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-nightly
       BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
@@ -32,6 +31,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Docker Login
+        run: docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
 
       - name: build builder img
         run: |
@@ -66,35 +68,35 @@ jobs:
               .
 
       - name: push all images
-      #if: github.event_name != 'pull_request'
-        run: |
-          set -euxo pipefail
-          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-          docker push "$IMG_VERSIONED"
+        # if: github.event_name != 'pull_request'
+        run: docker push "$IMG_VERSIONED"
 
 
   assemble:
-    # needs: [build-image]
+    needs: [build-image]
+    # if: github.event_name != 'pull_request'
 
     runs-on: ubuntu-20.04
 
-    # if: github.event_name != 'pull_request'
-
     steps:
-      - name: Assemble multi arch image
+      - name: Docker Login
+        run: docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
+
+      - name: Assemble Sha Image
         run: |
-          set -euxo pipefail
-          docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-
-          # docker manifest create \
-          #   'ghcr.io/getsentry/symbolicator:${{ github.sha }}' \
-          #   'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
-          #   'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
-
           docker manifest create \
-            'ghcr.io/getsentry/symbolicator:e980fa196a84f528069c57f57d63cb736d07ee28' \
-            'ghcr.io/getsentry/symbolicator:arm64-e980fa196a84f528069c57f57d63cb736d07ee28' \
-            'ghcr.io/getsentry/symbolicator:amd64-e980fa196a84f528069c57f57d63cb736d07ee28'
+            'ghcr.io/getsentry/symbolicator:${{ github.sha }}' \
+            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
+            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
 
-          # docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
-          docker manifest push ghcr.io/getsentry/symbolicator:e980fa196a84f528069c57f57d63cb736d07ee28
+          docker manifest push ghcr.io/getsentry/symbolicator:${{ github.sha }}
+
+      - name: Assemble Latest Image
+        if: github.ref_name == 'master'
+        run: |
+          docker manifest create \
+            'ghcr.io/getsentry/symbolicator:latest' \
+            'ghcr.io/getsentry/symbolicator:arm64-${{ github.sha }}' \
+            'ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}'
+
+          docker manifest push ghcr.io/getsentry/symbolicator:latest
