@@ -98,9 +98,11 @@ jobs:
               .
 
       - name: push all images
-        if: github.event_name != 'pull_request'
-        run: docker push "$IMG_VERSIONED"
-
+        if: "needs.build-setup.outputs.full_ci == 'true'"
+        run: |
+          docker push "$BUILDER_IMG_CACHE"
+          docker push "$NIGHTLY_IMG_CACHE"
+          docker push "$IMG_VERSIONED"
 
   assemble:
     needs: build-image
