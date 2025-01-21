@@ -49,7 +49,7 @@ jobs:
     runs-on: |-
       ${{fromJson('{
         "amd64": "ubuntu-20.04",
-        "arm64": "ubuntu-22.04-arm64-relay"
+        "arm64": "ubuntu-22.04-arm"
       }')[matrix.arch] }}
 
     env:
