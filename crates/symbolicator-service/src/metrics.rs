@@ -1,5 +1,5 @@
 //! Provides access to the metrics sytem.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
@@ -211,6 +211,7 @@ struct AggregationKey {
 }
 
 type AggregatedCounters = FxHashMap<AggregationKey, i64>;
+type AggregatedSets = FxHashMap<AggregationKey, BTreeSet<u64>>;
 type AggregatedDistributions = FxHashMap<AggregationKey, Vec<f64>>;
 
 pub trait IntoDistributionValue {
@@ -248,6 +249,8 @@ pub struct LocalAggregator {
     buf: String,
     /// A map of all the `counter` and `gauge` metrics we have aggregated thus far.
     aggregated_counters: AggregatedCounters,
+    /// A map of all the `set` metrics we have aggregated thus far.
+    aggregated_sets: AggregatedSets,
     /// A map of all the `timer` and `histogram` metrics we have aggregated thus far.
     aggregated_distributions: AggregatedDistributions,
 }
@@ -286,6 +289,20 @@ impl LocalAggregator {
 
         let aggregation = self.aggregated_counters.entry(key).or_default();
         *aggregation += value;
+    }
+
+    /// Emit a `set` metric, which is aggregated in a set.
+    pub fn emit_set(&mut self, name: &'static str, value: u64, tags: &[(&'static str, &str)]) {
+        let tags = self.format_tags(tags);
+
+        let key = AggregationKey {
+            ty: "|s",
+            name,
+            tags,
+        };
+
+        let aggregation = self.aggregated_sets.entry(key).or_default();
+        aggregation.insert(value);
     }
 
     /// Emit a `gauge` metric, for which only the latest value is retained.
@@ -399,6 +416,16 @@ macro_rules! metric {
             local.emit_count($id, $value, tags);
         });
     }};
+
+    // sets
+    (set($id:expr) = $value:expr $(, $k:ident = $v:expr)* $(,)?) => {
+        $crate::with_client(|local| {
+            let tags: &[(&'static str, &str)] = &[
+                $(($k, $v)),*
+            ];
+            local.emit_set(&$crate::types::SetMetric::name(&$id), $value, tags);
+        });
+    };
 
     // gauges
     (gauge($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
