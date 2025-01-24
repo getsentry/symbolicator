@@ -45,16 +45,27 @@ pub struct JsMetrics {
 
     // Product managers are interested in these metrics as a "funnel":
     found_source_via_debugid: i64,
-    found_source_via_release: i64,
-    found_source_via_release_old: i64,
-    found_source_via_scraping: i64,
-    source_not_found: i64,
+    found_source_via_release_with_debugid: i64,
+    found_source_via_release_old_with_debugid: i64,
+    found_source_via_scraping_with_debugid: i64,
+    source_not_found_with_debugid: i64,
+
+    found_source_via_release_without_debugid: i64,
+    found_source_via_release_old_without_debugid: i64,
+    found_source_via_scraping_without_debugid: i64,
+    source_not_found_without_debugid: i64,
 
     found_sourcemap_via_debugid: i64,
-    found_sourcemap_via_release: i64,
-    found_sourcemap_via_release_old: i64,
-    found_sourcemap_via_scraping: i64,
-    sourcemap_not_found: i64,
+    found_sourcemap_via_release_with_debugid: i64,
+    found_sourcemap_via_release_old_with_debugid: i64,
+    found_sourcemap_via_scraping_with_debugid: i64,
+    sourcemap_not_found_with_debugid: i64,
+
+    found_sourcemap_via_release_without_debugid: i64,
+    found_sourcemap_via_release_old_without_debugid: i64,
+    found_sourcemap_via_scraping_without_debugid: i64,
+    sourcemap_not_found_without_debugid: i64,
+
     sourcemap_not_needed: i64,
 
     // Engineers might also be interested in these metrics:
@@ -62,22 +73,48 @@ pub struct JsMetrics {
     found_bundle_via_index: i64,
     found_bundle_via_release: i64,
     found_bundle_via_release_old: i64,
+
+    had_debug_id: bool,
+    project_id: Option<u64>,
 }
 
 impl JsMetrics {
-    pub fn record_file_scraped(&mut self, file_ty: SourceFileType) {
-        if file_ty == SourceFileType::SourceMap {
-            self.found_sourcemap_via_scraping += 1;
-        } else {
-            self.found_source_via_scraping += 1;
+    pub fn new(project_id: Option<u64>) -> Self {
+        Self {
+            project_id,
+            ..Self::default()
         }
     }
 
-    pub fn record_not_found(&mut self, file_ty: SourceFileType) {
-        if file_ty == SourceFileType::SourceMap {
-            self.sourcemap_not_found += 1
-        } else {
-            self.source_not_found += 1
+    pub fn record_file_scraped(&mut self, file_ty: SourceFileType, had_debug_id: bool) {
+        match (file_ty, had_debug_id) {
+            (SourceFileType::SourceMap, true) => {
+                self.had_debug_id = true;
+                self.found_sourcemap_via_scraping_with_debugid += 1
+            }
+            (SourceFileType::SourceMap, false) => {
+                self.found_sourcemap_via_scraping_without_debugid += 1
+            }
+            (_, true) => {
+                self.had_debug_id = true;
+                self.found_source_via_scraping_with_debugid += 1;
+            }
+            (_, false) => self.found_source_via_scraping_without_debugid += 1,
+        }
+    }
+
+    pub fn record_not_found(&mut self, file_ty: SourceFileType, had_debug_id: bool) {
+        match (file_ty, had_debug_id) {
+            (SourceFileType::SourceMap, true) => {
+                self.had_debug_id = true;
+                self.sourcemap_not_found_with_debugid += 1;
+            }
+            (SourceFileType::SourceMap, false) => self.sourcemap_not_found_without_debugid += 1,
+            (_, true) => {
+                self.had_debug_id = true;
+                self.source_not_found_with_debugid += 1;
+            }
+            (_, false) => self.source_not_found_without_debugid += 1,
         }
     }
 
@@ -90,22 +127,51 @@ impl JsMetrics {
         file_ty: SourceFileType,
         file_identified_by: ResolvedWith,
         bundle_resolved_by: ResolvedWith,
+        had_debug_id: bool,
     ) {
         use ResolvedWith::*;
         use SourceFileType::*;
         match (file_ty, file_identified_by, bundle_resolved_by) {
             (SourceMap, DebugId, _) => {
+                self.had_debug_id = true;
                 self.found_sourcemap_via_debugid += 1;
             }
             (SourceMap, Url, ReleaseOld) => {
-                self.found_sourcemap_via_release_old += 1;
+                if had_debug_id {
+                    self.had_debug_id = true;
+                    self.found_sourcemap_via_release_old_with_debugid += 1;
+                } else {
+                    self.found_sourcemap_via_release_old_without_debugid += 1;
+                }
             }
             (SourceMap, _, _) => {
-                self.found_sourcemap_via_release += 1;
+                if had_debug_id {
+                    self.had_debug_id = true;
+                    self.found_sourcemap_via_release_with_debugid += 1;
+                } else {
+                    self.found_sourcemap_via_release_without_debugid += 1;
+                }
             }
-            (_, DebugId, _) => self.found_source_via_debugid += 1,
-            (_, Url, ReleaseOld) => self.found_source_via_release_old += 1,
-            (_, _, _) => self.found_source_via_release += 1,
+            (_, DebugId, _) => {
+                self.had_debug_id = true;
+                self.found_source_via_debugid += 1;
+            }
+            (_, Url, ReleaseOld) => {
+                if had_debug_id {
+                    self.had_debug_id = true;
+                    self.found_source_via_release_old_with_debugid += 1;
+                } else {
+                    self.found_source_via_release_old_without_debugid += 1;
+                }
+            }
+            (_, _, _) => {
+                if had_debug_id {
+                    self.had_debug_id = true;
+                    self.found_source_via_release_with_debugid += 1;
+                } else {
+                    self.found_source_via_release_without_debugid += 1;
+                }
+            }
         };
 
         match bundle_resolved_by {
@@ -147,54 +213,70 @@ impl JsMetrics {
         aggregator.emit_count(
             "js.found_via_bundle_debugid",
             self.found_source_via_debugid,
-            &[("type", "source")],
+            &[("type", "source"), ("had_debugid", "true")],
         );
         aggregator.emit_count(
             "js.found_via_bundle_url",
-            self.found_source_via_release,
-            &[("type", "source"), ("lookup", "release")],
+            self.found_source_via_release_with_debugid,
+            &[
+                ("type", "source"),
+                ("lookup", "release"),
+                ("had_debugid", "true"),
+            ],
         );
         aggregator.emit_count(
             "js.found_via_bundle_url",
-            self.found_source_via_release_old,
-            &[("type", "source"), ("lookup", "release-old")],
+            self.found_source_via_release_without_debugid,
+            &[
+                ("type", "source"),
+                ("lookup", "release"),
+                ("had_debugid", "false"),
+            ],
         );
         aggregator.emit_count(
             "js.found_via_scraping",
-            self.found_source_via_scraping,
-            &[("type", "source")],
+            self.found_source_via_scraping_with_debugid,
+            &[("type", "source"), ("had_debugid", "true")],
         );
         aggregator.emit_count(
-            "js.file_not_found",
-            self.source_not_found,
-            &[("type", "source")],
+            "js.found_via_scraping",
+            self.found_source_via_scraping_without_debugid,
+            &[("type", "source"), ("had_debugid", "false")],
         );
 
         // SourceMaps:
         aggregator.emit_count(
             "js.found_via_bundle_debugid",
             self.found_sourcemap_via_debugid,
-            &[("type", "sourcemap")],
+            &[("type", "sourcemap"), ("had_debugid", "true")],
         );
         aggregator.emit_count(
             "js.found_via_bundle_url",
-            self.found_sourcemap_via_release,
-            &[("type", "sourcemap"), ("lookup", "release")],
+            self.found_sourcemap_via_release_old_with_debugid,
+            &[
+                ("type", "sourcemap"),
+                ("lookup", "release-old"),
+                ("had_debugid", "true"),
+            ],
         );
         aggregator.emit_count(
             "js.found_via_bundle_url",
-            self.found_sourcemap_via_release_old,
-            &[("type", "sourcemap"), ("lookup", "release-old")],
-        );
-        aggregator.emit_count(
-            "js.found_via_scraping",
-            self.found_sourcemap_via_scraping,
-            &[("type", "sourcemap")],
+            self.found_sourcemap_via_release_old_without_debugid,
+            &[
+                ("type", "sourcemap"),
+                ("lookup", "release-old"),
+                ("had_debugid", "false"),
+            ],
         );
         aggregator.emit_count(
             "js.file_not_found",
-            self.sourcemap_not_found,
-            &[("type", "sourcemap")],
+            self.sourcemap_not_found_with_debugid,
+            &[("type", "sourcemap"), ("had_debugid", "true")],
+        );
+        aggregator.emit_count(
+            "js.file_not_found",
+            self.sourcemap_not_found_without_debugid,
+            &[("type", "sourcemap"), ("had_debugid", "false")],
         );
         aggregator.emit_count("js.sourcemap_not_needed", self.sourcemap_not_needed, &[]);
 
@@ -219,6 +301,17 @@ impl JsMetrics {
             self.found_bundle_via_release_old,
             &[("method", "release-old")],
         );
+
+        // Count this project if any of its source/sourcemap files had debug ids.
+        // Also separately count it if such a file wasn't found.
+        if let Some(project_id) = self.project_id {
+            if self.had_debug_id {
+                aggregator.emit_set("js.debugid_projects", project_id, &[]);
+            }
+            if self.source_not_found_with_debugid > 0 || self.sourcemap_not_found_with_debugid > 0 {
+                aggregator.emit_set("js.debugid_projects_notfound", project_id, &[]);
+            }
+        }
     }
 }
 
