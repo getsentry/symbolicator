@@ -150,10 +150,15 @@ impl SourceMapLookup {
         let mut modules_by_abs_path = HashMap::with_capacity(modules.len());
         for module in modules {
             let debug_id = module.debug_id.parse().ok();
+            if debug_id.is_none() {
+                tracing::error!(debug_id = module.debug_id, "Invalid module debug ID");
+            }
             let cached_module = SourceMapModule::new(&module.code_file, debug_id);
 
             modules_by_abs_path.insert(module.code_file.to_owned(), cached_module);
         }
+
+        let metrics = JsMetrics::new(scope.as_ref().parse().ok());
 
         let fetcher = ArtifactFetcher {
             objects,
@@ -175,7 +180,7 @@ impl SourceMapLookup {
 
             used_artifact_bundles: Default::default(),
 
-            metrics: Default::default(),
+            metrics,
 
             scraping_attempts: Default::default(),
         };
@@ -188,8 +193,6 @@ impl SourceMapLookup {
     }
 
     /// Prepares the modules for processing
-    // This lint is currently buggy
-    #[allow(clippy::assigning_clones)]
     pub fn prepare_modules(&mut self, stacktraces: &mut [JsStacktrace]) {
         for stacktrace in stacktraces {
             for frame in &mut stacktrace.frames {
@@ -563,7 +566,8 @@ impl ArtifactFetcher {
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
         if minified_source.entry.is_err() {
-            self.metrics.record_not_found(SourceFileType::Source);
+            self.metrics
+                .record_not_found(SourceFileType::Source, debug_id.is_some());
         }
 
         // Then fetch the corresponding sourcemap reference and debug_id
@@ -616,7 +620,8 @@ impl ArtifactFetcher {
         if matches!(sourcemap.uri, CachedFileUri::Embedded) {
             self.metrics.record_sourcemap_not_needed();
         } else if sourcemap.entry.is_err() {
-            self.metrics.record_not_found(SourceFileType::SourceMap);
+            self.metrics
+                .record_not_found(SourceFileType::SourceMap, debug_id.is_some());
         }
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
@@ -767,7 +772,8 @@ impl ArtifactFetcher {
 
         let entry = match scraped_file {
             Ok(contents) => {
-                self.metrics.record_file_scraped(key.as_type());
+                self.metrics
+                    .record_file_scraped(key.as_type(), key.debug_id().is_some());
                 tracing::trace!(?key, "Found file by scraping the web");
 
                 let sourcemap_url = discover_sourcemaps_location(&contents)
@@ -819,6 +825,7 @@ impl ArtifactFetcher {
                     key.as_type(),
                     resolved_with,
                     *bundle_resolved_with,
+                    key.debug_id().is_some(),
                 );
             }
 
@@ -838,6 +845,7 @@ impl ArtifactFetcher {
                         key.as_type(),
                         ResolvedWith::DebugId,
                         *bundle_resolved_with,
+                        key.debug_id().is_some(),
                     );
                     tracing::trace!(?key, "Found file in artifact bundles by debug-id");
                     let file_entry = CachedFileEntry {
@@ -869,6 +877,7 @@ impl ArtifactFetcher {
                             key.as_type(),
                             ResolvedWith::Url,
                             *resolved_with,
+                            key.debug_id().is_some(),
                         );
                         tracing::trace!(?key, url, "Found file in artifact bundles by url");
                         let file_entry = CachedFileEntry {
