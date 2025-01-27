@@ -97,6 +97,21 @@ jobs:
               --cache-from "${NIGHTLY_IMG_CACHE}" \
               .
 
+      - name: Prepare Artifacts
+        if: "needs.build-setup.outputs.full_ci == 'true'"
+        run: |
+          mkdir -p "artifacts/${{ matrix.arch }}"
+
+          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator-debug.zip > artifacts/symbolicator-debug.zip
+          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator.src.zip > artifacts/symbolicator.src.zip
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: image-${{ matrix.arch }}
+          path: "./artifacts/*"
+
       - name: push all images
         if: "needs.build-setup.outputs.full_ci == 'true'"
         run: |
@@ -131,15 +146,13 @@ jobs:
         with:
           version: ">= 390.0.0"
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "image-amd64"
+          merge-multiple: true
+
       - name: Upload gocd deployment assets
-        run: |
-          set -euxo pipefail
-
-          docker run --rm --entrypoint cat "${GHCR_IMAGE}" /opt/symbolicator-debug.zip > symbolicator-debug.zip
-          docker run --rm --entrypoint cat "${GHCR_IMAGE}" /opt/symbolicator.src.zip > symbolicator.src.zip
-
-          gsutil -m cp ./symbolicator-debug.zip ./symbolicator.src.zip \
-            gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/
+        run: gsutil -m cp ./symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   assemble:
     needs: [build-setup, build-image]
