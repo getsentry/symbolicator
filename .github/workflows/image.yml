@@ -104,6 +104,43 @@ jobs:
           docker push "$NIGHTLY_IMG_CACHE"
           docker push "$IMG_VERSIONED"
 
+  gocd-artifacts:
+    needs: [build-setup, build-image]
+    if: "needs.build-setup.outputs.full_ci == 'true'"
+
+    name: Upload gocd artifacts
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GHCR_IMAGE: ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}
+
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: ">= 390.0.0"
+
+      - name: Upload gocd deployment assets
+        run: |
+          set -euxo pipefail
+
+          docker run --rm --entrypoint cat "${GHCR_IMAGE}" /opt/symbolicator-debug.zip > symbolicator-debug.zip
+          docker run --rm --entrypoint cat "${GHCR_IMAGE}" /opt/symbolicator.src.zip > symbolicator.src.zip
+
+          gsutil -m cp ./symbolicator-debug.zip ./symbolicator.src.zip \
+            gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/
+
   assemble:
     needs: [build-setup, build-image]
     if: "needs.build-setup.outputs.full_ci == 'true'"
