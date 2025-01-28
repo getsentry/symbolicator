@@ -243,6 +243,16 @@ impl JsMetrics {
             self.found_source_via_scraping_without_debugid,
             &[("type", "source"), ("had_debugid", "false")],
         );
+        aggregator.emit_count(
+            "js.file_not_found",
+            self.source_not_found_with_debugid,
+            &[("type", "source"), ("had_debugid", "true")],
+        );
+        aggregator.emit_count(
+            "js.file_not_found",
+            self.source_not_found_without_debugid,
+            &[("type", "source"), ("had_debugid", "false")],
+        );
 
         // SourceMaps:
         aggregator.emit_count(
@@ -267,6 +277,16 @@ impl JsMetrics {
                 ("lookup", "release-old"),
                 ("had_debugid", "false"),
             ],
+        );
+        aggregator.emit_count(
+            "js.found_via_scraping",
+            self.found_sourcemap_via_scraping_with_debugid,
+            &[("type", "sourcemap"), ("had_debugid", "true")],
+        );
+        aggregator.emit_count(
+            "js.found_via_scraping",
+            self.found_sourcemap_via_scraping_without_debugid,
+            &[("type", "sourcemap"), ("had_debugid", "false")],
         );
         aggregator.emit_count(
             "js.file_not_found",
