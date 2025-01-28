@@ -97,12 +97,62 @@ jobs:
               --cache-from "${NIGHTLY_IMG_CACHE}" \
               .
 
+      - name: Prepare Artifacts
+        if: "needs.build-setup.outputs.full_ci == 'true'"
+        run: |
+          mkdir -p "artifacts/${{ matrix.arch }}"
+
+          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator-debug.zip > artifacts/symbolicator-debug.zip
+          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator.src.zip > artifacts/symbolicator.src.zip
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 1
+          name: image-${{ matrix.arch }}
+          path: "./artifacts/*"
+
       - name: push all images
         if: "needs.build-setup.outputs.full_ci == 'true'"
         run: |
           docker push "$BUILDER_IMG_CACHE"
           docker push "$NIGHTLY_IMG_CACHE"
           docker push "$IMG_VERSIONED"
+
+  gocd-artifacts:
+    needs: [build-setup, build-image]
+    if: "needs.build-setup.outputs.full_ci == 'true'"
+
+    name: Upload gocd artifacts
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GHCR_IMAGE: ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}
+
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          version: ">= 390.0.0"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "image-amd64"
+          merge-multiple: true
+
+      - name: Upload gocd deployment assets
+        run: gsutil -m cp ./symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   assemble:
     needs: [build-setup, build-image]
