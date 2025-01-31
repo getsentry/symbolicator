@@ -27,6 +27,7 @@ use std::fmt::{self, Write};
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use rand::prelude::*;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -560,14 +561,31 @@ impl ArtifactFetcher {
         CachedFileEntry,
         Option<CachedFileEntry<OwnedSourceMapCache>>,
     ) {
+        let mut rng = rand::rng();
+
         // First, check if we have already cached / created the `SourceMapCache`.
-        let key = FileKey::MinifiedSource { abs_path, debug_id };
+        let key = FileKey::MinifiedSource {
+            abs_path: abs_path.clone(),
+            debug_id,
+        };
 
         // Fetch the minified file first
         let minified_source = self.get_file(&key).await;
         if minified_source.entry.is_err() {
             self.metrics
                 .record_not_found(SourceFileType::Source, debug_id.is_some());
+
+            // Temporarily sample cases of a file not being found even though it has a debug id.
+            if let Some(debug_id) = debug_id {
+                if rng.random::<f64>() < 0.0001 {
+                    tracing::error!(
+                        source_url = %self.source.url,
+                        abs_path,
+                        %debug_id,
+                        "Failed to fetch source with debug id"
+                    );
+                }
+            }
         }
 
         // Then fetch the corresponding sourcemap reference and debug_id
@@ -622,6 +640,18 @@ impl ArtifactFetcher {
         } else if sourcemap.entry.is_err() {
             self.metrics
                 .record_not_found(SourceFileType::SourceMap, debug_id.is_some());
+
+            // Temporarily sample cases of a file not being found even though it has a debug id.
+            if let Some(debug_id) = debug_id {
+                if rng.random::<f64>() < 0.0001 {
+                    tracing::error!(
+                        source_url = %self.source.url,
+                        abs_path,
+                        %debug_id,
+                        "Failed to fetch sourcemap with debug id"
+                    );
+                }
+            }
         }
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it
