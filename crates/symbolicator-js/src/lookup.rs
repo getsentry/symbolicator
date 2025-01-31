@@ -27,7 +27,6 @@ use std::fmt::{self, Write};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use rand::prelude::*;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -561,8 +560,6 @@ impl ArtifactFetcher {
         CachedFileEntry,
         Option<CachedFileEntry<OwnedSourceMapCache>>,
     ) {
-        let mut rng = rand::rng();
-
         // First, check if we have already cached / created the `SourceMapCache`.
         let key = FileKey::MinifiedSource {
             abs_path: abs_path.clone(),
@@ -577,7 +574,7 @@ impl ArtifactFetcher {
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
             if let Some(debug_id) = debug_id {
-                if rng.random::<f64>() < 0.0001 {
+                if rand::random::<f64>() < 0.0001 {
                     tracing::error!(
                         source_url = %self.source.url,
                         abs_path,
@@ -643,7 +640,7 @@ impl ArtifactFetcher {
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
             if let Some(debug_id) = debug_id {
-                if rng.random::<f64>() < 0.0001 {
+                if rand::random::<f64>() < 0.0001 {
                     tracing::error!(
                         source_url = %self.source.url,
                         abs_path,
