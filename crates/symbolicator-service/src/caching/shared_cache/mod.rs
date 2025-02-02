@@ -894,6 +894,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_filesystem_empty_store() {
+        symbolicator_test::setup();
+        let dir = symbolicator_test::tempdir();
+
+        let key = "global/some_item";
+
+        let cfg = SharedCacheConfig {
+            max_concurrent_uploads: 10,
+            max_upload_queue_size: 10,
+            backend: SharedCacheBackendConfig::Filesystem(FilesystemSharedCacheConfig {
+                path: dir.path().to_path_buf(),
+            }),
+        };
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = wait_init(&svc).await;
+
+        let recv = svc.store(
+            CacheName::Objects,
+            key,
+            ByteView::from_slice(b""),
+            CacheStoreReason::New,
+        );
+        // Wait for storing to complete.
+        recv.await.unwrap();
+
+        let temp_file = NamedTempFile::new_in(&dir).unwrap();
+        let file = File::from_std(temp_file.reopen().unwrap());
+
+        let ret = svc.fetch(CacheName::Objects, key, file).await;
+        assert!(ret); // We find something.
+
+        let buf = std::fs::read(temp_file).unwrap();
+        assert_eq!(buf, b""); // But the thing we find is an empty file.
+    }
+
+    #[tokio::test]
     async fn test_filesystem_store() {
         symbolicator_test::setup();
         let dir = symbolicator_test::tempdir();
