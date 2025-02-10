@@ -115,7 +115,10 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache.compute_memoized(request, cache_key).await
+        self.data_cache
+            .compute_memoized(request, cache_key)
+            .await
+            .into_contents()
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -176,7 +179,11 @@ impl ObjectsActor {
             };
 
             async move {
-                let handle = self.meta_cache.compute_memoized(request, cache_key).await;
+                let handle = self
+                    .meta_cache
+                    .compute_memoized(request, cache_key)
+                    .await
+                    .into_contents();
                 FoundMeta {
                     file_source,
                     handle,

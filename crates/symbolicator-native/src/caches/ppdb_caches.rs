@@ -65,13 +65,16 @@ impl PortablePdbCacheActor {
                 purpose: ObjectPurpose::Debug,
             })
             .await;
-        derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| {
+        derive_from_object_handle(found_object, CandidateStatus::Debug, |object_meta| async {
             let cache_key = object_meta.cache_key();
             let request = FetchPortablePdbCacheInternal {
                 objects_actor: self.objects.clone(),
                 object_meta,
             };
-            self.ppdb_caches.compute_memoized(request, cache_key)
+            self.ppdb_caches
+                .compute_memoized(request, cache_key)
+                .await
+                .into_contents()
         })
         .await
     }

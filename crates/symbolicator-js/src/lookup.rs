@@ -797,7 +797,7 @@ impl ArtifactFetcher {
             .fetch_file(&self.scope, remote_file, false)
             .await;
 
-        let entry = match scraped_file {
+        let entry = match scraped_file.into_contents() {
             Ok(contents) => {
                 self.metrics
                     .record_file_scraped(key.as_type(), key.debug_id().is_some());
@@ -947,7 +947,8 @@ impl ArtifactFetcher {
         let mut artifact_contents = self
             .sourcefiles_cache
             .fetch_file(&self.scope, artifact.remote_file.clone(), true)
-            .await;
+            .await
+            .into_contents();
 
         if artifact_contents == Err(CacheError::NotFound) && !artifact.headers.is_empty() {
             // We save (React Native) Hermes Bytecode files as empty 0-size files,
@@ -1171,7 +1172,10 @@ impl ArtifactFetcher {
                         source: source_content,
                         sourcemap,
                     };
-                    self.sourcemap_caches.compute_memoized(req, cache_key).await
+                    self.sourcemap_caches
+                        .compute_memoized(req, cache_key)
+                        .await
+                        .into_contents()
                 }
                 Err(err) => Err(err),
             },

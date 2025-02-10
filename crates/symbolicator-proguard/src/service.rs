@@ -69,7 +69,10 @@ impl ProguardService {
             download_svc: Arc::clone(&self.download_svc),
         };
 
-        self.cache.compute_memoized(request, cache_key).await
+        self.cache
+            .compute_memoized(request, cache_key)
+            .await
+            .into_contents()
     }
 
     /// Downloads a source bundle for the given scope and debug id.

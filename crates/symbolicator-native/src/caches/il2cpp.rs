@@ -149,6 +149,8 @@ impl Il2cppService {
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        all_results.into_iter().find_map(Result::ok)
+        all_results
+            .into_iter()
+            .find_map(|cache_entry| cache_entry.into_contents().ok())
     }
 }

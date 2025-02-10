@@ -162,6 +162,7 @@ mod cleanup;
 mod config;
 mod fs;
 mod memory;
+mod metadata;
 mod shared_cache;
 #[cfg(test)]
 mod tests;
@@ -172,6 +173,7 @@ pub use cleanup::cleanup;
 pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
 pub use memory::{CacheItemRequest, CacheVersions, Cacher};
+pub use metadata::{MdCacheEntry, Metadata};
 pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
 
 pub struct Caches {

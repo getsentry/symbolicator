@@ -807,15 +807,24 @@ async fn test_cache_fallback() {
     let cacher = Cacher::new(cache, Default::default());
 
     let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
-    assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
+    assert_eq!(
+        first_result.contents().as_ref().unwrap().as_str(),
+        "some old cached contents"
+    );
 
     let second_result = cacher.compute_memoized(request.clone(), key.clone()).await;
-    assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
+    assert_eq!(
+        second_result.contents().as_ref().unwrap().as_str(),
+        "some old cached contents"
+    );
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let third_result = cacher.compute_memoized(request.clone(), key).await;
-    assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
+    assert_eq!(
+        third_result.contents().as_ref().unwrap().as_str(),
+        "some new cached contents"
+    );
 
     // we only want to have the actual computation be done a single time
     assert_eq!(request.computations.load(Ordering::SeqCst), 1);
@@ -860,7 +869,7 @@ async fn test_cache_fallback_notfound() {
     let cacher = Cacher::new(cache, Default::default());
 
     let first_result = cacher.compute_memoized(request.clone(), key).await;
-    assert_eq!(first_result, Err(CacheError::NotFound));
+    assert_eq!(*first_result.contents(), Err(CacheError::NotFound));
 
     // no computation should be done
     assert_eq!(request.computations.load(Ordering::SeqCst), 0);
@@ -898,7 +907,10 @@ async fn test_lazy_computation_limit() {
         fs::write(cache_file, "some old cached contents").unwrap();
 
         let result = cacher.compute_memoized(request.clone(), key).await;
-        assert_eq!(result.unwrap().as_str(), "some old cached contents");
+        assert_eq!(
+            result.contents().as_ref().unwrap().as_str(),
+            "some old cached contents"
+        );
     }
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -915,7 +927,7 @@ async fn test_lazy_computation_limit() {
         let key = CacheKey::for_testing(*key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
-        if result.unwrap().as_str() == "some old cached contents" {
+        if result.contents().as_ref().unwrap().as_str() == "some old cached contents" {
             num_outdated += 1;
         }
     }
@@ -975,6 +987,7 @@ async fn test_failing_cache_write() {
     let entry = cacher
         .compute_memoized(request, key.clone())
         .await
+        .into_contents()
         .unwrap_err();
     assert_eq!(entry, CacheError::InternalError);
 
@@ -990,6 +1003,7 @@ async fn test_failing_cache_write() {
     let entry = cacher
         .compute_memoized(request, key.clone())
         .await
+        .into_contents()
         .unwrap_err();
     assert_eq!(entry, CacheError::Malformed("this is garbage".to_owned()));
 

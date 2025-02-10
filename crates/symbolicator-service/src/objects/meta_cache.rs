@@ -107,7 +107,8 @@ impl FetchFileMetaRequest {
         let object_handle = self
             .data_cache
             .compute_memoized(FetchFileDataRequest(self.clone()), cache_key.clone())
-            .await?;
+            .await
+            .into_contents()?;
 
         let object = object_handle.object();
 

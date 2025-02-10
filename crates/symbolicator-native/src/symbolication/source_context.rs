@@ -68,7 +68,8 @@ impl SymbolicationActor {
                     let uri = remote_file.uri();
                     let res = cache
                         .fetch_file(&source_scope, remote_file.into(), true)
-                        .await;
+                        .await
+                        .into_contents();
 
                     if let Ok(source) = res.as_ref() {
                         for frame in frames {
