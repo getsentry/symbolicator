@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
@@ -12,6 +12,7 @@ use tempfile::NamedTempFile;
 
 use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
+use crate::caching::Metadata;
 use crate::utils::futures::CallOnDrop;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
@@ -368,10 +369,15 @@ impl<T: CacheItemRequest> Cacher<T> {
                     ) {
                         Err(CacheError::NotFound) => continue,
                         Err(err) => {
-                            let data = Err(err);
+                            let contents = Err(err);
                             let deadline =
-                                ExpirationTime::for_fresh_status(&self.config, &data).as_instant();
-                            let data = CacheEntry::without_metadata(data);
+                                ExpirationTime::for_fresh_status(&self.config, &contents)
+                                    .as_instant();
+                            let metadata = Some(Metadata {
+                                scope: cache_key.scope().clone(),
+                                time_created: SystemTime::now(),
+                            });
+                            let data = CacheEntry { metadata, contents };
                             return InMemoryItem { deadline, data };
                         }
                         Ok(item) => item.and_then(|byteview| request.load(byteview)),
@@ -397,7 +403,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             // just got pruned.
             metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
 
-            let data = self
+            let contents = self
                 .compute(request, &cache_key, false)
                 // NOTE: We have seen this deadlock with an SDK that was deadlocking on
                 // out-of-order Scope pops.
@@ -407,8 +413,12 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await;
 
             // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&self.config, &data);
-            let data = CacheEntry::without_metadata(data);
+            let expiration = ExpirationTime::for_fresh_status(&self.config, &contents);
+            let metadata = Some(Metadata {
+                scope: cache_key.scope().clone(),
+                time_created: SystemTime::now(),
+            });
+            let data = CacheEntry { metadata, contents };
 
             InMemoryItem {
                 deadline: expiration.as_instant(),
@@ -476,13 +486,18 @@ impl<T: CacheItemRequest> Cacher<T> {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
 
-            let item = this.compute(request, &cache_key, true).await;
+            let contents = this.compute(request, &cache_key, true).await;
 
             // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
+            let expiration = ExpirationTime::for_fresh_status(&this.config, &contents);
+            let metadata = Some(Metadata {
+                scope: cache_key.scope().clone(),
+                time_created: SystemTime::now(),
+            });
+            let data = CacheEntry { metadata, contents };
             let value = InMemoryItem {
                 deadline: expiration.as_instant(),
-                data: CacheEntry::without_metadata(item),
+                data,
             };
 
             // refresh the memory cache with the newly refreshed result
@@ -516,9 +531,21 @@ fn lookup_local_cache(
             item_path.to_string_lossy().into(),
         );
     });
-    let (entry, expiration) = config
+    let (contents, expiration) = config
         .open_cachefile(&item_path)?
         .ok_or(CacheError::NotFound)?;
+
+    let metadata = match config.open_metadata_file(&item_path) {
+        Ok(md) => md,
+        Err(e) => {
+            tracing::error!(
+                error = &e as &dyn std::error::Error,
+                path = %item_path.display(),
+                "Failed to read cache metadata"
+            );
+            None
+        }
+    };
 
     // store things into the shared cache when:
     // - we have a positive cache
@@ -527,7 +554,7 @@ fn lookup_local_cache(
     let needs_reupload = expiration.was_touched();
     // FIXME: let-chains would be nice here :-)
     if is_current_version && needs_reupload {
-        if let Ok(byteview) = &entry {
+        if let Ok(byteview) = &contents {
             if let Some(shared_cache) = shared_cache {
                 shared_cache.store(name, cache_key, byteview.clone(), CacheStoreReason::Refresh);
             }
@@ -537,7 +564,7 @@ fn lookup_local_cache(
     // This is also reported for "negative cache hits": When we cached
     // the 404 response from a server as empty file.
     metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
-    if let Ok(byteview) = &entry {
+    if let Ok(byteview) = &contents {
         metric!(
             time_raw("caches.file.size") = byteview.len() as u64,
             "hit" => "true",
@@ -549,7 +576,7 @@ fn lookup_local_cache(
 
     Ok(InMemoryItem {
         deadline: expiration.as_instant(),
-        data: CacheEntry::without_metadata(entry),
+        data: CacheEntry { metadata, contents },
     })
 }
 

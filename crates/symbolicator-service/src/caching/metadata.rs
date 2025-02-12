@@ -22,14 +22,6 @@ pub struct CacheEntry<T> {
 }
 
 impl<T> CacheEntry<T> {
-    /// Create a cache entry without attached metadata.
-    pub(crate) fn without_metadata(contents: CacheContents<T>) -> Self {
-        Self {
-            metadata: None,
-            contents,
-        }
-    }
-
     /// Maps a function over this entry's contents.
     pub fn map<U, F>(self, f: F) -> CacheEntry<U>
     where

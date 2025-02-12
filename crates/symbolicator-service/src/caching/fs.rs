@@ -1,4 +1,5 @@
-use std::io;
+use std::fs::File;
+use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use tempfile::NamedTempFile;
 use crate::config::{CacheConfig, Config};
 
 use super::cache_error::cache_contents_from_bytes;
-use super::{CacheContents, CacheError, CacheName};
+use super::{CacheContents, CacheError, CacheName, Metadata};
 
 /// The interval in which positive caches should be touched.
 ///
@@ -198,6 +199,21 @@ impl Cache {
             }
 
             Ok((cache_entry, expiration))
+        })
+    }
+
+    /// Reads [`Metadata`] for the cache entry in `path` from the file at `path.md`.
+    ///
+    /// If the metadata file doesn't exist, this returns `Ok(None)`.
+    pub fn open_metadata_file(&self, path: &Path) -> io::Result<Option<Metadata>> {
+        let mut md_path = path.to_path_buf();
+        md_path.set_extension("md");
+
+        catch_not_found(|| {
+            let file = File::open(&md_path)?;
+            let reader = BufReader::new(file);
+            serde_json::from_reader(reader)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
         })
     }
 
