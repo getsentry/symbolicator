@@ -10,7 +10,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
-use super::metadata::MdCacheEntry;
+use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
@@ -23,7 +23,7 @@ struct InMemoryItem<T> {
     /// in-memory cache.
     deadline: Instant,
     /// The actual data.
-    data: MdCacheEntry<T>,
+    data: CacheEntry<T>,
 }
 
 impl<T> InMemoryItem<T> {
@@ -345,7 +345,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
-    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> MdCacheEntry<T::Item> {
+    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_ref());
 
@@ -371,7 +371,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             let data = Err(err);
                             let deadline =
                                 ExpirationTime::for_fresh_status(&self.config, &data).as_instant();
-                            let data = MdCacheEntry::without_metadata(data);
+                            let data = CacheEntry::without_metadata(data);
                             return InMemoryItem { deadline, data };
                         }
                         Ok(item) => item.and_then(|byteview| request.load(byteview)),
@@ -408,7 +408,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // we just created a fresh cache, so use the initial expiration times
             let expiration = ExpirationTime::for_fresh_status(&self.config, &data);
-            let data = MdCacheEntry::without_metadata(data);
+            let data = CacheEntry::without_metadata(data);
 
             InMemoryItem {
                 deadline: expiration.as_instant(),
@@ -482,7 +482,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
             let value = InMemoryItem {
                 deadline: expiration.as_instant(),
-                data: MdCacheEntry::without_metadata(item),
+                data: CacheEntry::without_metadata(item),
             };
 
             // refresh the memory cache with the newly refreshed result
@@ -549,7 +549,7 @@ fn lookup_local_cache(
 
     Ok(InMemoryItem {
         deadline: expiration.as_instant(),
-        data: MdCacheEntry::without_metadata(entry),
+        data: CacheEntry::without_metadata(entry),
     })
 }
 

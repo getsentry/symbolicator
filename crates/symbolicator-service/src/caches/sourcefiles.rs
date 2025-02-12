@@ -7,8 +7,8 @@ use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
-    MdCacheEntry, SharedCacheRef,
+    Cache, CacheContents, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions,
+    Cacher, SharedCacheRef,
 };
 use crate::download::{fetch_file, DownloadService};
 use crate::types::Scope;
@@ -76,7 +76,7 @@ impl SourceFilesCache {
         scope: &Scope,
         file: RemoteFile,
         use_shared_cache: bool,
-    ) -> MdCacheEntry<ByteViewString> {
+    ) -> CacheEntry<ByteViewString> {
         let cache_key = CacheKey::from_scoped_file(scope, &file);
 
         let request = FetchFileRequest {
