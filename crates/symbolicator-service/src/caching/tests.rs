@@ -16,6 +16,7 @@ use crate::config::{
     CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
 };
 use crate::test;
+use crate::types::Scope;
 
 use super::cache_error::cache_contents_from_bytes;
 use super::shared_cache::config::SharedCacheBackendConfig;
@@ -782,7 +783,7 @@ async fn test_cache_fallback() {
     let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
-    let key = CacheKey::for_testing("global/some_cache_key");
+    let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
     let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
     fs::create_dir_all(very_old_cache_file.parent().unwrap()).unwrap();
@@ -841,7 +842,7 @@ async fn test_cache_fallback_notfound() {
     let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
-    let key = CacheKey::for_testing("global/some_cache_key");
+    let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
     {
         let cache_dir = cache_dir.path().join("objects");
@@ -900,7 +901,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey::for_testing(*key);
+        let key = CacheKey::for_testing(Scope::Global, *key);
 
         let cache_file = cache_dir.join(key.cache_path(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
@@ -924,7 +925,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey::for_testing(*key);
+        let key = CacheKey::for_testing(Scope::Global, *key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
         if result.contents().as_ref().unwrap().as_str() == "some old cached contents" {
@@ -982,7 +983,7 @@ async fn test_failing_cache_write() {
 
     // Case 1: internal error
     let request = FailingTestCacheItem(CacheError::InternalError);
-    let key = CacheKey::for_testing("global/internal_error");
+    let key = CacheKey::for_testing(Scope::Global, "global/internal_error");
 
     let entry = cacher
         .compute_memoized(request, key.clone())
@@ -998,7 +999,7 @@ async fn test_failing_cache_write() {
 
     // Case 2: malformed error
     let request = FailingTestCacheItem(CacheError::Malformed("this is garbage".to_owned()));
-    let key = CacheKey::for_testing("global/malformed");
+    let key = CacheKey::for_testing(Scope::Global, "global/malformed");
 
     let entry = cacher
         .compute_memoized(request, key.clone())
