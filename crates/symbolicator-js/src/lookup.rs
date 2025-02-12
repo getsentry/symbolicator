@@ -42,7 +42,7 @@ use symbolicator_sources::{
 };
 
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
-use symbolicator_service::caching::{CacheEntry, CacheError, CacheKey, CacheKeyBuilder, Cacher};
+use symbolicator_service::caching::{CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher};
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
 use symbolicator_service::types::{Scope, ScrapingConfig};
@@ -297,7 +297,7 @@ impl SourceMapUrl {
     ///
     /// If it starts with `"data:"`, it is parsed as a data-URL that is base64 or url-encoded.
     /// Otherwise, the string is joined to the `base` URL.
-    pub fn parse_with_prefix(base: &str, url_string: &str) -> CacheEntry<Self> {
+    pub fn parse_with_prefix(base: &str, url_string: &str) -> CacheContents<Self> {
         if url_string.starts_with("data:") {
             let decoded = data_url::DataUrl::process(url_string)
                 .map_err(|_| ())
@@ -413,7 +413,7 @@ impl fmt::Display for CachedFileUri {
 #[derive(Clone, Debug)]
 pub struct CachedFileEntry<T = CachedFile> {
     pub uri: CachedFileUri,
-    pub entry: CacheEntry<T>,
+    pub entry: CacheContents<T>,
     pub resolved_with: ResolvedWith,
 }
 
@@ -458,7 +458,7 @@ impl CachedFile {
     fn from_descriptor(
         abs_path: Option<&str>,
         descriptor: SourceFileDescriptor,
-    ) -> CacheEntry<Self> {
+    ) -> CacheContents<Self> {
         let sourcemap_url = match descriptor.source_mapping_url() {
             Some(url) => {
                 // `abs_path` here is expected to be the *absolute* `descriptor.url()`
@@ -513,7 +513,7 @@ struct IndividualArtifact {
     resolved_with: ResolvedWith,
 }
 
-pub type ArtifactBundles = BTreeMap<RemoteFileUri, CacheEntry<(ArtifactBundle, ResolvedWith)>>;
+pub type ArtifactBundles = BTreeMap<RemoteFileUri, CacheContents<(ArtifactBundle, ResolvedWith)>>;
 
 struct ArtifactFetcher {
     metrics: JsMetrics,
@@ -797,7 +797,7 @@ impl ArtifactFetcher {
             .fetch_file(&self.scope, remote_file, false)
             .await;
 
-        let entry = match scraped_file {
+        let entry = match scraped_file.into_contents() {
             Ok(contents) => {
                 self.metrics
                     .record_file_scraped(key.as_type(), key.debug_id().is_some());
@@ -947,7 +947,8 @@ impl ArtifactFetcher {
         let mut artifact_contents = self
             .sourcefiles_cache
             .fetch_file(&self.scope, artifact.remote_file.clone(), true)
-            .await;
+            .await
+            .into_contents();
 
         if artifact_contents == Err(CacheError::NotFound) && !artifact.headers.is_empty() {
             // We save (React Native) Hermes Bytecode files as empty 0-size files,
@@ -1098,7 +1099,7 @@ impl ArtifactFetcher {
     }
 
     #[tracing::instrument(skip(self))]
-    async fn fetch_artifact_bundle(&self, file: RemoteFile) -> CacheEntry<ArtifactBundle> {
+    async fn fetch_artifact_bundle(&self, file: RemoteFile) -> CacheContents<ArtifactBundle> {
         let object_handle = ObjectMetaHandle::for_scoped_file(self.scope.clone(), file);
 
         let fetched_bundle = self.objects.fetch(object_handle).await?;
@@ -1171,7 +1172,10 @@ impl ArtifactFetcher {
                         source: source_content,
                         sourcemap,
                     };
-                    self.sourcemap_caches.compute_memoized(req, cache_key).await
+                    self.sourcemap_caches
+                        .compute_memoized(req, cache_key)
+                        .await
+                        .into_contents()
                 }
                 Err(err) => Err(err),
             },
@@ -1192,7 +1196,7 @@ impl ArtifactFetcher {
 
 /// This opens `artifact_bundle` [`Object`], ensuring that it is a [`SourceBundle`](`Object::SourceBundle`),
 /// and opening up a debug session to it.
-pub fn open_bundle(artifact_bundle: Arc<ObjectHandle>) -> CacheEntry<ArtifactBundle> {
+pub fn open_bundle(artifact_bundle: Arc<ObjectHandle>) -> CacheContents<ArtifactBundle> {
     SelfCell::try_new(artifact_bundle, |handle| unsafe {
         match (*handle).object() {
             Object::SourceBundle(source_bundle) => source_bundle

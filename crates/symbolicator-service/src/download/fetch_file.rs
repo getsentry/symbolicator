@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 
 use super::compression::maybe_decompress_file;
 use super::DownloadService;
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 
 /// Downloads the gives [`RemoteFile`] and decompresses it.
 ///
@@ -19,7 +19,7 @@ pub async fn fetch_file(
     downloader: Arc<DownloadService>,
     file_id: RemoteFile,
     temp_file: &mut NamedTempFile,
-) -> CacheEntry {
+) -> CacheContents {
     downloader
         .download(file_id, temp_file.path().to_owned())
         .await?;

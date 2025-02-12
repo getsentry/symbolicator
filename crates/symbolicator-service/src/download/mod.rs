@@ -23,7 +23,7 @@ use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
@@ -272,7 +272,7 @@ impl DownloadService {
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheEntry {
+    async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheContents {
         let source_name = source.source_metric_key();
         let result = retry(|| async {
             // XXX: we have to create the file here, as doing so outside in `download`
@@ -326,7 +326,7 @@ impl DownloadService {
         self: &Arc<Self>,
         source: RemoteFile,
         destination: PathBuf,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let host = source.host();
 
         let is_builtin_source = source.is_builtin();
@@ -479,10 +479,10 @@ impl DownloadService {
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
-pub async fn retry<G, F, T>(task_gen: G) -> CacheEntry<T>
+pub async fn retry<G, F, T>(task_gen: G) -> CacheContents<T>
 where
     G: Fn() -> F,
-    F: Future<Output = CacheEntry<T>>,
+    F: Future<Output = CacheContents<T>>,
 {
     let mut tries = 0;
     loop {
@@ -510,12 +510,12 @@ async fn download_stream(
     source_name: &str,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
     destination: &mut File,
-) -> CacheEntry {
+) -> CacheContents {
     futures::pin_mut!(stream);
 
     let mut throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
-    let result: CacheEntry = async {
+    let result: CacheContents = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
             let chunk = chunk.as_ref();
@@ -537,7 +537,7 @@ async fn download_reqwest(
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
     destination: &mut File,
-) -> CacheEntry {
+) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
     let source = request.url().to_string();

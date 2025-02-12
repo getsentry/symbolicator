@@ -33,7 +33,7 @@ use crate::interface::{
 use crate::metrics::StacktraceOrigin;
 
 use super::minidump_stacktraces::parse_stacktraces_from_minidump;
-use super::module_lookup::object_file_status_from_cache_entry;
+use super::module_lookup::object_file_status_from_cache_contents;
 use super::symbolicate::SymbolicationActor;
 
 type Minidump = minidump::Minidump<'static, ByteView<'static>>;
@@ -407,7 +407,7 @@ async fn stackwalk(
                     }
                 }
 
-                object_file_status_from_cache_entry(&cfi_module.cache)
+                object_file_status_from_cache_contents(&cfi_module.cache)
             }
             _ => ObjectFileStatus::Unused,
         };

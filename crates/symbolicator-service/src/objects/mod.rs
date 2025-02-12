@@ -6,7 +6,7 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
-use crate::caching::{Cache, CacheEntry, CacheError, CacheKey, Cacher, SharedCacheRef};
+use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
 use crate::download::DownloadService;
 use crate::types::Scope;
 
@@ -57,7 +57,7 @@ pub enum ObjectPurpose {
 #[derive(Debug, Clone)]
 pub struct FoundMeta {
     pub file_source: RemoteFile,
-    pub handle: CacheEntry<Arc<ObjectMetaHandle>>,
+    pub handle: CacheContents<Arc<ObjectMetaHandle>>,
 }
 
 /// The response for [`ObjectsActor::find`].
@@ -105,7 +105,10 @@ impl ObjectsActor {
     /// This fetches the requested object, re-downloading it from the source if it is no
     /// longer in the cache.
     #[tracing::instrument(skip_all, fields(file_source = ?file_handle.file_source))]
-    pub async fn fetch(&self, file_handle: Arc<ObjectMetaHandle>) -> CacheEntry<Arc<ObjectHandle>> {
+    pub async fn fetch(
+        &self,
+        file_handle: Arc<ObjectMetaHandle>,
+    ) -> CacheContents<Arc<ObjectHandle>> {
         let cache_key = CacheKey::from_scoped_file(&file_handle.scope, &file_handle.file_source);
         let request = FetchFileDataRequest(FetchFileMetaRequest {
             scope: file_handle.scope.clone(),
@@ -115,7 +118,10 @@ impl ObjectsActor {
             download_svc: self.download_svc.clone(),
         });
 
-        self.data_cache.compute_memoized(request, cache_key).await
+        self.data_cache
+            .compute_memoized(request, cache_key)
+            .await
+            .into_contents()
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -176,7 +182,11 @@ impl ObjectsActor {
             };
 
             async move {
-                let handle = self.meta_cache.compute_memoized(request, cache_key).await;
+                let handle = self
+                    .meta_cache
+                    .compute_memoized(request, cache_key)
+                    .await
+                    .into_contents();
                 FoundMeta {
                     file_source,
                     handle,

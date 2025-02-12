@@ -21,7 +21,7 @@ use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::OBJECTS_CACHE_VERSIONS;
 use crate::caching::CacheVersions;
-use crate::caching::{CacheEntry, CacheError, CacheItemRequest, CacheKey};
+use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey};
 use crate::download::{fetch_file, tempfile_in_parent, DownloadService};
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
@@ -37,7 +37,7 @@ pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
 pub struct OwnedObject(SelfCell<ByteView<'static>, Object<'static>>);
 
 impl OwnedObject {
-    fn parse(byteview: ByteView<'static>) -> CacheEntry<OwnedObject> {
+    fn parse(byteview: ByteView<'static>) -> CacheContents<OwnedObject> {
         let obj = SelfCell::try_new(byteview, |p| unsafe {
             Object::parse(&*p).map_err(CacheError::from_std_error)
         })?;
@@ -120,7 +120,7 @@ async fn fetch_object_file(
     file_id: RemoteFile,
     downloader: Arc<DownloadService>,
     temp_file: &mut NamedTempFile,
-) -> CacheEntry {
+) -> CacheContents {
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
         object_id.to_scope(scope);
@@ -201,7 +201,7 @@ impl CacheItemRequest for FetchFileDataRequest {
 
     const VERSIONS: CacheVersions = OBJECTS_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         tracing::trace!(
             "Fetching file data for {}",
             CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source)
@@ -214,7 +214,7 @@ impl CacheItemRequest for FetchFileDataRequest {
         ))
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         let object = OwnedObject::parse(data)?;
         let object_handle = ObjectHandle {
             object_id: self.0.object_id.clone(),

@@ -10,12 +10,35 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
+use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime, SharedCacheService};
+use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
-type InMemoryItem<T> = (Instant, CacheEntry<T>);
+/// An item saved in the in-memory moka cache.
+#[derive(Clone, Debug)]
+struct InMemoryItem<T> {
+    /// When to evict this item from the
+    /// in-memory cache.
+    deadline: Instant,
+    /// The actual data.
+    data: CacheEntry<T>,
+}
+
+impl<T> InMemoryItem<T> {
+    /// Maps a fallible function over this item's contents.
+    fn and_then<U, F>(self, f: F) -> InMemoryItem<U>
+    where
+        F: FnOnce(T) -> CacheContents<U>,
+    {
+        InMemoryItem {
+            deadline: self.deadline,
+            data: self.data.and_then(f),
+        }
+    }
+}
+
 type InMemoryCache<T> = moka::future::Cache<CacheKey, InMemoryItem<T>>;
 
 /// Manages a filesystem cache of any kind of data that can be de/serialized from/to bytes.
@@ -89,7 +112,7 @@ impl<T> moka::Expiry<CacheKey, InMemoryItem<T>> for CacheExpiration {
         value: &InMemoryItem<T>,
         current_time: Instant,
     ) -> Option<Duration> {
-        saturating_duration_since(current_time, value.0)
+        saturating_duration_since(current_time, value.deadline)
     }
 
     fn expire_after_update(
@@ -99,7 +122,7 @@ impl<T> moka::Expiry<CacheKey, InMemoryItem<T>> for CacheExpiration {
         current_time: Instant,
         _current_duration: Option<Duration>,
     ) -> Option<Duration> {
-        saturating_duration_since(current_time, value.0)
+        saturating_duration_since(current_time, value.deadline)
     }
 }
 
@@ -111,10 +134,12 @@ impl<T: CacheItemRequest> Cacher<T> {
             .expire_after(CacheExpiration)
             // NOTE: we count all the bookkeeping structures to the weight as well
             .weigher(|_k, v| {
-                let value_size =
-                    v.1.as_ref()
-                        .map_or(0, T::weight)
-                        .max(std::mem::size_of::<CacheError>() as u32);
+                let value_size = v
+                    .data
+                    .contents()
+                    .as_ref()
+                    .map_or(0, T::weight)
+                    .max(std::mem::size_of::<CacheError>() as u32);
                 std::mem::size_of::<(CacheKey, Instant)>() as u32 + value_size
             })
             .build();
@@ -153,10 +178,10 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry>;
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents>;
 
     /// Loads an existing element from the cache.
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item>;
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item>;
 
     /// The "cost" of keeping this item in the in-memory cache.
     fn weight(item: &Self::Item) -> u32 {
@@ -184,7 +209,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+    async fn compute(
+        &self,
+        request: T,
+        key: &CacheKey,
+        is_refresh: bool,
+    ) -> CacheContents<T::Item> {
         let name = self.config.name();
         let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.config.tempfile()?;
@@ -329,7 +359,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 for version in versions {
                     let is_current_version = version == T::VERSIONS.current;
                     // try the new cache key first, then fall back to the old cache key
-                    let item = match lookup_local_cache(
+                    let in_memory_item = match lookup_local_cache(
                         &self.config,
                         shared_cache,
                         cache_dir,
@@ -338,11 +368,13 @@ impl<T: CacheItemRequest> Cacher<T> {
                     ) {
                         Err(CacheError::NotFound) => continue,
                         Err(err) => {
-                            let item = Err(err);
-                            let expiration = ExpirationTime::for_fresh_status(&self.config, &item);
-                            return (expiration.as_instant(), item);
+                            let data = Err(err);
+                            let deadline =
+                                ExpirationTime::for_fresh_status(&self.config, &data).as_instant();
+                            let data = CacheEntry::without_metadata(data);
+                            return InMemoryItem { deadline, data };
                         }
-                        Ok(item) => (item.0, item.1.and_then(|byteview| request.load(byteview))),
+                        Ok(item) => item.and_then(|byteview| request.load(byteview)),
                     };
 
                     if !is_current_version {
@@ -357,7 +389,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         self.spawn_refresh(cache_key.clone(), request);
                     }
 
-                    return item;
+                    return in_memory_item;
                 }
             }
 
@@ -365,7 +397,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             // just got pruned.
             metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
 
-            let item = self
+            let data = self
                 .compute(request, &cache_key, false)
                 // NOTE: We have seen this deadlock with an SDK that was deadlocking on
                 // out-of-order Scope pops.
@@ -375,9 +407,13 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await;
 
             // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&self.config, &item);
+            let expiration = ExpirationTime::for_fresh_status(&self.config, &data);
+            let data = CacheEntry::without_metadata(data);
 
-            (expiration.as_instant(), item)
+            InMemoryItem {
+                deadline: expiration.as_instant(),
+                data,
+            }
         });
 
         let entry = self
@@ -389,7 +425,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         if !entry.is_fresh() {
             metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
         }
-        entry.into_value().1
+        entry.into_value().data
     }
 
     fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
@@ -444,7 +480,10 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // we just created a fresh cache, so use the initial expiration times
             let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
-            let value = (expiration.as_instant(), item);
+            let value = InMemoryItem {
+                deadline: expiration.as_instant(),
+                data: CacheEntry::without_metadata(item),
+            };
 
             // refresh the memory cache with the newly refreshed result
             this.cache.insert(cache_key, value).await;
@@ -458,14 +497,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 /// Look up an item in the file system cache and load it if available.
 ///
 /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
-/// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
+/// Otherwise returns an `InMemoryItem`, which itself might contain a `NotFound` error.
 fn lookup_local_cache(
     config: &Cache,
     shared_cache: Option<&SharedCacheService>,
     cache_dir: &Path,
     cache_key: &str,
     is_current_version: bool,
-) -> CacheEntry<(Instant, CacheEntry<ByteView<'static>>)> {
+) -> CacheContents<InMemoryItem<ByteView<'static>>> {
     let name = config.name();
 
     let item_path = cache_dir.join(cache_key);
@@ -508,7 +547,10 @@ fn lookup_local_cache(
 
     tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-    Ok((expiration.as_instant(), entry))
+    Ok(InMemoryItem {
+        deadline: expiration.as_instant(),
+        data: CacheEntry::without_metadata(entry),
+    })
 }
 
 fn persist_tempfile(

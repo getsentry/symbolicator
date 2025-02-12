@@ -12,7 +12,7 @@ use symbolic::common::{ByteView, DebugId};
 use symbolic::il2cpp::LineMapping;
 use symbolicator_service::caches::versions::IL2CPP_CACHE_VERSIONS;
 use symbolicator_service::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
     SharedCacheRef,
 };
 use symbolicator_service::download::{fetch_file, DownloadService};
@@ -52,7 +52,7 @@ struct FetchFileRequest {
 
 impl FetchFileRequest {
     #[tracing::instrument(skip_all)]
-    async fn fetch_il2cpp(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+    async fn fetch_il2cpp(&self, temp_file: &mut NamedTempFile) -> CacheContents {
         fetch_file(
             Arc::clone(&self.download_svc),
             self.file_source.clone(),
@@ -80,11 +80,11 @@ impl CacheItemRequest for FetchFileRequest {
     /// Downloads a file, writing it to `path`.
     ///
     /// Only when [`Ok`] is returned is the data written to `path` used.
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(self.fetch_il2cpp(temp_file))
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         Ok(Il2cppHandle {
             file: self.file_source.clone(),
             data,
@@ -149,6 +149,8 @@ impl Il2cppService {
         });
 
         let all_results = future::join_all(fetch_jobs).await;
-        all_results.into_iter().find_map(Result::ok)
+        all_results
+            .into_iter()
+            .find_map(|cache_entry| cache_entry.into_contents().ok())
     }
 }

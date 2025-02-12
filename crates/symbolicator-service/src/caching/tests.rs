@@ -17,7 +17,7 @@ use crate::config::{
 };
 use crate::test;
 
-use super::cache_error::cache_entry_from_bytes;
+use super::cache_error::cache_contents_from_bytes;
 use super::shared_cache::config::SharedCacheBackendConfig;
 use super::*;
 
@@ -251,7 +251,7 @@ fn test_cleanup_cache_download() -> Result<()> {
 
 fn expiration_strategy(path: &Path) -> io::Result<ExpirationStrategy> {
     let bv = ByteView::open(path)?;
-    let cache_entry = cache_entry_from_bytes(bv);
+    let cache_entry = cache_contents_from_bytes(bv);
     Ok(super::fs::expiration_strategy(&cache_entry))
 }
 
@@ -685,20 +685,20 @@ fn test_shared_cache_config_gcs() {
 }
 
 #[test]
-fn test_cache_entry() {
-    fn read_cache_entry(bytes: &'static [u8]) -> CacheEntry<String> {
-        cache_entry_from_bytes(ByteView::from_slice(bytes))
+fn test_cache_contents() {
+    fn read_cache_contents(bytes: &'static [u8]) -> CacheContents<String> {
+        cache_contents_from_bytes(ByteView::from_slice(bytes))
             .map(|bv| String::from_utf8_lossy(bv.as_slice()).into_owned())
     }
 
     let not_found = b"";
 
-    assert_eq!(read_cache_entry(not_found), Err(CacheError::NotFound));
+    assert_eq!(read_cache_contents(not_found), Err(CacheError::NotFound));
 
     let malformed = b"malformedDoesn't look like anything to me";
 
     assert_eq!(
-        read_cache_entry(malformed),
+        read_cache_contents(malformed),
         Err(CacheError::Malformed(
             "Doesn't look like anything to me".into()
         ))
@@ -707,14 +707,14 @@ fn test_cache_entry() {
     let timeout = b"timeout4m33s";
 
     assert_eq!(
-        read_cache_entry(timeout),
+        read_cache_contents(timeout),
         Err(CacheError::Timeout(Duration::from_secs(273)))
     );
 
     let download_error = b"downloaderrorSomeone unplugged the internet";
 
     assert_eq!(
-        read_cache_entry(download_error),
+        read_cache_contents(download_error),
         Err(CacheError::DownloadError(
             "Someone unplugged the internet".into()
         ))
@@ -723,7 +723,7 @@ fn test_cache_entry() {
     let permission_denied = b"permissiondeniedI'm sorry Dave, I'm afraid I can't do that";
 
     assert_eq!(
-        read_cache_entry(permission_denied),
+        read_cache_contents(permission_denied),
         Err(CacheError::PermissionDenied(
             "I'm sorry Dave, I'm afraid I can't do that".into()
         ))
@@ -732,7 +732,7 @@ fn test_cache_entry() {
     let all_good = b"Not any of the error cases";
 
     assert_eq!(
-        read_cache_entry(all_good),
+        read_cache_contents(all_good),
         Ok("Not any of the error cases".into())
     );
 }
@@ -758,7 +758,7 @@ impl CacheItemRequest for TestCacheItem {
         fallbacks: &[1],
     };
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         self.computations.fetch_add(1, Ordering::SeqCst);
 
         Box::pin(async move {
@@ -769,7 +769,7 @@ impl CacheItemRequest for TestCacheItem {
         })
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
     }
 }
@@ -807,15 +807,24 @@ async fn test_cache_fallback() {
     let cacher = Cacher::new(cache, Default::default());
 
     let first_result = cacher.compute_memoized(request.clone(), key.clone()).await;
-    assert_eq!(first_result.unwrap().as_str(), "some old cached contents");
+    assert_eq!(
+        first_result.contents().as_ref().unwrap().as_str(),
+        "some old cached contents"
+    );
 
     let second_result = cacher.compute_memoized(request.clone(), key.clone()).await;
-    assert_eq!(second_result.unwrap().as_str(), "some old cached contents");
+    assert_eq!(
+        second_result.contents().as_ref().unwrap().as_str(),
+        "some old cached contents"
+    );
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     let third_result = cacher.compute_memoized(request.clone(), key).await;
-    assert_eq!(third_result.unwrap().as_str(), "some new cached contents");
+    assert_eq!(
+        third_result.contents().as_ref().unwrap().as_str(),
+        "some new cached contents"
+    );
 
     // we only want to have the actual computation be done a single time
     assert_eq!(request.computations.load(Ordering::SeqCst), 1);
@@ -860,7 +869,7 @@ async fn test_cache_fallback_notfound() {
     let cacher = Cacher::new(cache, Default::default());
 
     let first_result = cacher.compute_memoized(request.clone(), key).await;
-    assert_eq!(first_result, Err(CacheError::NotFound));
+    assert_eq!(*first_result.contents(), Err(CacheError::NotFound));
 
     // no computation should be done
     assert_eq!(request.computations.load(Ordering::SeqCst), 0);
@@ -898,7 +907,10 @@ async fn test_lazy_computation_limit() {
         fs::write(cache_file, "some old cached contents").unwrap();
 
         let result = cacher.compute_memoized(request.clone(), key).await;
-        assert_eq!(result.unwrap().as_str(), "some old cached contents");
+        assert_eq!(
+            result.contents().as_ref().unwrap().as_str(),
+            "some old cached contents"
+        );
     }
 
     tokio::time::sleep(Duration::from_millis(200)).await;
@@ -915,7 +927,7 @@ async fn test_lazy_computation_limit() {
         let key = CacheKey::for_testing(*key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
-        if result.unwrap().as_str() == "some old cached contents" {
+        if result.contents().as_ref().unwrap().as_str() == "some old cached contents" {
             num_outdated += 1;
         }
     }
@@ -935,14 +947,14 @@ impl CacheItemRequest for FailingTestCacheItem {
         fallbacks: &[],
     };
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(async move {
             fs::write(temp_file.path(), "garbage data")?;
             Err(self.0.clone())
         })
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         Ok(std::str::from_utf8(data.as_slice()).unwrap().to_owned())
     }
 }
@@ -975,6 +987,7 @@ async fn test_failing_cache_write() {
     let entry = cacher
         .compute_memoized(request, key.clone())
         .await
+        .into_contents()
         .unwrap_err();
     assert_eq!(entry, CacheError::InternalError);
 
@@ -990,6 +1003,7 @@ async fn test_failing_cache_write() {
     let entry = cacher
         .compute_memoized(request, key.clone())
         .await
+        .into_contents()
         .unwrap_err();
     assert_eq!(entry, CacheError::Malformed("this is garbage".to_owned()));
 

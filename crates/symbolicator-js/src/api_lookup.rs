@@ -11,7 +11,7 @@ use symbolicator_service::download::sentry::{SearchQuery, SentryDownloader};
 use symbolicator_service::metric;
 use url::Url;
 
-use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::config::InMemoryCacheConfig;
 use symbolicator_service::utils::futures::{m, measure, CancelOnDrop};
 use symbolicator_service::utils::http::DownloadTimeouts;
@@ -63,7 +63,7 @@ pub enum JsLookupResult {
 }
 
 /// An LRU Cache for Sentry JS Artifact lookups.
-type SentryJsCache = moka::future::Cache<SearchQuery, CacheEntry<Arc<[RawJsLookupResult]>>>;
+type SentryJsCache = moka::future::Cache<SearchQuery, CacheContents<Arc<[RawJsLookupResult]>>>;
 
 pub struct SentryLookupApi {
     client: reqwest::Client,
@@ -114,7 +114,7 @@ impl SentryLookupApi {
         file_stems: BTreeSet<String>,
         release: Option<&str>,
         dist: Option<&str>,
-    ) -> CacheEntry<Vec<JsLookupResult>> {
+    ) -> CacheContents<Vec<JsLookupResult>> {
         let mut lookup_url = source.url.clone();
         {
             let mut query = lookup_url.query_pairs_mut();
