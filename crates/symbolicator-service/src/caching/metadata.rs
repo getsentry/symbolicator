@@ -23,7 +23,7 @@ pub struct MdCacheEntry<T> {
 
 impl<T> MdCacheEntry<T> {
     /// Create a cache entry without attached metadata.
-    pub(crate) fn without_md(contents: CacheEntry<T>) -> Self {
+    pub(crate) fn without_metadata(contents: CacheEntry<T>) -> Self {
         Self {
             metadata: None,
             contents,

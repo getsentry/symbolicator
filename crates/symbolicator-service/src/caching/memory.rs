@@ -366,7 +366,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             let data = Err(err);
                             let deadline =
                                 ExpirationTime::for_fresh_status(&self.config, &data).as_instant();
-                            let data = MdCacheEntry::without_md(data);
+                            let data = MdCacheEntry::without_metadata(data);
                             return InMemoryItem { deadline, data };
                         }
                         Ok(item) => item.and_then(|byteview| request.load(byteview)),
@@ -403,7 +403,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // we just created a fresh cache, so use the initial expiration times
             let expiration = ExpirationTime::for_fresh_status(&self.config, &data);
-            let data = MdCacheEntry::without_md(data);
+            let data = MdCacheEntry::without_metadata(data);
 
             InMemoryItem {
                 deadline: expiration.as_instant(),
@@ -477,7 +477,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
             let value = InMemoryItem {
                 deadline: expiration.as_instant(),
-                data: MdCacheEntry::without_md(item),
+                data: MdCacheEntry::without_metadata(item),
             };
 
             // refresh the memory cache with the newly refreshed result
@@ -544,7 +544,7 @@ fn lookup_local_cache(
 
     Ok(InMemoryItem {
         deadline: expiration.as_instant(),
-        data: MdCacheEntry::without_md(entry),
+        data: MdCacheEntry::without_metadata(entry),
     })
 }
 
