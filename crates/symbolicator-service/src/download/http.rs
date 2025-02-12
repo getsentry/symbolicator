@@ -5,7 +5,7 @@ use reqwest::{header, Client};
 use symbolicator_sources::HttpRemoteFile;
 use tokio::fs::File;
 
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
 
 use super::USER_AGENT;
@@ -33,7 +33,7 @@ impl HttpDownloader {
         source_name: &str,
         file_source: &HttpRemoteFile,
         destination: &mut File,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from `{}`", download_url);

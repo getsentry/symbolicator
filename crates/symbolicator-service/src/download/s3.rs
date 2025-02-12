@@ -15,7 +15,7 @@ use futures::TryStreamExt as _;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
 use tokio::fs::File;
 
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
 
 use super::content_length_timeout;
@@ -102,7 +102,7 @@ impl S3Downloader {
         source_name: &str,
         file_source: &S3RemoteFile,
         destination: &mut File,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let key = file_source.key();
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);

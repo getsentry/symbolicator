@@ -17,7 +17,7 @@ use tempfile::NamedTempFile;
 
 use crate::caches::versions::META_CACHE_VERSIONS;
 use crate::caching::{
-    CacheEntry, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
+    CacheContents, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
 };
 use crate::download::DownloadService;
 use crate::types::Scope;
@@ -100,7 +100,7 @@ impl FetchFileMetaRequest {
     /// This is the actual implementation of [`CacheItemRequest::compute`] for
     /// [`FetchFileMetaRequest`] but outside of the trait so it can be written as async/await
     /// code.
-    async fn compute_file_meta(&self, temp_file: &mut NamedTempFile) -> CacheEntry {
+    async fn compute_file_meta(&self, temp_file: &mut NamedTempFile) -> CacheContents {
         let cache_key = CacheKey::from_scoped_file(&self.scope, &self.file_source);
         tracing::trace!("Fetching file meta for {}", cache_key);
 
@@ -131,12 +131,12 @@ impl CacheItemRequest for FetchFileMetaRequest {
 
     const VERSIONS: CacheVersions = META_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(self.compute_file_meta(temp_file))
     }
 
     /// Returns the [`ObjectMetaHandle`] at the given cache key.
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         let features = serde_json::from_slice(&data)?;
         Ok(Arc::new(ObjectMetaHandle {
             scope: self.scope.clone(),

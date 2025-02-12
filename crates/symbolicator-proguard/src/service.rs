@@ -6,7 +6,7 @@ use proguard::ProguardCache;
 use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
-    CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
 };
 use symbolicator_service::download::{fetch_file, tempfile_in_parent, DownloadService};
 use symbolicator_service::objects::{
@@ -48,7 +48,7 @@ impl ProguardService {
         sources: &[SourceConfig],
         scope: &Scope,
         debug_id: DebugId,
-    ) -> CacheEntry<OwnedProguardCache> {
+    ) -> CacheContents<OwnedProguardCache> {
         let identifier = ObjectId {
             debug_id: Some(debug_id),
             ..Default::default()
@@ -82,7 +82,7 @@ impl ProguardService {
         sources: Arc<[SourceConfig]>,
         scope: &Scope,
         debug_id: DebugId,
-    ) -> CacheEntry<Arc<ObjectHandle>> {
+    ) -> CacheContents<Arc<ObjectHandle>> {
         let identifier = ObjectId {
             debug_id: Some(debug_id),
             ..Default::default()
@@ -155,7 +155,7 @@ impl CacheItemRequest for FetchProguard {
 
     const VERSIONS: CacheVersions = PROGUARD_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         let fut = async {
             fetch_file(self.download_svc.clone(), self.file.clone(), temp_file).await?;
 
@@ -183,7 +183,7 @@ impl CacheItemRequest for FetchProguard {
         Box::pin(fut)
     }
 
-    fn load(&self, byteview: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, byteview: ByteView<'static>) -> CacheContents<Self::Item> {
         OwnedProguardCache::new(byteview)
     }
 

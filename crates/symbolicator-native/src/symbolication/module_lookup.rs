@@ -5,7 +5,7 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
 use symbolic::debuginfo::ObjectDebugSession;
-use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
     AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
     ObjectPurpose, ObjectsActor,
@@ -38,8 +38,10 @@ fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     }
 }
 
-pub fn object_file_status_from_cache_entry<T>(cache_entry: &CacheEntry<T>) -> ObjectFileStatus {
-    match cache_entry {
+pub fn object_file_status_from_cache_contents<T>(
+    cache_contents: &CacheContents<T>,
+) -> ObjectFileStatus {
+    match cache_contents {
         Ok(_) => ObjectFileStatus::Found,
         Err(CacheError::NotFound) => ObjectFileStatus::Missing,
         Err(CacheError::PermissionDenied(_) | CacheError::DownloadError(_)) => {
@@ -60,7 +62,7 @@ pub enum CacheFileEntry {
 
 #[derive(Debug, Clone)]
 pub struct CacheFile {
-    file: CacheEntry<CacheFileEntry>,
+    file: CacheContents<CacheFileEntry>,
     candidates: AllObjectCandidates,
     features: ObjectFeatures,
 }
@@ -69,7 +71,7 @@ pub struct CacheFile {
 pub struct CacheLookupResult<'a> {
     pub module_index: usize,
     pub object_info: &'a CompleteObjectInfo,
-    pub cache: &'a CacheEntry<CacheFileEntry>,
+    pub cache: &'a CacheContents<CacheFileEntry>,
     pub relative_addr: Option<u64>,
 }
 
@@ -100,8 +102,8 @@ impl CacheLookupResult<'_> {
 struct ModuleEntry {
     module_index: usize,
     object_info: CompleteObjectInfo,
-    cache: CacheEntry<CacheFileEntry>,
-    source_object: CacheEntry<Arc<ObjectHandle>>,
+    cache: CacheContents<CacheFileEntry>,
+    source_object: CacheContents<Arc<ObjectHandle>>,
 }
 
 pub struct ModuleLookup {
@@ -268,7 +270,7 @@ impl ModuleLookup {
                 entry.object_info.arch = Default::default();
                 entry.object_info.features.merge(features);
                 entry.object_info.candidates.merge(&candidates);
-                entry.object_info.debug_status = object_file_status_from_cache_entry(&file);
+                entry.object_info.debug_status = object_file_status_from_cache_contents(&file);
 
                 if let Ok(CacheFileEntry::SymCache(ref symcache)) = file {
                     entry.object_info.arch = symcache.get().arch();

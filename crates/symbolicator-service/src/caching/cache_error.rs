@@ -3,6 +3,7 @@ use std::io;
 use std::time::Duration;
 
 use humantime_serde::re::humantime::{format_duration, parse_duration};
+use serde::{Deserialize, Serialize};
 use symbolic::common::ByteView;
 use thiserror::Error;
 use tokio::fs::File;
@@ -12,7 +13,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 ///
 /// This error enum is intended for persisting in caches, except for the
 /// [`InternalError`](Self::InternalError) variant.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum CacheError {
     /// The object was not found at the remote source.
     #[error("not found")]
@@ -180,9 +181,9 @@ fn utf8_message(raw_message: &[u8]) -> Cow<'_, str> {
 
 /// An entry in a cache, containing either `Ok(T)` or an error denoting the reason why an
 /// object could not be fetched or is otherwise unusable.
-pub type CacheEntry<T = ()> = Result<T, CacheError>;
+pub type CacheContents<T = ()> = Result<T, CacheError>;
 
-/// Parses a [`CacheEntry`] from a [`ByteView`].
-pub fn cache_entry_from_bytes(bytes: ByteView<'static>) -> CacheEntry<ByteView<'static>> {
+/// Parses a [`CacheContents`] from a [`ByteView`].
+pub fn cache_contents_from_bytes(bytes: ByteView<'static>) -> CacheContents<ByteView<'static>> {
     CacheError::from_bytes(&bytes).map(Err).unwrap_or(Ok(bytes))
 }

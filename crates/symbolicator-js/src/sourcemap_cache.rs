@@ -8,7 +8,7 @@ use symbolic::debuginfo::sourcebundle::SourceFileDescriptor;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_service::caches::versions::SOURCEMAP_CACHE_VERSIONS;
 use symbolicator_service::caches::ByteViewString;
-use symbolicator_service::caching::{CacheEntry, CacheError, CacheItemRequest, CacheVersions};
+use symbolicator_service::caching::{CacheContents, CacheError, CacheItemRequest, CacheVersions};
 use symbolicator_service::objects::ObjectHandle;
 use tempfile::NamedTempFile;
 
@@ -58,7 +58,7 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
 
     const VERSIONS: CacheVersions = SOURCEMAP_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(async move {
             let sourcemap = match &self.sourcemap {
                 SourceMapContents::FromBundle(bundle, key) => {
@@ -80,12 +80,12 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
         })
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         parse_sourcemap_cache_owned(data)
     }
 }
 
-fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedSourceMapCache> {
+fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheContents<OwnedSourceMapCache> {
     SelfCell::try_new(byteview, |p| unsafe {
         SourceMapCache::parse(&*p).map_err(CacheError::from_std_error)
     })
@@ -93,7 +93,7 @@ fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedS
 
 /// Computes and writes the SourceMapCache.
 #[tracing::instrument(skip_all)]
-fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheEntry {
+fn write_sourcemap_cache(file: &mut File, source: &str, sourcemap: &str) -> CacheContents {
     tracing::debug!("Converting SourceMap cache");
 
     let smcache_writer = SourceMapCacheWriter::new(source, sourcemap)

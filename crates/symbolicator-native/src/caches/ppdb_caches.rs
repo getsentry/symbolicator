@@ -10,7 +10,7 @@ use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_service::caches::versions::PPDB_CACHE_VERSIONS;
 use symbolicator_service::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
     CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -23,7 +23,7 @@ use super::derived::{derive_from_object_handle, DerivedCache};
 
 pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
 
-fn parse_ppdb_cache_owned(byteview: ByteView<'static>) -> CacheEntry<OwnedPortablePdbCache> {
+fn parse_ppdb_cache_owned(byteview: ByteView<'static>) -> CacheContents<OwnedPortablePdbCache> {
     SelfCell::try_new(byteview, |p| unsafe {
         PortablePdbCache::parse(&*p).map_err(CacheError::from_std_error)
     })
@@ -94,7 +94,7 @@ async fn compute_ppdb_cache(
     temp_file: &mut NamedTempFile,
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
-) -> CacheEntry {
+) -> CacheContents {
     let object_handle = objects_actor.fetch(object_meta.clone()).await?;
 
     write_ppdb_cache(temp_file.as_file_mut(), &object_handle)
@@ -105,7 +105,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 
     const VERSIONS: CacheVersions = PPDB_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(compute_ppdb_cache(
             temp_file,
             &self.objects_actor,
@@ -113,7 +113,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
         ))
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         parse_ppdb_cache_owned(data)
     }
 }
@@ -122,7 +122,7 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
 ///
 /// It is assumed that the `object_handle` contains a positive cache.
 #[tracing::instrument(skip_all)]
-fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
+fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheContents {
     object_handle.configure_scope();
 
     let ppdb_obj = match object_handle.object() {

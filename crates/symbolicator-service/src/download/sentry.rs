@@ -17,7 +17,7 @@ use symbolicator_sources::{
 };
 
 use super::{FileType, USER_AGENT};
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 use crate::config::InMemoryCacheConfig;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::http::DownloadTimeouts;
@@ -82,7 +82,7 @@ pub struct SearchQuery {
 }
 
 /// An LRU Cache for Sentry DIF (Native Debug Files) lookups.
-type SentryDifCache = moka::future::Cache<SearchQuery, CacheEntry<Arc<[SearchResult]>>>;
+type SentryDifCache = moka::future::Cache<SearchQuery, CacheContents<Arc<[SearchResult]>>>;
 
 pub struct SentryDownloader {
     client: reqwest::Client,
@@ -129,7 +129,7 @@ impl SentryDownloader {
         client: &reqwest::Client,
         query: &SearchQuery,
         propagate_traces: bool,
-    ) -> CacheEntry<Arc<[T]>>
+    ) -> CacheContents<Arc<[T]>>
     where
         T: DeserializeOwned,
     {
@@ -164,7 +164,7 @@ impl SentryDownloader {
         source: Arc<SentrySourceConfig>,
         object_id: &ObjectId,
         file_types: &[FileType],
-    ) -> CacheEntry<Vec<RemoteFile>> {
+    ) -> CacheContents<Vec<RemoteFile>> {
         // There needs to be either a debug_id or a code_id filter in the query. Otherwise, this would
         // return a list of all debug files in the project.
         if object_id.debug_id.is_none() && object_id.code_id.is_none() {
@@ -257,7 +257,7 @@ impl SentryDownloader {
         source_name: &str,
         file_source: &SentryRemoteFile,
         destination: &mut File,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);
 

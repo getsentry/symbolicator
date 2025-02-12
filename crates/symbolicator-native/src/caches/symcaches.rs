@@ -11,7 +11,7 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_service::caches::versions::SYMCACHE_VERSIONS;
 use symbolicator_service::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
     CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -69,7 +69,7 @@ async fn compute_symcache(
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
     secondary_sources: &SecondarySymCacheSources,
-) -> CacheEntry {
+) -> CacheContents {
     let object_handle = objects_actor.fetch(object_meta).await?;
 
     write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
@@ -80,7 +80,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
 
     const VERSIONS: CacheVersions = SYMCACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(compute_symcache(
             temp_file,
             &self.objects_actor,
@@ -89,7 +89,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
         ))
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         SelfCell::try_new(data, |p| unsafe {
             SymCache::parse(&*p).map_err(|e| {
                 let object_meta = &self.object_meta;
@@ -215,7 +215,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: &SecondarySymCacheSources,
-) -> CacheEntry {
+) -> CacheContents {
     object_handle.configure_scope();
 
     let symbolic_object = object_handle.object();

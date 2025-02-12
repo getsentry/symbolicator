@@ -78,9 +78,9 @@
 //! configuration is done by providing a GCS bucket and `service_account_path`. A file-system based
 //! shared cache implementation exists for testing purposes.
 //!
-//! ## [`CacheEntry`] / [`CacheError`]
+//! ## [`CacheContents`] / [`CacheError`]
 //!
-//! The caching layer primarily deals with [`CacheEntry`]s, which are just an alias for a [`Result`]
+//! The caching layer primarily deals with [`CacheContents`]s, which are just an alias for a [`Result`]
 //! around a [`CacheError`].
 //!
 //! [`CacheError`] encodes opaque errors, most of which happen during downloading of files. These
@@ -135,7 +135,7 @@
 //! This file is a `&mut` reference, and one might use [`std::mem::swap`] to replace it with a
 //! newly created temporary file.
 //! Once the file is written, it is considered to be immutable, and loadable synchronously via the
-//! [`CacheItemRequest::load`] method. This function returns a [`CacheEntry`] and is theoretically
+//! [`CacheItemRequest::load`] method. This function returns a [`CacheContents`] and is theoretically
 //! fallible. However, failing to load a previously written cache file in most cases should be
 //! considered a [`CacheError::InternalError`], and is unexpected to occur.
 //!
@@ -167,7 +167,7 @@ mod shared_cache;
 #[cfg(test)]
 mod tests;
 
-pub use cache_error::{CacheEntry, CacheError};
+pub use cache_error::{CacheContents, CacheError};
 pub use cache_key::{CacheKey, CacheKeyBuilder};
 pub use cleanup::cleanup;
 pub use config::CacheName;

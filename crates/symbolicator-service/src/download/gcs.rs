@@ -5,12 +5,12 @@ use std::sync::Arc;
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
 use tokio::fs::File;
 
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 use crate::utils::gcs::{self, GcsToken};
 use crate::utils::http::DownloadTimeouts;
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheEntry<GcsToken>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheContents<GcsToken>>;
 
 /// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
@@ -35,7 +35,7 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheEntry<GcsToken> {
+    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheContents<GcsToken> {
         metric!(counter("source.gcs.token.access") += 1);
 
         let init = Box::pin(async {
@@ -44,7 +44,7 @@ impl GcsDownloader {
             token.map_err(CacheError::from)
         });
         let replace_if =
-            |entry: &CacheEntry<GcsToken>| entry.as_ref().map_or(true, |t| t.is_expired());
+            |entry: &CacheContents<GcsToken>| entry.as_ref().map_or(true, |t| t.is_expired());
 
         self.token_cache
             .entry_by_ref(source_key)
@@ -59,7 +59,7 @@ impl GcsDownloader {
         source_name: &str,
         file_source: &GcsRemoteFile,
         destination: &mut File,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
     AllObjectCandidates, CandidateStatus, FindResult, ObjectFeatures, ObjectMetaHandle,
     ObjectUseInfo,
@@ -8,11 +8,11 @@ use symbolicator_service::objects::{
 
 /// This is the result of fetching a derived cache file.
 ///
-/// This has the requested [`CacheEntry`], as well as [`AllObjectCandidates`] that were considered
+/// This has the requested [`CacheContents`], as well as [`AllObjectCandidates`] that were considered
 /// and the [`ObjectFeatures`] of the primarily used object file.
 #[derive(Clone, Debug)]
 pub struct DerivedCache<T> {
-    pub cache: CacheEntry<T>,
+    pub cache: CacheContents<T>,
     pub candidates: AllObjectCandidates,
     pub features: ObjectFeatures,
 }
@@ -33,7 +33,7 @@ pub async fn derive_from_object_handle<T, Derive, Fut>(
 where
     T: Clone,
     Derive: FnOnce(Arc<ObjectMetaHandle>) -> Fut,
-    Fut: std::future::Future<Output = CacheEntry<T>>,
+    Fut: std::future::Future<Output = CacheContents<T>>,
 {
     let Some(meta) = meta else {
         return DerivedCache {

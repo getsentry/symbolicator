@@ -10,8 +10,8 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 
-use super::cache_error::cache_entry_from_bytes;
-use super::{CacheEntry, CacheError, CacheName};
+use super::cache_error::cache_contents_from_bytes;
+use super::{CacheContents, CacheError, CacheName};
 
 /// The interval in which positive caches should be touched.
 ///
@@ -103,7 +103,7 @@ impl Cache {
     pub(super) fn check_expiry(
         &self,
         path: &Path,
-    ) -> io::Result<(CacheEntry<ByteView<'static>>, ExpirationTime)> {
+    ) -> io::Result<(CacheContents<ByteView<'static>>, ExpirationTime)> {
         // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
         // whether the file is a negative cache item or not, because literally every other
         // filesystem attribute is unreliable.
@@ -125,7 +125,7 @@ impl Cache {
         let mtime = metadata.modified()?;
         let mtime_elapsed = mtime.elapsed().unwrap_or_default();
 
-        let cache_entry = cache_entry_from_bytes(bv);
+        let cache_entry = cache_contents_from_bytes(bv);
         let expiration_time = match expiration_strategy(&cache_entry) {
             ExpirationStrategy::None => {
                 let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
@@ -183,7 +183,7 @@ impl Cache {
     pub fn open_cachefile(
         &self,
         path: &Path,
-    ) -> io::Result<Option<(CacheEntry<ByteView<'static>>, ExpirationTime)>> {
+    ) -> io::Result<Option<(CacheContents<ByteView<'static>>, ExpirationTime)>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
@@ -270,8 +270,8 @@ pub enum ExpirationTime {
 }
 
 impl ExpirationTime {
-    /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheEntry`].
-    pub fn for_fresh_status<T>(cache: &Cache, entry: &CacheEntry<T>) -> Self {
+    /// Gives the [`ExpirationTime`] for a freshly created cache with the given [`CacheContents`].
+    pub fn for_fresh_status<T>(cache: &Cache, entry: &CacheContents<T>) -> Self {
         let config = &cache.cache_config;
         let strategy = expiration_strategy(entry);
         match strategy {
@@ -309,7 +309,7 @@ impl ExpirationTime {
 
 /// Checks the cache contents in `buf` and returns the cleanup strategy that should be used
 /// for the item.
-pub(super) fn expiration_strategy<T>(status: &CacheEntry<T>) -> ExpirationStrategy {
+pub(super) fn expiration_strategy<T>(status: &CacheContents<T>) -> ExpirationStrategy {
     match status {
         Ok(_) => ExpirationStrategy::None,
         Err(CacheError::Malformed(_)) => ExpirationStrategy::Malformed,

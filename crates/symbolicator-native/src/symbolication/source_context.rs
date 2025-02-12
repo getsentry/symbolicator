@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use futures::future;
-use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
     ObjectCandidate, ObjectDownloadInfo, ObjectFeatures, ObjectUseInfo,
 };
@@ -95,7 +95,7 @@ impl SymbolicationActor {
     // source file from a link.
     fn object_candidate_for_sourcelink<T>(
         location: RemoteFileUri,
-        res: CacheEntry<T>,
+        res: CacheContents<T>,
     ) -> ObjectCandidate {
         let source = SourceId::new("sourcelink");
         let unwind = ObjectUseInfo::None;

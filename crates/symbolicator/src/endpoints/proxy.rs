@@ -6,14 +6,14 @@ use axum::body::Body;
 use axum::extract;
 use axum::http::{Method, Request, Response, StatusCode};
 
-use symbolicator_service::caching::{CacheEntry, CacheError};
+use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_sources::parse_symstore_path;
 
 use crate::service::{FindObject, ObjectHandle, ObjectPurpose, RequestService, Scope};
 
 use super::ResponseError;
 
-async fn load_object(service: RequestService, path: String) -> CacheEntry<Arc<ObjectHandle>> {
+async fn load_object(service: RequestService, path: String) -> CacheContents<Arc<ObjectHandle>> {
     let config = service.config();
     if !config.symstore_proxy {
         return Err(CacheError::NotFound);

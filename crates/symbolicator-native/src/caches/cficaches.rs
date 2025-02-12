@@ -12,7 +12,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::breakpad::BreakpadModuleRecord;
 use symbolicator_service::caches::versions::CFICACHE_VERSIONS;
 use symbolicator_service::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
     CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
@@ -31,7 +31,7 @@ pub struct CfiModuleInfo {
 }
 
 #[tracing::instrument(skip_all)]
-fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheEntry<(u32, CfiItem)> {
+fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheContents<(u32, CfiItem)> {
     let weight = bytes.len().try_into().unwrap_or(u32::MAX);
     // NOTE: we estimate the in-memory structures to be ~8x as heavy in memory as on disk
     let weight = weight.saturating_mul(8);
@@ -94,7 +94,7 @@ async fn compute_cficache(
     objects_actor: &ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     temp_file: &mut NamedTempFile,
-) -> CacheEntry {
+) -> CacheContents {
     let object = objects_actor.fetch(meta_handle).await?;
 
     write_cficache(temp_file.as_file_mut(), &object)
@@ -105,7 +105,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
 
     const VERSIONS: CacheVersions = CFICACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         Box::pin(compute_cficache(
             &self.objects_actor,
             self.meta_handle.clone(),
@@ -113,7 +113,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
         ))
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         parse_cfi_cache(data)
     }
 
@@ -177,7 +177,7 @@ impl CfiCacheActor {
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
-fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheEntry {
+fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheContents {
     object_handle.configure_scope();
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key);

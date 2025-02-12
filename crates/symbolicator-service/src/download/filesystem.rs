@@ -8,7 +8,7 @@ use tokio::fs::File;
 
 use symbolicator_sources::FilesystemRemoteFile;
 
-use crate::caching::{CacheEntry, CacheError};
+use crate::caching::{CacheContents, CacheError};
 
 /// Downloader implementation that supports the filesystem source.
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl FilesystemDownloader {
         &self,
         file_source: &FilesystemRemoteFile,
         destination: &mut File,
-    ) -> CacheEntry {
+    ) -> CacheContents {
         let path = file_source.path();
         tracing::debug!("Fetching debug file from {:?}", path);
 

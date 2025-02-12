@@ -14,7 +14,7 @@ use super::metadata::MdCacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::utils::futures::CallOnDrop;
 
-use super::{Cache, CacheEntry, CacheError, CacheKey, ExpirationTime, SharedCacheService};
+use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
 /// An item saved in the in-memory moka cache.
 #[derive(Clone, Debug)]
@@ -30,7 +30,7 @@ impl<T> InMemoryItem<T> {
     /// Maps a fallible function over this item's contents.
     fn and_then<U, F>(self, f: F) -> InMemoryItem<U>
     where
-        F: FnOnce(T) -> CacheEntry<U>,
+        F: FnOnce(T) -> CacheContents<U>,
     {
         InMemoryItem {
             deadline: self.deadline,
@@ -178,10 +178,10 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
 
     /// Invoked to compute an instance of this item and put it at the given location in the file
     /// system. This is used to populate the cache for a previously missing element.
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry>;
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents>;
 
     /// Loads an existing element from the cache.
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item>;
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item>;
 
     /// The "cost" of keeping this item in the in-memory cache.
     fn weight(item: &Self::Item) -> u32 {
@@ -209,7 +209,12 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+    async fn compute(
+        &self,
+        request: T,
+        key: &CacheKey,
+        is_refresh: bool,
+    ) -> CacheContents<T::Item> {
         let name = self.config.name();
         let cache_path = key.cache_path(T::VERSIONS.current);
         let mut temp_file = self.config.tempfile()?;
@@ -492,14 +497,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 /// Look up an item in the file system cache and load it if available.
 ///
 /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
-/// Otherwise returns another `CacheEntry`, which itself can be `NotFound`.
+/// Otherwise returns an `InMemoryItem`, which itself might contain a `NotFound` error.
 fn lookup_local_cache(
     config: &Cache,
     shared_cache: Option<&SharedCacheService>,
     cache_dir: &Path,
     cache_key: &str,
     is_current_version: bool,
-) -> CacheEntry<InMemoryItem<ByteView<'static>>> {
+) -> CacheContents<InMemoryItem<ByteView<'static>>> {
     let name = config.name();
 
     let item_path = cache_dir.join(cache_key);

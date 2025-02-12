@@ -7,8 +7,8 @@ use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
 use crate::caching::{
-    Cache, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher, MdCacheEntry,
-    SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    MdCacheEntry, SharedCacheRef,
 };
 use crate::download::{fetch_file, DownloadService};
 use crate::types::Scope;
@@ -101,7 +101,7 @@ impl CacheItemRequest for FetchFileRequest {
 
     const VERSIONS: CacheVersions = SOURCEFILES_CACHE_VERSIONS;
 
-    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheEntry> {
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         let fut = async {
             fetch_file(self.download_svc.clone(), self.file.clone(), temp_file).await?;
 
@@ -113,7 +113,7 @@ impl CacheItemRequest for FetchFileRequest {
         Box::pin(fut)
     }
 
-    fn load(&self, data: ByteView<'static>) -> CacheEntry<Self::Item> {
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
         let inner = SelfCell::try_new(data, |s| unsafe {
             std::str::from_utf8(&*s).map_err(|err| CacheError::Malformed(err.to_string()))
         })?;

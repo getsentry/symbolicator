@@ -32,7 +32,7 @@ use symbolicator_proguard::interface::{
     CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
 };
 use symbolicator_proguard::ProguardService;
-use symbolicator_service::caching::CacheEntry;
+use symbolicator_service::caching::CacheContents;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
@@ -255,7 +255,7 @@ impl RequestService {
     pub async fn fetch_object(
         &self,
         handle: Arc<ObjectMetaHandle>,
-    ) -> CacheEntry<Arc<ObjectHandle>> {
+    ) -> CacheContents<Arc<ObjectHandle>> {
         self.inner.objects.fetch(handle).await
     }
 
