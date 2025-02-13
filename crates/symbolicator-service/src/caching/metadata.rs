@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Scope;
 
-use super::CacheContents;
+use super::{CacheContents, CacheError};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metadata {
@@ -14,6 +14,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    /// Creates metadata for freshly computed data.
     pub(crate) fn fresh_scoped(scope: Scope) -> Self {
         let now = SystemTime::now();
         Self {
@@ -34,6 +35,14 @@ pub struct CacheEntry<T> {
 }
 
 impl<T> CacheEntry<T> {
+    /// Creates a cache entry from an error, without metadata.
+    pub(crate) fn from_err(e: impl Into<CacheError>) -> Self {
+        Self {
+            metadata: None,
+            contents: Err(e.into()),
+        }
+    }
+
     /// Maps a function over this entry's contents.
     pub fn map<U, F>(self, f: F) -> CacheEntry<U>
     where

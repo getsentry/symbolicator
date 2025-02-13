@@ -223,10 +223,7 @@ impl Cache {
                         ..metadata.clone()
                     };
 
-                    let md_path = metadata_path(path);
-                    let mut md_file = File::create(md_path)?;
-                    serde_json::to_writer(&mut md_file, &new_metadata)
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                    write_metadata(path, &new_metadata)?;
                 }
 
                 // well, we just touched the file ;-)
@@ -383,8 +380,16 @@ where
 
 /// Returns the corresponding metadata file path
 /// for a cache file.
-fn metadata_path(path: &Path) -> PathBuf {
-    let mut out = path.to_path_buf();
+pub(crate) fn metadata_path(path: impl AsRef<Path>) -> PathBuf {
+    let mut out = path.as_ref().to_path_buf();
     out.set_extension("md");
     out
+}
+
+/// Writes metadata for the cache entry at the given path.
+pub(crate) fn write_metadata(path: impl AsRef<Path>, metadata: &Metadata) -> io::Result<()> {
+    let md_path = metadata_path(path);
+    let mut md_file = File::create(md_path)?;
+    serde_json::to_writer(&mut md_file, metadata)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
