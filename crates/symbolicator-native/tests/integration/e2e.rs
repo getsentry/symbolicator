@@ -1,7 +1,9 @@
+use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
 use symbolicator_native::interface::{FrameStatus, SymbolicateStacktraces};
+use symbolicator_service::caching::Metadata;
 use symbolicator_service::objects::ObjectDownloadInfo;
 use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
@@ -480,11 +482,12 @@ async fn test_basic_windows() {
                     // NOTE: the cache key depends on the exact location of the file, which is
                     // random because it includes the [`Server`]s random port.
                     cached_objects.sort_by_key(|(_, size)| *size);
-                    assert_eq!(cached_objects.len(), 4); // 2 filename patterns, 2 metadata files
+                    assert_eq!(cached_objects.len(), 6); // 2 filename patterns, 2 metadata files, 2 debug txt files
                     assert_eq!(cached_objects[0].1, 0);
-                    assert_eq!(cached_objects[3].1, 846_848);
+                    assert_eq!(cached_objects[5].1, 846_848);
 
-                    let metadata_file = &cached_objects[1].0;
+                    // Checks the .txt file that we only write in debug mode
+                    let metadata_text_file = &cached_objects[1].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
                     let mut expected_metadata = format!(
                         "scope: {cached_scope}\n\nsource: microsoft\nlocation: {}",
@@ -493,7 +496,7 @@ async fn test_basic_windows() {
                         )
                     );
                     let metadata =
-                        std::fs::read_to_string(objects_dir.join(metadata_file)).unwrap();
+                        std::fs::read_to_string(objects_dir.join(metadata_text_file)).unwrap();
                     // NOTE: due to random sort order, we have either `.pdb` or `.pd_`,
                     // thus we only check for the substring
                     assert!(
@@ -501,18 +504,34 @@ async fn test_basic_windows() {
                         "{metadata:?} == {expected_metadata:?}"
                     );
 
+                    // Checks the .md metadata file
+                    let metadata_file = &cached_objects[3].0;
+                    let cached_scope = if is_public { "global" } else { "myscope" };
+                    let file = File::open(objects_dir.join(metadata_file)).unwrap();
+                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
+                    assert_eq!(metadata.scope.as_ref(), cached_scope);
+
                     let symcaches_dir = cache_dir.path().join("symcaches");
                     let mut cached_symcaches = get_cache_files(&symcaches_dir);
 
                     cached_symcaches.sort_by_key(|(_, size)| *size);
-                    assert_eq!(cached_symcaches.len(), 2); // 1 symcache, 1 metadata file
-                    assert_eq!(cached_symcaches[1].1, 142_365);
+                    dbg!(&cached_symcaches);
+                    assert_eq!(cached_symcaches.len(), 3); // 1 symcache, 1 metadata file, 1 debug text file
+                    assert_eq!(cached_symcaches[2].1, 142_365);
 
-                    let metadata_file = &cached_symcaches[0].0;
+                    // Checks the .txt file that we only write in debug mode
+                    let metadata_text_file = &cached_symcaches[0].0;
                     let metadata =
-                        std::fs::read_to_string(symcaches_dir.join(metadata_file)).unwrap();
+                        std::fs::read_to_string(symcaches_dir.join(metadata_text_file)).unwrap();
                     expected_metadata.push_str("b\n"); // this truely ends in `.pdb` now
                     assert_eq!(metadata, expected_metadata);
+
+                    // Checks the .md metadata file
+                    let metadata_file = &cached_symcaches[1].0;
+                    dbg!(&metadata_file);
+                    let file = File::open(symcaches_dir.join(metadata_file)).unwrap();
+                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
+                    assert_eq!(metadata.scope.as_ref(), cached_scope);
                 }
 
                 // our use of in-memory caching should make sure we only ever request each file once

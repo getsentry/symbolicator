@@ -12,6 +12,7 @@ use tempfile::NamedTempFile;
 
 use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
+use crate::caching::Metadata;
 use crate::utils::futures::CallOnDrop;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
@@ -209,26 +210,36 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
-    async fn compute(
-        &self,
-        request: T,
-        key: &CacheKey,
-        is_refresh: bool,
-    ) -> CacheContents<T::Item> {
+    async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
         let cache_path = key.cache_path(T::VERSIONS.current);
-        let mut temp_file = self.config.tempfile()?;
+        let mut metadata = None;
+        let mut temp_file = match self.config.tempfile() {
+            Ok(temp_file) => temp_file,
+            Err(e) => return CacheEntry::from_err(e),
+        };
 
         let shared_cache = self.shared_cache(&request);
         let shared_cache_hit = if let Some(shared_cache) = shared_cache {
-            let temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
+            // TODO: Here we create fresh metadata upon fetching from the shared cache.
+            // Ideally we would obviously want to share these metadata, but this is left
+            // as future work.
+            metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
+            let temp_fd = match temp_file.reopen() {
+                Ok(fd) => fd,
+                Err(e) => return CacheEntry::from_err(e),
+            };
+            let temp_fd = tokio::fs::File::from_std(temp_fd);
             shared_cache.fetch(name, &cache_path, temp_fd).await
         } else {
             false
         };
 
         let mut entry = if shared_cache_hit {
-            let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
+            let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
+                Ok(bv) => bv,
+                Err(e) => return CacheEntry::from_err(e),
+            };
             Ok(byte_view)
         } else {
             Err(CacheError::NotFound)
@@ -240,20 +251,31 @@ impl<T: CacheItemRequest> Cacher<T> {
                 Ok(()) => {
                     // Now we have written the data to the tempfile we can mmap it, persisting it later
                     // is fine as it does not move filesystem boundaries there.
-                    let byte_view = ByteView::map_file_ref(temp_file.as_file())?;
+                    let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
+                        Ok(bv) => bv,
+                        Err(e) => return CacheEntry::from_err(e),
+                    };
                     entry = Ok(byte_view);
+                    metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
                 }
                 Err(CacheError::InternalError) => {
                     // If there was an `InternalError` during computation (for instance because
                     // of an io error), we return immediately without writing the error
                     // or persisting the temp file.
-                    return Err(CacheError::InternalError);
+                    return CacheEntry::from_err(CacheError::InternalError);
                 }
                 Err(err) => {
-                    let mut temp_fd = tokio::fs::File::from_std(temp_file.reopen()?);
-                    err.write(&mut temp_fd).await?;
+                    let temp_fd = match temp_file.reopen() {
+                        Ok(fd) => fd,
+                        Err(e) => return CacheEntry::from_err(e),
+                    };
+                    let mut temp_fd = tokio::fs::File::from_std(temp_fd);
+                    if let Err(e) = err.write(&mut temp_fd).await {
+                        return CacheEntry::from_err(e);
+                    };
 
                     entry = Err(err);
+                    metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
                 }
             }
         }
@@ -291,7 +313,16 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             tracing::trace!("Creating {name} at path {:?}", cache_path.display());
 
-            persist_tempfile(temp_file, &cache_path)?;
+            if let Err(e) = persist_tempfile(temp_file, &cache_path) {
+                return CacheEntry::from_err(e);
+            };
+
+            // Write metadata if we have them
+            if let Some(metadata) = metadata.as_ref() {
+                if let Err(e) = super::fs::write_metadata(&cache_path, metadata) {
+                    return CacheEntry::from_err(e);
+                };
+            }
 
             // Clean up old versions
             for version in 0..T::VERSIONS.current {
@@ -304,6 +335,17 @@ impl<T: CacheItemRequest> Cacher<T> {
                             error = &e as &dyn std::error::Error,
                             path = item_path,
                             "Failed to remove old cache file"
+                        );
+                    }
+                }
+
+                let md_path = super::fs::metadata_path(cache_dir.join(&item_path));
+                if let Err(e) = fs::remove_file(&md_path) {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        tracing::error!(
+                            error = &e as &dyn std::error::Error,
+                            path = %md_path.display(),
+                            "Failed to remove old cache metadata file"
                         );
                     }
                 }
@@ -325,12 +367,14 @@ impl<T: CacheItemRequest> Cacher<T> {
         if !shared_cache_hit {
             if let Ok(byteview) = &entry {
                 if let Some(shared_cache) = shared_cache {
+                    // TODO: Metadata should also be stored here.
                     shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
                 }
             }
         }
 
-        entry.and_then(|byteview| request.load(byteview))
+        let contents = entry.and_then(|byteview| request.load(byteview));
+        CacheEntry { metadata, contents }
     }
 
     /// Computes an item by loading from or populating the cache.
@@ -368,10 +412,12 @@ impl<T: CacheItemRequest> Cacher<T> {
                     ) {
                         Err(CacheError::NotFound) => continue,
                         Err(err) => {
-                            let data = Err(err);
+                            let contents = Err(err);
                             let deadline =
-                                ExpirationTime::for_fresh_status(&self.config, &data).as_instant();
-                            let data = CacheEntry::without_metadata(data);
+                                ExpirationTime::for_fresh_status(&self.config, &contents)
+                                    .as_instant();
+                            let metadata = Some(Metadata::fresh_scoped(cache_key.scope().clone()));
+                            let data = CacheEntry { metadata, contents };
                             return InMemoryItem { deadline, data };
                         }
                         Ok(item) => item.and_then(|byteview| request.load(byteview)),
@@ -407,8 +453,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                 .await;
 
             // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&self.config, &data);
-            let data = CacheEntry::without_metadata(data);
+            let expiration = ExpirationTime::for_fresh_status(&self.config, data.contents());
 
             InMemoryItem {
                 deadline: expiration.as_instant(),
@@ -476,13 +521,13 @@ impl<T: CacheItemRequest> Cacher<T> {
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
 
-            let item = this.compute(request, &cache_key, true).await;
+            let data = this.compute(request, &cache_key, true).await;
 
             // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&this.config, &item);
+            let expiration = ExpirationTime::for_fresh_status(&this.config, data.contents());
             let value = InMemoryItem {
                 deadline: expiration.as_instant(),
-                data: CacheEntry::without_metadata(item),
+                data,
             };
 
             // refresh the memory cache with the newly refreshed result
@@ -516,7 +561,7 @@ fn lookup_local_cache(
             item_path.to_string_lossy().into(),
         );
     });
-    let (entry, expiration) = config
+    let (data, expiration) = config
         .open_cachefile(&item_path)?
         .ok_or(CacheError::NotFound)?;
 
@@ -527,7 +572,7 @@ fn lookup_local_cache(
     let needs_reupload = expiration.was_touched();
     // FIXME: let-chains would be nice here :-)
     if is_current_version && needs_reupload {
-        if let Ok(byteview) = &entry {
+        if let Ok(byteview) = data.contents() {
             if let Some(shared_cache) = shared_cache {
                 shared_cache.store(name, cache_key, byteview.clone(), CacheStoreReason::Refresh);
             }
@@ -537,7 +582,7 @@ fn lookup_local_cache(
     // This is also reported for "negative cache hits": When we cached
     // the 404 response from a server as empty file.
     metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
-    if let Ok(byteview) = &entry {
+    if let Ok(byteview) = data.contents() {
         metric!(
             time_raw("caches.file.size") = byteview.len() as u64,
             "hit" => "true",
@@ -549,7 +594,7 @@ fn lookup_local_cache(
 
     Ok(InMemoryItem {
         deadline: expiration.as_instant(),
-        data: CacheEntry::without_metadata(entry),
+        data,
     })
 }
 
