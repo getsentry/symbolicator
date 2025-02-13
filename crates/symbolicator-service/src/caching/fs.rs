@@ -12,7 +12,7 @@ use tempfile::NamedTempFile;
 use crate::config::{CacheConfig, Config};
 
 use super::cache_error::cache_contents_from_bytes;
-use super::{CacheContents, CacheError, CacheName, Metadata};
+use super::{CacheContents, CacheEntry, CacheError, CacheName, Metadata};
 
 /// The interval in which positive caches should be touched.
 ///
@@ -104,39 +104,53 @@ impl Cache {
     pub(super) fn check_expiry(
         &self,
         path: &Path,
-    ) -> io::Result<(CacheContents<ByteView<'static>>, ExpirationTime)> {
-        // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
-        // whether the file is a negative cache item or not, because literally every other
-        // filesystem attribute is unreliable.
-        //
-        // * creation time does not exist pre-Linux 4.11
-        // * most filesystems are mounted with noatime
-        //
+    ) -> io::Result<(CacheEntry<ByteView<'static>>, ExpirationTime)> {
+        let fs_metadata = path.metadata()?;
+        tracing::trace!("File `{}` length: {}", path.display(), fs_metadata.len());
+
+        // Open the metadata file if possible
+        let external_metadata: Option<Metadata> = self.read_metadata(path)?;
+
+        // Get mtime and ctime from the metadata file if possible. Otherwise, fall
+        // back to FS metadata.
+        let (atime, ctime) = match external_metadata.as_ref() {
+            Some(md) => (md.time_accessed, md.time_created),
+            None => {
+                // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
+                // whether the file is a negative cache item or not, because literally every other
+                // filesystem attribute is unreliable.
+                //
+                // * creation time does not exist pre-Linux 4.11
+                // * most filesystems are mounted with noatime
+                let mtime = fs_metadata.modified()?;
+                (mtime, mtime)
+            }
+        };
+
+        let atime_elapsed = atime.elapsed().unwrap_or_default();
+        let ctime_elapsed = ctime.elapsed().unwrap_or_default();
+
+        // Open the cache file itself
+        let bv = ByteView::open(path)?;
+        let contents = cache_contents_from_bytes(bv);
+
         // States a cache item can be in:
-        // * negative/empty: An empty file. Represents a failed download. mtime is used to indicate
+        // * negative/empty: An empty file. Represents a failed download. ctime is used to indicate
         //   when the failed download happened (when the file was created)
         // * malformed: A file with the content `b"malformed"`. Represents a failed symcache
-        //   conversion. mtime indicates when we attempted to convert.
+        //   conversion. ctime indicates when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
-        let metadata = path.metadata()?;
-        tracing::trace!("File `{}` length: {}", path.display(), metadata.len());
-
-        let bv = ByteView::open(path)?;
-        let mtime = metadata.modified()?;
-        let mtime_elapsed = mtime.elapsed().unwrap_or_default();
-
-        let cache_entry = cache_contents_from_bytes(bv);
-        let expiration_time = match expiration_strategy(&cache_entry) {
+        let expiration_time = match expiration_strategy(&contents) {
             ExpirationStrategy::None => {
                 let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
 
-                if mtime_elapsed > max_unused_for {
+                if atime_elapsed > max_unused_for {
                     return Err(io::ErrorKind::NotFound.into());
                 }
 
                 // we want to touch good caches once every `TOUCH_EVERY`
-                let touch_in = TOUCH_EVERY.saturating_sub(mtime_elapsed);
+                let touch_in = TOUCH_EVERY.saturating_sub(atime_elapsed);
                 ExpirationTime::TouchIn(touch_in)
             }
             ExpirationStrategy::Negative => {
@@ -145,7 +159,7 @@ impl Cache {
                     .retry_misses_after()
                     .unwrap_or(Duration::MAX);
 
-                let expires_in = retry_misses_after.saturating_sub(mtime_elapsed);
+                let expires_in = retry_misses_after.saturating_sub(ctime_elapsed);
 
                 if expires_in == Duration::ZERO {
                     return Err(io::ErrorKind::NotFound.into());
@@ -159,11 +173,11 @@ impl Cache {
                     .retry_malformed_after()
                     .unwrap_or(Duration::MAX);
 
-                let expires_in = retry_malformed_after.saturating_sub(mtime_elapsed);
+                let expires_in = retry_malformed_after.saturating_sub(ctime_elapsed);
 
                 // Immediately expire malformed items that have been created before this process started.
                 // See docstring of MALFORMED_MARKER
-                if mtime < self.start_time || expires_in == Duration::ZERO {
+                if ctime < self.start_time || expires_in == Duration::ZERO {
                     tracing::trace!("Created at is older than start time");
                     return Err(io::ErrorKind::NotFound.into());
                 }
@@ -172,7 +186,13 @@ impl Cache {
             }
         };
 
-        Ok((cache_entry, expiration_time))
+        Ok((
+            CacheEntry {
+                metadata: external_metadata,
+                contents,
+            },
+            expiration_time,
+        ))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -184,7 +204,7 @@ impl Cache {
     pub fn open_cachefile(
         &self,
         path: &Path,
-    ) -> io::Result<Option<(CacheContents<ByteView<'static>>, ExpirationTime)>> {
+    ) -> io::Result<Option<(CacheEntry<ByteView<'static>>, ExpirationTime)>> {
         // `io::ErrorKind::NotFound` can be returned from multiple locations in this function. All
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
@@ -194,6 +214,21 @@ impl Cache {
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
+
+                // If we previously read metadata from the metadata file,
+                // we also replace it with the new atime.
+                if let Some(metadata) = cache_entry.metadata() {
+                    let new_metadata = Metadata {
+                        time_accessed: SystemTime::now(),
+                        ..metadata.clone()
+                    };
+
+                    let md_path = metadata_path(path);
+                    let mut md_file = File::create(md_path)?;
+                    serde_json::to_writer(&mut md_file, &new_metadata)
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                }
+
                 // well, we just touched the file ;-)
                 expiration = ExpirationTime::TouchIn(TOUCH_EVERY);
             }
@@ -205,9 +240,8 @@ impl Cache {
     /// Reads [`Metadata`] for the cache entry in `path` from the file at `path.md`.
     ///
     /// If the metadata file doesn't exist, this returns `Ok(None)`.
-    pub fn open_metadata_file(&self, path: &Path) -> io::Result<Option<Metadata>> {
-        let mut md_path = path.to_path_buf();
-        md_path.set_extension("md");
+    pub fn read_metadata(&self, path: &Path) -> io::Result<Option<Metadata>> {
+        let md_path = metadata_path(path);
 
         catch_not_found(|| {
             let file = File::open(&md_path)?;
@@ -345,4 +379,12 @@ where
             _ => Err(e),
         },
     }
+}
+
+/// Returns the corresponding metadata file path
+/// for a cache file.
+fn metadata_path(path: &Path) -> PathBuf {
+    let mut out = path.to_path_buf();
+    out.set_extension("md");
+    out
 }

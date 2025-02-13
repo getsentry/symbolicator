@@ -385,7 +385,7 @@ fn test_open_cachefile() -> Result<()> {
 
     // Open it with the cache, check contents and new mtime.
     let (entry, _expiration) = cache.open_cachefile(&path)?.expect("No file found");
-    assert_eq!(entry.unwrap().as_slice(), b"world");
+    assert_eq!(entry.contents().as_ref().unwrap().as_slice(), b"world");
 
     let new_mtime = fs::metadata(&path)?.modified()?;
     assert!(old_mtime < new_mtime);
