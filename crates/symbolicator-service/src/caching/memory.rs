@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
@@ -373,10 +373,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             let deadline =
                                 ExpirationTime::for_fresh_status(&self.config, &contents)
                                     .as_instant();
-                            let metadata = Some(Metadata {
-                                scope: cache_key.scope().clone(),
-                                time_created: SystemTime::now(),
-                            });
+                            let metadata = Some(Metadata::fresh_scoped(cache_key.scope().clone()));
                             let data = CacheEntry { metadata, contents };
                             return InMemoryItem { deadline, data };
                         }
@@ -414,10 +411,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // we just created a fresh cache, so use the initial expiration times
             let expiration = ExpirationTime::for_fresh_status(&self.config, &contents);
-            let metadata = Some(Metadata {
-                scope: cache_key.scope().clone(),
-                time_created: SystemTime::now(),
-            });
+            let metadata = Some(Metadata::fresh_scoped(cache_key.scope().clone()));
             let data = CacheEntry { metadata, contents };
 
             InMemoryItem {
@@ -490,10 +484,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // we just created a fresh cache, so use the initial expiration times
             let expiration = ExpirationTime::for_fresh_status(&this.config, &contents);
-            let metadata = Some(Metadata {
-                scope: cache_key.scope().clone(),
-                time_created: SystemTime::now(),
-            });
+            let metadata = Some(Metadata::fresh_scoped(cache_key.scope().clone()));
             let data = CacheEntry { metadata, contents };
             let value = InMemoryItem {
                 deadline: expiration.as_instant(),

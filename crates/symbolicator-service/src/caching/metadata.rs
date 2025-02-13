@@ -10,6 +10,18 @@ use super::CacheContents;
 pub struct Metadata {
     pub scope: Scope,
     pub time_created: SystemTime,
+    pub time_accessed: SystemTime,
+}
+
+impl Metadata {
+    pub(crate) fn fresh_scoped(scope: Scope) -> Self {
+        let now = SystemTime::now();
+        Self {
+            scope,
+            time_created: now,
+            time_accessed: now,
+        }
+    }
 }
 
 /// A cache entry with optional metadata.
