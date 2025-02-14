@@ -10,7 +10,6 @@ use super::{CacheContents, CacheError};
 pub struct Metadata {
     pub scope: Scope,
     pub time_created: SystemTime,
-    pub time_accessed: SystemTime,
 }
 
 impl Metadata {
@@ -20,7 +19,6 @@ impl Metadata {
         Self {
             scope,
             time_created: now,
-            time_accessed: now,
         }
     }
 }

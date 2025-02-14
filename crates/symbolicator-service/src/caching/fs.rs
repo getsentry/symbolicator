@@ -111,20 +111,15 @@ impl Cache {
         // Open the metadata file if possible
         let external_metadata: Option<Metadata> = self.read_metadata(path)?;
 
-        // Get mtime and ctime from the metadata file if possible. Otherwise, fall
-        // back to FS metadata.
-        let (atime, ctime) = match external_metadata.as_ref() {
-            Some(md) => (md.time_accessed, md.time_created),
-            None => {
-                // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
-                // whether the file is a negative cache item or not, because literally every other
-                // filesystem attribute is unreliable.
-                //
-                // * creation time does not exist pre-Linux 4.11
-                // * most filesystems are mounted with noatime
-                let mtime = fs_metadata.modified()?;
-                (mtime, mtime)
-            }
+        let (atime, ctime) = {
+            // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
+            // whether the file is a negative cache item or not, because literally every other
+            // filesystem attribute is unreliable.
+            //
+            // * creation time does not exist pre-Linux 4.11
+            // * most filesystems are mounted with noatime
+            let mtime = fs_metadata.modified()?;
+            (mtime, mtime)
         };
 
         let atime_elapsed = atime.elapsed().unwrap_or_default();
@@ -214,17 +209,6 @@ impl Cache {
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {
                 filetime::set_file_mtime(path, FileTime::now())?;
-
-                // If we previously read metadata from the metadata file,
-                // we also replace it with the new atime.
-                if let Some(metadata) = cache_entry.metadata() {
-                    let new_metadata = Metadata {
-                        time_accessed: SystemTime::now(),
-                        ..metadata.clone()
-                    };
-
-                    write_metadata(path, &new_metadata)?;
-                }
 
                 // well, we just touched the file ;-)
                 expiration = ExpirationTime::TouchIn(TOUCH_EVERY);
