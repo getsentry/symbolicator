@@ -245,7 +245,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 
             // zip archive
             if bv.get(..2) == Some(b"PK") {
-                process_zip_archive(sort_config, bv, path.to_string_lossy().deref(),  &debug_ids)?;
+                process_zip_archive(sort_config, bv, path.to_string_lossy().deref(), &debug_ids)?;
 
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
