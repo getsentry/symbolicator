@@ -218,7 +218,7 @@ impl Cache {
         anyhow::ensure!(metadata.is_file(), "not a file");
         let size = metadata.len();
 
-        if catch_not_found(|| self.check_expiry_no_contents(path))?.is_none() {
+        if catch_not_found(|| self.check_expiry(path))?.is_none() {
             tracing::debug!("Removing file `{}`", path.display());
             if !dry_run {
                 catch_not_found(|| remove_file(path))?;

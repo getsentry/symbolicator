@@ -123,37 +123,9 @@ impl Cache {
 
         let bv = ByteView::open(path)?;
         let mtime = metadata.modified()?;
-
-        let cache_entry = cache_contents_from_bytes(bv);
-        self.check_expiry_inner(cache_entry, mtime)
-    }
-
-    /// Validate cache expiration of path.
-    ///
-    /// Like [`Self::check_expiry`] but it does not return the file contents.
-    pub(super) fn check_expiry_no_contents(
-        &self,
-        path: &Path,
-    ) -> io::Result<(CacheContents<()>, ExpirationTime)> {
-        let metadata = path.metadata()?;
-        tracing::trace!("File `{}` length: {}", path.display(), metadata.len());
-
-        let mtime = metadata.modified()?;
-        let cache_entry = match CacheError::from_path(path)? {
-            Some(error) => Err(error),
-            None => Ok(()),
-        };
-
-        self.check_expiry_inner(cache_entry, mtime)
-    }
-
-    fn check_expiry_inner<T>(
-        &self,
-        cache_entry: CacheContents<T>,
-        mtime: SystemTime,
-    ) -> io::Result<(CacheContents<T>, ExpirationTime)> {
         let mtime_elapsed = mtime.elapsed().unwrap_or_default();
 
+        let cache_entry = cache_contents_from_bytes(bv);
         let expiration_time = match expiration_strategy(&cache_entry) {
             ExpirationStrategy::None => {
                 let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
