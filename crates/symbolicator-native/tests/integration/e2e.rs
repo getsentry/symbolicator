@@ -525,7 +525,7 @@ async fn test_basic_windows() {
                     expected_metadata.push_str("b\n"); // this truely ends in `.pdb` now
                     assert_eq!(metadata, expected_metadata);
 
-                    // Checks the .md metadata file
+                    // Checks the metadata file
                     let metadata_file = &cached_symcaches[0].0;
                     let file = File::open(symcaches_dir.join(metadata_file)).unwrap();
                     let metadata: Metadata = rmp_serde::decode::from_read(&file).unwrap();
