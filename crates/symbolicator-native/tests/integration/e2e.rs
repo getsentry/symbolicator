@@ -487,7 +487,7 @@ async fn test_basic_windows() {
                     assert_eq!(cached_objects[5].1, 846_848);
 
                     // Checks the .txt file that we only write in debug mode
-                    let metadata_text_file = &cached_objects[1].0;
+                    let metadata_text_file = &cached_objects[3].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
                     let mut expected_metadata = format!(
                         "scope: {cached_scope}\n\nsource: microsoft\nlocation: {}",
@@ -504,33 +504,31 @@ async fn test_basic_windows() {
                         "{metadata:?} == {expected_metadata:?}"
                     );
 
-                    // Checks the .md metadata file
-                    let metadata_file = &cached_objects[3].0;
+                    // Checks the metadata.mpk metadata file
+                    let metadata_file = &cached_objects[1].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
                     let file = File::open(objects_dir.join(metadata_file)).unwrap();
-                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
+                    let metadata: Metadata = rmp_serde::decode::from_read(&file).unwrap();
                     assert_eq!(metadata.scope.as_ref(), cached_scope);
 
                     let symcaches_dir = cache_dir.path().join("symcaches");
                     let mut cached_symcaches = get_cache_files(&symcaches_dir);
 
                     cached_symcaches.sort_by_key(|(_, size)| *size);
-                    dbg!(&cached_symcaches);
                     assert_eq!(cached_symcaches.len(), 3); // 1 symcache, 1 metadata file, 1 debug text file
                     assert_eq!(cached_symcaches[2].1, 142_365);
 
                     // Checks the .txt file that we only write in debug mode
-                    let metadata_text_file = &cached_symcaches[0].0;
+                    let metadata_text_file = &cached_symcaches[1].0;
                     let metadata =
                         std::fs::read_to_string(symcaches_dir.join(metadata_text_file)).unwrap();
                     expected_metadata.push_str("b\n"); // this truely ends in `.pdb` now
                     assert_eq!(metadata, expected_metadata);
 
                     // Checks the .md metadata file
-                    let metadata_file = &cached_symcaches[1].0;
-                    dbg!(&metadata_file);
+                    let metadata_file = &cached_symcaches[0].0;
                     let file = File::open(symcaches_dir.join(metadata_file)).unwrap();
-                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
+                    let metadata: Metadata = rmp_serde::decode::from_read(&file).unwrap();
                     assert_eq!(metadata.scope.as_ref(), cached_scope);
                 }
 

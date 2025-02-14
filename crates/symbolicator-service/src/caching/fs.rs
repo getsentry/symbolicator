@@ -227,7 +227,7 @@ impl Cache {
         catch_not_found(|| {
             let file = File::open(&md_path)?;
             let reader = BufReader::new(file);
-            serde_json::from_reader(reader)
+            rmp_serde::decode::from_read(reader)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
         })
     }
@@ -366,14 +366,14 @@ where
 /// for a cache file.
 pub(crate) fn metadata_path(path: impl AsRef<Path>) -> PathBuf {
     let mut out = path.as_ref().to_path_buf();
-    out.set_extension("metadata.json");
+    out.set_extension("metadata.mpk");
     out
 }
 
 /// Writes metadata for the cache entry at the given path.
 pub(crate) fn write_metadata(path: impl AsRef<Path>, metadata: &Metadata) -> io::Result<()> {
     let md_path = metadata_path(path);
-    let mut md_file = File::create(md_path)?;
-    serde_json::to_writer(&mut md_file, metadata)
+    let mut md_file = File::create(&md_path)?;
+    rmp_serde::encode::write(&mut md_file, metadata)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
 }
