@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::io;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -160,13 +161,13 @@ fn process_file(
 
         let mut out = match fs::File::create_new(&new_filename) {
             Ok(out) => out,
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
                 eprintln!(
                     "{}: File {} already exists, you seem to have duplicate debug files for ID {}.\n\
                     Skipping {filename}.",
                     style("WARNING").red().bold(),
                     new_filename.display(),
-                    get_unified_id(&obj).unwrap(),
+                    get_unified_id(&obj)?,
                 );
                 return Ok(vec![]);
             }
@@ -183,6 +184,43 @@ fn process_file(
     }
 
     Ok(rv)
+}
+
+fn process_zip_archive(
+    sort_config: &SortConfig,
+    bv: ByteView,
+    zip_file_name: &str,
+    debug_ids: &Mutex<Vec<String>>,
+) -> Result<()> {
+    let result: Result<()> = (|| {
+        let mut zip = ZipArchive::new(io::Cursor::new(bv))?;
+        for index in 0..zip.len() {
+            let zip_file = zip.by_index(index)?;
+            let name = zip_file.name().rsplit('/').next().unwrap().to_string();
+            let bv = ByteView::read(zip_file)?;
+            if Archive::peek(&bv) != FileFormat::Unknown {
+                debug_ids.lock().unwrap().extend(
+                    process_file(sort_config, bv, name)?
+                        .into_iter()
+                        .map(|x| x.0),
+                );
+            }
+        }
+        Ok(())
+    })();
+    if RunConfig::get().ignore_errors {
+        if let Err(err) = &result {
+            eprintln!(
+                "{}: ignored error {} ({})",
+                style("error").red().bold(),
+                err,
+                style(zip_file_name).cyan(),
+            );
+        }
+        Ok(())
+    } else {
+        result.with_context(|| format!("failed to process file {}", zip_file_name))
+    }
 }
 
 fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, usize)> {
@@ -207,19 +245,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 
             // zip archive
             if bv.get(..2) == Some(b"PK") {
-                let mut zip = ZipArchive::new(io::Cursor::new(&bv[..]))?;
-                for index in 0..zip.len() {
-                    let zip_file = zip.by_index(index)?;
-                    let name = zip_file.name().rsplit('/').next().unwrap().to_string();
-                    let bv = ByteView::read(zip_file)?;
-                    if Archive::peek(&bv) != FileFormat::Unknown {
-                        debug_ids.lock().unwrap().extend(
-                            process_file(sort_config, bv, name)?
-                                .into_iter()
-                                .map(|x| x.0),
-                        );
-                    }
-                }
+                process_zip_archive(sort_config, bv, path.to_string_lossy().deref(),  &debug_ids)?;
 
             // object file directly
             } else if Archive::peek(&bv) != FileFormat::Unknown {
@@ -275,7 +301,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
             .reduce(|| Ok(0), |sum, res| Ok(sum? + res?))?
     }
 
-    let debug_ids = debug_ids.into_inner().unwrap();
+    let debug_ids = debug_ids.into_inner()?;
     let num_debug_ids = debug_ids.len();
 
     if let Some(bundle_id) = &sort_config.bundle_id {
@@ -295,8 +321,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
     Ok((num_debug_ids, source_bundles_created))
 }
 
-fn execute() -> Result<()> {
-    let cli = Cli::parse();
+fn execute(cli: Cli) -> Result<()> {
     RunConfig::configure(|cfg| {
         cfg.ignore_errors = cli.ignore_errors;
         cfg.quiet = cli.quiet;
@@ -358,7 +383,9 @@ fn execute() -> Result<()> {
 }
 
 pub fn main() -> ! {
-    match execute() {
+    let cli = Cli::parse();
+    let ignore_errors = cli.ignore_errors;
+    match execute(cli) {
         Ok(()) => std::process::exit(0),
         Err(error) => {
             eprintln!("{}: {}", style("error").red().bold(), error);
@@ -366,8 +393,10 @@ pub fn main() -> ! {
                 eprintln!("{}", style(format!("  caused by {cause}")).dim());
             }
 
-            eprintln!();
-            eprintln!("To skip this error, use --ignore-errors.");
+            if !ignore_errors {
+                eprintln!();
+                eprintln!("To skip this error, use --ignore-errors.");
+            }
             std::process::exit(1);
         }
     }
