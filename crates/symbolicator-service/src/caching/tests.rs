@@ -19,11 +19,21 @@ use crate::test;
 use crate::types::Scope;
 
 use super::cache_error::cache_contents_from_bytes;
+use super::fs::metadata_path;
 use super::shared_cache::config::SharedCacheBackendConfig;
 use super::*;
 
 fn tempdir() -> io::Result<tempfile::TempDir> {
     tempfile::tempdir_in(".")
+}
+
+fn write_file_and_metadata(path: &Path, contents: &[u8]) -> Result<()> {
+    let md_path = metadata_path(path);
+    File::create(path)?.write_all(contents)?;
+
+    let mut md = File::create(md_path)?;
+    rmp_serde::encode::write(&mut md, &Metadata::fresh_scoped(Scope::Global))?;
+    Ok(())
 }
 
 #[test]
@@ -105,11 +115,16 @@ fn test_max_unused_for() -> Result<()> {
         1024,
     )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"")?;
+    // Will be deleted because it's OK and after the sleep the unused time will have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"hi")?;
+    // Will be kept because it's empty (not found) and the default "retry missing" time of 1h hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"")?;
+
     sleep(Duration::from_millis(100));
 
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
+    // Will be deleted because it's OK and the unused time will not have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+
     cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
@@ -118,7 +133,15 @@ fn test_max_unused_for() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+        ]
+    );
 
     Ok(())
 }
@@ -143,11 +166,15 @@ fn test_retry_misses_after() -> Result<()> {
         1024,
     )?;
 
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"")?;
+    // Will be kept because it's OK and the default unused time of 7d hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"hi")?;
+    // Will be deleted because it's empty and after the sleep the "retry missing" time will have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"")?;
+
     sleep(Duration::from_millis(100));
 
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"")?;
+    // Will be kept because it's empty and the "retry missing" time hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"")?;
     cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
@@ -156,7 +183,15 @@ fn test_retry_misses_after() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -171,12 +206,15 @@ fn test_cleanup_malformed() -> Result<()> {
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
     // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"addictive")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis3"),
+        b"honkhonkbeepbeep",
+    )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"malformed")?;
-    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"malformedhonk")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"malformed")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"malformedhonk")?;
 
     sleep(Duration::from_millis(10));
 
@@ -201,7 +239,17 @@ fn test_cleanup_malformed() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+            "keepthis3",
+            "keepthis3.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -215,14 +263,26 @@ fn test_cleanup_cache_download() -> Result<()> {
     };
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"beeep")?;
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"beeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis3"),
+        b"honkhonkbeepbeep",
+    )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"downloaderrorhonk")?;
-    File::create(tempdir.path().join("objects/killthis3"))?.write_all(b"downloaderrormalformed")?;
-    File::create(tempdir.path().join("objects/killthis4"))?.write_all(b"malformeddownloaderror")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"downloaderror")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis2"),
+        b"downloaderrorhonk",
+    )?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis3"),
+        b"downloaderrormalformed",
+    )?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis4"),
+        b"malformeddownloaderror",
+    )?;
 
     let cache = Cache::from_config(
         CacheName::Objects,
@@ -245,7 +305,17 @@ fn test_cleanup_cache_download() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+            "keepthis3",
+            "keepthis3.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -404,7 +474,7 @@ fn test_cleanup() {
         let dir = tempdir.path().join(cache_name);
         fs::create_dir(&dir).unwrap();
         let entry = dir.join("entry");
-        fs::write(&entry, "contents").unwrap();
+        write_file_and_metadata(&entry, b"contents").unwrap();
         filetime::set_file_mtime(&entry, mtime).unwrap();
         entry
     };

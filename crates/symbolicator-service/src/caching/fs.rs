@@ -21,6 +21,9 @@ use super::{CacheContents, CacheEntry, CacheError, CacheName, Metadata};
 /// This is being debounced to once every hour to not have to touch them on every single use.
 const TOUCH_EVERY: Duration = Duration::from_secs(3600);
 
+/// Extension for [`Metadata`] files.
+pub(crate) const METADATA_EXTENSION: &str = "metadata";
+
 /// Common cache configuration.
 ///
 /// Many parts of Symbolicator use a cache to save having to re-download data or reprocess
@@ -366,7 +369,7 @@ where
 /// for a cache file.
 pub(crate) fn metadata_path(path: impl AsRef<Path>) -> PathBuf {
     let mut out = path.as_ref().to_path_buf();
-    out.set_extension("metadata.mpk");
+    out.set_extension(METADATA_EXTENSION);
     out
 }
 

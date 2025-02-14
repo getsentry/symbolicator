@@ -504,7 +504,7 @@ async fn test_basic_windows() {
                         "{metadata:?} == {expected_metadata:?}"
                     );
 
-                    // Checks the metadata.mpk metadata file
+                    // Checks the metadata file
                     let metadata_file = &cached_objects[1].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
                     let file = File::open(objects_dir.join(metadata_file)).unwrap();
