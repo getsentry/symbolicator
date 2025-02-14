@@ -221,7 +221,7 @@ impl Cache {
         })
     }
 
-    /// Reads [`Metadata`] for the cache entry in `path` from the file at `path.md`.
+    /// Reads [`Metadata`] for the cache entry in `path` from the file at `path.metadata`.
     ///
     /// If the metadata file doesn't exist, this returns `Ok(None)`.
     pub fn read_metadata(&self, path: &Path) -> io::Result<Option<Metadata>> {
