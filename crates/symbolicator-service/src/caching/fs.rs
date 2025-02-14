@@ -382,7 +382,7 @@ where
 /// for a cache file.
 pub(crate) fn metadata_path(path: impl AsRef<Path>) -> PathBuf {
     let mut out = path.as_ref().to_path_buf();
-    out.set_extension("md");
+    out.set_extension("metadata.json");
     out
 }
 
