@@ -1,6 +1,5 @@
 use std::borrow::Cow;
-use std::io::{self, Read};
-use std::path::Path;
+use std::io;
 use std::time::Duration;
 
 use humantime_serde::re::humantime::{format_duration, parse_duration};
@@ -76,12 +75,6 @@ impl CacheError {
     pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = b"downloaderror";
     pub(super) const UNSUPPORTED_MARKER: &'static [u8] = b"unsupported";
 
-    /// Maximum length of the error markers.
-    ///
-    /// This is the amount of bytes that need to be minimum read from a file to recover
-    /// the contained error.
-    const MAX_LEN_ERROR_MARKER: u64 = 32;
-
     /// Writes error markers and details to a file.
     ///
     /// * If `self` is [`InternalError`](Self::InternalError), it does nothing.
@@ -129,18 +122,6 @@ impl CacheError {
         file.set_len(new_len).await?;
 
         Ok(())
-    }
-
-    /// Reads an error from a cache file.
-    ///
-    /// Returns `None` if the file does not contain any known error.
-    pub(super) fn from_path(path: &Path) -> io::Result<Option<Self>> {
-        // No buffered reader, because we read a small fixed amount of bytes.
-        let file = std::fs::File::open(path)?;
-        let mut buffer = Vec::new();
-        file.take(Self::MAX_LEN_ERROR_MARKER)
-            .read_to_end(&mut buffer)?;
-        Ok(Self::from_bytes(&buffer))
     }
 
     /// Parses a `CacheError` from a byte slice.
