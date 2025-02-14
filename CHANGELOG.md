@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621)
+
 ### Dependencies
 
 - Bump Native SDK from v0.7.17 to v0.7.20 ([#1596](https://github.com/getsentry/symbolicator/pull/1596), [#1602](https://github.com/getsentry/symbolicator/pull/1602), [#1609](https://github.com/getsentry/symbolicator/pull/1609))
