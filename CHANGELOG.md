@@ -4,7 +4,7 @@
 
 ### Various fixes & improvements
 
-fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#11621](https://github.com/getsentry/symbolicator/pull/1621)
+fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621)
 
 ### Dependencies
 
