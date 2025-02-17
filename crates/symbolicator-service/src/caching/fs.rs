@@ -129,9 +129,6 @@ impl Cache {
             (mtime, ctime)
         };
 
-        let atime_elapsed = atime.elapsed().unwrap_or_default();
-        let ctime_elapsed = ctime.elapsed().unwrap_or_default();
-
         // Open the cache file itself
         let bv = ByteView::open(path)?;
         let contents = cache_contents_from_bytes(bv);
@@ -143,7 +140,34 @@ impl Cache {
         //   conversion. ctime indicates when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
-        let expiration_time = match expiration_strategy(&contents) {
+        let expiration_time = self.compute_expiration_time(&contents, atime, ctime)?;
+
+        Ok((
+            CacheEntry {
+                metadata: external_metadata,
+                contents,
+            },
+            expiration_time,
+        ))
+    }
+
+    /// Computes an [`ExpirationTime`] for a given [`CacheContents`]
+    /// which was last accessed at `atime` and originally written at `ctime`.
+    ///
+    /// The returned `ExpirationTime` determines when the cache contents should
+    /// be touched to keep them alive or recomputed entirely.
+    ///
+    /// If the file is expired, this returns [`io::ErrorKind::NotFound`].
+    fn compute_expiration_time<T>(
+        &self,
+        contents: &CacheContents<T>,
+        atime: SystemTime,
+        ctime: SystemTime,
+    ) -> io::Result<ExpirationTime> {
+        let atime_elapsed = atime.elapsed().unwrap_or_default();
+        let ctime_elapsed = ctime.elapsed().unwrap_or_default();
+
+        match expiration_strategy(contents) {
             ExpirationStrategy::None => {
                 let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
 
@@ -153,7 +177,7 @@ impl Cache {
 
                 // we want to touch good caches once every `TOUCH_EVERY`
                 let touch_in = TOUCH_EVERY.saturating_sub(atime_elapsed);
-                ExpirationTime::TouchIn(touch_in)
+                Ok(ExpirationTime::TouchIn(touch_in))
             }
             ExpirationStrategy::Negative => {
                 let retry_misses_after = self
@@ -167,7 +191,7 @@ impl Cache {
                     return Err(io::ErrorKind::NotFound.into());
                 }
 
-                ExpirationTime::RefreshIn(expires_in)
+                Ok(ExpirationTime::RefreshIn(expires_in))
             }
             ExpirationStrategy::Malformed => {
                 let retry_malformed_after = self
@@ -184,17 +208,9 @@ impl Cache {
                     return Err(io::ErrorKind::NotFound.into());
                 }
 
-                ExpirationTime::RefreshIn(expires_in)
+                Ok(ExpirationTime::RefreshIn(expires_in))
             }
-        };
-
-        Ok((
-            CacheEntry {
-                metadata: external_metadata,
-                contents,
-            },
-            expiration_time,
-        ))
+        }
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
