@@ -6,6 +6,12 @@ use symbolicator_sources::RemoteFile;
 
 use crate::types::Scope;
 
+/// The key of an item in an in-memory or on-disk
+/// cache.
+///
+/// Each key belongs to a [Scope], determined by
+/// the scope of the symbolication request and the symbol
+/// source in question.
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
     scope: Scope,
@@ -14,6 +20,7 @@ pub struct CacheKey {
 }
 
 impl CacheKey {
+    /// Returns the scope of this cache key.
     pub fn scope(&self) -> &Scope {
         &self.scope
     }
@@ -88,7 +95,7 @@ impl CacheKey {
 ///
 /// This builder implements the [`Write`] trait, and the intention of it is to
 /// accept human readable, but most importantly **stable**, input.
-/// This input in then being hashed to form the [`CacheKey`], and can also be serialized alongside
+/// This input is then hashed to form the [`CacheKey`], and can also be serialized alongside
 /// the cache files to help debugging.
 pub struct CacheKeyBuilder {
     scope: Scope,
