@@ -6,9 +6,16 @@ use crate::types::Scope;
 
 use super::{CacheContents, CacheError};
 
+/// Metadata associated with a cache entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Metadata {
+    /// The scope of the cache entry. This is either a project ID
+    /// or [`Scope::Global`] if the item came from a public source.
     pub scope: Scope,
+    /// The time this cache entry was created.
+    ///
+    /// This is serialized with second precision.
+    #[serde(with = "timestamp")]
     pub time_created: SystemTime,
 }
 
@@ -20,6 +27,53 @@ impl Metadata {
             scope,
             time_created: now,
         }
+    }
+}
+
+/// Module for second-precision [`SystemTime`] de/serialization.
+mod timestamp {
+    use std::time::{Duration, SystemTime};
+
+    use serde::{de, de::Error as _, ser::Error as _, Deserializer, Serializer};
+
+    /// Serializes a [`SystemTime`] as seconds since the UNIX epoch.
+    pub(super) fn serialize<S>(timestamp: &SystemTime, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let Ok(since_epoch) = timestamp.duration_since(SystemTime::UNIX_EPOCH) else {
+            // copied from the impl of `Serialize` for `SystemTime`
+            return Err(S::Error::custom("SystemTime must be later than UNIX_EPOCH"));
+        };
+        s.serialize_u64(since_epoch.as_secs())
+    }
+
+    /// Deserializes a [`SystemTime`] from seconds since the UNIX epoch.
+    pub(super) fn deserialize<'de, D>(deserializer: D) -> Result<SystemTime, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct SecsDurationVisitor;
+        impl serde::de::Visitor<'_> for SecsDurationVisitor {
+            type Value = Duration;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a duration in seconds")
+            }
+
+            fn visit_u64<E>(self, secs: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Duration::from_secs(secs))
+            }
+        }
+
+        let secs_since_epoch = deserializer.deserialize_u64(SecsDurationVisitor)?;
+        SystemTime::UNIX_EPOCH
+            .checked_add(secs_since_epoch)
+            // copied from the impl of `Deserialize` for `SystemTime`
+            .ok_or_else(|| D::Error::custom("overflow deserializing SystemTime"))
     }
 }
 
@@ -76,5 +130,36 @@ impl<T> CacheEntry<T> {
     /// Consumes this entry and returns the contents.
     pub fn into_contents(self) -> CacheContents<T> {
         self.contents
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, SystemTime};
+
+    use crate::types::Scope;
+
+    use super::Metadata;
+
+    /// Serializing and deserializing a timestamp should lose
+    /// at most one second.
+    #[test]
+    fn timestamp_serialization_delta() {
+        let now = SystemTime::now();
+
+        let metadata = Metadata {
+            scope: Scope::Global,
+            time_created: now,
+        };
+
+        let serialized = serde_json::to_string(&metadata).unwrap();
+        let deserialized: Metadata = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.scope, metadata.scope);
+        let time_delta = metadata
+            .time_created
+            .duration_since(deserialized.time_created)
+            .unwrap();
+        assert!(time_delta < Duration::from_secs(1));
     }
 }
