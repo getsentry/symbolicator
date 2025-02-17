@@ -159,7 +159,7 @@ fn test_retry_misses_after() -> Result<()> {
         CacheName::Objects,
         &config,
         CacheConfig::Derived(DerivedCacheConfig {
-            retry_misses_after: Some(Duration::from_millis(50)),
+            retry_misses_after: Some(Duration::from_secs(1)),
             ..Default::default()
         }),
         Default::default(),
@@ -171,10 +171,26 @@ fn test_retry_misses_after() -> Result<()> {
     // Will be deleted because it's empty and after the sleep the "retry missing" time will have passed.
     write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"")?;
 
-    sleep(Duration::from_millis(100));
+    sleep(Duration::from_secs(1));
+
+    // Create a file with a creation time 1 sec in the past. It should be deleted.
+    File::create(tempdir.path().join("objects/killthis2"))
+        .unwrap()
+        .write_all(b"")
+        .unwrap();
+    let metadata = Metadata {
+        scope: Scope::Global,
+        time_created: SystemTime::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap(),
+    };
+    let md_path = metadata_path(tempdir.path().join("objects/killthis2"));
+    let mut md = File::create(md_path).unwrap();
+    serde_json::to_writer(&mut md, &metadata).unwrap();
 
     // Will be kept because it's empty and the "retry missing" time hasn't passed.
     write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"")?;
+
     cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?

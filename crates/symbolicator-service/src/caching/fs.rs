@@ -115,14 +115,18 @@ impl Cache {
         let external_metadata: Option<Metadata> = self.read_metadata(path)?;
 
         let (atime, ctime) = {
-            // We use `mtime` to keep track of both "cache last used" and "cache created" depending on
+            // If the `ctime` from the external metadata is available, we use it. Otherwise
+            // we use `mtime` to keep track of both "cache last used" and "cache created" depending on
             // whether the file is a negative cache item or not, because literally every other
             // filesystem attribute is unreliable.
             //
             // * creation time does not exist pre-Linux 4.11
             // * most filesystems are mounted with noatime
             let mtime = fs_metadata.modified()?;
-            (mtime, mtime)
+            let ctime = external_metadata
+                .as_ref()
+                .map_or(mtime, |md| md.time_created);
+            (mtime, ctime)
         };
 
         let atime_elapsed = atime.elapsed().unwrap_or_default();
