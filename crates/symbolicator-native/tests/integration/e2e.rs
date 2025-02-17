@@ -508,7 +508,7 @@ async fn test_basic_windows() {
                     let metadata_file = &cached_objects[1].0;
                     let cached_scope = if is_public { "global" } else { "myscope" };
                     let file = File::open(objects_dir.join(metadata_file)).unwrap();
-                    let metadata: Metadata = rmp_serde::decode::from_read(&file).unwrap();
+                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
                     assert_eq!(metadata.scope.as_ref(), cached_scope);
 
                     let symcaches_dir = cache_dir.path().join("symcaches");
@@ -528,7 +528,7 @@ async fn test_basic_windows() {
                     // Checks the metadata file
                     let metadata_file = &cached_symcaches[0].0;
                     let file = File::open(symcaches_dir.join(metadata_file)).unwrap();
-                    let metadata: Metadata = rmp_serde::decode::from_read(&file).unwrap();
+                    let metadata: Metadata = serde_json::from_reader(&file).unwrap();
                     assert_eq!(metadata.scope.as_ref(), cached_scope);
                 }
 

@@ -32,7 +32,7 @@ fn write_file_and_metadata(path: &Path, contents: &[u8]) -> Result<()> {
     File::create(path)?.write_all(contents)?;
 
     let mut md = File::create(md_path)?;
-    rmp_serde::encode::write(&mut md, &Metadata::fresh_scoped(Scope::Global))?;
+    serde_json::to_writer(&mut md, &Metadata::fresh_scoped(Scope::Global))?;
     Ok(())
 }
 
