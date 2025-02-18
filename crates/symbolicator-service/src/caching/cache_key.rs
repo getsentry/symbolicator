@@ -15,7 +15,7 @@ use crate::types::Scope;
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
     scope: Scope,
-    metadata: Arc<str>,
+    pub(crate) metadata: Arc<str>,
     hash: [u8; 32],
 }
 

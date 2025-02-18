@@ -224,7 +224,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             // TODO: Here we create fresh metadata upon fetching from the shared cache.
             // Ideally we would obviously want to share these metadata, but this is left
             // as future work.
-            metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
+            metadata = Some(Metadata::from_key(key));
             let temp_fd = match temp_file.reopen() {
                 Ok(fd) => fd,
                 Err(e) => return CacheEntry::from_err(e),
@@ -256,7 +256,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                         Err(e) => return CacheEntry::from_err(e),
                     };
                     entry = Ok(byte_view);
-                    metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
+                    metadata = Some(Metadata::from_key(key));
                 }
                 Err(CacheError::InternalError) => {
                     // If there was an `InternalError` during computation (for instance because
@@ -275,7 +275,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     };
 
                     entry = Err(err);
-                    metadata = Some(Metadata::fresh_scoped(key.scope().clone()));
+                    metadata = Some(Metadata::from_key(key));
                 }
             }
         }
@@ -350,16 +350,6 @@ impl<T: CacheItemRequest> Cacher<T> {
                     }
                 }
             }
-
-            #[cfg(debug_assertions)]
-            {
-                let mut cache_path = cache_path;
-                // NOTE: we only create the metadata file once, but do not regularly touch it for now
-                cache_path.set_extension("txt");
-                if let Err(err) = std::fs::write(cache_path, key.metadata()) {
-                    tracing::error!(error = &err as &dyn std::error::Error);
-                }
-            }
         };
 
         // TODO: Not handling negative caches probably has a huge perf impact.  Need to
@@ -416,7 +406,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                             let deadline =
                                 ExpirationTime::for_fresh_status(&self.config, &contents)
                                     .as_instant();
-                            let metadata = Some(Metadata::fresh_scoped(cache_key.scope().clone()));
+                            let metadata = Some(Metadata::from_key(&cache_key));
                             let data = CacheEntry { metadata, contents };
                             return InMemoryItem { deadline, data };
                         }

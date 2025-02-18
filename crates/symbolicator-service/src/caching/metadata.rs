@@ -1,10 +1,10 @@
-use std::time::SystemTime;
+use std::{sync::Arc, time::SystemTime};
 
 use serde::{Deserialize, Serialize};
 
 use crate::types::Scope;
 
-use super::{CacheContents, CacheError};
+use super::{CacheContents, CacheError, CacheKey};
 
 /// Metadata associated with a cache entry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -17,15 +17,47 @@ pub struct Metadata {
     /// This is serialized with second precision.
     #[serde(with = "timestamp")]
     pub time_created: SystemTime,
+
+    /// Optional data for debugging.
+    ///
+    /// See [Self::from_key] for how this is populated.
+    pub debug: Option<Arc<str>>,
 }
 
 impl Metadata {
+    /// Creates metadata from a cache key.
+    ///
+    /// In debug mode, this adds the key's [`metadata`](CacheKey::metadata)
+    /// in the `debug` field.
+    pub(crate) fn from_key(cache_key: &CacheKey) -> Self {
+        let time_created = SystemTime::now();
+        let scope = cache_key.scope().clone();
+        #[cfg(debug_assertions)]
+        {
+            Self {
+                scope,
+                time_created,
+                debug: Some(cache_key.metadata.clone()),
+            }
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            Self {
+                scope,
+                time_created,
+                debug: None,
+            }
+        }
+    }
+
+    #[cfg(test)]
     /// Creates metadata for freshly computed data.
     pub(crate) fn fresh_scoped(scope: Scope) -> Self {
         let now = SystemTime::now();
         Self {
             scope,
             time_created: now,
+            debug: None,
         }
     }
 }
@@ -134,6 +166,7 @@ mod tests {
         let metadata = Metadata {
             scope: Scope::Global,
             time_created: now,
+            debug: None,
         };
 
         let serialized = serde_json::to_string(&metadata).unwrap();
