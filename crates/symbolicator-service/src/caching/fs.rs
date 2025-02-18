@@ -10,6 +10,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
+use crate::types::Scope;
 
 use super::cache_error::cache_contents_from_bytes;
 use super::{CacheContents, CacheEntry, CacheError, CacheName, Metadata};
@@ -133,6 +134,10 @@ impl Cache {
         let bv = ByteView::open(path)?;
         let contents = cache_contents_from_bytes(bv);
 
+        // A cache entry is considered "public" if it came from a request with global scope.
+        let is_public = external_metadata
+            .as_ref()
+            .is_some_and(|md| md.scope == Scope::Global);
         // States a cache item can be in:
         // * negative/empty: An empty file. Represents a failed download. ctime is used to indicate
         //   when the failed download happened (when the file was created)
@@ -140,7 +145,7 @@ impl Cache {
         //   conversion. ctime indicates when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
-        let expiration_time = self.compute_expiration_time(&contents, atime, ctime)?;
+        let expiration_time = self.compute_expiration_time(&contents, atime, ctime, is_public)?;
 
         Ok((
             CacheEntry {
@@ -157,12 +162,17 @@ impl Cache {
     /// The returned `ExpirationTime` determines when the cache contents should
     /// be touched to keep them alive or recomputed entirely.
     ///
+    /// Negative cache entries for "public" files have a different (typically longer)
+    /// lifetime than "private" (project-specific) ones. This is because public symbol
+    /// sources are expected to change much more slowly.
+    ///
     /// If the file is expired, this returns [`io::ErrorKind::NotFound`].
     fn compute_expiration_time<T>(
         &self,
         contents: &CacheContents<T>,
         atime: SystemTime,
         ctime: SystemTime,
+        is_public: bool,
     ) -> io::Result<ExpirationTime> {
         let atime_elapsed = atime.elapsed().unwrap_or_default();
         let ctime_elapsed = ctime.elapsed().unwrap_or_default();
@@ -180,10 +190,15 @@ impl Cache {
                 Ok(ExpirationTime::TouchIn(touch_in))
             }
             ExpirationStrategy::Negative => {
-                let retry_misses_after = self
-                    .cache_config
-                    .retry_misses_after()
-                    .unwrap_or(Duration::MAX);
+                let retry_misses_after = if is_public {
+                    self.cache_config
+                        .retry_misses_after_public()
+                        .unwrap_or(Duration::MAX)
+                } else {
+                    self.cache_config
+                        .retry_misses_after()
+                        .unwrap_or(Duration::MAX)
+                };
 
                 let expires_in = retry_misses_after.saturating_sub(ctime_elapsed);
 
