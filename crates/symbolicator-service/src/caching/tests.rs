@@ -16,13 +16,24 @@ use crate::config::{
     CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
 };
 use crate::test;
+use crate::types::Scope;
 
 use super::cache_error::cache_contents_from_bytes;
+use super::fs::metadata_path;
 use super::shared_cache::config::SharedCacheBackendConfig;
 use super::*;
 
 fn tempdir() -> io::Result<tempfile::TempDir> {
     tempfile::tempdir_in(".")
+}
+
+fn write_file_and_metadata(path: &Path, contents: &[u8]) -> Result<()> {
+    let md_path = metadata_path(path);
+    File::create(path)?.write_all(contents)?;
+
+    let mut md = File::create(md_path)?;
+    serde_json::to_writer(&mut md, &Metadata::fresh_scoped(Scope::Global))?;
+    Ok(())
 }
 
 #[test]
@@ -104,11 +115,16 @@ fn test_max_unused_for() -> Result<()> {
         1024,
     )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"")?;
+    // Will be deleted because it's OK and after the sleep the unused time will have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"hi")?;
+    // Will be kept because it's empty (not found) and the default "retry missing" time of 1h hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"")?;
+
     sleep(Duration::from_millis(100));
 
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
+    // Will be deleted because it's OK and the unused time will not have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+
     cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
@@ -117,7 +133,15 @@ fn test_max_unused_for() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+        ]
+    );
 
     Ok(())
 }
@@ -135,18 +159,38 @@ fn test_retry_misses_after() -> Result<()> {
         CacheName::Objects,
         &config,
         CacheConfig::Derived(DerivedCacheConfig {
-            retry_misses_after: Some(Duration::from_millis(50)),
+            retry_misses_after: Some(Duration::from_secs(1)),
             ..Default::default()
         }),
         Default::default(),
         1024,
     )?;
 
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"")?;
-    sleep(Duration::from_millis(100));
+    // Will be kept because it's OK and the default unused time of 7d hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"hi")?;
+    // Will be deleted because it's empty and after the sleep the "retry missing" time will have passed.
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"")?;
 
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"")?;
+    sleep(Duration::from_secs(1));
+
+    // Create a file with a creation time 1 sec in the past. It should be deleted.
+    File::create(tempdir.path().join("objects/killthis2"))
+        .unwrap()
+        .write_all(b"")
+        .unwrap();
+    let metadata = Metadata {
+        scope: Scope::Global,
+        time_created: SystemTime::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap(),
+    };
+    let md_path = metadata_path(tempdir.path().join("objects/killthis2"));
+    let mut md = File::create(md_path).unwrap();
+    serde_json::to_writer(&mut md, &metadata).unwrap();
+
+    // Will be kept because it's empty and the "retry missing" time hasn't passed.
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"")?;
+
     cache.cleanup(false)?;
 
     let mut basenames: Vec<_> = fs::read_dir(tempdir.path().join("objects"))?
@@ -155,7 +199,15 @@ fn test_retry_misses_after() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -170,12 +222,15 @@ fn test_cleanup_malformed() -> Result<()> {
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
     // File has same amount of chars as "malformed", check that optimization works
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"addictive")?;
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"addictive")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis3"),
+        b"honkhonkbeepbeep",
+    )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"malformed")?;
-    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"malformedhonk")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"malformed")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"malformedhonk")?;
 
     sleep(Duration::from_millis(10));
 
@@ -200,7 +255,17 @@ fn test_cleanup_malformed() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+            "keepthis3",
+            "keepthis3.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -214,14 +279,26 @@ fn test_cleanup_cache_download() -> Result<()> {
     };
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
-    File::create(tempdir.path().join("objects/keepthis"))?.write_all(b"beeep")?;
-    File::create(tempdir.path().join("objects/keepthis2"))?.write_all(b"hi")?;
-    File::create(tempdir.path().join("objects/keepthis3"))?.write_all(b"honkhonkbeepbeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"beeep")?;
+    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis3"),
+        b"honkhonkbeepbeep",
+    )?;
 
-    File::create(tempdir.path().join("objects/killthis"))?.write_all(b"downloaderror")?;
-    File::create(tempdir.path().join("objects/killthis2"))?.write_all(b"downloaderrorhonk")?;
-    File::create(tempdir.path().join("objects/killthis3"))?.write_all(b"downloaderrormalformed")?;
-    File::create(tempdir.path().join("objects/killthis4"))?.write_all(b"malformeddownloaderror")?;
+    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"downloaderror")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis2"),
+        b"downloaderrorhonk",
+    )?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis3"),
+        b"downloaderrormalformed",
+    )?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis4"),
+        b"malformeddownloaderror",
+    )?;
 
     let cache = Cache::from_config(
         CacheName::Objects,
@@ -244,7 +321,17 @@ fn test_cleanup_cache_download() -> Result<()> {
 
     basenames.sort();
 
-    assert_eq!(basenames, vec!["keepthis", "keepthis2", "keepthis3"]);
+    assert_eq!(
+        basenames,
+        vec![
+            "keepthis",
+            "keepthis.metadata",
+            "keepthis2",
+            "keepthis2.metadata",
+            "keepthis3",
+            "keepthis3.metadata"
+        ]
+    );
 
     Ok(())
 }
@@ -384,7 +471,7 @@ fn test_open_cachefile() -> Result<()> {
 
     // Open it with the cache, check contents and new mtime.
     let (entry, _expiration) = cache.open_cachefile(&path)?.expect("No file found");
-    assert_eq!(entry.unwrap().as_slice(), b"world");
+    assert_eq!(entry.contents().as_ref().unwrap().as_slice(), b"world");
 
     let new_mtime = fs::metadata(&path)?.modified()?;
     assert!(old_mtime < new_mtime);
@@ -403,7 +490,7 @@ fn test_cleanup() {
         let dir = tempdir.path().join(cache_name);
         fs::create_dir(&dir).unwrap();
         let entry = dir.join("entry");
-        fs::write(&entry, "contents").unwrap();
+        write_file_and_metadata(&entry, b"contents").unwrap();
         filetime::set_file_mtime(&entry, mtime).unwrap();
         entry
     };
@@ -782,7 +869,7 @@ async fn test_cache_fallback() {
     let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
-    let key = CacheKey::for_testing("global/some_cache_key");
+    let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
     let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
     fs::create_dir_all(very_old_cache_file.parent().unwrap()).unwrap();
@@ -841,7 +928,7 @@ async fn test_cache_fallback_notfound() {
     let cache_dir = test::tempdir();
 
     let request = TestCacheItem::new();
-    let key = CacheKey::for_testing("global/some_cache_key");
+    let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
     {
         let cache_dir = cache_dir.path().join("objects");
@@ -900,7 +987,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey::for_testing(*key);
+        let key = CacheKey::for_testing(Scope::Global, *key);
 
         let cache_file = cache_dir.join(key.cache_path(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
@@ -924,7 +1011,7 @@ async fn test_lazy_computation_limit() {
 
     for key in keys {
         let request = request.clone();
-        let key = CacheKey::for_testing(*key);
+        let key = CacheKey::for_testing(Scope::Global, *key);
 
         let result = cacher.compute_memoized(request.clone(), key).await;
         if result.contents().as_ref().unwrap().as_str() == "some old cached contents" {
@@ -982,7 +1069,7 @@ async fn test_failing_cache_write() {
 
     // Case 1: internal error
     let request = FailingTestCacheItem(CacheError::InternalError);
-    let key = CacheKey::for_testing("global/internal_error");
+    let key = CacheKey::for_testing(Scope::Global, "global/internal_error");
 
     let entry = cacher
         .compute_memoized(request, key.clone())
@@ -998,7 +1085,7 @@ async fn test_failing_cache_write() {
 
     // Case 2: malformed error
     let request = FailingTestCacheItem(CacheError::Malformed("this is garbage".to_owned()));
-    let key = CacheKey::for_testing("global/malformed");
+    let key = CacheKey::for_testing(Scope::Global, "global/malformed");
 
     let entry = cacher
         .compute_memoized(request, key.clone())

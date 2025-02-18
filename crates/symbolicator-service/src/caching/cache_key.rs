@@ -6,10 +6,24 @@ use symbolicator_sources::RemoteFile;
 
 use crate::types::Scope;
 
+/// The key of an item in an in-memory or on-disk
+/// cache.
+///
+/// Each key belongs to a [Scope], determined by
+/// the scope of the symbolication request and the symbol
+/// source in question.
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
+    scope: Scope,
     metadata: Arc<str>,
     hash: [u8; 32],
+}
+
+impl CacheKey {
+    /// Returns the scope of this cache key.
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
 }
 
 impl fmt::Display for CacheKey {
@@ -63,14 +77,17 @@ impl CacheKey {
     /// contributing sources.
     pub fn scoped_builder(scope: &Scope) -> CacheKeyBuilder {
         let metadata = format!("scope: {scope}\n\n");
-        CacheKeyBuilder { metadata }
+        CacheKeyBuilder {
+            scope: scope.clone(),
+            metadata,
+        }
     }
 
     #[cfg(test)]
-    pub fn for_testing(key: impl Into<String>) -> Self {
+    pub fn for_testing(scope: Scope, key: impl Into<String>) -> Self {
         let metadata = key.into();
 
-        CacheKeyBuilder { metadata }.build()
+        CacheKeyBuilder { scope, metadata }.build()
     }
 }
 
@@ -78,9 +95,10 @@ impl CacheKey {
 ///
 /// This builder implements the [`Write`] trait, and the intention of it is to
 /// accept human readable, but most importantly **stable**, input.
-/// This input in then being hashed to form the [`CacheKey`], and can also be serialized alongside
+/// This input is then hashed to form the [`CacheKey`], and can also be serialized alongside
 /// the cache files to help debugging.
 pub struct CacheKeyBuilder {
+    scope: Scope,
     metadata: String,
 }
 
@@ -99,6 +117,7 @@ impl CacheKeyBuilder {
         let hash = Sha256::digest(&self.metadata);
 
         CacheKey {
+            scope: self.scope,
             metadata: self.metadata.into(),
             hash: hash.into(),
         }

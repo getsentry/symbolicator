@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs::{read_dir, remove_dir, remove_file};
 use std::io;
 use std::path::Path;
@@ -6,6 +7,7 @@ use anyhow::{anyhow, Result};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 
+use crate::caching::fs::{metadata_path, METADATA_EXTENSION};
 use crate::config::Config;
 use crate::metric;
 
@@ -166,6 +168,10 @@ impl Cache {
         let mut is_empty = true;
         for entry in entries {
             let path = entry?.path();
+            // Skip metadata files—they will be handled together with their cache files.
+            if path.extension().and_then(OsStr::to_str) == Some(METADATA_EXTENSION) {
+                continue;
+            }
             if path.is_dir() {
                 let mut dir_is_empty = self.cleanup_directory_recursive(&path, stats, dry_run)?;
                 if dir_is_empty {
@@ -204,6 +210,7 @@ impl Cache {
 
     /// Tries to clean up the file at `path`, returning `true` if it was removed.
     ///
+    /// This also removes the file's corresponding metadata file, if it exists.
     /// If `dry_run` is `true`, the file will not actually be deleted.
     fn try_cleanup_path(
         &self,
@@ -222,16 +229,18 @@ impl Cache {
             tracing::debug!("Removing file `{}`", path.display());
             if !dry_run {
                 catch_not_found(|| remove_file(path))?;
+                catch_not_found(|| remove_file(metadata_path(path)))?;
             }
 
             stats.removed_bytes += size;
             stats.removed_files += 1;
 
-            return Ok(true);
-        }
-        stats.retained_bytes += size;
-        stats.retained_files += 1;
+            Ok(true)
+        } else {
+            stats.retained_bytes += size;
+            stats.retained_files += 1;
 
-        Ok(false)
+            Ok(false)
+        }
     }
 }
