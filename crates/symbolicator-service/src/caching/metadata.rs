@@ -34,7 +34,7 @@ impl Metadata {
 mod timestamp {
     use std::time::{Duration, SystemTime};
 
-    use serde::{de, de::Error as _, ser::Error as _, Deserializer, Serializer};
+    use serde::{de::Error as _, ser::Error as _, Deserialize, Deserializer, Serializer};
 
     /// Serializes a [`SystemTime`] as seconds since the UNIX epoch.
     pub(super) fn serialize<S>(timestamp: &SystemTime, s: S) -> Result<S::Ok, S::Error>
@@ -53,25 +53,9 @@ mod timestamp {
     where
         D: Deserializer<'de>,
     {
-        struct SecsDurationVisitor;
-        impl serde::de::Visitor<'_> for SecsDurationVisitor {
-            type Value = Duration;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(formatter, "a duration in seconds")
-            }
-
-            fn visit_u64<E>(self, secs: u64) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                Ok(Duration::from_secs(secs))
-            }
-        }
-
-        let secs_since_epoch = deserializer.deserialize_u64(SecsDurationVisitor)?;
+        let secs = u64::deserialize(deserializer)?;
         SystemTime::UNIX_EPOCH
-            .checked_add(secs_since_epoch)
+            .checked_add(Duration::from_secs(secs))
             // copied from the impl of `Deserialize` for `SystemTime`
             .ok_or_else(|| D::Error::custom("overflow deserializing SystemTime"))
     }
