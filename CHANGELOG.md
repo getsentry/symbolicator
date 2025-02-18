@@ -4,7 +4,10 @@
 
 ### Various fixes & improvements
 
-fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621)
+fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621))
+feat: Added a setting `retry_missing_after_public` to downloaded and derived cache configs.
+      The effect of this setting is to control the time after which negative (missing, failed download, &c.)
+      cache entries from public sources. The default value is 24h. ([#1623](https://github.com/getsentry/symbolicator/pull/1623))
 
 ### Dependencies
 
