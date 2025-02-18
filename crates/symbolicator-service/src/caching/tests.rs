@@ -12,9 +12,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use crate::config::{
-    CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
-};
+use crate::config::{CacheConfig, CacheConfigs, DerivedCacheConfig, DownloadedCacheConfig};
 use crate::test;
 use crate::types::Scope;
 
@@ -196,6 +194,21 @@ fn test_retry_misses_after() -> Result<()> {
     write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"", scope.clone())?;
 
     sleep(Duration::from_secs(1));
+
+    // Create a file with a creation time 1 sec in the past. It should be deleted.
+    File::create(tempdir.path().join("objects/killthis2"))
+        .unwrap()
+        .write_all(b"")
+        .unwrap();
+    let metadata = Metadata {
+        scope: scope.clone(),
+        time_created: SystemTime::now()
+            .checked_sub(Duration::from_secs(1))
+            .unwrap(),
+    };
+    let md_path = metadata_path(tempdir.path().join("objects/killthis2"));
+    let mut md = File::create(md_path).unwrap();
+    serde_json::to_writer(&mut md, &metadata).unwrap();
 
     // Will be kept because it's empty and the "retry missing" time hasn't passed.
     write_file_and_metadata(
