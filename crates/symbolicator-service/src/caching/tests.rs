@@ -25,12 +25,12 @@ fn tempdir() -> io::Result<tempfile::TempDir> {
     tempfile::tempdir_in(".")
 }
 
-fn write_file_and_metadata(path: &Path, contents: &[u8], scope: Scope) -> Result<()> {
+fn write_file_and_metadata(path: &Path, contents: &[u8], metadata: &Metadata) -> Result<()> {
     let md_path = metadata_path(path);
     File::create(path)?.write_all(contents)?;
 
     let mut md = File::create(md_path)?;
-    serde_json::to_writer(&mut md, &Metadata::fresh_scoped(scope))?;
+    serde_json::to_writer(&mut md, metadata)?;
     Ok(())
 }
 
@@ -119,10 +119,14 @@ fn test_max_unused_for() -> Result<()> {
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis"),
         b"hi",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
     // Will be kept because it's empty (not found) and the default "retry missing" time of 1h hasn't passed.
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"", scope.clone())?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis"),
+        b"",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     sleep(Duration::from_millis(100));
 
@@ -130,7 +134,7 @@ fn test_max_unused_for() -> Result<()> {
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis2"),
         b"hi",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     cache.cleanup(false)?;
@@ -180,41 +184,39 @@ fn test_retry_misses_after() -> Result<()> {
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis"),
         b"hi",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     // Will be kept because it's empty and public, and the "retry missing for public files" time hasn't passed.
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis2"),
         b"",
-        Scope::Global,
+        &Metadata::fresh_scoped(Scope::Global),
     )?;
 
     // Will be deleted because it's empty and after the sleep the "retry missing" time will have passed.
-    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"", scope.clone())?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis"),
+        b"",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     sleep(Duration::from_secs(1));
 
     // Create a file with a creation time 1 sec in the past. It should be deleted.
-    File::create(tempdir.path().join("objects/killthis2"))
-        .unwrap()
-        .write_all(b"")
-        .unwrap();
     let metadata = Metadata {
         scope: scope.clone(),
         time_created: SystemTime::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap(),
     };
-    let md_path = metadata_path(tempdir.path().join("objects/killthis2"));
-    let mut md = File::create(md_path).unwrap();
-    serde_json::to_writer(&mut md, &metadata).unwrap();
+    write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"", &metadata)?;
 
     // Will be kept because it's empty and the "retry missing" time hasn't passed.
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis3"),
         b"",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     cache.cleanup(false)?;
@@ -255,31 +257,31 @@ fn test_cleanup_malformed() -> Result<()> {
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis"),
         b"addictive",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis2"),
         b"hi",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis3"),
         b"honkhonkbeepbeep",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis"),
         b"malformed",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis2"),
         b"malformedhonk",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     sleep(Duration::from_millis(10));
@@ -334,48 +336,48 @@ fn test_cleanup_cache_download() -> Result<()> {
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis"),
         b"beeep",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis2"),
         b"hi",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis3"),
         b"honkhonkbeepbeep",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis4"),
         b"downloaderror",
-        Scope::Global,
+        &Metadata::fresh_scoped(Scope::Global),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis"),
         b"downloaderror",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis2"),
         b"downloaderrorhonk",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis3"),
         b"downloaderrormalformed",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis4"),
         b"malformeddownloaderror",
-        scope.clone(),
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     let cache = Cache::from_config(
@@ -572,19 +574,11 @@ fn test_cleanup() {
         let dir = tempdir.path().join(cache_name).join(scope.as_ref());
         let _ = fs::create_dir_all(&dir);
         let entry = dir.join(status);
-        let path: &Path = &entry;
-        let md_path = metadata_path(path);
-        File::create(path)
-            .unwrap()
-            .write_all(status.as_bytes())
-            .unwrap();
-
-        let mut md_file = File::create(md_path).unwrap();
         let md = Metadata {
             scope,
             time_created: ctime,
         };
-        serde_json::to_writer(&mut md_file, &md).unwrap();
+        write_file_and_metadata(&entry, status.as_bytes(), &md).unwrap();
         filetime::set_file_mtime(&entry, mtime).unwrap();
         entry
     };
