@@ -132,6 +132,13 @@ pub struct DownloadedCacheConfig {
     #[serde(with = "humantime_serde")]
     pub retry_misses_after: Option<Duration>,
 
+    /// Maximum duration since creation of negative cache item (item age).
+    ///
+    /// This setting is specific for items computed from "public" (non-project-specific)
+    /// sources.
+    #[serde(with = "humantime_serde")]
+    pub retry_misses_after_public: Option<Duration>,
+
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
@@ -145,6 +152,7 @@ impl Default for DownloadedCacheConfig {
         Self {
             max_unused_for: Some(Duration::from_secs(3600 * 24)),
             retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_misses_after_public: Some(Duration::from_secs(3600 * 24)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
             max_lazy_redownloads: 50,
         }
@@ -165,6 +173,13 @@ pub struct DerivedCacheConfig {
     #[serde(with = "humantime_serde")]
     pub retry_misses_after: Option<Duration>,
 
+    /// Maximum duration since creation of negative cache item (item age).
+    ///
+    /// This setting is specific for items computed from "public" (non-project-specific)
+    /// sources.
+    #[serde(with = "humantime_serde")]
+    pub retry_misses_after_public: Option<Duration>,
+
     /// Maximum duration since creation of malformed cache item (item age).
     #[serde(with = "humantime_serde")]
     pub retry_malformed_after: Option<Duration>,
@@ -178,6 +193,7 @@ impl Default for DerivedCacheConfig {
         Self {
             max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
             retry_misses_after: Some(Duration::from_secs(3600)),
+            retry_misses_after_public: Some(Duration::from_secs(3600 * 24)),
             retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
             max_lazy_recomputations: 20,
         }
@@ -222,6 +238,14 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.retry_misses_after,
             Self::Derived(cfg) => cfg.retry_misses_after,
+            Self::Diagnostics(_cfg) => None,
+        }
+    }
+
+    pub fn retry_misses_after_public(&self) -> Option<Duration> {
+        match self {
+            Self::Downloaded(cfg) => cfg.retry_misses_after_public,
+            Self::Derived(cfg) => cfg.retry_misses_after_public,
             Self::Diagnostics(_cfg) => None,
         }
     }

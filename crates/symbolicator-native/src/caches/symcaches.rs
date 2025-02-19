@@ -382,7 +382,7 @@ mod tests {
             object_type: ObjectType::Macho,
             identifier,
             sources: Arc::new([source]),
-            scope: Scope::Global,
+            scope: Scope::Scoped("12345".into()),
         };
 
         let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT).await;

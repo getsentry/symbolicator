@@ -12,9 +12,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
-use crate::config::{
-    CacheConfig, CacheConfigs, DerivedCacheConfig, DiagnosticsCacheConfig, DownloadedCacheConfig,
-};
+use crate::config::{CacheConfig, CacheConfigs, DerivedCacheConfig, DownloadedCacheConfig};
 use crate::test;
 use crate::types::Scope;
 
@@ -27,12 +25,12 @@ fn tempdir() -> io::Result<tempfile::TempDir> {
     tempfile::tempdir_in(".")
 }
 
-fn write_file_and_metadata(path: &Path, contents: &[u8]) -> Result<()> {
+fn write_file_and_metadata(path: &Path, contents: &[u8], metadata: &Metadata) -> Result<()> {
     let md_path = metadata_path(path);
     File::create(path)?.write_all(contents)?;
 
     let mut md = File::create(md_path)?;
-    serde_json::to_writer(&mut md, &Metadata::fresh_scoped(Scope::Global))?;
+    serde_json::to_writer(&mut md, metadata)?;
     Ok(())
 }
 
@@ -115,15 +113,29 @@ fn test_max_unused_for() -> Result<()> {
         1024,
     )?;
 
+    let scope = Scope::Scoped("12345".into());
+
     // Will be deleted because it's OK and after the sleep the unused time will have passed.
-    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis"),
+        b"hi",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
     // Will be kept because it's empty (not found) and the default "retry missing" time of 1h hasn't passed.
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis"),
+        b"",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     sleep(Duration::from_millis(100));
 
     // Will be deleted because it's OK and the unused time will not have passed.
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis2"),
+        b"hi",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     cache.cleanup(false)?;
 
@@ -166,30 +178,46 @@ fn test_retry_misses_after() -> Result<()> {
         1024,
     )?;
 
+    let scope = Scope::Scoped("12345".into());
+
     // Will be kept because it's OK and the default unused time of 7d hasn't passed.
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis"),
+        b"hi",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
+    // Will be kept because it's empty and public, and the "retry missing for public files" time hasn't passed.
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis2"),
+        b"",
+        &Metadata::fresh_scoped(Scope::Global),
+    )?;
+
     // Will be deleted because it's empty and after the sleep the "retry missing" time will have passed.
-    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis"),
+        b"",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     sleep(Duration::from_secs(1));
 
     // Create a file with a creation time 1 sec in the past. It should be deleted.
-    File::create(tempdir.path().join("objects/killthis2"))
-        .unwrap()
-        .write_all(b"")
-        .unwrap();
     let metadata = Metadata {
-        scope: Scope::Global,
+        scope: scope.clone(),
         time_created: SystemTime::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap(),
     };
-    let md_path = metadata_path(tempdir.path().join("objects/killthis2"));
-    let mut md = File::create(md_path).unwrap();
-    serde_json::to_writer(&mut md, &metadata).unwrap();
+    write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"", &metadata)?;
 
     // Will be kept because it's empty and the "retry missing" time hasn't passed.
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis3"),
+        b"",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     cache.cleanup(false)?;
 
@@ -205,7 +233,9 @@ fn test_retry_misses_after() -> Result<()> {
             "keepthis",
             "keepthis.metadata",
             "keepthis2",
-            "keepthis2.metadata"
+            "keepthis2.metadata",
+            "keepthis3",
+            "keepthis3.metadata",
         ]
     );
 
@@ -221,16 +251,38 @@ fn test_cleanup_malformed() -> Result<()> {
     };
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
+    let scope = Scope::Scoped("12345".into());
+
     // File has same amount of chars as "malformed", check that optimization works
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"addictive")?;
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis"),
+        b"addictive",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis2"),
+        b"hi",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis3"),
         b"honkhonkbeepbeep",
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
-    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"malformed")?;
-    write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"malformedhonk")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis"),
+        b"malformed",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis2"),
+        b"malformedhonk",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
 
     sleep(Duration::from_millis(10));
 
@@ -279,25 +331,53 @@ fn test_cleanup_cache_download() -> Result<()> {
     };
     fs::create_dir_all(tempdir.path().join("objects"))?;
 
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis"), b"beeep")?;
-    write_file_and_metadata(&tempdir.path().join("objects/keepthis2"), b"hi")?;
+    let scope = Scope::Scoped("12345".into());
+
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis"),
+        b"beeep",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis2"),
+        b"hi",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
+
     write_file_and_metadata(
         &tempdir.path().join("objects/keepthis3"),
         b"honkhonkbeepbeep",
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
-    write_file_and_metadata(&tempdir.path().join("objects/killthis"), b"downloaderror")?;
+    write_file_and_metadata(
+        &tempdir.path().join("objects/keepthis4"),
+        b"downloaderror",
+        &Metadata::fresh_scoped(Scope::Global),
+    )?;
+
+    write_file_and_metadata(
+        &tempdir.path().join("objects/killthis"),
+        b"downloaderror",
+        &Metadata::fresh_scoped(scope.clone()),
+    )?;
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis2"),
         b"downloaderrorhonk",
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
+
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis3"),
         b"downloaderrormalformed",
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
+
     write_file_and_metadata(
         &tempdir.path().join("objects/killthis4"),
         b"malformeddownloaderror",
+        &Metadata::fresh_scoped(scope.clone()),
     )?;
 
     let cache = Cache::from_config(
@@ -329,7 +409,9 @@ fn test_cleanup_cache_download() -> Result<()> {
             "keepthis2",
             "keepthis2.metadata",
             "keepthis3",
-            "keepthis3.metadata"
+            "keepthis3.metadata",
+            "keepthis4",
+            "keepthis4.metadata",
         ]
     );
 
@@ -481,41 +563,69 @@ fn test_open_cachefile() -> Result<()> {
 
 #[test]
 fn test_cleanup() {
+    test::setup();
     let tempdir = tempdir().unwrap();
 
     // Create entries in our caches that are an hour old.
-    let mtime = FileTime::from_system_time(SystemTime::now() - Duration::from_secs(3600));
+    let ctime = SystemTime::now() - Duration::from_secs(3600);
+    let mtime = FileTime::from_system_time(ctime);
 
-    let create = |cache_name: &str| {
-        let dir = tempdir.path().join(cache_name);
-        fs::create_dir(&dir).unwrap();
-        let entry = dir.join("entry");
-        write_file_and_metadata(&entry, b"contents").unwrap();
+    let create = |cache_name: &str, scope: Scope, status: &str| {
+        let dir = tempdir.path().join(cache_name).join(scope.as_ref());
+        let _ = fs::create_dir_all(&dir);
+        let entry = dir.join(status);
+        let md = Metadata {
+            scope,
+            time_created: ctime,
+        };
+        write_file_and_metadata(&entry, status.as_bytes(), &md).unwrap();
         filetime::set_file_mtime(&entry, mtime).unwrap();
         entry
     };
 
-    let object_entry = create("objects");
-    let object_meta_entry = create("object_meta");
-    let auxdifs_entry = create("auxdifs");
-    let symcaches_entry = create("symcaches");
-    let cficaches_entry = create("cficaches");
-    let diagnostics_entry = create("diagnostics");
+    let cache_names = [
+        "objects",
+        "object_meta",
+        "auxdifs",
+        "symcaches",
+        "cficaches",
+    ];
 
-    // Configure the caches to expire after 1 minute.
+    let positive_scoped: Vec<_> = cache_names
+        .iter()
+        .map(|cache_name| create(cache_name, Scope::Scoped("12345".into()), "positive"))
+        .collect();
+    let negative_scoped: Vec<_> = cache_names
+        .iter()
+        .map(|cache_name| create(cache_name, Scope::Scoped("12345".into()), "downloaderror"))
+        .collect();
+    let positive_global: Vec<_> = cache_names
+        .iter()
+        .map(|cache_name| create(cache_name, Scope::Global, "positive"))
+        .collect();
+    let negative_global: Vec<_> = cache_names
+        .iter()
+        .map(|cache_name| create(cache_name, Scope::Global, "downloaderror"))
+        .collect();
+
+    // Caches expire:
+    // * positive items after 1min
+    // * negative private itmes after 1min
+    // * negative public items after 2hr
     let caches = Caches::from_config(&Config {
         cache_dir: Some(tempdir.path().to_path_buf()),
         caches: CacheConfigs {
             downloaded: DownloadedCacheConfig {
                 max_unused_for: Some(Duration::from_secs(60)),
+                retry_misses_after: Some(Duration::from_secs(60)),
+                retry_misses_after_public: Some(Duration::from_secs(7200)),
                 ..Default::default()
             },
             derived: DerivedCacheConfig {
                 max_unused_for: Some(Duration::from_secs(60)),
+                retry_misses_after: Some(Duration::from_secs(60)),
+                retry_misses_after_public: Some(Duration::from_secs(7200)),
                 ..Default::default()
-            },
-            diagnostics: DiagnosticsCacheConfig {
-                retention: Some(Duration::from_secs(60)),
             },
             ..Default::default()
         },
@@ -524,21 +634,53 @@ fn test_cleanup() {
     .unwrap();
 
     // Finally do some testing
-    assert!(object_entry.is_file());
-    assert!(object_meta_entry.is_file());
-    assert!(auxdifs_entry.is_file());
-    assert!(symcaches_entry.is_file());
-    assert!(cficaches_entry.is_file());
-    assert!(diagnostics_entry.is_file());
+
+    for entry in positive_scoped
+        .iter()
+        .chain(positive_global.iter())
+        .chain(negative_scoped.iter())
+        .chain(negative_global.iter())
+    {
+        assert!(entry.is_file());
+    }
 
     caches.cleanup(false).unwrap();
 
-    assert!(!object_entry.is_file());
-    assert!(!object_meta_entry.is_file());
-    assert!(!auxdifs_entry.is_file());
-    assert!(!symcaches_entry.is_file());
-    assert!(!cficaches_entry.is_file());
-    assert!(!diagnostics_entry.is_file());
+    // All positive private files should've been cleaned up
+    for entry in positive_scoped.iter() {
+        assert!(
+            !entry.is_file(),
+            "{} should have been deleted",
+            entry.display()
+        );
+    }
+
+    // All positive global files should've been cleaned up
+    for entry in positive_global.iter() {
+        assert!(
+            !entry.is_file(),
+            "{} should have been deleted",
+            entry.display()
+        );
+    }
+
+    // All negative private files should've been cleaned up
+    for entry in negative_scoped.iter() {
+        assert!(
+            !entry.is_file(),
+            "{} should have been deleted",
+            entry.display()
+        );
+    }
+
+    // All negative global files should still be there
+    for entry in negative_global.iter() {
+        assert!(
+            entry.is_file(),
+            "{} should not have been deleted",
+            entry.display()
+        );
+    }
 }
 
 #[tokio::test]
