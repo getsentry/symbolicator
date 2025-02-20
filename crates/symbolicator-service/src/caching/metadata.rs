@@ -25,7 +25,7 @@ pub struct Metadata {
 impl Metadata {
     /// Creates metadata from a cache key.
     ///
-    /// In debug mode, this adds the key's [`metadata`](CacheKey::metadata)
+    /// In debug mode, this adds the key's [`data`](CacheKey::data)
     /// in the `debug` field.
     pub fn from_key(cache_key: &CacheKey) -> Self {
         let time_created = SystemTime::now();
@@ -33,7 +33,7 @@ impl Metadata {
         #[cfg(debug_assertions)]
         {
             let debug = Debug {
-                key_data: cache_key.metadata().to_owned(),
+                key_data: cache_key.data().to_owned(),
             };
             Self {
                 scope,

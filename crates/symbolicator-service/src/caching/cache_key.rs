@@ -15,7 +15,7 @@ use crate::types::Scope;
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
     scope: Scope,
-    pub(crate) metadata: Arc<str>,
+    daat: Arc<str>,
     hash: [u8; 32],
 }
 
@@ -52,9 +52,9 @@ impl CacheKey {
         builder.build()
     }
 
-    /// Returns the human-readable metadata that forms the basis of the [`CacheKey`].
-    pub fn metadata(&self) -> &str {
-        &self.metadata
+    /// Returns the human-readable data that forms the basis of the [`CacheKey`].
+    pub fn data(&self) -> &str {
+        &self.daat
     }
 
     /// Returns the relative path for this cache key.
@@ -118,7 +118,7 @@ impl CacheKeyBuilder {
 
         CacheKey {
             scope: self.scope,
-            metadata: self.metadata.into(),
+            daat: self.metadata.into(),
             hash: hash.into(),
         }
     }
@@ -158,7 +158,7 @@ mod tests {
             "v0/f5/e08b92/a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
         );
         assert_eq!(
-            key.metadata(),
+            key.data(),
             "scope: global\n\nsource: foo\nlocation: file://bar.baz\n"
         );
 
@@ -180,7 +180,7 @@ mod tests {
             "v0/d9/40ba75/07d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
         );
         assert_eq!(
-            key.metadata(),
+            key.data(),
             "scope: global\n\nsource: foo\nlocation: file://bar.baz\n\nsecond_source:\nsource: foo\nlocation: file://bar.quux\n"
         );
     }
