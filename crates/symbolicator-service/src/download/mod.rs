@@ -460,6 +460,24 @@ impl DownloadService {
                                     .insert("SymbolChecksum".into(), checksum.into());
                             }
 
+                            // Downloading from NuGet without a debug checksum results in a permission
+                            // error. We capture an error here to see if this happens in practice.
+                            // If it does, we can add configuration to the source so that this download
+                            // won't even be attempted.
+                            if cfg.id.as_str() == "sentry:nuget"
+                                && object_id.debug_checksum.is_none()
+                            {
+                                tracing::error!(
+                                    debug_id = ?object_id.debug_id,
+                                    code_id = ?object_id.code_id,
+                                    debug_file = ?object_id.debug_file,
+                                    code_file = ?object_id.code_file,
+                                    object_type = ?object_id.object_type,
+                                    file_types = ?filetypes,
+                                    "Trying to download file from NuGet without debug checksum"
+                                );
+                            }
+
                             file.into()
                         }))
                     }
