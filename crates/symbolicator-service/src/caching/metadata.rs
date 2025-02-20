@@ -29,7 +29,7 @@ impl Metadata {
     ///
     /// In debug mode, this adds the key's [`metadata`](CacheKey::metadata)
     /// in the `debug` field.
-    pub(crate) fn from_key(cache_key: &CacheKey) -> Self {
+    pub fn from_key(cache_key: &CacheKey) -> Self {
         let time_created = SystemTime::now();
         let scope = cache_key.scope().clone();
         #[cfg(debug_assertions)]
