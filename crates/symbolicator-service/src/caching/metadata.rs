@@ -30,24 +30,19 @@ impl Metadata {
     pub fn from_key(cache_key: &CacheKey) -> Self {
         let time_created = SystemTime::now();
         let scope = cache_key.scope().clone();
+
         #[cfg(debug_assertions)]
-        {
-            let debug = Debug {
-                key_data: cache_key.data().to_owned(),
-            };
-            Self {
-                scope,
-                time_created,
-                debug: Some(debug),
-            }
-        }
+        let debug = Some(Debug {
+            key_data: cache_key.data().to_owned(),
+        });
+
         #[cfg(not(debug_assertions))]
-        {
-            Self {
-                scope,
-                time_created,
-                debug: None,
-            }
+        let debug = None;
+
+        Self {
+            scope,
+            time_created,
+            debug,
         }
     }
 
