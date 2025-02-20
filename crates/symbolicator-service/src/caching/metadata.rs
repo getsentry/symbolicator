@@ -31,13 +31,9 @@ impl Metadata {
         let time_created = SystemTime::now();
         let scope = cache_key.scope().clone();
 
-        #[cfg(debug_assertions)]
-        let debug = Some(Debug {
+        let debug = (cfg!(debug_assertions)).then(|| Debug {
             key_data: cache_key.data().to_owned(),
         });
-
-        #[cfg(not(debug_assertions))]
-        let debug = None;
 
         Self {
             scope,
