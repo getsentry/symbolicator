@@ -503,6 +503,7 @@ async fn test_basic_windows() {
                             .debug
                             .as_ref()
                             .unwrap()
+                            .key_data
                             .starts_with(&expected_debug),
                         "{metadata:?} == {expected_debug:?}"
                     );
@@ -520,7 +521,10 @@ async fn test_basic_windows() {
                     let file = File::open(symcaches_dir.join(metadata_file)).unwrap();
                     let metadata: Metadata = serde_json::from_reader(&file).unwrap();
                     assert_eq!(metadata.scope.as_ref(), cached_scope);
-                    assert_eq!(&metadata.debug.as_ref().unwrap()[..], &expected_debug[..]);
+                    assert_eq!(
+                        &metadata.debug.as_ref().unwrap().key_data[..],
+                        &expected_debug[..]
+                    );
                 }
 
                 // our use of in-memory caching should make sure we only ever request each file once

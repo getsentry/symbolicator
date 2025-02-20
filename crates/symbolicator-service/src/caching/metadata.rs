@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::SystemTime};
+use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,9 +19,7 @@ pub struct Metadata {
     pub time_created: SystemTime,
 
     /// Optional data for debugging.
-    ///
-    /// See [Self::from_key] for how this is populated.
-    pub debug: Option<Arc<str>>,
+    pub debug: Option<Debug>,
 }
 
 impl Metadata {
@@ -34,10 +32,13 @@ impl Metadata {
         let scope = cache_key.scope().clone();
         #[cfg(debug_assertions)]
         {
+            let debug = Debug {
+                key_data: cache_key.metadata().to_owned(),
+            };
             Self {
                 scope,
                 time_created,
-                debug: Some(cache_key.metadata.clone()),
+                debug: Some(debug),
             }
         }
         #[cfg(not(debug_assertions))]
@@ -60,6 +61,12 @@ impl Metadata {
             debug: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Debug {
+    /// The data the cache key was generated from.
+    pub key_data: String,
 }
 
 /// Module for second-precision [`SystemTime`] de/serialization.
