@@ -209,6 +209,7 @@ fn test_retry_misses_after() -> Result<()> {
         time_created: SystemTime::now()
             .checked_sub(Duration::from_secs(1))
             .unwrap(),
+        debug: None,
     };
     write_file_and_metadata(&tempdir.path().join("objects/killthis2"), b"", &metadata)?;
 
@@ -577,6 +578,7 @@ fn test_cleanup() {
         let md = Metadata {
             scope,
             time_created: ctime,
+            debug: None,
         };
         write_file_and_metadata(&entry, status.as_bytes(), &md).unwrap();
         filetime::set_file_mtime(&entry, mtime).unwrap();

@@ -95,7 +95,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
                 let object_meta = &self.object_meta;
                 tracing::error!(
                     scope = %object_meta.scope(),
-                    cache_key = object_meta.cache_key().metadata(),
+                    cache_key = object_meta.cache_key().data(),
                     debug_id = ?object_meta.object_id().debug_id,
                     code_id = ?object_meta.object_id().code_id,
                     error = %e
