@@ -106,12 +106,12 @@ struct CleanupStats {
     removed_dirs: usize,
     removed_files: usize,
     removed_bytes: u64,
-    removed_md_bytes: u64,
+    removed_metadata_bytes: u64,
 
     retained_dirs: usize,
     retained_files: usize,
     retained_bytes: u64,
-    retained_md_bytes: u64,
+    retained_metadata_bytes: u64,
 }
 
 impl Cache {
@@ -131,21 +131,21 @@ impl Cache {
             retained.dirs = stats.retained_dirs,
             retained.files = stats.retained_files,
             retained.bytes = stats.retained_bytes,
-            retained.md_bytes = stats.retained_md_bytes,
+            retained.metadata_bytes = stats.retained_metadata_bytes,
             removed.dirs = stats.removed_dirs,
             removed.files = stats.removed_files,
             removed.bytes = stats.removed_bytes,
-            removed.md_bytes = stats.removed_md_bytes,
+            removed.metadata_bytes = stats.removed_metadata_bytes,
             "Cleaning up `{}` complete",
             self.name
         );
 
         metric!(gauge("caches.size.files") = stats.retained_files as u64, "cache" => self.name.as_ref());
         metric!(gauge("caches.size.bytes") = stats.retained_bytes, "cache" => self.name.as_ref());
-        metric!(gauge("caches.size.md_bytes") = stats.retained_md_bytes, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size.metadata_bytes") = stats.retained_metadata_bytes, "cache" => self.name.as_ref());
         metric!(counter("caches.size.files_removed") += stats.removed_files as i64, "cache" => self.name.as_ref());
         metric!(counter("caches.size.bytes_removed") += stats.removed_bytes as i64, "cache" => self.name.as_ref());
-        metric!(counter("caches.size.md_bytes_removed") += stats.removed_md_bytes as i64, "cache" => self.name.as_ref());
+        metric!(counter("caches.size.metadata_bytes_removed") += stats.removed_metadata_bytes as i64, "cache" => self.name.as_ref());
 
         Ok(())
     }
@@ -229,7 +229,8 @@ impl Cache {
         let size = metadata.len();
 
         let metadata_path = metadata_path(path);
-        let metadata_size = catch_not_found(|| metadata_path.metadata())?.map_or(0, |md| md.len());
+        let metadata_size =
+            catch_not_found(|| metadata_path.metadata())?.map_or(0, |metadata| metadata.len());
 
         if catch_not_found(|| self.check_expiry(path))?.is_none() {
             tracing::debug!("Removing file `{}`", path.display());
@@ -239,13 +240,13 @@ impl Cache {
             }
 
             stats.removed_bytes += size;
-            stats.removed_md_bytes += metadata_size;
+            stats.removed_metadata_bytes += metadata_size;
             stats.removed_files += 1;
 
             Ok(true)
         } else {
             stats.retained_bytes += size;
-            stats.retained_md_bytes += metadata_size;
+            stats.retained_metadata_bytes += metadata_size;
             stats.retained_files += 1;
 
             Ok(false)
