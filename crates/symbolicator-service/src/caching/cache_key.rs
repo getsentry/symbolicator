@@ -15,7 +15,7 @@ use crate::types::Scope;
 #[derive(Debug, Clone, Eq)]
 pub struct CacheKey {
     scope: Scope,
-    daat: Arc<str>,
+    data: Arc<str>,
     hash: [u8; 32],
 }
 
@@ -54,7 +54,7 @@ impl CacheKey {
 
     /// Returns the human-readable data that forms the basis of the [`CacheKey`].
     pub fn data(&self) -> &str {
-        &self.daat
+        &self.data
     }
 
     /// Returns the relative path for this cache key.
@@ -79,7 +79,7 @@ impl CacheKey {
         let metadata = format!("scope: {scope}\n\n");
         CacheKeyBuilder {
             scope: scope.clone(),
-            metadata,
+            data: metadata,
         }
     }
 
@@ -87,7 +87,11 @@ impl CacheKey {
     pub fn for_testing(scope: Scope, key: impl Into<String>) -> Self {
         let metadata = key.into();
 
-        CacheKeyBuilder { scope, metadata }.build()
+        CacheKeyBuilder {
+            scope,
+            data: metadata,
+        }
+        .build()
     }
 }
 
@@ -99,13 +103,13 @@ impl CacheKey {
 /// the cache files to help debugging.
 pub struct CacheKeyBuilder {
     scope: Scope,
-    metadata: String,
+    data: String,
 }
 
 impl CacheKeyBuilder {
     /// Writes metadata about the [`RemoteFile`] into the [`CacheKey`].
     pub fn write_file_meta(&mut self, file: &RemoteFile) -> Result<(), fmt::Error> {
-        self.metadata.write_fmt(format_args!(
+        self.data.write_fmt(format_args!(
             "source: {}\nlocation: {}\n",
             file.source_id(),
             file.uri()
@@ -114,11 +118,11 @@ impl CacheKeyBuilder {
 
     /// Finalize the [`CacheKey`].
     pub fn build(self) -> CacheKey {
-        let hash = Sha256::digest(&self.metadata);
+        let hash = Sha256::digest(&self.data);
 
         CacheKey {
             scope: self.scope,
-            daat: self.metadata.into(),
+            data: self.data.into(),
             hash: hash.into(),
         }
     }
@@ -126,7 +130,7 @@ impl CacheKeyBuilder {
 
 impl fmt::Write for CacheKeyBuilder {
     fn write_str(&mut self, s: &str) -> fmt::Result {
-        self.metadata.write_str(s)
+        self.data.write_str(s)
     }
 }
 
