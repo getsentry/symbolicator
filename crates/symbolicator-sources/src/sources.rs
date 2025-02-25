@@ -144,10 +144,7 @@ impl SourceFilters {
     /// Whether the [`ObjectId`] / [`FileType`] combination is allowed on this source.
     pub fn is_allowed(&self, object_id: &ObjectId, filetype: FileType) -> bool {
         // Checks if a checksum is required for portable PDB downloads
-        if self.requires_checksum
-            && filetype == FileType::PortablePdb
-            && object_id.debug_checksum.is_none()
-        {
+        if self.requires_checksum && object_id.debug_checksum.is_none() {
             return false;
         }
 
