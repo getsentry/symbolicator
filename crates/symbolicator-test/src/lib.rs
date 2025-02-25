@@ -286,6 +286,7 @@ impl Server {
             filters: SourceFilters {
                 filetypes: vec![FileType::MachCode],
                 path_patterns: vec![],
+                requires_checksum: false,
             },
             layout: Default::default(),
             is_public: false,
