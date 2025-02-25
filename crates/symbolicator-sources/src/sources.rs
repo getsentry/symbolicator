@@ -134,13 +134,34 @@ pub struct SourceFilters {
     /// If a debug image does not contain any path information it will be treated like an image
     /// whose path doesn't match any pattern.
     pub path_patterns: Vec<Glob>,
+
+    /// Whether this server requires a "debug checksum" to download portable PDB files.
+    #[serde(default)]
+    pub requires_checksum: bool,
 }
 
 impl SourceFilters {
     /// Whether the [`ObjectId`] / [`FileType`] combination is allowed on this source.
     pub fn is_allowed(&self, object_id: &ObjectId, filetype: FileType) -> bool {
-        (self.filetypes.is_empty() || self.filetypes.contains(&filetype))
-            && paths::matches_path_patterns(object_id, &self.path_patterns)
+        // Checks if a checksum is required for portable PDB downloads
+        if self.requires_checksum
+            && filetype == FileType::PortablePdb
+            && object_id.debug_checksum.is_none()
+        {
+            return false;
+        }
+
+        // Checks if the filetype is allowed
+        if !self.filetypes.is_empty() && !self.filetypes.contains(&filetype) {
+            return false;
+        }
+
+        // Checks if the path is allowed
+        if !paths::matches_path_patterns(object_id, &self.path_patterns) {
+            return false;
+        }
+
+        true
     }
 }
 

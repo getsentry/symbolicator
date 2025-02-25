@@ -1,0 +1,31 @@
+---
+source: crates/symbolicator-native/tests/integration/public_sources.rs
+expression: response.unwrap()
+---
+stacktraces:
+  - frames:
+      - status: missing
+        original_index: 0
+        addr_mode: "rel:0"
+        instruction_addr: "0x21"
+        function_id: "0xc"
+        package: "./TimeZoneConverter.dll"
+modules:
+  - debug_status: missing
+    features:
+      has_debug_info: false
+      has_unwind_info: false
+      has_symbols: false
+      has_sources: false
+    arch: unknown
+    type: pe_dotnet
+    code_id: efc9a199e000
+    code_file: "./TimeZoneConverter.dll"
+    debug_id: 4e2ca887-825e-46f3-968f-25b41ae1b5f3-9e6d3fcc
+    debug_file: "./TimeZoneConverter.pdb"
+    image_addr: "0x0"
+    candidates:
+      - source: nuget
+        location: No object files listed on this source
+        download:
+          status: notfound
