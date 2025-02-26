@@ -4931,6 +4931,7 @@ dependencies = [
  "moka",
  "once_cell",
  "rand 0.8.5",
+ "rayon",
  "reqwest",
  "rustc-hash 2.0.0",
  "sentry",

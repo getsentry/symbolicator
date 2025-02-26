@@ -30,6 +30,7 @@ jsonwebtoken = "9.1.0"
 moka = { version = "0.12.8", features = ["future", "sync"] }
 once_cell = "1.17.1"
 rand = "0.8.5"
+rayon = "1.10.0"
 reqwest = { workspace = true, features = [
     "gzip",
     "brotli",
