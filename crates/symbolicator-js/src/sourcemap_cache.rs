@@ -7,8 +7,8 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolic::debuginfo::sourcebundle::SourceFileDescriptor;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_service::caches::versions::SOURCEMAP_CACHE_VERSIONS;
-use symbolicator_service::caches::ByteViewString;
-use symbolicator_service::caching::{CacheContents, CacheError, CacheItemRequest, CacheVersions};
+use symbolicator_service::caches::{ByteViewString, CacheVersions};
+use symbolicator_service::caching::{CacheContents, CacheError, CacheItemRequest};
 use symbolicator_service::objects::ObjectHandle;
 use tempfile::NamedTempFile;
 

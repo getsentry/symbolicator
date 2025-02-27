@@ -5,8 +5,9 @@ use futures::future::BoxFuture;
 use proguard::ProguardCache;
 use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
+use symbolicator_service::caches::CacheVersions;
 use symbolicator_service::caching::{
-    CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
+    CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher,
 };
 use symbolicator_service::download::{fetch_file, tempfile_in_parent, DownloadService};
 use symbolicator_service::objects::{
