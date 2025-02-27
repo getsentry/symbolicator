@@ -18,6 +18,8 @@ use crate::caching::CacheVersions;
 
 /// CFI cache, with the following versions:
 ///
+/// - `5`: Restructuring the cache directory format.
+///
 /// - `4`: Recomputation to use new `CacheKey` format.
 ///
 /// - `3`: Proactive bump, as a bug in shared cache could have potentially
@@ -29,12 +31,14 @@ use crate::caching::CacheVersions;
 ///
 /// - `0`: Initial version.
 pub const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 4,
-    fallbacks: &[],
+    current: 5,
+    fallbacks: &[4],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
+///
+/// - `8`: Restructuring the cache directory format.
 ///
 /// - `7`: Fixes inlinee lookup. (<https://github.com/getsentry/symbolic/pull/883>)
 ///
@@ -60,32 +64,38 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 7,
-    fallbacks: &[6],
+    current: 8,
+    fallbacks: &[6, 7],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 /// Data / Objects cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Objects Meta cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Portable PDB cache, with the following versions:
+///
+/// - `4`: Restructuring the cache directory format.
 ///
 /// - `3`: Skips hidden SequencePoints, and thus avoids outputting `lineno: 0`.
 ///
@@ -93,59 +103,72 @@ pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[2],
+    current: 4,
+    fallbacks: &[2, 3],
 };
 
 /// SourceMapCache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Il2cpp cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Bitcode / Auxdif (plist / bcsymbolmap) cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Source Files Cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const SOURCEFILES_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Bundle Index Cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 1,
-    fallbacks: &[],
+    current: 2,
+    fallbacks: &[1],
 };
 
 /// Proguard Cache, with the following versions:
 ///
-/// - `1`: Initial version.
+/// - `3`: Restructuring the cache directory format.
+///
 /// - `2`: Use proguard cache format (<https://github.com/getsentry/symbolicator/pull/1491>).
+///
+/// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[],
+    current: 3,
+    fallbacks: &[2],
 };
