@@ -22,6 +22,8 @@ use std::fmt;
 pub enum CachePathFormat {
     /// Format cache keys as `xx/xxxxxx/xxx…`.
     V1,
+    /// Format cache keys as `xx/xx/xxx…`
+    V2,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -81,6 +83,8 @@ pub struct CacheVersions {
 
 /// CFI cache, with the following versions:
 ///
+/// - `5`: Restructuring the cache directory format.
+///
 /// - `4`: Recomputation to use new `CacheKey` format.
 ///
 /// - `3`: Proactive bump, as a bug in shared cache could have potentially
@@ -92,17 +96,20 @@ pub struct CacheVersions {
 ///
 /// - `0`: Initial version.
 pub const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(4, CachePathFormat::V1),
-    fallbacks: &[],
+    current: CacheVersion::new(5, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(4, CachePathFormat::V1)],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
         CacheVersion::new(3, CachePathFormat::V1),
+        CacheVersion::new(4, CachePathFormat::V1),
     ],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
+///
+/// - `8`: Restructuring the cache directory format.
 ///
 /// - `7`: Fixes inlinee lookup. (<https://github.com/getsentry/symbolic/pull/883>)
 ///
@@ -128,8 +135,11 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(7, CachePathFormat::V1),
-    fallbacks: &[CacheVersion::new(6, CachePathFormat::V1)],
+    current: CacheVersion::new(8, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(7, CachePathFormat::V1),
+        CacheVersion::new(6, CachePathFormat::V1),
+    ],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
@@ -137,33 +147,40 @@ pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(4, CachePathFormat::V1),
         CacheVersion::new(5, CachePathFormat::V1),
         CacheVersion::new(6, CachePathFormat::V1),
+        CacheVersion::new(7, CachePathFormat::V1),
     ],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
 /// Data / Objects cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Objects Meta cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Portable PDB cache, with the following versions:
+///
+/// - `4`: Restructuring the cache directory format.
 ///
 /// - `3`: Skips hidden SequencePoints, and thus avoids outputting `lineno: 0`.
 ///
@@ -171,70 +188,89 @@ pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(3, CachePathFormat::V1),
-    fallbacks: &[CacheVersion::new(2, CachePathFormat::V1)],
+    current: CacheVersion::new(4, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(3, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+    ],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
+        CacheVersion::new(3, CachePathFormat::V1),
     ],
 };
 
 /// SourceMapCache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Il2cpp cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Bitcode / Auxdif (plist / bcsymbolmap) cache, with the following versions:
+///
+/// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Recomputation to use new `CacheKey` format.
 ///
 /// - `0`: Initial version.
 pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Source Files Cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const SOURCEFILES_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Bundle Index Cache, with the following versions:
 ///
+/// - `2`: Restructuring the cache directory format.
+///
 /// - `1`: Initial version.
 pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(1, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Proguard Cache, with the following versions:
+///
+/// - `3`: Restructuring the cache directory format.
 ///
 /// - `2`: Use proguard cache format (<https://github.com/getsentry/symbolicator/pull/1491>).
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(2, CachePathFormat::V1),
-    fallbacks: &[],
-    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
+    current: CacheVersion::new(3, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(2, CachePathFormat::V1)],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+    ],
 };

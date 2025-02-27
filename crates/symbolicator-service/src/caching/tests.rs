@@ -986,7 +986,7 @@ impl CacheItemRequest for TestCacheItem {
     type Item = String;
 
     const VERSIONS: CacheVersions = CacheVersions {
-        current: CacheVersion::new(2, CachePathFormat::V1),
+        current: CacheVersion::new(2, CachePathFormat::V2),
         fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
         previous: &[
             CacheVersion::new(0, CachePathFormat::V1),
@@ -1188,7 +1188,7 @@ impl CacheItemRequest for FailingTestCacheItem {
     type Item = String;
 
     const VERSIONS: CacheVersions = CacheVersions {
-        current: CacheVersion::new(2, CachePathFormat::V1),
+        current: CacheVersion::new(2, CachePathFormat::V2),
         fallbacks: &[],
         previous: &[CacheVersion::new(1, CachePathFormat::V1)],
     };
