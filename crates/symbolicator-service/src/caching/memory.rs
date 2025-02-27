@@ -212,7 +212,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        let cache_path = key.cache_path(T::VERSIONS.current);
+        let cache_path = key.cache_path_new(T::VERSIONS.current);
         let mut metadata = None;
         let mut temp_file = match self.config.tempfile() {
             Ok(temp_file) => temp_file,
@@ -393,11 +393,17 @@ impl<T: CacheItemRequest> Cacher<T> {
                 for version in versions {
                     let is_current_version = version == T::VERSIONS.current;
                     // try the new cache key first, then fall back to the old cache key
+                    // TODO: Temporarily use `cache_path_new` for the current version
+                    let cache_path = if is_current_version {
+                        cache_key.cache_path_new(version)
+                    } else {
+                        cache_key.cache_path(version)
+                    };
                     let in_memory_item = match lookup_local_cache(
                         &self.config,
                         shared_cache,
                         cache_dir,
-                        &cache_key.cache_path(version),
+                        &cache_path,
                         is_current_version,
                     ) {
                         Err(CacheError::NotFound) => continue,
