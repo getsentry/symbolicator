@@ -1015,11 +1015,11 @@ async fn test_cache_fallback() {
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
-    let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
+    let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path_old(0));
     fs::create_dir_all(very_old_cache_file.parent().unwrap()).unwrap();
     fs::write(&very_old_cache_file, "some incompatible cached contents").unwrap();
 
-    let old_cache_file = cache_dir.path().join("objects").join(key.cache_path(1));
+    let old_cache_file = cache_dir.path().join("objects").join(key.cache_path_old(1));
     fs::create_dir_all(old_cache_file.parent().unwrap()).unwrap();
     fs::write(&old_cache_file, "some old cached contents").unwrap();
 
@@ -1076,7 +1076,7 @@ async fn test_cache_fallback_notfound() {
 
     {
         let cache_dir = cache_dir.path().join("objects");
-        let cache_file = cache_dir.join(key.cache_path(1));
+        let cache_file = cache_dir.join(key.cache_path_old(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
@@ -1133,7 +1133,7 @@ async fn test_lazy_computation_limit() {
         let request = request.clone();
         let key = CacheKey::for_testing(Scope::Global, *key);
 
-        let cache_file = cache_dir.join(key.cache_path(1));
+        let cache_file = cache_dir.join(key.cache_path_old(1));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 

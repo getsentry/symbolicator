@@ -326,7 +326,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // Clean up old versions
             for version in 0..T::VERSIONS.current {
-                let item_path = key.cache_path(version);
+                let item_path = key.cache_path_old(version);
 
                 if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
                     // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
@@ -397,7 +397,7 @@ impl<T: CacheItemRequest> Cacher<T> {
                     let cache_path = if is_current_version {
                         cache_key.cache_path_new(version)
                     } else {
-                        cache_key.cache_path(version)
+                        cache_key.cache_path_old(version)
                     };
                     let in_memory_item = match lookup_local_cache(
                         &self.config,
@@ -501,7 +501,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         tracing::trace!(
             "Spawning deduplicated {} computation for path {:?}",
             name,
-            cache_key.cache_path(T::VERSIONS.current)
+            cache_key.cache_path_new(T::VERSIONS.current)
         );
 
         let this = self.clone();
