@@ -1080,7 +1080,7 @@ async fn test_cache_fallback_notfound() {
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
-        let cache_file = cache_dir.join(key.cache_path(2));
+        let cache_file = cache_dir.join(key.cache_path_new(2));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "").unwrap();
     }
@@ -1224,7 +1224,7 @@ async fn test_failing_cache_write() {
 
     // The computation returned `InternalError`, so the file should not have been
     // persisted
-    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path_new(1));
     assert!(!fs::exists(cache_file_path).unwrap());
 
     // Case 2: malformed error
@@ -1240,6 +1240,6 @@ async fn test_failing_cache_write() {
 
     // The computation returned `Malformed`, so the file should have been
     // persisted
-    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path_new(1));
     assert!(fs::exists(cache_file_path).unwrap());
 }
