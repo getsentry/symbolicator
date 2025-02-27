@@ -28,7 +28,7 @@ impl CacheKey {
 
 impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.cache_path(1234))
+        write!(f, "{}", self.cache_path_new(1234))
     }
 }
 
@@ -68,6 +68,21 @@ impl CacheKey {
         }
         path.push('/');
         for b in &self.hash[4..] {
+            path.write_fmt(format_args!("{b:02x}")).unwrap();
+        }
+        path
+    }
+
+    /// Returns the relative path for this cache key.
+    ///
+    /// The relative path is a sha-256 hash hex-formatted like so:
+    /// `v$version/aa/bb/ccddeeff...`
+    ///
+    /// TODO: This function will replace `cache_path` once all caches have been migrated to
+    /// the new format.
+    pub fn cache_path_new(&self, version: u32) -> String {
+        let mut path = format!("v{version}/{:02x}/{:02x}/", self.hash[0], self.hash[1]);
+        for b in &self.hash[2..] {
             path.write_fmt(format_args!("{b:02x}")).unwrap();
         }
         path
@@ -162,6 +177,10 @@ mod tests {
             "v0/f5/e08b92/a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
         );
         assert_eq!(
+            &key.cache_path_new(0),
+            "v0/f5/e0/8b92a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
+        );
+        assert_eq!(
             key.data(),
             "scope: global\n\nsource: foo\nlocation: file://bar.baz\n"
         );
@@ -182,6 +201,10 @@ mod tests {
         assert_eq!(
             &key.cache_path(0),
             "v0/d9/40ba75/07d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
+        );
+        assert_eq!(
+            &key.cache_path_new(0),
+            "v0/d9/40/ba7507d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
         );
         assert_eq!(
             key.data(),
