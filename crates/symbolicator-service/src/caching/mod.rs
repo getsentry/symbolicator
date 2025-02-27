@@ -172,7 +172,7 @@ pub use cache_key::{CacheKey, CacheKeyBuilder};
 pub use cleanup::cleanup;
 pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
-pub use memory::{CacheItemRequest, CacheVersions, Cacher};
+pub use memory::{CacheItemRequest, Cacher};
 pub use metadata::{CacheEntry, Metadata};
 pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
 

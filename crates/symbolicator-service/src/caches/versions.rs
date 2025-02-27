@@ -8,13 +8,75 @@
 //!
 //! * increase the `current` version.
 //! * prepend the `current` version to the `fallbacks`.
+//! * add the `current` version to the `previous` versions.
 //! * it is also possible to skip a version, in case a broken deploy needed to
 //!   be reverted which left behind broken cache files.
 //!
 //! Some of the versioned caches are also tied to format versions defined in [`symbolic`].
 //! For those cases, there are static assertions that are a reminder to also bump the cache version.
 
-use crate::caching::CacheVersions;
+use std::fmt;
+
+/// How to format cache keys into file paths.
+#[derive(Clone, Copy, Debug)]
+pub enum CachePathFormat {
+    /// Format cache keys as `xx/xxxxxx/xxx…`.
+    V1,
+    /// Format cache keys as `xx/xx/xxx…`
+    V2,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct CacheVersion {
+    /// The version number.
+    pub number: u32,
+    /// The way in which cache keys should be formatted
+    /// into file paths for this version.
+    pub path_format: CachePathFormat,
+}
+
+impl CacheVersion {
+    /// Creates a new `CacheVersion` with the given number and path format.
+    pub const fn new(number: u32, path_format: CachePathFormat) -> Self {
+        Self {
+            number,
+            path_format,
+        }
+    }
+}
+
+impl fmt::Display for CacheVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.number)
+    }
+}
+
+impl PartialEq for CacheVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.number == other.number
+    }
+}
+
+impl Eq for CacheVersion {}
+
+/// Cache Version Configuration used during cache lookup and generation.
+///
+/// The `current` version is tried first, and written during cache generation.
+/// The `fallback` versions are tried next, in first to last order. They are used only for cache
+/// lookups, but never for writing.
+///
+/// The version `0` is special in the sense that it is not used as part of the resulting cache
+/// file path, and generates the same paths as "legacy" unversioned cache files.
+#[derive(Clone, Debug)]
+pub struct CacheVersions {
+    /// The current cache version that is being looked up, and used for writing
+    pub current: CacheVersion,
+    /// A list of fallback cache versions that are being tried on lookup,
+    /// in descending order of priority.
+    pub fallbacks: &'static [CacheVersion],
+    /// A list of all previous cache versions.
+    pub previous: &'static [CacheVersion],
+}
 
 /// CFI cache, with the following versions:
 ///
@@ -31,8 +93,14 @@ use crate::caching::CacheVersions;
 ///
 /// - `0`: Initial version.
 pub const CFICACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 5,
-    fallbacks: &[4],
+    current: CacheVersion::new(5, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(4, CachePathFormat::V1)],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+        CacheVersion::new(3, CachePathFormat::V1),
+        CacheVersion::new(4, CachePathFormat::V1),
+    ],
 };
 static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
@@ -64,8 +132,20 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 8,
-    fallbacks: &[6, 7],
+    current: CacheVersion::new(8, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(7, CachePathFormat::V1),
+        CacheVersion::new(6, CachePathFormat::V1),
+    ],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+        CacheVersion::new(3, CachePathFormat::V1),
+        CacheVersion::new(4, CachePathFormat::V1),
+        CacheVersion::new(5, CachePathFormat::V1),
+        CacheVersion::new(6, CachePathFormat::V1),
+        CacheVersion::new(7, CachePathFormat::V1),
+    ],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 
@@ -77,8 +157,9 @@ static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
 ///
 /// - `0`: Initial version.
 pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Objects Meta cache, with the following versions:
@@ -89,8 +170,9 @@ pub const OBJECTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `0`: Initial version.
 pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Portable PDB cache, with the following versions:
@@ -103,8 +185,16 @@ pub const META_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 4,
-    fallbacks: &[2, 3],
+    current: CacheVersion::new(4, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(3, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+    ],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+        CacheVersion::new(3, CachePathFormat::V1),
+    ],
 };
 
 /// SourceMapCache, with the following versions:
@@ -113,8 +203,9 @@ pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Il2cpp cache, with the following versions:
@@ -125,8 +216,9 @@ pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `0`: Initial version.
 pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Bitcode / Auxdif (plist / bcsymbolmap) cache, with the following versions:
@@ -137,8 +229,9 @@ pub const IL2CPP_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `0`: Initial version.
 pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Source Files Cache, with the following versions:
@@ -147,8 +240,9 @@ pub const BITCODE_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const SOURCEFILES_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Bundle Index Cache, with the following versions:
@@ -157,8 +251,9 @@ pub const SOURCEFILES_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 2,
-    fallbacks: &[1],
+    current: CacheVersion::new(2, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
 };
 
 /// Proguard Cache, with the following versions:
@@ -169,6 +264,10 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: 3,
-    fallbacks: &[2],
+    current: CacheVersion::new(3, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(2, CachePathFormat::V1)],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V1),
+    ],
 };

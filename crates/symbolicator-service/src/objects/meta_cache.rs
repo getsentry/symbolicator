@@ -16,9 +16,8 @@ use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
 use crate::caches::versions::META_CACHE_VERSIONS;
-use crate::caching::{
-    CacheContents, CacheItemRequest, CacheKey, CacheKeyBuilder, CacheVersions, Cacher,
-};
+use crate::caches::CacheVersions;
+use crate::caching::{CacheContents, CacheItemRequest, CacheKey, CacheKeyBuilder, Cacher};
 use crate::download::DownloadService;
 use crate::types::Scope;
 

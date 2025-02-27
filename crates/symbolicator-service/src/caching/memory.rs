@@ -12,6 +12,7 @@ use tempfile::NamedTempFile;
 
 use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
+use crate::caches::CacheVersions;
 use crate::caching::Metadata;
 use crate::utils::futures::CallOnDrop;
 
@@ -154,23 +155,6 @@ impl<T: CacheItemRequest> Cacher<T> {
     }
 }
 
-/// Cache Version Configuration used during cache lookup and generation.
-///
-/// The `current` version is tried first, and written during cache generation.
-/// The `fallback` versions are tried next, in first to last order. They are used only for cache
-/// lookups, but never for writing.
-///
-/// The version `0` is special in the sense that it is not used as part of the resulting cache
-/// file path, and generates the same paths as "legacy" unversioned cache files.
-#[derive(Clone, Debug)]
-pub struct CacheVersions {
-    /// The current cache version that is being looked up, and used for writing
-    pub current: u32,
-    /// A list of fallback cache versions that are being tried on lookup,
-    /// in descending order of priority.
-    pub fallbacks: &'static [u32],
-}
-
 pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     type Item: 'static + Send + Sync + Clone;
 
@@ -212,7 +196,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        let cache_path = key.cache_path_new(T::VERSIONS.current);
+        let cache_path = key.cache_path(T::VERSIONS.current);
         let mut metadata = None;
         let mut temp_file = match self.config.tempfile() {
             Ok(temp_file) => temp_file,
@@ -325,8 +309,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
 
             // Clean up old versions
-            for version in 0..T::VERSIONS.current {
-                let item_path = key.cache_path_old(version);
+            for version in T::VERSIONS.previous {
+                let item_path = key.cache_path(*version);
 
                 if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
                     // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.
@@ -393,17 +377,11 @@ impl<T: CacheItemRequest> Cacher<T> {
                 for version in versions {
                     let is_current_version = version == T::VERSIONS.current;
                     // try the new cache key first, then fall back to the old cache key
-                    // TODO: Temporarily use `cache_path_new` for the current version
-                    let cache_path = if is_current_version {
-                        cache_key.cache_path_new(version)
-                    } else {
-                        cache_key.cache_path_old(version)
-                    };
                     let in_memory_item = match lookup_local_cache(
                         &self.config,
                         shared_cache,
                         cache_dir,
-                        &cache_path,
+                        &cache_key.cache_path(version),
                         is_current_version,
                     ) {
                         Err(CacheError::NotFound) => continue,
@@ -501,7 +479,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         tracing::trace!(
             "Spawning deduplicated {} computation for path {:?}",
             name,
-            cache_key.cache_path_new(T::VERSIONS.current)
+            cache_key.cache_path(T::VERSIONS.current)
         );
 
         let this = self.clone();

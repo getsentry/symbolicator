@@ -13,9 +13,9 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
 use symbolicator_service::caches::versions::BITCODE_CACHE_VERSIONS;
+use symbolicator_service::caches::CacheVersions;
 use symbolicator_service::caching::{
-    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, CacheVersions, Cacher,
-    SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };
 use symbolicator_service::download::{fetch_file, DownloadService};
 use symbolicator_service::metric;
