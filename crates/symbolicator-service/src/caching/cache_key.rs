@@ -32,7 +32,7 @@ impl fmt::Display for CacheKey {
         write!(
             f,
             "{}",
-            self.cache_path(CacheVersion::new(1234, CachePathFormat::V1))
+            self.cache_path(CacheVersion::new(1234, CachePathFormat::V2))
         )
     }
 }
@@ -80,6 +80,13 @@ impl CacheKey {
                 }
                 path.push('/');
                 for b in &self.hash[4..] {
+                    path.write_fmt(format_args!("{b:02x}")).unwrap();
+                }
+                path
+            }
+            CachePathFormat::V2 => {
+                let mut path = format!("v{number}/{:02x}/{:02x}/", self.hash[0], self.hash[1]);
+                for b in &self.hash[2..] {
                     path.write_fmt(format_args!("{b:02x}")).unwrap();
                 }
                 path
@@ -176,6 +183,10 @@ mod tests {
             "v0/f5/e08b92/a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
         );
         assert_eq!(
+            &key.cache_path(CacheVersion::new(0, CachePathFormat::V2)),
+            "v0/f5/e0/8b92a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
+        );
+        assert_eq!(
             key.data(),
             "scope: global\n\nsource: foo\nlocation: file://bar.baz\n"
         );
@@ -183,8 +194,8 @@ mod tests {
         let built_key = CacheKey::from_scoped_file(&scope, &file);
 
         assert_eq!(
-            built_key.cache_path(CacheVersion::new(0, CachePathFormat::V1)),
-            key.cache_path(CacheVersion::new(0, CachePathFormat::V1))
+            built_key.cache_path(CacheVersion::new(0, CachePathFormat::V2)),
+            key.cache_path(CacheVersion::new(0, CachePathFormat::V2))
         );
 
         let mut builder = CacheKey::scoped_builder(&scope);
@@ -199,6 +210,10 @@ mod tests {
         assert_eq!(
             &key.cache_path(CacheVersion::new(0, CachePathFormat::V1)),
             "v0/d9/40ba75/07d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
+        );
+        assert_eq!(
+            &key.cache_path(CacheVersion::new(0, CachePathFormat::V2)),
+            "v0/d9/40/ba7507d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
         );
         assert_eq!(
             key.data(),
