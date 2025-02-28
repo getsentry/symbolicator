@@ -180,6 +180,10 @@ impl Cache {
                 if dir_is_empty {
                     tracing::debug!("Removing directory `{}`", directory.display());
                     if !dry_run {
+                        // We use `remove_dir_all` here to make sure that the cleanup
+                        // succeeds even if the directory is not literally empty. We
+                        // have checked above that all cache files inside have been cleaned up,
+                        // but there might be orphaned metadata files or other broken data.
                         if let Err(e) = remove_dir_all(&path) {
                             sentry::with_scope(
                                 |scope| scope.set_extra("path", path.display().to_string().into()),
