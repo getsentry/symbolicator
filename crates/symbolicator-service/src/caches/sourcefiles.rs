@@ -6,9 +6,10 @@ use symbolic::common::{ByteView, SelfCell};
 use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
+use crate::caches::CacheVersions;
 use crate::caching::{
-    Cache, CacheContents, CacheEntry, CacheError, CacheItemRequest, CacheKey, CacheVersions,
-    Cacher, SharedCacheRef,
+    Cache, CacheContents, CacheEntry, CacheError, CacheItemRequest, CacheKey, Cacher,
+    SharedCacheRef,
 };
 use crate::download::{fetch_file, DownloadService};
 use crate::types::Scope;

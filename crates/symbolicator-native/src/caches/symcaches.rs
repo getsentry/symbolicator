@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use sentry::{Hub, SentryFutureExt};
+use symbolicator_service::caches::CacheVersions;
 use tempfile::NamedTempFile;
 
 use symbolic::common::{ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_service::caches::versions::SYMCACHE_VERSIONS;
 use symbolicator_service::caching::{
-    Cache, CacheContents, CacheError, CacheItemRequest, CacheVersions, Cacher, SharedCacheRef,
+    Cache, CacheContents, CacheError, CacheItemRequest, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
     CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,

@@ -59,7 +59,7 @@
 //! It is divided into the categories "downloaded" and "derived". Both categories have settings
 //! related to cache expiration. Additionally, they allow configuring a limit on concurrent lazy
 //! re-downloads and re-computation. The limit applies to the whole category at once.
-//! See the section on [`CacheVersions`] for more details.
+//! See the section on [`CacheVersions`](crate::caches::CacheVersions) for more details.
 //!
 //! The `retry_X_after` options specify a time-to-live after which the cache expires and will be
 //! re-computed. The `max_unused_for` option is rather a time-to-idle value, after which the item
@@ -110,7 +110,7 @@
 //! **NOTE**: Care must be taken to make sure that this metadata is stable, as it would otherwise
 //! lead to bad cache reuse.
 //!
-//! ## Cache Fallback and [`CacheVersions`]
+//! ## Cache Fallback and [`CacheVersions`](crate::caches::CacheVersions)
 //!
 //! Each type of cache defines both a current cache version and a list of fallback versions. Different
 //! versions correspond to separate directories on the file system. When an item is looked up in a file
@@ -139,7 +139,7 @@
 //! fallible. However, failing to load a previously written cache file in most cases should be
 //! considered a [`CacheError::InternalError`], and is unexpected to occur.
 //!
-//! A [`CacheItemRequest`] also needs to specify [`CacheVersions`] which are used for cache fallback
+//! A [`CacheItemRequest`] also needs to specify [`CacheVersions`](crate::caches::CacheVersions) which are used for cache fallback
 //! as explained in detail above. Newly added caches should start with version `1`, and all the
 //! cache versions and their versioning history should be recorded in [`caches::versions`](crate::caches::versions).
 //!
@@ -172,7 +172,7 @@ pub use cache_key::{CacheKey, CacheKeyBuilder};
 pub use cleanup::cleanup;
 pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
-pub use memory::{CacheItemRequest, CacheVersions, Cacher};
+pub use memory::{CacheItemRequest, Cacher};
 pub use metadata::{CacheEntry, Metadata};
 pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
 

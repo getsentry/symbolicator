@@ -4,6 +4,7 @@ use std::sync::Arc;
 use sha2::{Digest, Sha256};
 use symbolicator_sources::RemoteFile;
 
+use crate::caches::{CachePathFormat, CacheVersion};
 use crate::types::Scope;
 
 /// The key of an item in an in-memory or on-disk
@@ -28,7 +29,11 @@ impl CacheKey {
 
 impl fmt::Display for CacheKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.cache_path(1234))
+        write!(
+            f,
+            "{}",
+            self.cache_path(CacheVersion::new(1234, CachePathFormat::V1))
+        )
     }
 }
 
@@ -59,18 +64,27 @@ impl CacheKey {
 
     /// Returns the relative path for this cache key.
     ///
-    /// The relative path is a sha-256 hash hex-formatted like so:
-    /// `v$version/aa/bbccdd/eeff...`
-    pub fn cache_path(&self, version: u32) -> String {
-        let mut path = format!("v{version}/{:02x}/", self.hash[0]);
-        for b in &self.hash[1..4] {
-            path.write_fmt(format_args!("{b:02x}")).unwrap();
+    /// The relative path depends on the `version`'s `path_format`
+    /// field. See the documentation of [`CachePathFormat`].
+    pub fn cache_path(&self, version: CacheVersion) -> String {
+        let CacheVersion {
+            number,
+            path_format,
+        } = version;
+
+        match path_format {
+            CachePathFormat::V1 => {
+                let mut path = format!("v{number}/{:02x}/", self.hash[0]);
+                for b in &self.hash[1..4] {
+                    path.write_fmt(format_args!("{b:02x}")).unwrap();
+                }
+                path.push('/');
+                for b in &self.hash[4..] {
+                    path.write_fmt(format_args!("{b:02x}")).unwrap();
+                }
+                path
+            }
         }
-        path.push('/');
-        for b in &self.hash[4..] {
-            path.write_fmt(format_args!("{b:02x}")).unwrap();
-        }
-        path
     }
 
     /// Create a [`CacheKeyBuilder`] that can be used to build a cache key consisting of all its
@@ -158,7 +172,7 @@ mod tests {
         let key = CacheKey::from_scoped_file(&scope, &file);
 
         assert_eq!(
-            &key.cache_path(0),
+            &key.cache_path(CacheVersion::new(0, CachePathFormat::V1)),
             "v0/f5/e08b92/a55c1357413b5e36547a8b534a014c3a00299e7622e4c4b022a96541"
         );
         assert_eq!(
@@ -168,7 +182,10 @@ mod tests {
 
         let built_key = CacheKey::from_scoped_file(&scope, &file);
 
-        assert_eq!(built_key.cache_path(0), key.cache_path(0));
+        assert_eq!(
+            built_key.cache_path(CacheVersion::new(0, CachePathFormat::V1)),
+            key.cache_path(CacheVersion::new(0, CachePathFormat::V1))
+        );
 
         let mut builder = CacheKey::scoped_builder(&scope);
         builder.write_file_meta(&file).unwrap();
@@ -180,7 +197,7 @@ mod tests {
         let key = builder.build();
 
         assert_eq!(
-            &key.cache_path(0),
+            &key.cache_path(CacheVersion::new(0, CachePathFormat::V1)),
             "v0/d9/40ba75/07d18c0e9a1d884809670a1e32a72a85ed7563c52909507bf594880a"
         );
         assert_eq!(
