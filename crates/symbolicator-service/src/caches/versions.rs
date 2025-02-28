@@ -73,6 +73,9 @@ pub struct CacheVersions {
     /// in descending order of priority.
     pub fallbacks: &'static [CacheVersion],
     /// A list of all previous cache versions.
+    ///
+    /// This list includes both fallback and incompatible
+    /// versions.
     pub previous: &'static [CacheVersion],
 }
 
