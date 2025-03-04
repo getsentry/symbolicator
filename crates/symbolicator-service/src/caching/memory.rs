@@ -12,6 +12,7 @@ use tempfile::NamedTempFile;
 
 use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
+use crate::caches::CacheVersions;
 use crate::caching::Metadata;
 use crate::utils::futures::CallOnDrop;
 
@@ -152,23 +153,6 @@ impl<T: CacheItemRequest> Cacher<T> {
             shared_cache,
         }
     }
-}
-
-/// Cache Version Configuration used during cache lookup and generation.
-///
-/// The `current` version is tried first, and written during cache generation.
-/// The `fallback` versions are tried next, in first to last order. They are used only for cache
-/// lookups, but never for writing.
-///
-/// The version `0` is special in the sense that it is not used as part of the resulting cache
-/// file path, and generates the same paths as "legacy" unversioned cache files.
-#[derive(Clone, Debug)]
-pub struct CacheVersions {
-    /// The current cache version that is being looked up, and used for writing
-    pub current: u32,
-    /// A list of fallback cache versions that are being tried on lookup,
-    /// in descending order of priority.
-    pub fallbacks: &'static [u32],
 }
 
 pub trait CacheItemRequest: 'static + Send + Sync + Clone {
@@ -325,8 +309,8 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
 
             // Clean up old versions
-            for version in 0..T::VERSIONS.current {
-                let item_path = key.cache_path(version);
+            for version in T::VERSIONS.previous {
+                let item_path = key.cache_path(*version);
 
                 if let Err(e) = fs::remove_file(cache_dir.join(&item_path)) {
                     // `NotFound` errors are no cause for concern—it's likely that not all fallback versions exist anymore.

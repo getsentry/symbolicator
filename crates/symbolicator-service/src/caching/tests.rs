@@ -12,6 +12,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
+use crate::caches::{CachePathFormat, CacheVersion, CacheVersions};
 use crate::config::{CacheConfig, CacheConfigs, DerivedCacheConfig, DownloadedCacheConfig};
 use crate::test;
 use crate::types::Scope;
@@ -985,8 +986,12 @@ impl CacheItemRequest for TestCacheItem {
     type Item = String;
 
     const VERSIONS: CacheVersions = CacheVersions {
-        current: 2,
-        fallbacks: &[1],
+        current: CacheVersion::new(2, CachePathFormat::V2),
+        fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
+        previous: &[
+            CacheVersion::new(0, CachePathFormat::V1),
+            CacheVersion::new(1, CachePathFormat::V1),
+        ],
     };
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
@@ -1015,11 +1020,20 @@ async fn test_cache_fallback() {
     let request = TestCacheItem::new();
     let key = CacheKey::for_testing(Scope::Global, "global/some_cache_key");
 
-    let very_old_cache_file = cache_dir.path().join("objects").join(key.cache_path(0));
+    let very_old_version = CacheVersion::new(0, CachePathFormat::V1);
+    let old_version = CacheVersion::new(1, CachePathFormat::V1);
+
+    let very_old_cache_file = cache_dir
+        .path()
+        .join("objects")
+        .join(key.cache_path(very_old_version));
     fs::create_dir_all(very_old_cache_file.parent().unwrap()).unwrap();
     fs::write(&very_old_cache_file, "some incompatible cached contents").unwrap();
 
-    let old_cache_file = cache_dir.path().join("objects").join(key.cache_path(1));
+    let old_cache_file = cache_dir
+        .path()
+        .join("objects")
+        .join(key.cache_path(old_version));
     fs::create_dir_all(old_cache_file.parent().unwrap()).unwrap();
     fs::write(&old_cache_file, "some old cached contents").unwrap();
 
@@ -1076,11 +1090,11 @@ async fn test_cache_fallback_notfound() {
 
     {
         let cache_dir = cache_dir.path().join("objects");
-        let cache_file = cache_dir.join(key.cache_path(1));
+        let cache_file = cache_dir.join(key.cache_path(TestCacheItem::VERSIONS.fallbacks[0]));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
-        let cache_file = cache_dir.join(key.cache_path(2));
+        let cache_file = cache_dir.join(key.cache_path(TestCacheItem::VERSIONS.current));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "").unwrap();
     }
@@ -1133,7 +1147,7 @@ async fn test_lazy_computation_limit() {
         let request = request.clone();
         let key = CacheKey::for_testing(Scope::Global, *key);
 
-        let cache_file = cache_dir.join(key.cache_path(1));
+        let cache_file = cache_dir.join(key.cache_path(TestCacheItem::VERSIONS.fallbacks[0]));
         fs::create_dir_all(cache_file.parent().unwrap()).unwrap();
         fs::write(cache_file, "some old cached contents").unwrap();
 
@@ -1174,8 +1188,9 @@ impl CacheItemRequest for FailingTestCacheItem {
     type Item = String;
 
     const VERSIONS: CacheVersions = CacheVersions {
-        current: 1,
+        current: CacheVersion::new(2, CachePathFormat::V2),
         fallbacks: &[],
+        previous: &[CacheVersion::new(1, CachePathFormat::V1)],
     };
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
@@ -1224,7 +1239,10 @@ async fn test_failing_cache_write() {
 
     // The computation returned `InternalError`, so the file should not have been
     // persisted
-    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    let cache_file_path = cache_dir
+        .path()
+        .join("objects")
+        .join(key.cache_path(FailingTestCacheItem::VERSIONS.current));
     assert!(!fs::exists(cache_file_path).unwrap());
 
     // Case 2: malformed error
@@ -1240,6 +1258,9 @@ async fn test_failing_cache_write() {
 
     // The computation returned `Malformed`, so the file should have been
     // persisted
-    let cache_file_path = cache_dir.path().join("objects").join(key.cache_path(1));
+    let cache_file_path = cache_dir
+        .path()
+        .join("objects")
+        .join(key.cache_path(FailingTestCacheItem::VERSIONS.current));
     assert!(fs::exists(cache_file_path).unwrap());
 }

@@ -1,5 +1,5 @@
 use std::ffi::OsStr;
-use std::fs::{read_dir, remove_dir, remove_file};
+use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::io;
 use std::path::Path;
 
@@ -201,7 +201,7 @@ impl Cache {
                         if dir_is_empty {
                             tracing::debug!("Removing directory `{}`", directory.display());
                             if !dry_run {
-                                if let Err(e) = remove_dir(&path) {
+                                if let Err(e) = remove_dir_all(&path) {
                                     sentry::with_scope(
                                         |scope| {
                                             scope.set_extra(

@@ -19,8 +19,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
-use crate::caches::versions::OBJECTS_CACHE_VERSIONS;
-use crate::caching::CacheVersions;
+use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
 use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey};
 use crate::download::{fetch_file, tempfile_in_parent, DownloadService};
 use crate::types::Scope;
