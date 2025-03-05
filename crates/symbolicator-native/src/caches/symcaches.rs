@@ -8,7 +8,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolicator_service::caches::CacheVersions;
 use tempfile::NamedTempFile;
 
-use symbolic::common::{ByteView, SelfCell};
+use symbolic::common::{AccessPattern, ByteView, SelfCell};
 use symbolic::symcache::{SymCache, SymCacheConverter};
 use symbolicator_service::caches::versions::SYMCACHE_VERSIONS;
 use symbolicator_service::caching::{
@@ -91,6 +91,9 @@ impl CacheItemRequest for FetchSymCacheInternal {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
+        let _result = data.hint(AccessPattern::Random);
+        debug_assert!(_result.is_ok(), "{_result:?}");
+
         SelfCell::try_new(data, |p| unsafe {
             SymCache::parse(&*p).map_err(|e| {
                 let object_meta = &self.object_meta;

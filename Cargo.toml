@@ -48,7 +48,7 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 # This only works for the very specific crate listed here, and not for its dependency tree.
 # Alternatively, the whole dependency tree can be changed at once by putting this line into
 # `crates/symbolicator/Cargo.toml`:
-# symbolic = { path = "../../../symbolic/symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
+# symbolic = { path = "../symbolic", features = ["common-serde", "debuginfo", "demangle", "minidump-serde", "symcache"] }
 # See also https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html
 # [patch.crates-io]
 # symbolic-debuginfo = { path = "../symbolic/symbolic-debuginfo" }
