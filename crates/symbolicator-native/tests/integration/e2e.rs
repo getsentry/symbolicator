@@ -513,7 +513,7 @@ async fn test_basic_windows() {
 
                     cached_symcaches.sort_by_key(|(_, size)| *size);
                     assert_eq!(cached_symcaches.len(), 2); // 1 symcache, 1 metadata file, 1 debug text file
-                    assert_eq!(cached_symcaches[1].1, 142_365);
+                    assert_eq!(cached_symcaches[1].1, 142_453);
 
                     // Checks the metadata file
                     expected_debug.push_str("b\n"); // this truly ends in `.pdb` now

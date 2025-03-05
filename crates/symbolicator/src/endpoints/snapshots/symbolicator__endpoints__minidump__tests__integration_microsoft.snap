@@ -39,30 +39,12 @@ stacktraces:
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
         trust: fp
       - status: symbolicated
-        original_index: 2
-        instruction_addr: "0x7584e9bf"
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        symbol: FreeWrapper
-        sym_addr: "0x7584e960"
-        function: FreeWrapper
-        lineno: 0
-        trust: scan
-      - status: symbolicated
         original_index: 3
         instruction_addr: "0x70b7ae3f"
         package: "C:\\Windows\\System32\\dbgcore.dll"
         symbol: "?DetermineOutputProvider@@YGJPAVMiniDumpAllocationProvider@@PAXQAU_MINIDUMP_CALLBACK_INFORMATION@@PAPAVMiniDumpOutputProvider@@@Z"
         sym_addr: "0x70b7ad6b"
         function: "DetermineOutputProvider(MiniDumpAllocationProvider*, void*, _MINIDUMP_CALLBACK_INFORMATION* const, MiniDumpOutputProvider**)"
-        lineno: 0
-        trust: scan
-      - status: symbolicated
-        original_index: 4
-        instruction_addr: "0x7584e9bf"
-        package: "C:\\Windows\\System32\\rpcrt4.dll"
-        symbol: FreeWrapper
-        sym_addr: "0x7584e960"
-        function: FreeWrapper
         lineno: 0
         trust: scan
       - status: missing
@@ -539,7 +521,7 @@ modules:
     debug_file: bcryptprimitives.pdb
     image_addr: "0x75130000"
     image_size: 368640
-  - debug_status: found
+  - debug_status: unused
     unwind_status: found
     features:
       has_debug_info: true
@@ -555,10 +537,6 @@ modules:
     image_addr: "0x75810000"
     image_size: 790528
     candidates:
-      - source: microsoft
-        location: No object files listed on this source
-        download:
-          status: notfound
       - source: microsoft
         location: "https://msdl.microsoft.com/download/symbols/rpcrt4.dll/5A49BB75c1000/rpcrt4.dl_"
         download:
@@ -704,4 +682,3 @@ modules:
           status: ok
         debug:
           status: ok
-
