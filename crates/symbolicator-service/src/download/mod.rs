@@ -328,6 +328,7 @@ impl DownloadService {
         destination: PathBuf,
     ) -> CacheContents {
         let host = source.host();
+        let uri = source.uri();
 
         let is_builtin_source = source.is_builtin();
         let source_metric_key = source.source_metric_key().to_string();
@@ -393,6 +394,15 @@ impl DownloadService {
                 Err(CacheError::InternalError) => "internalerror",
             };
             metric!(counter("service.builtin_source.download") += 1, "source" => &source_metric_key, "status" => status);
+        }
+
+        // Temporarily log successful downloads from Electron
+        // to see which files we can actually find there.
+        if source_metric_key == "sentry:electron" && result.is_ok() {
+            tracing::info!(
+                %uri,
+                "Successfully fetched from Electron symbol server"
+            );
         }
 
         result
