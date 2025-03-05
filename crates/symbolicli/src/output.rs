@@ -240,7 +240,8 @@ fn print_compact_js(mut response: CompletedJsSymbolicationResponse) {
         let filename = filename.unwrap_or_default();
         row.add_cell(cell!(filename));
 
-        row.add_cell(cell!(lineno));
+        let line = lineno.map(|line| line.to_string()).unwrap_or_default();
+        row.add_cell(cell!(line));
 
         let col = colno.map(|col| col.to_string()).unwrap_or_default();
         row.add_cell(cell!(col));
@@ -290,10 +291,19 @@ fn print_pretty_js(mut response: CompletedJsSymbolicationResponse) {
             table.add_row(row![r->"  File:", name]);
         }
 
-        if let Some(col) = *colno {
-            table.add_row(row![r->"  Line/Column:", format!("{lineno}:{col}")]);
-        } else {
-            table.add_row(row![r->"  Line:", format!("{lineno}")]);
+        match (colno, lineno) {
+            (Some(col), Some(line)) => {
+                table.add_row(row![r->"  Line/Column:", format!("{}:{}", line, col)]);
+            }
+            (Some(col), None) => {
+                table.add_row(row![r->"  Column:", format!("{}", col)]);
+            }
+            (None, Some(line)) => {
+                table.add_row(row![r->"  Line:", format!("{}", line)]);
+            }
+            (None, None) => {
+                table.add_row(row![r->"  Line/Column:", "N/A"]);
+            }
         }
 
         table.add_empty_row();
