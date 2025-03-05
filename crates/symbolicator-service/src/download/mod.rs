@@ -396,6 +396,8 @@ impl DownloadService {
             metric!(counter("service.builtin_source.download") += 1, "source" => &source_metric_key, "status" => status);
         }
 
+        // Temporarily log successful downloads from Electron
+        // to see which files we can actually find there.
         if source_metric_key == "sentry:electron" && result.is_ok() {
             tracing::info!(
                 %uri,
