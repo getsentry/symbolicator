@@ -7,8 +7,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
-    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
-    ObjectPurpose, ObjectsActor,
+    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectDownloadInfo,
+    ObjectFeatures, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
@@ -168,7 +168,26 @@ impl ModuleLookup {
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules
             .into_iter()
-            .map(|entry| entry.object_info)
+            .map(|entry| {
+                let info = entry.object_info;
+                // Temporarily log successful downloads from Electron
+                // to see which files we can actually find there.
+                for c in &info.candidates {
+                    if c.source.as_str() == "sentry:electron"
+                        && matches!(c.download, ObjectDownloadInfo::Ok { .. })
+                    {
+                        tracing::info!(
+                            arch = %info.arch,
+                            ty = %info.raw.ty,
+                            debug_file = ?info.raw.debug_file,
+                            code_file = ?info.raw.code_file,
+                            location = %c.location,
+                            "Successfully fetched from Electron symbol server");
+                    }
+                }
+
+                info
+            })
             .collect()
     }
 
