@@ -6,7 +6,7 @@ use futures::future::BoxFuture;
 use symbolicator_service::caches::CacheVersions;
 use tempfile::NamedTempFile;
 
-use symbolic::common::{ByteView, SelfCell};
+use symbolic::common::{AccessPattern, ByteView, SelfCell};
 use symbolic::debuginfo::Object;
 use symbolic::ppdb::{PortablePdbCache, PortablePdbCacheConverter};
 use symbolicator_service::caches::versions::PPDB_CACHE_VERSIONS;
@@ -115,6 +115,9 @@ impl CacheItemRequest for FetchPortablePdbCacheInternal {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
+        let _result = data.hint(AccessPattern::Random);
+        debug_assert!(_result.is_ok(), "{_result:?}");
+
         parse_ppdb_cache_owned(data)
     }
 }

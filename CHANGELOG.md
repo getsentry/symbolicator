@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+- Update `symbolic` dependency to `12.14.0`, which now skips not found frames instead of defaulting to the closest one. ([#1640](https://github.com/getsentry/symbolicator/pull/1640))
+- Mark certain caches as random access to improve cache performance. ([#1639](https://github.com/getsentry/symbolicator/pull/1639))
+
 ### Dependencies
 
 - Bump Native SDK from v0.7.20 to v0.8.1 ([#1634](https://github.com/getsentry/symbolicator/pull/1634))
@@ -12,8 +17,8 @@
 
 ### Various fixes & improvements
 
-fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621))
-feat: Added a setting `retry_missing_after_public` to downloaded and derived cache configs.
+- fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621))
+- feat: Added a setting `retry_missing_after_public` to downloaded and derived cache configs.
       The effect of this setting is to control the time after which negative (missing, failed download, &c.)
       cache entries from public sources. The default value is 24h. ([#1623](https://github.com/getsentry/symbolicator/pull/1623))
 

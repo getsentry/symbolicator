@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use futures::future::BoxFuture;
 use proguard::ProguardCache;
-use symbolic::common::{AsSelf, ByteView, DebugId, SelfCell};
+use symbolic::common::{AccessPattern, AsSelf, ByteView, DebugId, SelfCell};
 use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caches::CacheVersions;
 use symbolicator_service::caching::{
@@ -185,6 +185,9 @@ impl CacheItemRequest for FetchProguard {
     }
 
     fn load(&self, byteview: ByteView<'static>) -> CacheContents<Self::Item> {
+        let _result = byteview.hint(AccessPattern::Random);
+        debug_assert!(_result.is_ok(), "{_result:?}");
+
         OwnedProguardCache::new(byteview)
     }
 

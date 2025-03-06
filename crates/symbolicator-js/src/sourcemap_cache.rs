@@ -3,7 +3,7 @@ use std::io::{self, BufWriter};
 use std::sync::Arc;
 
 use futures::future::BoxFuture;
-use symbolic::common::{ByteView, SelfCell};
+use symbolic::common::{AccessPattern, ByteView, SelfCell};
 use symbolic::debuginfo::sourcebundle::SourceFileDescriptor;
 use symbolic::sourcemapcache::{SourceMapCache, SourceMapCacheWriter};
 use symbolicator_service::caches::versions::SOURCEMAP_CACHE_VERSIONS;
@@ -81,14 +81,13 @@ impl CacheItemRequest for FetchSourceMapCacheInternal {
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
-        parse_sourcemap_cache_owned(data)
-    }
-}
+        let _result = data.hint(AccessPattern::Random);
+        debug_assert!(_result.is_ok(), "{_result:?}");
 
-fn parse_sourcemap_cache_owned(byteview: ByteView<'static>) -> CacheContents<OwnedSourceMapCache> {
-    SelfCell::try_new(byteview, |p| unsafe {
-        SourceMapCache::parse(&*p).map_err(CacheError::from_std_error)
-    })
+        SelfCell::try_new(data, |p| unsafe {
+            SourceMapCache::parse(&*p).map_err(CacheError::from_std_error)
+        })
+    }
 }
 
 /// Computes and writes the SourceMapCache.
