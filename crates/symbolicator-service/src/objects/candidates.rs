@@ -260,6 +260,12 @@ impl AllObjectCandidates {
     pub fn into_inner(self) -> Vec<ObjectCandidate> {
         self.0
     }
+
+    /// Returns an iterator over the [`ObjectCandidates`](ObjectCandidate)
+    /// in this collection.
+    pub fn iter(&self) -> std::slice::Iter<ObjectCandidate> {
+        self.0.as_slice().iter()
+    }
 }
 
 impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
@@ -268,6 +274,16 @@ impl From<Vec<ObjectCandidate>> for AllObjectCandidates {
             .sort_by_cached_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
         source.dedup_by_key(|candidate| (candidate.source.clone(), candidate.location.clone()));
         Self(source)
+    }
+}
+
+impl<'a> IntoIterator for &'a AllObjectCandidates {
+    type Item = &'a ObjectCandidate;
+
+    type IntoIter = std::slice::Iter<'a, ObjectCandidate>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
