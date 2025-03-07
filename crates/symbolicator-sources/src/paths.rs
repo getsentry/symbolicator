@@ -868,4 +868,86 @@ mod tests {
             "497b72f6390a44fc878e5a2d63b6cc4b"
         );
     }
+
+    /// Tests that all code/debug file values we have successfully downloaded
+    /// from the Electron source ar covered by a small number of glob patterns.
+    #[test]
+    fn test_electron_path_patterns() {
+        let patterns = [
+            pattern("*electron*"),
+            pattern("*ffmpeg*"),
+            pattern("*libEGL*"),
+            pattern("*libGLESv2*"),
+            pattern("*slack*"),
+            pattern("*vk_swiftshader*"),
+        ];
+
+        let files = [
+            (
+                "C:\\Program Files\\WindowsApps\\91750D7E.Slack_4.35.126.0_x64__8she8kybcnzg4\\app\\Slack.exe",
+                "C:\\projects\\src\\out\\Default\\electron.exe.pdb",
+            ),
+            (
+                "/Applications/Program.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+                "Electron Framework",
+            ),
+            (
+                "/Users/Sebastian/github/project/node_modules/.pnpm/electron@33.0.2/node_modules/electron/dist/Electron.app/Contents/Frameworks/Electron Helper.app/Contents/MacOS/Electron Helper",
+                "Electron Helper",
+            ),
+            (
+                "C:\\Users\\Sebastian\\AppData\\Local\\Programs\\Program\\ffmpeg.dll",
+                "C:\\projects\\src\\out\\Default\\ffmpeg.dll.pdb",
+            ),
+            (
+                "/Applications/Program.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+                "libEGL.dylib",
+            ),
+            (
+                "C:\\Users\\******\\AppData\\Local\\AmazonChime\\app-5.23.32022\\libglesv2.dll",
+                "C:\\projects\\src\\out\\Default\\libGLESv2.dll.pdb",
+            ),
+            (
+                "/Applications/Program.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+                "libGLESv2.dylib",
+            ),
+            (
+                "libGLESv2.so",
+                "libGLESv2.so",
+            ),
+            (
+                "/Applications/Program.app/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper",
+                "Slack Helper",
+            ),
+            (
+                "/Applications/Program.app/Contents/Frameworks/Slack Helper (GPU).app/Contents/MacOS/Slack Helper (GPU)",
+                "Slack Helper (GPU)",
+            ),
+            (
+                "/Volumes/Program/Program.app/Contents/Frameworks/Slack Helper (Renderer).app/Contents/MacOS/Slack Helper (Renderer)",
+                "Slack Helper (Renderer)",
+            ),
+            (
+                "/Applications/Program.app/Contents/MacOS/Slack",
+                "Slack",
+            ),
+            (
+                "C:\\Users\\Sebastian\\AppData\\Local\\Programs\\Program\\vk_swiftshader.dll",
+                "C:\\projects\\src\\out\\Default\\vk_swiftshader.dll.pdb",
+            ),
+        ];
+
+        for (code_file, debug_file) in files {
+            let object_id = ObjectId {
+                code_file: Some(code_file.into()),
+                debug_file: Some(debug_file.into()),
+                ..Default::default()
+            };
+
+            assert!(
+                matches_path_patterns(&object_id, &patterns),
+                "Non-matching object_id: {object_id:?}"
+            );
+        }
+    }
 }
