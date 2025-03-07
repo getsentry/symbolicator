@@ -873,17 +873,14 @@ mod tests {
     /// from the Electron source ar covered by a small number of glob patterns.
     #[test]
     fn test_electron_path_patterns() {
-        let patterns: Vec<_> = [
-            "*electron*",
-            "*ffmpeg*",
-            "*libEGL*",
-            "*libGLESv2*",
-            "*slack*",
-            "*vk_swiftshader*",
-        ]
-        .into_iter()
-        .map(pattern)
-        .collect();
+        let patterns = [
+            pattern("*electron*"),
+            pattern("*ffmpeg*"),
+            pattern("*libEGL*"),
+            pattern("*libGLESv2*"),
+            pattern("*slack*"),
+            pattern("*vk_swiftshader*"),
+        ];
 
         let files = [
             (
