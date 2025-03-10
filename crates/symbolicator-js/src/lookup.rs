@@ -198,16 +198,22 @@ impl SourceMapLookup {
             for frame in &mut stacktrace.frames {
                 // NOTE: some older JS SDK versions did not correctly strip a leading `async `
                 // prefix from the `abs_path`, which we will work around here.
-                if let Some(abs_path) = frame.abs_path.strip_prefix("async ") {
-                    frame.abs_path = abs_path.to_owned();
+                if let Some(abs_path) = frame
+                    .abs_path
+                    .as_ref()
+                    .and_then(|s| s.strip_prefix("async "))
+                {
+                    frame.abs_path = Some(abs_path.to_owned());
                 }
-                let abs_path = &frame.abs_path;
-                if self.modules_by_abs_path.contains_key(abs_path) {
-                    continue;
+
+                if let Some(abs_path) = &frame.abs_path {
+                    if self.modules_by_abs_path.contains_key(abs_path) {
+                        continue;
+                    }
+                    let cached_module = SourceMapModule::new(abs_path, None);
+                    self.modules_by_abs_path
+                        .insert(abs_path.to_owned(), cached_module);
                 }
-                let cached_module = SourceMapModule::new(abs_path, None);
-                self.modules_by_abs_path
-                    .insert(abs_path.to_owned(), cached_module);
             }
         }
     }
