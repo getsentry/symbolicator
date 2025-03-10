@@ -880,6 +880,7 @@ mod tests {
             pattern("*libGLESv2*"),
             pattern("*slack*"),
             pattern("*vk_swiftshader*"),
+            pattern("*node*"),
         ];
 
         let files = [
@@ -935,6 +936,11 @@ mod tests {
                 "C:\\Users\\Sebastian\\AppData\\Local\\Programs\\Program\\vk_swiftshader.dll",
                 "C:\\projects\\src\\out\\Default\\vk_swiftshader.dll.pdb",
             ),
+            (
+                "C:/Program Files (x86)/program/node.dll",
+                "C:/projects/electron/out/R/node.dll.pdb",
+                
+            )
         ];
 
         for (code_file, debug_file) in files {
