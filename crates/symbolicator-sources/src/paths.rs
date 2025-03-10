@@ -878,9 +878,9 @@ mod tests {
             pattern("*ffmpeg*"),
             pattern("*libEGL*"),
             pattern("*libGLESv2*"),
+            pattern("*node*"),
             pattern("*slack*"),
             pattern("*vk_swiftshader*"),
-            pattern("*node*"),
         ];
 
         let files = [
