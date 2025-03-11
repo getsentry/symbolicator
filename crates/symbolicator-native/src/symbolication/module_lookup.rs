@@ -165,29 +165,28 @@ impl ModuleLookup {
 
     /// Returns the original `CompleteObjectInfo` list in its original sorting order.
     pub fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
-        self.modules.sort_by_key(|entry| entry.module_index);
-        self.modules
-            .into_iter()
-            .map(|entry| {
-                let info = entry.object_info;
-                // Temporarily log successful downloads from Electron
-                // to see which files we can actually find there.
-                for c in &info.candidates {
-                    if c.source.as_str() == "sentry:electron"
-                        && matches!(c.download, ObjectDownloadInfo::Ok { .. })
-                    {
-                        tracing::info!(
+        // Temporarily log successful downloads *of the first image* from Electron
+        // to see which files we can actually find there.
+        if let Some(entry) = self.modules.first() {
+            let info = &entry.object_info;
+            for c in &info.candidates {
+                if c.source.as_str() == "sentry:electron"
+                    && matches!(c.download, ObjectDownloadInfo::Ok { .. })
+                {
+                    tracing::info!(
                             arch = %info.arch,
                             ty = %info.raw.ty,
                             debug_file = ?info.raw.debug_file,
                             code_file = ?info.raw.code_file,
                             location = %c.location,
-                            "Successfully fetched from Electron symbol server");
-                    }
+                            "Successfully fetched first module from Electron symbol server");
                 }
-
-                info
-            })
+            }
+        }
+        self.modules.sort_by_key(|entry| entry.module_index);
+        self.modules
+            .into_iter()
+            .map(|entry| entry.object_info)
             .collect()
     }
 
