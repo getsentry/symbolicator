@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tempfile::NamedTempFile;
 
+use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_service::types::Scope;
 
 use crate::{assert_snapshot, read_fixture, setup_service, symbol_server};
@@ -17,13 +18,13 @@ macro_rules! stackwalk_minidump {
             let mut minidump_file = NamedTempFile::new().unwrap();
             minidump_file.write_all(&minidump).unwrap();
             let response = symbolication
-                .process_minidump(
-                    None,
-                    Scope::Global,
-                    minidump_file.into_temp_path(),
-                    Arc::new([source]),
-                    Default::default(),
-                )
+                .process_minidump(ProcessMinidump {
+                    platform: None,
+                    scope: Scope::Global,
+                    minidump_file: minidump_file.into_temp_path(),
+                    sources: Arc::new([source]),
+                    scraping: Default::default(),
+                })
                 .await;
 
             assert_snapshot!(response.unwrap());

@@ -17,9 +17,7 @@ use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
 use symbolicator_service::metric;
-use symbolicator_service::types::{
-    ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
-};
+use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tempfile::TempPath;
@@ -27,8 +25,8 @@ use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
 use crate::interface::{
-    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawStacktrace, Registers,
-    SymbolicateStacktraces, SystemInfo,
+    CompleteObjectInfo, CompletedSymbolicationResponse, ProcessMinidump, RawFrame, RawStacktrace,
+    Registers, SymbolicateStacktraces, SystemInfo,
 };
 use crate::metrics::StacktraceOrigin;
 
@@ -463,15 +461,9 @@ impl SymbolicationActor {
 
     pub async fn process_minidump(
         &self,
-        platform: Option<Platform>,
-        scope: Scope,
-        minidump_file: TempPath,
-        sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
+        request: ProcessMinidump,
     ) -> Result<CompletedSymbolicationResponse> {
-        let (request, state) = self
-            .stackwalk_minidump(platform, scope, minidump_file, sources, scraping)
-            .await?;
+        let (request, state) = self.stackwalk_minidump(request).await?;
 
         let mut response = self.symbolicate(request).await?;
         state.merge_into(&mut response);
@@ -482,12 +474,15 @@ impl SymbolicationActor {
     #[tracing::instrument(skip_all)]
     async fn stackwalk_minidump(
         &self,
-        platform: Option<Platform>,
-        scope: Scope,
-        minidump_file: TempPath,
-        sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
+        request: ProcessMinidump,
     ) -> Result<(SymbolicateStacktraces, MinidumpState)> {
+        let ProcessMinidump {
+            platform,
+            scope,
+            minidump_file,
+            sources,
+            scraping,
+        } = request;
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);

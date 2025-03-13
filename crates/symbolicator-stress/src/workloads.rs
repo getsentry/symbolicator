@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
-use symbolicator_native::interface::{RawStacktrace, StacktraceOrigin, SymbolicateStacktraces};
+use symbolicator_native::interface::{
+    ProcessMinidump, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
+};
 use symbolicator_native::SymbolicationActor;
 use symbolicator_service::download::SourceConfig;
 use symbolicator_service::types::{RawObjectInfo, Scope};
@@ -164,13 +166,13 @@ pub async fn process_payload(
 
             symbolication
                 .0
-                .process_minidump(
-                    None,
-                    scope.clone(),
-                    temp_path,
-                    Arc::clone(sources),
-                    Default::default(),
-                )
+                .process_minidump(ProcessMinidump {
+                    platform: None,
+                    scope: scope.clone(),
+                    minidump_file: temp_path,
+                    sources: Arc::clone(sources),
+                    scraping: Default::default(),
+                })
                 .await
                 .unwrap();
         }

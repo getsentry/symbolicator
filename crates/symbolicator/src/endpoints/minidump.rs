@@ -2,6 +2,7 @@ use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
 use symbolic::common::ByteView;
+use symbolicator_native::interface::ProcessMinidump;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -75,12 +76,15 @@ pub async fn handle_minidump_request(
         )
             .into());
     }
+
     let request_id = service.process_minidump(
-        platform,
-        params.scope,
-        minidump_file,
-        sources,
-        scraping,
+        ProcessMinidump {
+            platform,
+            scope: params.scope,
+            minidump_file,
+            sources,
+            scraping,
+        },
         options,
     )?;
 
