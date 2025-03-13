@@ -234,6 +234,24 @@ impl JsMetrics {
             ],
         );
         aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_source_via_release_old_with_debugid,
+            &[
+                ("type", "source"),
+                ("lookup", "release-old"),
+                ("had_debugid", "true"),
+            ],
+        );
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_source_via_release_old_without_debugid,
+            &[
+                ("type", "source"),
+                ("lookup", "release-old"),
+                ("had_debugid", "false"),
+            ],
+        );
+        aggregator.emit_count(
             "js.found_via_scraping",
             self.found_source_via_scraping_with_debugid,
             &[("type", "source"), ("had_debugid", "true")],
@@ -259,6 +277,24 @@ impl JsMetrics {
             "js.found_via_bundle_debugid",
             self.found_sourcemap_via_debugid,
             &[("type", "sourcemap"), ("had_debugid", "true")],
+        );
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_sourcemap_via_release_with_debugid,
+            &[
+                ("type", "sourcemap"),
+                ("lookup", "release"),
+                ("had_debugid", "true"),
+            ],
+        );
+        aggregator.emit_count(
+            "js.found_via_bundle_url",
+            self.found_sourcemap_via_release_without_debugid,
+            &[
+                ("type", "sourcemap"),
+                ("lookup", "release"),
+                ("had_debugid", "false"),
+            ],
         );
         aggregator.emit_count(
             "js.found_via_bundle_url",
