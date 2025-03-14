@@ -30,9 +30,9 @@ Content-Disposition: form-data; name="platform"
 --xxx
 Content-Disposition: form-data; name="rewrite_first_module"
 [
-  ["([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "Electron $suffix"],
-  ["([^/]+).exe.pdb$", "electron.exe.pdb"],
-  ["([^/]+)$", "electron"]
+  {"from": "([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+  {"from": "([^/]+).exe.pdb$", "to": "electron.exe.pdb"},
+  {"from": "([^/]+)$", "to": "electron"}
 ]
 --xxx--
 ```

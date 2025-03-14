@@ -621,14 +621,15 @@ impl<'de> Deserialize<'de> for AddrMode {
 ///
 /// It can be created by deserializing e.g. from JSON.
 #[derive(Debug, Clone, Deserialize)]
-struct RewriteRule(
-    #[serde(deserialize_with = "deserialize_regex")] Regex,
-    Arc<str>,
-);
+struct RewriteRule {
+    #[serde(deserialize_with = "deserialize_regex")]
+    from: Regex,
+    to: Arc<str>,
+}
 
 impl RewriteRule {
     fn rewrite(&self, debug_file: &str) -> Option<String> {
-        match self.0.replace(debug_file, &*self.1) {
+        match self.from.replace(debug_file, &*self.to) {
             Cow::Borrowed(_) => None,
             Cow::Owned(new) => Some(new),
         }
@@ -652,8 +653,8 @@ fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex
 ///
 /// let rules: RewriteRules = serde_json::from_str(
 ///     r#"[
-///         ["([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "Electron $suffix"],
-///         ["([^/]+).exe.pdb$", "electron.exe.pdb"]
+///         {"from": "([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+///         {"from": "([^/]+).exe.pdb$", "to": "electron.exe.pdb"}
 ///     ]"#,
 /// )
 /// .unwrap();
@@ -700,9 +701,9 @@ mod tests {
     fn test_rewrite_electron() {
         let rules: RewriteRules = serde_json::from_str(
             r#"[
-                ["([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "Electron $suffix"],
-                ["([^/]+).exe.pdb$", "electron.exe.pdb"],
-                ["([^/]+)$", "electron"]
+                {"from": "([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+                {"from": "([^/]+).exe.pdb$", "to": "electron.exe.pdb"},
+                {"from": "([^/]+)$", "to": "electron"}
             ]"#,
         )
         .unwrap();
