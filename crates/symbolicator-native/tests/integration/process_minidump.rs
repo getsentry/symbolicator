@@ -24,6 +24,7 @@ macro_rules! stackwalk_minidump {
                     minidump_file: minidump_file.into_temp_path(),
                     sources: Arc::new([source]),
                     scraping: Default::default(),
+                    module_rewrite_rules: Default::default(),
                 })
                 .await;
 
