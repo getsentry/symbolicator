@@ -61,6 +61,9 @@ pub struct SymbolicateStacktraces {
 
     /// Scraping configuration controling authenticated requests.
     pub scraping: ScrapingConfig,
+    /// Rules for rewriting the debug file of the first (lowest-address) module
+    /// in the request.
+    pub module_rewrite_rules: RewriteRules,
 }
 
 /// A request to process (stackwalk + symbolicate) a minidump.

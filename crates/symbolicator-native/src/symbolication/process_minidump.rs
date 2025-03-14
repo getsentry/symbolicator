@@ -546,7 +546,7 @@ impl SymbolicationActor {
             &minidump,
             scope.clone(),
             sources.clone(),
-            module_rewrite_rules,
+            module_rewrite_rules.clone(),
         );
 
         let result = match stackwalk_future.await {
@@ -584,6 +584,7 @@ impl SymbolicationActor {
             stacktraces,
             apply_source_context: true,
             scraping,
+            module_rewrite_rules,
         };
 
         Ok((request, minidump_state))

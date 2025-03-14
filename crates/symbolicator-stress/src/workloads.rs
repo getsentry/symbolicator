@@ -88,6 +88,7 @@ pub fn prepare_payload(
                 scraping: Default::default(),
                 stacktraces,
                 modules,
+                module_rewrite_rules: Default::default(),
             })
         }
         Payload::Js { source, event } => {

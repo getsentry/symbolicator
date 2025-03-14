@@ -78,6 +78,7 @@ pub async fn symbolicate_frames(
             modules: body.modules.into_iter().map(From::from).collect(),
             apply_source_context: body.options.apply_source_context,
             scraping: body.scraping,
+            module_rewrite_rules: Default::default(),
         },
         body.options,
     )?;

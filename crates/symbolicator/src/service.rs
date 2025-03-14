@@ -614,6 +614,7 @@ mod tests {
             scope: Default::default(),
             apply_source_context: true,
             scraping: Default::default(),
+            module_rewrite_rules: Default::default(),
         };
 
         let request_id = service
@@ -656,6 +657,7 @@ mod tests {
             })],
             apply_source_context: true,
             scraping: Default::default(),
+            module_rewrite_rules: Default::default(),
         }
     }
 

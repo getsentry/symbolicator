@@ -567,6 +567,7 @@ mod event {
             modules,
             apply_source_context: true,
             scraping: Default::default(),
+            module_rewrite_rules: Default::default(),
         })
     }
 

@@ -85,6 +85,7 @@ impl SymbolicationActor {
             stacktraces,
             apply_source_context: true,
             scraping,
+            module_rewrite_rules: Default::default(),
         };
 
         let mut system_info = SystemInfo {
