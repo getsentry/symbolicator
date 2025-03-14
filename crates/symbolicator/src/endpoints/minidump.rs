@@ -84,6 +84,8 @@ pub async fn handle_minidump_request(
             minidump_file,
             sources,
             scraping,
+            // TODO
+            module_rewrite_rules: Default::default(),
         },
         options,
     )?;

@@ -172,6 +172,7 @@ pub async fn process_payload(
                     minidump_file: temp_path,
                     sources: Arc::clone(sources),
                     scraping: Default::default(),
+                    module_rewrite_rules: Default::default(),
                 })
                 .await
                 .unwrap();
