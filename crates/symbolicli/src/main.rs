@@ -9,6 +9,7 @@ use remote::EventKey;
 
 use settings::Mode;
 use symbolicator_js::SourceMapService;
+use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_native::SymbolicationActor;
 use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
@@ -143,7 +144,13 @@ async fn main() -> Result<()> {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating minidump");
             let res = native
-                .process_minidump(None, scope, minidump_path, dsym_sources, Default::default())
+                .process_minidump(ProcessMinidump {
+                    platform: None,
+                    scope,
+                    minidump_file: minidump_path,
+                    sources: dsym_sources,
+                    scraping: Default::default(),
+                })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }

@@ -15,6 +15,7 @@ use symbolicator_service::types::{
 };
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
+use tempfile::TempPath;
 use thiserror::Error;
 
 pub use crate::metrics::StacktraceOrigin;
@@ -57,6 +58,23 @@ pub struct SymbolicateStacktraces {
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
 
+    /// Scraping configuration controling authenticated requests.
+    pub scraping: ScrapingConfig,
+}
+
+/// A request to process (stackwalk + symbolicate) a minidump.
+#[derive(Debug)]
+pub struct ProcessMinidump {
+    /// The minidump's platform.
+    ///
+    /// In practice this should mostly be "native".
+    pub platform: Option<Platform>,
+    /// The scope of this request which determines access to cached files.
+    pub scope: Scope,
+    /// The local temp path where the minidump file has been saved.
+    pub minidump_file: TempPath,
+    /// A list of external sources to load debug files.
+    pub sources: Arc<[SourceConfig]>,
     /// Scraping configuration controling authenticated requests.
     pub scraping: ScrapingConfig,
 }

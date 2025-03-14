@@ -26,7 +26,9 @@ use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
-use symbolicator_native::interface::{CompletedSymbolicationResponse, SymbolicateStacktraces};
+use symbolicator_native::interface::{
+    CompletedSymbolicationResponse, ProcessMinidump, SymbolicateStacktraces,
+};
 use symbolicator_native::SymbolicationActor;
 use symbolicator_proguard::interface::{
     CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
@@ -41,7 +43,6 @@ use symbolicator_service::types::Platform;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_sources::SourceConfig;
-use tempfile::TempPath;
 use uuid::Uuid;
 
 pub use symbolicator_service::objects::{
@@ -309,17 +310,13 @@ impl RequestService {
     /// maximum number of requests, as configured by the `max_concurrent_requests` option.
     pub fn process_minidump(
         &self,
-        platform: Option<Platform>,
-        scope: Scope,
-        minidump_file: TempPath,
-        sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
+        request: ProcessMinidump,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         self.create_symbolication_request("minidump_stackwalk", options, async move {
             slf.native
-                .process_minidump(platform, scope, minidump_file, sources, scraping)
+                .process_minidump(request)
                 .await
                 .map(CompletedResponse::Native)
         })
