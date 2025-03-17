@@ -653,8 +653,8 @@ fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex
 ///
 /// let rules: RewriteRules = serde_json::from_str(
 ///     r#"[
-///         {"from": "([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
-///         {"from": "([^/]+).exe.pdb$", "to": "electron.exe.pdb"}
+///         {"from": "([^/\\\\]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+///         {"from": "([^/\\\\]+).exe.pdb$", "to": "electron.exe.pdb"}
 ///     ]"#,
 /// )
 /// .unwrap();
@@ -701,9 +701,9 @@ mod tests {
     fn test_rewrite_electron() {
         let rules: RewriteRules = serde_json::from_str(
             r#"[
-                {"from": "([^/]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
-                {"from": "([^/]+).exe.pdb$", "to": "electron.exe.pdb"},
-                {"from": "([^/]+)$", "to": "electron"}
+                {"from": "([^/\\\\]+) (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+                {"from": "([^/\\\\]+).exe.pdb$", "to": "electron.exe.pdb"},
+                {"from": "([^/\\\\]+)$", "to": "electron"}
             ]"#,
         )
         .unwrap();
@@ -716,10 +716,20 @@ mod tests {
             "Electron Helper (Renderer)"
         );
         assert_eq!(
+            rules.rewrite("My Awesome Crasher Helper").unwrap(),
+            "Electron Helper"
+        );
+        assert_eq!(
             rules
                 .rewrite("C:/projects/src/out/Default/myapp.exe.pdb")
                 .unwrap(),
             "C:/projects/src/out/Default/electron.exe.pdb"
+        );
+        assert_eq!(
+            rules
+                .rewrite("C:\\projects\\src\\out\\Default\\myapp.exe.pdb")
+                .unwrap(),
+            "C:\\projects\\src\\out\\Default\\electron.exe.pdb"
         );
         assert_eq!(
             rules
