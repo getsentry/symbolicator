@@ -6,6 +6,8 @@
 
 - Update `symbolic` dependency to `12.14.0`, which now skips not found frames instead of defaulting to the closest one. ([#1640](https://github.com/getsentry/symbolicator/pull/1640))
 - Mark certain caches as random access to improve cache performance. ([#1639](https://github.com/getsentry/symbolicator/pull/1639))
+- Validate stack scanned candidate frames against available CFI unwind information. 
+  This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
 
 ### Dependencies
 
