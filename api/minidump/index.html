@@ -792,6 +792,13 @@ Content-Disposition: form-data; name=&quot;sources&quot;
 Content-Disposition: form-data; name=&quot;platform&quot;
 &quot;native&quot;
 
+--xxx
+Content-Disposition: form-data; name=&quot;rewrite_first_module&quot;
+[
+  {&quot;from&quot;: &quot;[^/\\\\]+ (?&lt;suffix&gt;Framework|Helper( \\(.+\\))?)$&quot;, &quot;to&quot;: &quot;Electron $suffix&quot;},
+  {&quot;from&quot;: &quot;[^/\\\\]+\\.exe\\.pdb$&quot;, &quot;to&quot;: &quot;electron.exe.pdb&quot;},
+  {&quot;from&quot;: &quot;[^/\\\\]+$&quot;, &quot;to&quot;: &quot;electron&quot;}
+]
 --xxx--
 </code></pre></div>
 
@@ -810,6 +817,9 @@ sources to pull symbols from.</p>
 <li><code>sources</code>: A list of descriptors for internal or external symbol sources. See
   <a href="../">Sources</a>.</li>
 <li><code>upload_file_minidump</code>: The minidump file to be analyzed.</li>
+<li><code>rewrite_first_module</code>: Rewriting rules for rewriting the debug file name
+  of the first (by address) module in the minidump. This is used because that debug
+  file may be found on a symbol source under another name.</li>
 </ul>
 <h2 id="response">Response</h2>
 <p>See <a href="../response/">Symbolication Response</a>.</p>
