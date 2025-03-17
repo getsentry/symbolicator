@@ -120,14 +120,14 @@ type DebugSessions<'a> = HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a
 impl ModuleLookup {
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
     ///
-    /// The `module_rewrite_rules` will be used to rewrite the debug file name
+    /// The rules in `rewrite_first_module` will be used to rewrite the debug file name
     /// of the first (by address) module. This is done because some debug files
     /// may be found on a symbol source under another name. If such a renaming
     /// is performed, the original name is restored in [`Self::into_inner`].
     pub fn new<I>(
         scope: Scope,
         sources: Arc<[SourceConfig]>,
-        module_rewrite_rules: RewriteRules,
+        rewrite_first_module: RewriteRules,
         iter: I,
     ) -> Self
     where
@@ -180,7 +180,7 @@ impl ModuleLookup {
                 .raw
                 .debug_file
                 .as_ref()
-                .and_then(|debug_file| module_rewrite_rules.rewrite(debug_file))
+                .and_then(|debug_file| rewrite_first_module.rewrite(debug_file))
             {
                 original_first_debug_file =
                     std::mem::take(&mut first_module.object_info.raw.debug_file);

@@ -159,7 +159,7 @@ struct SymbolicatorSymbolProvider {
     /// The debug ID of the first module in the minidump
     /// (by address).
     ///
-    /// This is used in conjunction with `first_module_rewrite_rules`
+    /// This is used in conjunction with `rewrite_first_module`
     /// to rewrite the first module's debug file.
     first_module_debug_id: Option<DebugId>,
     /// Rules to rewrite the first module's debug file.
@@ -167,7 +167,7 @@ struct SymbolicatorSymbolProvider {
     /// Note that the debug file is "rewritten" only for the
     /// purpose of the lookup. The file name in the minidump itself
     /// is unaffected.
-    first_module_rewrite_rules: RewriteRules,
+    rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
 }
@@ -179,7 +179,7 @@ impl SymbolicatorSymbolProvider {
         cficache_actor: CfiCacheActor,
         object_type: ObjectType,
         first_module_debug_id: Option<DebugId>,
-        first_module_rewrite_rules: RewriteRules,
+        rewrite_first_module: RewriteRules,
     ) -> Self {
         Self {
             scope,
@@ -187,7 +187,7 @@ impl SymbolicatorSymbolProvider {
             cficache_actor,
             object_type,
             first_module_debug_id,
-            first_module_rewrite_rules,
+            rewrite_first_module,
             cficaches: Default::default(),
         }
     }
@@ -228,7 +228,7 @@ impl SymbolicatorSymbolProvider {
         if module.debug_identifier() == self.first_module_debug_id {
             if let Some(new_debug_file) = debug_file
                 .as_ref()
-                .and_then(|debug_file| self.first_module_rewrite_rules.rewrite(debug_file))
+                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
             {
                 debug_file = Some(new_debug_file);
             }
@@ -342,7 +342,7 @@ async fn stackwalk(
     minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
-    first_module_rewrite_rules: RewriteRules,
+    rewrite_first_module: RewriteRules,
 ) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
@@ -369,7 +369,7 @@ async fn stackwalk(
         cficaches,
         ty,
         first_module_debug_id,
-        first_module_rewrite_rules,
+        rewrite_first_module,
     );
     let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
@@ -525,7 +525,7 @@ impl SymbolicationActor {
             minidump_file,
             sources,
             scraping,
-            module_rewrite_rules,
+            rewrite_first_module,
         } = request;
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
@@ -546,7 +546,7 @@ impl SymbolicationActor {
             &minidump,
             scope.clone(),
             sources.clone(),
-            module_rewrite_rules.clone(),
+            rewrite_first_module.clone(),
         );
 
         let result = match stackwalk_future.await {
@@ -584,7 +584,7 @@ impl SymbolicationActor {
             stacktraces,
             apply_source_context: true,
             scraping,
-            module_rewrite_rules,
+            rewrite_first_module,
         };
 
         Ok((request, minidump_state))

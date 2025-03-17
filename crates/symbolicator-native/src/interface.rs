@@ -63,7 +63,7 @@ pub struct SymbolicateStacktraces {
     pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
-    pub module_rewrite_rules: RewriteRules,
+    pub rewrite_first_module: RewriteRules,
 }
 
 /// A request to process (stackwalk + symbolicate) a minidump.
@@ -83,7 +83,7 @@ pub struct ProcessMinidump {
     pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
-    pub module_rewrite_rules: RewriteRules,
+    pub rewrite_first_module: RewriteRules,
 }
 
 /// The symbolicated crash data.

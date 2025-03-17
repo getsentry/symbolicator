@@ -101,12 +101,12 @@ impl SymbolicationActor {
             modules,
             apply_source_context,
             scraping,
-            module_rewrite_rules,
+            rewrite_first_module,
             ..
         } = request;
 
         let mut module_lookup =
-            ModuleLookup::new(scope.clone(), sources, module_rewrite_rules, modules);
+            ModuleLookup::new(scope.clone(), sources, rewrite_first_module, modules);
 
         module_lookup
             .fetch_caches(
