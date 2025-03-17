@@ -88,6 +88,7 @@ pub fn prepare_payload(
                 scraping: Default::default(),
                 stacktraces,
                 modules,
+                rewrite_first_module: Default::default(),
             })
         }
         Payload::Js { source, event } => {
@@ -172,6 +173,7 @@ pub async fn process_payload(
                     minidump_file: temp_path,
                     sources: Arc::clone(sources),
                     scraping: Default::default(),
+                    rewrite_first_module: Default::default(),
                 })
                 .await
                 .unwrap();

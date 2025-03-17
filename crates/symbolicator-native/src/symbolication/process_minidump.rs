@@ -7,12 +7,13 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::ProcessState;
 use minidump_unwind::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider,
 };
+use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
@@ -26,7 +27,7 @@ use tokio::sync::Notify;
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
 use crate::interface::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ProcessMinidump, RawFrame, RawStacktrace,
-    Registers, SymbolicateStacktraces, SystemInfo,
+    Registers, RewriteRules, SymbolicateStacktraces, SystemInfo,
 };
 use crate::metrics::StacktraceOrigin;
 
@@ -155,6 +156,18 @@ struct SymbolicatorSymbolProvider {
     object_type: ObjectType,
     /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
+    /// The debug ID of the first module in the minidump
+    /// (by address).
+    ///
+    /// This is used in conjunction with `rewrite_first_module`
+    /// to rewrite the first module's debug file.
+    first_module_debug_id: Option<DebugId>,
+    /// Rules to rewrite the first module's debug file.
+    ///
+    /// Note that the debug file is "rewritten" only for the
+    /// purpose of the lookup. The file name in the minidump itself
+    /// is unaffected.
+    rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
 }
@@ -165,12 +178,16 @@ impl SymbolicatorSymbolProvider {
         sources: Arc<[SourceConfig]>,
         cficache_actor: CfiCacheActor,
         object_type: ObjectType,
+        first_module_debug_id: Option<DebugId>,
+        rewrite_first_module: RewriteRules,
     ) -> Self {
         Self {
             scope,
             sources,
             cficache_actor,
             object_type,
+            first_module_debug_id,
+            rewrite_first_module,
             cficaches: Default::default(),
         }
     }
@@ -205,7 +222,17 @@ impl SymbolicatorSymbolProvider {
         let scope = self.scope.clone();
 
         let code_file = non_empty_file_name(&module.code_file());
-        let debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
+        // Rewrite the first module's debug file according to the configured rewrite rules.
+        if module.debug_identifier() == self.first_module_debug_id {
+            if let Some(new_debug_file) = debug_file
+                .as_ref()
+                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
+            {
+                debug_file = Some(new_debug_file);
+            }
+        }
 
         let identifier = ObjectId {
             code_id: module.code_identifier(),
@@ -315,6 +342,7 @@ async fn stackwalk(
     minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
+    rewrite_first_module: RewriteRules,
 ) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
@@ -327,7 +355,22 @@ async fn stackwalk(
         Os::Linux | Os::Solaris | Os::Android => ObjectType::Elf,
         _ => ObjectType::Unknown,
     };
-    let provider = SymbolicatorSymbolProvider::new(scope, sources, cficaches, ty);
+    let first_module_debug_id =
+        minidump
+            .get_stream::<MinidumpModuleList>()
+            .ok()
+            .and_then(|modules| {
+                let m = modules.by_addr().next()?;
+                m.debug_identifier()
+            });
+    let provider = SymbolicatorSymbolProvider::new(
+        scope,
+        sources,
+        cficaches,
+        ty,
+        first_module_debug_id,
+        rewrite_first_module,
+    );
     let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
 
@@ -482,6 +525,7 @@ impl SymbolicationActor {
             minidump_file,
             sources,
             scraping,
+            rewrite_first_module,
         } = request;
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
@@ -502,6 +546,7 @@ impl SymbolicationActor {
             &minidump,
             scope.clone(),
             sources.clone(),
+            rewrite_first_module.clone(),
         );
 
         let result = match stackwalk_future.await {
@@ -539,6 +584,7 @@ impl SymbolicationActor {
             stacktraces,
             apply_source_context: true,
             scraping,
+            rewrite_first_module,
         };
 
         Ok((request, minidump_state))

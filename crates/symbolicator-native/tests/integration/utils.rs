@@ -61,6 +61,7 @@ pub fn make_symbolication_request(
         scope: Default::default(),
         apply_source_context: true,
         scraping: Default::default(),
+        rewrite_first_module: Default::default(),
     }
 }
 
