@@ -20,6 +20,7 @@ once_cell = "1.18.0"
 regex = "1.5.5"
 sentry = { version = "0.34.0", features = ["tracing"] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
+serde_json = "1.0.81"
 symbolic = { workspace = true, features = [
     "cfi",
     "common-serde",
@@ -39,7 +40,6 @@ url = { version = "2.2.0", features = ["serde"] }
 
 [dev-dependencies]
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
-serde_json = "1.0.81"
 symbolicator-test = { path = "../symbolicator-test" }
 test-assembler = "0.1.5"
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
