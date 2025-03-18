@@ -27,6 +27,13 @@ Content-Disposition: form-data; name="sources"
 Content-Disposition: form-data; name="platform"
 "native"
 
+--xxx
+Content-Disposition: form-data; name="rewrite_first_module"
+[
+  {"from": "[^/\\\\]+ (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+  {"from": "[^/\\\\]+\\.exe\\.pdb$", "to": "electron.exe.pdb"},
+  {"from": "[^/\\\\]+$", "to": "electron"}
+]
 --xxx--
 ```
 
@@ -46,6 +53,9 @@ sources to pull symbols from.
 - `sources`: A list of descriptors for internal or external symbol sources. See
   [Sources](index.md).
 - `upload_file_minidump`: The minidump file to be analyzed.
+- `rewrite_first_module`: Rewriting rules for rewriting the debug file name
+  of the first (by address) module in the minidump. This is used because that debug
+  file may be found on a symbol source under another name.
 
 ## Response
 

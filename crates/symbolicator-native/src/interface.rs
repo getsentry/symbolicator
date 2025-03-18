@@ -5,7 +5,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use serde::de::{self, Deserializer};
+use regex::Regex;
+use serde::de::{self, Deserializer, Error};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
@@ -60,6 +61,9 @@ pub struct SymbolicateStacktraces {
 
     /// Scraping configuration controling authenticated requests.
     pub scraping: ScrapingConfig,
+    /// Rules for rewriting the debug file of the first (lowest-address) module
+    /// in the request.
+    pub rewrite_first_module: RewriteRules,
 }
 
 /// A request to process (stackwalk + symbolicate) a minidump.
@@ -77,6 +81,9 @@ pub struct ProcessMinidump {
     pub sources: Arc<[SourceConfig]>,
     /// Scraping configuration controling authenticated requests.
     pub scraping: ScrapingConfig,
+    /// Rules for rewriting the debug file of the first (lowest-address) module
+    /// in the request.
+    pub rewrite_first_module: RewriteRules,
 }
 
 /// The symbolicated crash data.
@@ -604,5 +611,137 @@ impl<'de> Deserialize<'de> for AddrMode {
     {
         let s = Cow::<str>::deserialize(deserializer).map_err(de::Error::custom)?;
         AddrMode::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+/// A rule for rewriting the debug file of a module.
+///
+/// This consists of a [`Regex`] and a replacement string
+/// (in `regex` crate syntax).
+///
+/// It can be created by deserializing e.g. from JSON.
+#[derive(Debug, Clone, Deserialize)]
+struct RewriteRule {
+    #[serde(deserialize_with = "deserialize_regex")]
+    from: Regex,
+    to: Arc<str>,
+}
+
+impl RewriteRule {
+    fn rewrite(&self, debug_file: &str) -> Option<String> {
+        match self.from.replace(debug_file, &*self.to) {
+            Cow::Borrowed(_) => None,
+            Cow::Owned(new) => Some(new),
+        }
+    }
+}
+
+fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex, D::Error> {
+    let raw = Cow::<str>::deserialize(deserializer)?;
+    raw.parse().map_err(D::Error::custom)
+}
+
+/// A collection of rules for rewriting the debug file of a module.
+///
+/// Each rule consists of a [`Regex`] and a replacement string
+/// (in `regex` crate syntax).
+///
+/// It can be created by deserializing e.g. from JSON.
+/// # Example
+/// ```
+/// use symbolicator_native::interface::RewriteRules;
+///
+/// let rules: RewriteRules = serde_json::from_str(
+///     r#"[
+///         {"from": "[^/\\\\]+ (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+///         {"from": "[^/\\\\]+\\.exe\\.pdb$", "to": "electron.exe.pdb"}
+///     ]"#,
+/// )
+/// .unwrap();
+///
+/// assert_eq!(
+///     rules
+///         .rewrite("C:/projects/src/out/Default/myapp.exe.pdb")
+///         .unwrap(),
+///     "C:/projects/src/out/Default/electron.exe.pdb"
+/// );
+///
+/// assert_eq!(
+///     rules
+///         .rewrite("My Awesome Crasher Helper (Renderer)")
+///         .unwrap(),
+///     "Electron Helper (Renderer)"
+/// );
+///
+/// assert!(
+///     rules
+///         .rewrite("My Awesome Crasher")
+///         .is_none()
+/// );
+/// ```
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct RewriteRules(Vec<RewriteRule>);
+
+impl RewriteRules {
+    /// Rewrite a string (typically the name of a debug file) according to these
+    /// rewrite rules.
+    ///
+    /// Rules are tried in order. Matching stops after the first rule that matched.
+    pub fn rewrite(&self, debug_file: &str) -> Option<String> {
+        self.0.iter().find_map(|rule| rule.rewrite(debug_file))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn test_rewrite_electron() {
+        let rules: RewriteRules = serde_json::from_str(
+            r#"[
+                {"from": "[^/\\\\]+ (?<suffix>Framework|Helper( \\(.+\\))?)$", "to": "Electron $suffix"},
+                {"from": "[^/\\\\]+\\.exe\\.pdb$", "to": "electron.exe.pdb"},
+                {"from": "[^/\\\\]+$", "to": "electron"}
+            ]"#,
+        )
+        .unwrap();
+
+        assert_eq!(rules.rewrite("My Awesome Crasher").unwrap(), "electron");
+        assert_eq!(
+            rules
+                .rewrite("My Awesome Crasher Helper (Renderer)")
+                .unwrap(),
+            "Electron Helper (Renderer)"
+        );
+        assert_eq!(
+            rules.rewrite("My Awesome Crasher Helper").unwrap(),
+            "Electron Helper"
+        );
+        assert_eq!(
+            rules
+                .rewrite("C:/projects/src/out/Default/myapp.exe.pdb")
+                .unwrap(),
+            "C:/projects/src/out/Default/electron.exe.pdb"
+        );
+        assert_eq!(
+            rules
+                .rewrite("C:\\projects\\src\\out\\Default\\myapp.exe.pdb")
+                .unwrap(),
+            "C:\\projects\\src\\out\\Default\\electron.exe.pdb"
+        );
+        assert_eq!(
+            rules
+                .rewrite("C:\\projects\\src\\out\\Default\\myapp-exe-pdb")
+                .unwrap(),
+            "C:\\projects\\src\\out\\Default\\electron"
+        );
+        assert_eq!(
+            rules
+                .rewrite("/home/************/usr/lib/slack/slack")
+                .unwrap(),
+            "/home/************/usr/lib/slack/electron"
+        );
     }
 }

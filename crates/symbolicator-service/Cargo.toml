@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator-service"
-version = "25.2.0"
+version = "25.3.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2021"
 license = "MIT"
@@ -65,7 +65,7 @@ tracing-subscriber = { version = "0.3.17", features = [
 ] }
 url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
-zip = { version = "2.1.1", default-features = false, features = ["deflate"] }
+zip = { version = "2.3.0", default-features = false, features = ["deflate"] }
 zstd = "0.13.0"
 
 [dev-dependencies]

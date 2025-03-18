@@ -4,10 +4,17 @@
 
 ### Various fixes & improvements
 
-- Update `symbolic` dependency to `12.14.0`, which now skips not found frames instead of defaulting to the closest one. ([#1640](https://github.com/getsentry/symbolicator/pull/1640))
-- Mark certain caches as random access to improve cache performance. ([#1639](https://github.com/getsentry/symbolicator/pull/1639))
 - Validate stack scanned candidate frames against available CFI unwind information. 
   This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
+
+## 25.3.0
+
+### Various fixes & improvements
+
+- Update `symbolic` dependency to `12.14.0`, which now skips not found frames instead of defaulting to the closest one. ([#1640](https://github.com/getsentry/symbolicator/pull/1640))
+- Mark certain caches as random access to improve cache performance. ([#1639](https://github.com/getsentry/symbolicator/pull/1639))
+- The `minidump` endpoint now accepts a `rewrite_first_module` field that allows passing rewrite rules for the first module in a minidump.
+  In practice, this is useful for Electron minidumps, in which the first module often has a nonsensical debug file name. ([#1650](https://github.com/getsentry/symbolicator/pull/1650))
 
 ### Dependencies
 

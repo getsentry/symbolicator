@@ -27,6 +27,7 @@ pub async fn handle_minidump_request(
     let mut scraping = Default::default();
     let mut options = RequestOptions::default();
     let mut platform = None;
+    let mut rewrite_first_module = Default::default();
 
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
@@ -59,6 +60,10 @@ pub async fn handle_minidump_request(
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 platform = serde_json::from_slice(&data)?
             }
+            Some("rewrite_first_module") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                rewrite_first_module = serde_json::from_slice(&data)?
+            }
             _ => (), // Always ignore unknown fields.
         }
     }
@@ -84,6 +89,7 @@ pub async fn handle_minidump_request(
             minidump_file,
             sources,
             scraping,
+            rewrite_first_module,
         },
         options,
     )?;

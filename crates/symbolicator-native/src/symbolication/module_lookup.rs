@@ -19,7 +19,9 @@ use crate::caches::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor,
 };
 use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
-use crate::interface::{AddrMode, CompleteObjectInfo, CompleteStacktrace, RawFrame, RawStacktrace};
+use crate::interface::{
+    AddrMode, CompleteObjectInfo, CompleteStacktrace, RawFrame, RawStacktrace, RewriteRules,
+};
 
 fn object_id_from_object_info(object_info: &RawObjectInfo) -> ObjectId {
     ObjectId {
@@ -110,13 +112,24 @@ pub struct ModuleLookup {
     modules: Vec<ModuleEntry>,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
+    original_first_debug_file: Option<String>,
 }
 
 type DebugSessions<'a> = HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a>)>>;
 
 impl ModuleLookup {
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
-    pub fn new<I>(scope: Scope, sources: Arc<[SourceConfig]>, iter: I) -> Self
+    ///
+    /// The rules in `rewrite_first_module` will be used to rewrite the debug file name
+    /// of the first (by address) module. This is done because some debug files
+    /// may be found on a symbol source under another name. If such a renaming
+    /// is performed, the original name is restored in [`Self::into_inner`].
+    pub fn new<I>(
+        scope: Scope,
+        sources: Arc<[SourceConfig]>,
+        rewrite_first_module: RewriteRules,
+        iter: I,
+    ) -> Self
     where
         I: IntoIterator<Item = CompleteObjectInfo>,
     {
@@ -156,10 +169,30 @@ impl ModuleLookup {
             }
         }
 
+        let mut original_first_debug_file = None;
+
+        // Rewrite the first (by address) module's debug file name according to the configured
+        // rewrite rules. If a rewrite ahppens, also save the original name so we can restore it
+        // after symbolication.
+        if let Some(first_module) = modules.first_mut() {
+            if let Some(new_debug_file) = first_module
+                .object_info
+                .raw
+                .debug_file
+                .as_ref()
+                .and_then(|debug_file| rewrite_first_module.rewrite(debug_file))
+            {
+                original_first_debug_file =
+                    std::mem::take(&mut first_module.object_info.raw.debug_file);
+                first_module.object_info.raw.debug_file = Some(new_debug_file);
+            }
+        }
+
         Self {
             modules,
             scope,
             sources,
+            original_first_debug_file,
         }
     }
 
@@ -183,6 +216,15 @@ impl ModuleLookup {
                 }
             }
         }
+
+        // Restore the original name of the first module's debug file, if there
+        // was a replacement.
+        if let Some(original) = self.original_first_debug_file {
+            if let Some(entry) = self.modules.first_mut() {
+                entry.object_info.raw.debug_file = Some(original);
+            }
+        }
+
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules
             .into_iter()
@@ -534,6 +576,7 @@ mod tests {
         let modules = ModuleLookup::new(
             Scope::Global,
             Arc::new([]),
+            Default::default(),
             raw_modules.into_iter().map(From::from),
         );
 
@@ -570,6 +613,7 @@ mod tests {
         let modules = ModuleLookup::new(
             Scope::Global,
             Arc::new([]),
+            Default::default(),
             raw_modules.into_iter().map(From::from),
         );
 
@@ -601,7 +645,12 @@ mod tests {
             image_size: Some(0),
         });
 
-        let lookup = ModuleLookup::new(Scope::Global, Arc::new([]), std::iter::once(info.clone()));
+        let lookup = ModuleLookup::new(
+            Scope::Global,
+            Default::default(),
+            Default::default(),
+            std::iter::once(info.clone()),
+        );
 
         let lookup_result = lookup.lookup_cache(43, AddrMode::Abs).unwrap();
         assert_eq!(lookup_result.module_index, 0);

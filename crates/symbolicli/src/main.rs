@@ -150,6 +150,7 @@ async fn main() -> Result<()> {
                     minidump_file: minidump_path,
                     sources: dsym_sources,
                     scraping: Default::default(),
+                    rewrite_first_module: Default::default(),
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -566,6 +567,7 @@ mod event {
             modules,
             apply_source_context: true,
             scraping: Default::default(),
+            rewrite_first_module: Default::default(),
         })
     }
 
