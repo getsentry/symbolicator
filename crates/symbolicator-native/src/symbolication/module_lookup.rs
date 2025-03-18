@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::future;
@@ -213,6 +213,51 @@ impl ModuleLookup {
                             code_file = ?info.raw.code_file,
                             location = %c.location,
                             "Successfully fetched first module from Electron symbol server");
+                }
+
+                // Log not found candidates for the first module
+                if let Some(original) = self.original_first_debug_file.as_ref() {
+                    let failed_candidates = info
+                        .candidates
+                        .iter()
+                        .filter(|c| {
+                            c.source.as_str() == "sentry:electron"
+                                && matches!(c.download, ObjectDownloadInfo::NotFound)
+                        })
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    let mut electron_context = BTreeMap::new();
+                    electron_context.insert(
+                        "candidates".into(),
+                        serde_json::to_value(failed_candidates).unwrap(),
+                    );
+                    electron_context.insert(
+                        "original name".into(),
+                        serde_json::Value::from(&original[..]),
+                    );
+                    electron_context
+                        .insert("arch".into(), serde_json::Value::from(info.arch.name()));
+                    electron_context.insert(
+                        "type".into(),
+                        serde_json::Value::from(info.raw.ty.to_string()),
+                    );
+                    electron_context.insert(
+                        "debug file".into(),
+                        serde_json::Value::from(info.raw.debug_file.as_deref().unwrap()),
+                    );
+
+                    let mut contexts = BTreeMap::new();
+                    contexts.insert(
+                        "Electron".into(),
+                        sentry::protocol::Context::Other(electron_context),
+                    );
+                    let event = sentry::protocol::Event {
+                        message: Some("Failed to download renamed module from Electron".into()),
+                        contexts,
+                        ..Default::default()
+                    };
+                    sentry::capture_event(event);
                 }
             }
         }
