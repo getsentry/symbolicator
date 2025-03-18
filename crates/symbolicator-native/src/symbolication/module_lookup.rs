@@ -217,19 +217,20 @@ impl ModuleLookup {
 
                 // Log not found candidates for the first module
                 if let Some(original) = self.original_first_debug_file.as_ref() {
-                    let failed_candidates = info
+                    let (successful_candidates, failed_candidates): (Vec<_>, Vec<_>) = info
                         .candidates
                         .iter()
-                        .filter(|c| {
-                            c.source.as_str() == "sentry:electron"
-                                && matches!(c.download, ObjectDownloadInfo::NotFound)
-                        })
+                        .filter(|c| c.source.as_str() == "sentry:electron")
                         .cloned()
-                        .collect::<Vec<_>>();
+                        .partition(|c| matches!(c.download, ObjectDownloadInfo::Ok { .. }));
 
                     let mut electron_context = BTreeMap::new();
                     electron_context.insert(
-                        "candidates".into(),
+                        "successful candidates".into(),
+                        serde_json::to_value(successful_candidates).unwrap(),
+                    );
+                    electron_context.insert(
+                        "failed candidates".into(),
                         serde_json::to_value(failed_candidates).unwrap(),
                     );
                     electron_context.insert(
