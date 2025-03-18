@@ -22,7 +22,7 @@ serde_json = "1.0.81"
 symbolic = { workspace = true, features = ["debuginfo-serde"] }
 walkdir = "2.3.1"
 # NOTE: zip:0.6 by default depends on a version of zstd which conflicts with our other dependencies
-zip = { version = "2.1.1", default-features = false, features = [
+zip = { version = "2.3.0", default-features = false, features = [
     "deflate",
     "bzip2",
 ] }
