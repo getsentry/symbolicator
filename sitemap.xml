@@ -2,66 +2,66 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://getsentry.github.io/symbolicator/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/background-and-principles/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/caching/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/shared-cache/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/source-bundles/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/symbol-lookup/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/advanced/system-architecture/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/applecrashreport/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/minidump/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/proxy/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/response/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/sourcemaps/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/symbolicate-jvm/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
     <url>
          <loc>https://getsentry.github.io/symbolicator/api/symbolication/</loc>
-         <lastmod>2025-03-17</lastmod>
+         <lastmod>2025-03-18</lastmod>
     </url>
 </urlset>
