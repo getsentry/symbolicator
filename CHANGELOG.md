@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- Validate stack scanned candidate frames against available CFI unwind information. 
+  This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
+
 ## 25.3.0
 
 ### Various fixes & improvements

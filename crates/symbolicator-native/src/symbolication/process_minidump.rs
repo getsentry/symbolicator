@@ -274,22 +274,43 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
     async fn fill_symbol(
         &self,
         module: &(dyn Module + Sync),
-        _frame: &mut (dyn FrameSymbolizer + Send),
+        frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        // Always return an error here to signal that we have no useful symbol information to
-        // contribute. Doing nothing and reporting Ok trips a check in rust_minidump's
-        // instruction_seems_valid_by_symbols function that leads stack scanning to stop prematurely.
-        // See https://github.com/rust-minidump/rust-minidump/blob/7eed71e4075e0a81696ccc307d6ac68920de5db5/minidump-processor/src/stackwalker/mod.rs#L295.
-        //
-        // TODO: implement this properly, i.e., use symbolic to actually fill in information.
-
         // This function is being called for every context frame,
         // regardless if any stack walking happens.
         // In contrast, `walk_frame` below will be skipped in case the minidump
         // does not contain any actionable stack memory that would allow stack walking.
         // Loading this module here means we will be able to backfill a possibly missing
         // debug_id/file.
-        self.load_cfi_module(module).await;
+        let cfi_module = self.load_cfi_module(module).await;
+
+        // Try to validate the given instruction against the CFI module contents.
+        //
+        // This helps the `rust-minidump`'s stack-walker to make better decisions.
+        // Returning an error here will aggressively create frames.
+        // To indicate a that a potential instruction is not valid, we can return success
+        // here but also not fill in the symbol name.
+        //
+        // If the successfully loaded CFI unwind info can not find the potential instruction
+        // the passed instruction is most likely not a valid instruction from this module.
+        // But since the instruction maps into the range of this module, we know it cannot
+        // be part of a different module either -> it's not a valid instruction.
+        // Returning success in this case, means the frame will be skipped.
+        //
+        // See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
+        if let Ok(Some(cached)) = &cfi_module.cache {
+            let cfi = &cached.0.cfi_stack_info;
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if !cfi.is_empty() && cfi.get(instruction).is_none() {
+                // We definitely do have CFI information loaded, but the given instruction does not
+                // map to any stack frame info.
+                return Ok(());
+            }
+        }
+
+        // In any other case, always return an error here to signal that we have no useful symbol information to
+        // contribute. Doing nothing would stop the stack scanning prematurely.
         Err(FillSymbolError {})
     }
 
