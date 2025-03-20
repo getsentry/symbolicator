@@ -10,7 +10,6 @@ use crate::lookup::SourceMapUrl;
 
 static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^webpack(-internal)?://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
-static NODE_MODULES_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\bnode_modules/").unwrap());
 
 // Names that do not provide any reasonable value, and that can possibly obstruct
 // better available names. In case we encounter one, we fallback to current frame fn name if available.
