@@ -1,7 +1,7 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 204
 expression: response
+snapshot_kind: text
 ---
 stacktraces:
   - frames:
@@ -10,7 +10,6 @@ stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
-        in_app: false
         data:
           symbolicated: false
       - function: add
@@ -37,7 +36,6 @@ raw_stacktraces:
         abs_path: "http://example.com/index.html"
         lineno: 283
         colno: 17
-        in_app: false
         data:
           symbolicated: false
       - filename: embedded.js

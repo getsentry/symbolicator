@@ -1,7 +1,7 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 614
 expression: response
+snapshot_kind: text
 ---
 stacktraces:
   - frames:
@@ -23,7 +23,6 @@ stacktraces:
           - "  function invoke(data) {"
           - "    var cb = null;"
           - "    if (data.failed) {"
-        in_app: true
         data:
           sourcemap: "app:///_next/server/pages/test.min.js.map"
           sourcemap_origin:

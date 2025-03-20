@@ -11,8 +11,7 @@ use crate::interface::{
 use crate::lookup::SourceMapLookup;
 use crate::metrics::{record_stacktrace_metrics, SymbolicationStats};
 use crate::utils::{
-    fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, is_in_app,
-    join_paths,
+    fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, join_paths,
 };
 use crate::SourceMapService;
 
@@ -238,8 +237,6 @@ async fn symbolicate_js_frame(
             filename = fixup_webpack_filename(&filename);
             frame.module = Some(generate_module(&filename));
         }
-
-        frame.in_app = is_in_app(&frame.abs_path, &filename);
 
         if frame.module.is_none()
             && (frame.abs_path.starts_with("http:")
