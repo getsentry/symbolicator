@@ -11,8 +11,7 @@ use crate::interface::{
 use crate::lookup::SourceMapLookup;
 use crate::metrics::{record_stacktrace_metrics, SymbolicationStats};
 use crate::utils::{
-    fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token,
-    join_paths,
+    fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, join_paths,
 };
 use crate::SourceMapService;
 
