@@ -111,26 +111,6 @@ pub fn fixup_webpack_filename(filename: &str) -> String {
     }
 }
 
-/// Returns whether the given abs_path and filename should be considered in-app.
-///
-/// This function was originally a simplified (but semantically faithful) version of
-/// <https://github.com/getsentry/sentry/blob/69ee8d0fcbff3494f2d2a6fb9fb59195fc49b575/src/sentry/lang/javascript/processor.py#L1573-L1603>.
-/// For a version that preserves the original exactly (modulo Python -> Rust translation), see
-/// `is_in_app_faithful`.
-pub fn is_in_app(abs_path: &str, filename: &str) -> Option<bool> {
-    if abs_path.starts_with("webpack:") {
-        // This diverges from the original logic. Previously we would only consider
-        // a filename starting with `./` as in-app, but that seems to be overly strict.
-        Some(!filename.starts_with("~/") && !filename.contains("/node_modules/"))
-    } else if abs_path.starts_with("app:") {
-        Some(!NODE_MODULES_RE.is_match(filename))
-    } else if abs_path.contains("/node_modules/") {
-        Some(false)
-    } else {
-        None
-    }
-}
-
 // As a running joke, here you have a 8 year old comment from 2015:
 // TODO(dcramer): replace CLEAN_MODULE_RE with tokenizer completely
 static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
@@ -711,39 +691,31 @@ mod tests {
         let abs_path = "webpack:///../node_modules/@sentry/browser/esm/helpers.js";
         let filename = "../node_modules/@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "webpack:///~/@sentry/browser/esm/helpers.js";
         let filename = "~/@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "webpack:///./@sentry/browser/esm/helpers.js";
         let filename = "./@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
 
         let abs_path = "webpack:///foo/bar/src/App.jsx";
         let filename = "foo/bar/src/App.jsx";
 
-        // Here we have a discrepancy because the behavior of `is_in_app`
-        // longer aligns with that of the original Python version.
-        assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "webpack:///./foo/bar/App.tsx";
         let filename = "./foo/bar/src/App.jsx";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
 
         let abs_path = "webpack:///./node_modules/@sentry/browser/esm/helpers.js";
         let filename = "./node_modules/@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
@@ -752,19 +724,17 @@ mod tests {
         let abs_path = "app:///../node_modules/@sentry/browser/esm/helpers.js";
         let filename = "../node_modules/@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "app:///../@sentry/browser/esm/helpers.js";
         let filename = "../@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(true));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(true));
 
         let abs_path = "app:///node_modules/rxjs/internal/operators/switchMap.js";
         let filename = "node_modules/rxjs/internal/operators/switchMap.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
+
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
@@ -773,13 +743,11 @@ mod tests {
         let abs_path = "file:///../node_modules/@sentry/browser/esm/helpers.js";
         let filename = "../node_modules/@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), Some(false));
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
 
         let abs_path = "file:///../@sentry/browser/esm/helpers.js";
         let filename = "../@sentry/browser/esm/helpers.js";
 
-        assert_eq!(is_in_app(abs_path, filename), None);
         assert_eq!(is_in_app_faithful(abs_path, filename), None);
     }
 
