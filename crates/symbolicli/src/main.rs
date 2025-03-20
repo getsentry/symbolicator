@@ -743,7 +743,6 @@ mod event {
             context_line: value.context_line,
             post_context: value.post_context,
             token_name: None,
-            in_app: value.in_app,
             data: value.data,
         })
     }
