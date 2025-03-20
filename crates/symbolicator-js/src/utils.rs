@@ -734,7 +734,6 @@ mod tests {
         let abs_path = "app:///node_modules/rxjs/internal/operators/switchMap.js";
         let filename = "node_modules/rxjs/internal/operators/switchMap.js";
 
-
         assert_eq!(is_in_app_faithful(abs_path, filename), Some(false));
     }
 
