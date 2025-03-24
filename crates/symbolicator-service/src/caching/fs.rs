@@ -113,7 +113,12 @@ impl Cache {
         tracing::trace!("File `{}` length: {}", path.display(), fs_metadata.len());
 
         // Open the metadata file if possible
-        let external_metadata: Option<Metadata> = self.read_metadata(path)?;
+        let external_metadata = self
+            .read_metadata(path)
+            .inspect_err(|e| {
+                tracing::error!(path, "Failed to parse cache metadata file");
+            })
+            .ok();
 
         let (atime, ctime) = {
             // If the `ctime` from the external metadata is available, we use it. Otherwise
