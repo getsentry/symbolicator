@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::future;
@@ -7,8 +7,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
-    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectDownloadInfo,
-    ObjectFeatures, ObjectHandle, ObjectPurpose, ObjectsActor,
+    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
+    ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
@@ -198,71 +198,6 @@ impl ModuleLookup {
 
     /// Returns the original `CompleteObjectInfo` list in its original sorting order.
     pub fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
-        // Temporarily log successful downloads *of the first image* from Electron
-        // to see which files we can actually find there.
-        if let Some(entry) = self.modules.first() {
-            let info = &entry.object_info;
-            for c in &info.candidates {
-                if c.source.as_str() == "sentry:electron"
-                    && matches!(c.download, ObjectDownloadInfo::Ok { .. })
-                {
-                    tracing::info!(
-                            arch = %info.arch,
-                            ty = %info.raw.ty,
-                            debug_file = ?info.raw.debug_file,
-                            code_file = ?info.raw.code_file,
-                            location = %c.location,
-                            "Successfully fetched first module from Electron symbol server");
-                }
-
-                // Log not found candidates for the first module
-                if let Some(original) = self.original_first_debug_file.as_ref() {
-                    let (successful_candidates, failed_candidates): (Vec<_>, Vec<_>) = info
-                        .candidates
-                        .iter()
-                        .filter(|c| c.source.as_str() == "sentry:electron")
-                        .cloned()
-                        .partition(|c| matches!(c.download, ObjectDownloadInfo::Ok { .. }));
-
-                    let mut electron_context = BTreeMap::new();
-                    electron_context.insert(
-                        "successful candidates".into(),
-                        serde_json::to_value(successful_candidates).unwrap(),
-                    );
-                    electron_context.insert(
-                        "failed candidates".into(),
-                        serde_json::to_value(failed_candidates).unwrap(),
-                    );
-                    electron_context.insert(
-                        "original name".into(),
-                        serde_json::Value::from(&original[..]),
-                    );
-                    electron_context
-                        .insert("arch".into(), serde_json::Value::from(info.arch.name()));
-                    electron_context.insert(
-                        "type".into(),
-                        serde_json::Value::from(info.raw.ty.to_string()),
-                    );
-                    electron_context.insert(
-                        "debug file".into(),
-                        serde_json::Value::from(info.raw.debug_file.as_deref().unwrap()),
-                    );
-
-                    let mut contexts = BTreeMap::new();
-                    contexts.insert(
-                        "Electron".into(),
-                        sentry::protocol::Context::Other(electron_context),
-                    );
-                    let event = sentry::protocol::Event {
-                        message: Some("Failed to download renamed module from Electron".into()),
-                        contexts,
-                        ..Default::default()
-                    };
-                    sentry::capture_event(event);
-                }
-            }
-        }
-
         // Restore the original name of the first module's debug file, if there
         // was a replacement.
         if let Some(original) = self.original_first_debug_file {
