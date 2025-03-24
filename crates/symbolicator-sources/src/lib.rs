@@ -6,6 +6,7 @@
 #![warn(missing_docs)]
 
 mod filetype;
+mod index;
 mod paths;
 mod remotefile;
 mod sources;
