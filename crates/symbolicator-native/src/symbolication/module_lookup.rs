@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use futures::future;
@@ -7,8 +7,8 @@ use sentry::{Hub, SentryFutureExt};
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
-    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectDownloadInfo,
-    ObjectFeatures, ObjectHandle, ObjectPurpose, ObjectsActor,
+    AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
+    ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
