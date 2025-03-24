@@ -121,6 +121,7 @@ impl Cache {
                     error = &e as &dyn std::error::Error,
                     "Failed to parse cache metadata file",
                 );
+                let _ = std::fs::remove_file(metadata_path(path));
                 None
             }
         };
