@@ -13,6 +13,7 @@ mod sources;
 mod types;
 
 pub use filetype::*;
+pub use index::*;
 pub use paths::*;
 pub use remotefile::*;
 pub use sources::*;

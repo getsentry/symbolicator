@@ -274,3 +274,12 @@ pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(2, CachePathFormat::V1),
     ],
 };
+
+/// Symstore index cache, with the following versions:
+///
+/// - `1`: Initial version.
+pub const SYMSTORE_INDEX_VERSIONS: CacheVersions = CacheVersions {
+    current: CacheVersion::new(1, CachePathFormat::V2),
+    fallbacks: &[],
+    previous: &[],
+};

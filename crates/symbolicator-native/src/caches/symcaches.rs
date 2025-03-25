@@ -320,8 +320,13 @@ mod tests {
 
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
-        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
         let shared_cache = SharedCacheRef::default();
+        let downloader = DownloadService::new(
+            &config,
+            caches.symstore_index,
+            shared_cache.clone(),
+            tokio::runtime::Handle::current(),
+        );
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
