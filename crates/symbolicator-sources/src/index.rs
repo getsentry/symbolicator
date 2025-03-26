@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -41,6 +41,18 @@ impl SymstoreIndexBuilder {
     pub fn insert(mut self, path: &str) -> Self {
         self.0.insert(path.to_string());
         self
+    }
+
+    pub fn append(&mut self, other: Self) {
+        self.0.extend(other.0)
+    }
+
+    pub fn write(&self, mut destination: impl Write) -> io::Result<()> {
+        for line in &self.0 {
+            writeln!(destination, "{line}")?;
+        }
+
+        Ok(())
     }
 }
 
