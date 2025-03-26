@@ -313,7 +313,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             }
         };
 
-        self.write_cache_file(&entry, is_refresh, temp_file, key);
+        self.write_cache_file(key, &entry, temp_file, is_refresh);
 
         if !shared_cache_hit {
             self.store_in_shared_cache(&request, key, &entry, CacheStoreReason::New);
@@ -329,10 +329,10 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// exist.
     fn write_cache_file(
         &self,
-        entry: &CacheEntry<ByteView<'_>>,
-        is_refresh: bool,
-        temp_file: NamedTempFile,
         key: &CacheKey,
+        entry: &CacheEntry<ByteView<'_>>,
+        temp_file: NamedTempFile,
+        is_refresh: bool,
     ) {
         if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
