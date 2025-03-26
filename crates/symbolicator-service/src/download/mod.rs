@@ -12,6 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
+use index::FetchSymstoreIndex;
 use reqwest::StatusCode;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -24,7 +25,6 @@ use symbolicator_sources::{
     SourceLocationIter, SymstoreIndex,
 };
 
-use crate::caches::FetchSymstoreIndex;
 use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
 use crate::config::Config;
 use crate::types::Scope;
@@ -38,6 +38,7 @@ mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
+mod index;
 mod s3;
 pub mod sentry;
 
@@ -54,7 +55,8 @@ impl ConfigureScope for RemoteFile {
 }
 
 /// HTTP User-Agent string to use.
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+//TODO: Revert this
+const USER_AGENT: &str = "curl/7.72.0";
 
 impl CacheError {
     fn download_error(mut error: &dyn Error) -> Self {
@@ -228,7 +230,7 @@ pub struct DownloadService {
     pub trusted_client: reqwest::Client,
     symstore_index_cache: Arc<Cacher<FetchSymstoreIndex>>,
     sentry: sentry::SentryDownloader,
-    http: http::HttpDownloader,
+    http: Arc<http::HttpDownloader>,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
@@ -273,7 +275,11 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
+            http: Arc::new(http::HttpDownloader::new(
+                restricted_client.clone(),
+                no_ssl_client,
+                timeouts,
+            )),
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
@@ -414,15 +420,20 @@ impl DownloadService {
     async fn fetch_symstore_index(
         &self,
         scope: Scope,
-        source_config: &HttpSourceConfig,
+        source_config: Arc<HttpSourceConfig>,
     ) -> Option<SymstoreIndex> {
+        let source_id = source_config.id.to_string();
+        let source_url = source_config.url.clone();
+
         let mut cache_key = CacheKey::scoped_builder(&scope);
         write!(&mut cache_key, "{}", source_config.url).unwrap();
         let cache_key = cache_key.build();
 
         let request = FetchSymstoreIndex {
-            url: source_config.url.clone(),
+            source: source_config,
+            downloader: Arc::clone(&self.http),
         };
+
         match self
             .symstore_index_cache
             .compute_memoized(request, cache_key)
@@ -433,8 +444,8 @@ impl DownloadService {
             Err(CacheError::NotFound) => None,
             Err(e) => {
                 tracing::error!(
-                    source_id = source_config.id.as_str(),
-                    url = %source_config.url,
+                    source_id,
+                    %source_url,
                     error = &e as &dyn std::error::Error,
                     "Failed to compute symstore index",
                 );
@@ -492,7 +503,8 @@ impl DownloadService {
                 SourceConfig::Http(cfg) => {
                     // TODO: Obviously don't hardcode this for Intel
                     let index = if cfg.id.as_str() == "sentry:intel" {
-                        self.fetch_symstore_index(Scope::Global, cfg).await
+                        self.fetch_symstore_index(Scope::Global, Arc::clone(cfg))
+                            .await
                     } else {
                         None
                     };

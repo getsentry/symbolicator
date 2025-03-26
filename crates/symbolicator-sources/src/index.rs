@@ -14,7 +14,7 @@ impl SymstoreIndexBuilder {
         Some(format!("{name}/{id}/{name}"))
     }
 
-    fn extend_from_reader<R: BufRead>(&mut self, reader: R) -> Result<(), io::Error> {
+    pub fn extend_from_reader<R: BufRead>(&mut self, reader: R) -> Result<(), io::Error> {
         for line in reader.lines() {
             let line = line?;
             if let Some(parsed) = Self::parse_line(&line) {
