@@ -37,6 +37,15 @@ async fn write_symstore_index(
 
     dbg!(lastid);
 
+    (1..=lastid).map(|i| async {
+        let loc = format!("000Admin/{i:0>10}");
+        let remote_file = HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
+        let mut buf = Vec::new();
+        downloader
+            .download_source("http", &remote_file, &mut buf)
+            .await
+    });
+
     // for i in 1.. {
     //     let loc = format!("000Admin/{i:0>10}");
     //     tracing::debug!(loc, "Downloading Symstore index file");
