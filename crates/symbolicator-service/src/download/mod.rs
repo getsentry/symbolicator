@@ -12,8 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
 use reqwest::StatusCode;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
@@ -509,9 +508,10 @@ where
 async fn download_stream(
     source_name: &str,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    destination: &mut File,
+    mut destination: impl AsyncWrite,
 ) -> CacheContents {
     futures::pin_mut!(stream);
+    let mut destination = std::pin::pin!(destination);
 
     let mut throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
@@ -536,7 +536,7 @@ async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: &mut File,
+    destination: impl AsyncWrite,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;

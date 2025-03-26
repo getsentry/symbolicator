@@ -13,7 +13,7 @@ use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
 use futures::TryStreamExt as _;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
-use tokio::fs::File;
+use tokio::io::AsyncWrite;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
@@ -101,7 +101,7 @@ impl S3Downloader {
         &self,
         source_name: &str,
         file_source: &S3RemoteFile,
-        destination: &mut File,
+        destination: impl AsyncWrite,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = file_source.bucket();
