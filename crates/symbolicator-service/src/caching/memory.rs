@@ -168,6 +168,10 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     /// Loads an existing element from the cache.
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item>;
 
+    fn refresh(&self, _contents: &CacheContents<Self::Item>) -> Option<Self::Item> {
+        None
+    }
+
     /// The "cost" of keeping this item in the in-memory cache.
     fn weight(item: &Self::Item) -> u32 {
         std::mem::size_of_val(item) as u32
@@ -187,6 +191,69 @@ impl<T: CacheItemRequest> Cacher<T> {
             .flatten()
     }
 
+    /// Loads a cache entry from the shared cache
+    /// and places it in the supplied temp file.
+    ///
+    /// Returns `None` If the shared cache is not enabled for the request
+    /// or the entry is not found there.
+    async fn load_from_shared_cache(
+        &self,
+        request: &T,
+        key: &CacheKey,
+        temp_file: &NamedTempFile,
+    ) -> Option<CacheEntry<ByteView<'static>>> {
+        let name = self.config.name();
+        let cache_path = key.cache_path(T::VERSIONS.current);
+        let shared_cache = self.shared_cache(request)?;
+
+        let temp_fd = match temp_file.reopen() {
+            Ok(fd) => fd,
+            Err(e) => return Some(CacheEntry::from_err(e)),
+        };
+        let temp_fd = tokio::fs::File::from_std(temp_fd);
+
+        if shared_cache.fetch(name, &cache_path, temp_fd).await {
+            // TODO: Here we create fresh metadata upon fetching from the shared cache.
+            // Ideally we would obviously want to share these metadata, but this is left
+            // as future work.
+            let metadata = Some(Metadata::from_key(key));
+            let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
+                Ok(bv) => bv,
+                Err(e) => return Some(CacheEntry::from_err(e)),
+            };
+            Some(CacheEntry {
+                contents: Ok(byte_view),
+                metadata,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Stores the given entry in the shared cache.
+    ///
+    /// Currently only `Ok` entries are stored.
+    fn store_in_shared_cache(
+        &self,
+        request: &T,
+        key: &CacheKey,
+        entry: &CacheEntry<ByteView<'static>>,
+        reason: CacheStoreReason,
+    ) {
+        let name = self.config.name();
+        let cache_path = key.cache_path(T::VERSIONS.current);
+        let Some(shared_cache) = self.shared_cache(request) else {
+            return;
+        };
+
+        // TODO: Not handling negative caches probably has a huge perf impact.  Need to
+        // figure out negative caches.  Maybe put them in redis with a TTL?
+        if let Ok(byteview) = entry.contents() {
+            // TODO: Metadata should also be stored here.
+            shared_cache.store(name, &cache_path, byteview.clone(), reason);
+        }
+    }
+
     /// Compute an item.
     ///
     /// The item is computed using [`T::compute`](CacheItemRequest::compute), and saved in the cache
@@ -196,77 +263,83 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        let cache_path = key.cache_path(T::VERSIONS.current);
-        let mut metadata = None;
         let mut temp_file = match self.config.tempfile() {
             Ok(temp_file) => temp_file,
             Err(e) => return CacheEntry::from_err(e),
         };
 
-        let shared_cache = self.shared_cache(&request);
-        let shared_cache_hit = if let Some(shared_cache) = shared_cache {
-            // TODO: Here we create fresh metadata upon fetching from the shared cache.
-            // Ideally we would obviously want to share these metadata, but this is left
-            // as future work.
-            metadata = Some(Metadata::from_key(key));
-            let temp_fd = match temp_file.reopen() {
-                Ok(fd) => fd,
-                Err(e) => return CacheEntry::from_err(e),
-            };
-            let temp_fd = tokio::fs::File::from_std(temp_fd);
-            shared_cache.fetch(name, &cache_path, temp_fd).await
-        } else {
-            false
-        };
+        let entry = self.load_from_shared_cache(&request, key, &temp_file).await;
+        let shared_cache_hit = entry.is_some();
 
-        let mut entry = if shared_cache_hit {
-            let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
-                Ok(bv) => bv,
-                Err(e) => return CacheEntry::from_err(e),
-            };
-            Ok(byte_view)
-        } else {
-            Err(CacheError::NotFound)
-        };
+        let entry = match entry {
+            Some(entry) => entry,
+            None => {
+                metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
+                match request.compute(&mut temp_file).await {
+                    Ok(()) => {
+                        // Now we have written the data to the tempfile we can mmap it, persisting it later
+                        // is fine as it does not move filesystem boundaries there.
+                        let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
+                            Ok(bv) => bv,
+                            Err(e) => return CacheEntry::from_err(e),
+                        };
+                        CacheEntry {
+                            contents: Ok(byte_view),
+                            metadata: Some(Metadata::from_key(key)),
+                        }
+                    }
+                    Err(CacheError::InternalError) => {
+                        // If there was an `InternalError` during computation (for instance because
+                        // of an io error), we return immediately without writing the error
+                        // or persisting the temp file.
+                        return CacheEntry::from_err(CacheError::InternalError);
+                    }
+                    Err(err) => {
+                        let temp_fd = match temp_file.reopen() {
+                            Ok(fd) => fd,
+                            Err(e) => return CacheEntry::from_err(e),
+                        };
+                        let mut temp_fd = tokio::fs::File::from_std(temp_fd);
+                        if let Err(e) = err.write(&mut temp_fd).await {
+                            return CacheEntry::from_err(e);
+                        };
 
-        if entry.is_err() {
-            metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
-            match request.compute(&mut temp_file).await {
-                Ok(()) => {
-                    // Now we have written the data to the tempfile we can mmap it, persisting it later
-                    // is fine as it does not move filesystem boundaries there.
-                    let byte_view = match ByteView::map_file_ref(temp_file.as_file()) {
-                        Ok(bv) => bv,
-                        Err(e) => return CacheEntry::from_err(e),
-                    };
-                    entry = Ok(byte_view);
-                    metadata = Some(Metadata::from_key(key));
-                }
-                Err(CacheError::InternalError) => {
-                    // If there was an `InternalError` during computation (for instance because
-                    // of an io error), we return immediately without writing the error
-                    // or persisting the temp file.
-                    return CacheEntry::from_err(CacheError::InternalError);
-                }
-                Err(err) => {
-                    let temp_fd = match temp_file.reopen() {
-                        Ok(fd) => fd,
-                        Err(e) => return CacheEntry::from_err(e),
-                    };
-                    let mut temp_fd = tokio::fs::File::from_std(temp_fd);
-                    if let Err(e) = err.write(&mut temp_fd).await {
-                        return CacheEntry::from_err(e);
-                    };
-
-                    entry = Err(err);
-                    metadata = Some(Metadata::from_key(key));
+                        CacheEntry {
+                            contents: Err(err),
+                            metadata: Some(Metadata::from_key(key)),
+                        }
+                    }
                 }
             }
+        };
+
+        self.write_cache_file(&entry, is_refresh, temp_file, key);
+
+        if !shared_cache_hit {
+            self.store_in_shared_cache(&request, key, &entry, CacheStoreReason::New);
         }
 
+        entry.and_then(|byteview| request.load(byteview))
+    }
+
+    /// Writes a cache entry to the file system
+    /// if a cache directory is configured.
+    ///
+    /// This function also removes any old cache files that may still
+    /// exist.
+    fn write_cache_file(
+        &self,
+        entry: &CacheEntry<ByteView<'_>>,
+        is_refresh: bool,
+        temp_file: NamedTempFile,
+        key: &CacheKey,
+    ) {
         if let Some(cache_dir) = self.config.cache_dir() {
             // Cache is enabled, write it!
-            let cache_path = cache_dir.join(&cache_path);
+            let name = self.config.name();
+            let cache_path = cache_dir.join(key.cache_path(T::VERSIONS.current));
+
+            let CacheEntry { metadata, contents } = entry;
 
             sentry::configure_scope(|scope| {
                 scope.set_extra(
@@ -274,9 +347,10 @@ impl<T: CacheItemRequest> Cacher<T> {
                     cache_path.to_string_lossy().into(),
                 );
             });
+
             metric!(
                 counter("caches.file.write") += 1,
-                "status" => match &entry {
+                "status" => match &contents {
                     Ok(_) => "positive",
                     // TODO: should we create a `metrics_tag` method?
                     Err(CacheError::NotFound) => "negative",
@@ -286,7 +360,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 "is_refresh" => &is_refresh.to_string(),
                 "cache" => name.as_ref(),
             );
-            if let Ok(byte_view) = &entry {
+
+            if let Ok(byte_view) = contents {
                 metric!(
                     time_raw("caches.file.size") = byte_view.len() as u64,
                     "hit" => "false",
@@ -298,13 +373,21 @@ impl<T: CacheItemRequest> Cacher<T> {
             tracing::trace!("Creating {name} at path {:?}", cache_path.display());
 
             if let Err(e) = persist_tempfile(temp_file, &cache_path) {
-                return CacheEntry::from_err(e);
+                tracing::error!(
+                    error = &e as &dyn std::error::Error,
+                    path = %cache_path.display(),
+                    "Failed to persist temp file",
+                );
             };
 
             // Write metadata if we have them
             if let Some(metadata) = metadata.as_ref() {
                 if let Err(e) = super::fs::write_metadata(&cache_path, metadata) {
-                    return CacheEntry::from_err(e);
+                    tracing::error!(
+                        error = &e as &dyn std::error::Error,
+                        path = %cache_path.display(),
+                        "Failed to write metadata file",
+                    );
                 };
             }
 
@@ -334,21 +417,70 @@ impl<T: CacheItemRequest> Cacher<T> {
                     }
                 }
             }
-        };
-
-        // TODO: Not handling negative caches probably has a huge perf impact.  Need to
-        // figure out negative caches.  Maybe put them in redis with a TTL?
-        if !shared_cache_hit {
-            if let Ok(byteview) = &entry {
-                if let Some(shared_cache) = shared_cache {
-                    // TODO: Metadata should also be stored here.
-                    shared_cache.store(name, &cache_path, byteview.clone(), CacheStoreReason::New);
-                }
-            }
         }
+    }
 
-        let contents = entry.and_then(|byteview| request.load(byteview));
-        CacheEntry { metadata, contents }
+    /// Looks up a cache file in the local filesystem.
+    ///
+    /// This first tries the current cache version and then
+    /// the fallback versions. If a fallback version is found,
+    /// a refresh is spawned in the background to make the current
+    /// version available in the future.
+    fn lookup_local_cache(
+        &self,
+        request: T,
+        cache_key: &CacheKey,
+    ) -> Option<InMemoryItem<T::Item>> {
+        let name = self.config.name();
+        let cache_dir = self.config.cache_dir()?;
+        let versions =
+            std::iter::once(T::VERSIONS.current).chain(T::VERSIONS.fallbacks.iter().copied());
+
+        for version in versions {
+            let is_current_version = version == T::VERSIONS.current;
+            // try the new cache key first, then fall back to the old cache key
+            let in_memory_item =
+                match lookup_local_cache(&self.config, cache_dir, &cache_key.cache_path(version)) {
+                    Err(CacheError::NotFound) => continue,
+                    Err(err) => {
+                        let contents = Err(err);
+                        let deadline =
+                            ExpirationTime::for_fresh_status(&self.config, &contents).as_instant();
+                        let metadata = Some(Metadata::from_key(cache_key));
+                        let data = CacheEntry { metadata, contents };
+                        return Some(InMemoryItem { deadline, data });
+                    }
+                    Ok((item, needs_reupload)) => {
+                        // store things into the shared cache when:
+                        // - that has the latest version (we don’t want to upload old versions)
+                        // - we refreshed the local cache time, so we also refresh the shared cache time.
+                        if is_current_version && needs_reupload {
+                            self.store_in_shared_cache(
+                                &request,
+                                cache_key,
+                                &item.data,
+                                CacheStoreReason::Refresh,
+                            );
+                        }
+                        item.and_then(|byteview| request.load(byteview))
+                    }
+                };
+
+            if !is_current_version {
+                // we have found an outdated cache that we will use right away,
+                // and we will kick off a recomputation for the `current` cache version
+                // in a deduplicated background task, which we will not await
+                metric!(
+                    counter("caches.file.fallback") += 1,
+                    "version" => &version.to_string(),
+                    "cache" => name.as_ref(),
+                );
+                self.spawn_refresh(request, cache_key.clone());
+            }
+
+            return Some(in_memory_item);
+        }
+        None
     }
 
     /// Computes an item by loading from or populating the cache.
@@ -367,87 +499,50 @@ impl<T: CacheItemRequest> Cacher<T> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_ref());
 
-        let init = Box::pin(async {
-            // cache_path is None when caching is disabled.
-            if let Some(cache_dir) = self.config.cache_dir() {
-                let shared_cache = self.shared_cache(&request);
-                let versions = std::iter::once(T::VERSIONS.current)
-                    .chain(T::VERSIONS.fallbacks.iter().copied());
-
-                for version in versions {
-                    let is_current_version = version == T::VERSIONS.current;
-                    // try the new cache key first, then fall back to the old cache key
-                    let in_memory_item = match lookup_local_cache(
-                        &self.config,
-                        shared_cache,
-                        cache_dir,
-                        &cache_key.cache_path(version),
-                        is_current_version,
-                    ) {
-                        Err(CacheError::NotFound) => continue,
-                        Err(err) => {
-                            let contents = Err(err);
-                            let deadline =
-                                ExpirationTime::for_fresh_status(&self.config, &contents)
-                                    .as_instant();
-                            let metadata = Some(Metadata::from_key(&cache_key));
-                            let data = CacheEntry { metadata, contents };
-                            return InMemoryItem { deadline, data };
-                        }
-                        Ok(item) => item.and_then(|byteview| request.load(byteview)),
-                    };
-
-                    if !is_current_version {
-                        // we have found an outdated cache that we will use right away,
-                        // and we will kick off a recomputation for the `current` cache version
-                        // in a deduplicated background task, which we will not await
-                        metric!(
-                            counter("caches.file.fallback") += 1,
-                            "version" => &version.to_string(),
-                            "cache" => name.as_ref(),
-                        );
-                        self.spawn_refresh(cache_key.clone(), request);
-                    }
-
-                    return in_memory_item;
-                }
-            }
-
-            // A file was not found. If this spikes, it's possible that the filesystem cache
-            // just got pruned.
-            metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
-
-            let data = self
-                .compute(request, &cache_key, false)
-                // NOTE: We have seen this deadlock with an SDK that was deadlocking on
-                // out-of-order Scope pops.
-                // To guarantee that this does not happen is really the responsibility of
-                // the caller, though to be safe, we will just bind a fresh hub here.
-                .bind_hub(Hub::new_from_top(Hub::current()))
-                .await;
-
-            // we just created a fresh cache, so use the initial expiration times
-            let expiration = ExpirationTime::for_fresh_status(&self.config, data.contents());
-
-            InMemoryItem {
-                deadline: expiration.as_instant(),
-                data,
-            }
-        });
-
         let entry = self
             .cache
             .entry_by_ref(&cache_key)
-            .or_insert_with(init)
+            .or_insert_with(Box::pin(self.lookup_or_compute(request, &cache_key)))
             .await;
 
-        if !entry.is_fresh() {
-            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
-        }
         entry.into_value().data
     }
 
-    fn spawn_refresh(&self, cache_key: CacheKey, request: T) {
+    /// Looks a cache entry up or computes it.
+    ///
+    /// This tries the following things in order:
+    /// 1. Looks the cache file up in the local file system
+    /// 2. Looks the cache file up in the shared cache
+    /// 3. Computes the cache filed.
+    async fn lookup_or_compute(&self, request: T, cache_key: &CacheKey) -> InMemoryItem<T::Item> {
+        let name = self.config.name();
+        if let Some(value) = self.lookup_local_cache(request.clone(), cache_key) {
+            return value;
+        }
+
+        // A file was not found. If this spikes, it's possible that the filesystem cache
+        // just got pruned.
+        metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
+
+        let data = self
+            .compute(request, cache_key, false)
+            // NOTE: We have seen this deadlock with an SDK that was deadlocking on
+            // out-of-order Scope pops.
+            // To guarantee that this does not happen is really the responsibility of
+            // the caller, though to be safe, we will just bind a fresh hub here.
+            .bind_hub(Hub::new_from_top(Hub::current()))
+            .await;
+
+        // we just created a fresh cache, so use the initial expiration times
+        let expiration = ExpirationTime::for_fresh_status(&self.config, data.contents());
+
+        InMemoryItem {
+            deadline: expiration.as_instant(),
+            data,
+        }
+    }
+
+    fn spawn_refresh(&self, request: T, cache_key: CacheKey) {
         let name = self.config.name();
 
         let mut refreshes = self.refreshes.lock().unwrap();
@@ -517,13 +612,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 ///
 /// Returns `Err(NotFound)` if the cache item does not exist or needs to be re-computed.
 /// Otherwise returns an `InMemoryItem`, which itself might contain a `NotFound` error.
+///
+/// Additionally also returns a boolean indicating whether the item should be refreshed in
+/// the shared cache.
 fn lookup_local_cache(
     config: &Cache,
-    shared_cache: Option<&SharedCacheService>,
     cache_dir: &Path,
     cache_key: &str,
-    is_current_version: bool,
-) -> CacheContents<InMemoryItem<ByteView<'static>>> {
+) -> CacheContents<(InMemoryItem<ByteView<'static>>, bool)> {
     let name = config.name();
 
     let item_path = cache_dir.join(cache_key);
@@ -539,19 +635,7 @@ fn lookup_local_cache(
         .open_cachefile(&item_path)?
         .ok_or(CacheError::NotFound)?;
 
-    // store things into the shared cache when:
-    // - we have a positive cache
-    // - that has the latest version (we don’t want to upload old versions)
-    // - we refreshed the local cache time, so we also refresh the shared cache time.
     let needs_reupload = expiration.was_touched();
-    // FIXME: let-chains would be nice here :-)
-    if is_current_version && needs_reupload {
-        if let Ok(byteview) = data.contents() {
-            if let Some(shared_cache) = shared_cache {
-                shared_cache.store(name, cache_key, byteview.clone(), CacheStoreReason::Refresh);
-            }
-        }
-    }
 
     // This is also reported for "negative cache hits": When we cached
     // the 404 response from a server as empty file.
@@ -566,10 +650,13 @@ fn lookup_local_cache(
 
     tracing::trace!("Loading {} at path {}", name, item_path.display());
 
-    Ok(InMemoryItem {
-        deadline: expiration.as_instant(),
-        data,
-    })
+    Ok((
+        InMemoryItem {
+            deadline: expiration.as_instant(),
+            data,
+        },
+        needs_reupload,
+    ))
 }
 
 fn persist_tempfile(
