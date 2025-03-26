@@ -101,7 +101,7 @@ impl S3Downloader {
         &self,
         source_name: &str,
         file_source: &S3RemoteFile,
-        destination: impl AsyncWrite + Unpin,
+        destination: impl AsyncWrite,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = file_source.bucket();

@@ -32,7 +32,7 @@ impl HttpDownloader {
         &self,
         source_name: &str,
         file_source: &HttpRemoteFile,
-        destination: impl AsyncWrite + Unpin,
+        destination: impl AsyncWrite,
     ) -> CacheContents {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 

@@ -256,7 +256,7 @@ impl SentryDownloader {
         &self,
         source_name: &str,
         file_source: &SentryRemoteFile,
-        destination: impl AsyncWrite + Unpin,
+        destination: impl AsyncWrite,
     ) -> CacheContents {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);

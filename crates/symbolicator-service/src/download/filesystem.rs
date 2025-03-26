@@ -23,7 +23,7 @@ impl FilesystemDownloader {
     pub async fn download_source(
         &self,
         file_source: &FilesystemRemoteFile,
-        mut destination: impl AsyncWrite + Unpin,
+        mut destination: impl AsyncWrite,
     ) -> CacheContents {
         let path = file_source.path();
         tracing::debug!("Fetching debug file from {:?}", path);
@@ -32,6 +32,7 @@ impl FilesystemDownloader {
             io::ErrorKind::NotFound => CacheError::NotFound,
             _ => e.into(),
         })?;
+        let mut destination = std::pin::pin!(destination);
         tokio::io::copy(&mut file, &mut destination).await?;
         Ok(())
     }

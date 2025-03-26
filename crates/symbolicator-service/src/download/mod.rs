@@ -508,9 +508,10 @@ where
 async fn download_stream(
     source_name: &str,
     stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    mut destination: impl AsyncWrite + Unpin,
+    mut destination: impl AsyncWrite,
 ) -> CacheContents {
     futures::pin_mut!(stream);
+    let mut destination = std::pin::pin!(destination);
 
     let mut throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
@@ -535,7 +536,7 @@ async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: impl AsyncWrite + Unpin,
+    destination: impl AsyncWrite,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;

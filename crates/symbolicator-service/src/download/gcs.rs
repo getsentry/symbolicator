@@ -58,7 +58,7 @@ impl GcsDownloader {
         &self,
         source_name: &str,
         file_source: &GcsRemoteFile,
-        destination: impl AsyncWrite + Unpin,
+        destination: impl AsyncWrite,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
