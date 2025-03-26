@@ -9,7 +9,7 @@ use std::time::Duration;
 use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use tokio::fs::File;
+use tokio::io::AsyncWrite;
 use url::Url;
 
 use symbolicator_sources::{
@@ -256,7 +256,7 @@ impl SentryDownloader {
         &self,
         source_name: &str,
         file_source: &SentryRemoteFile,
-        destination: &mut File,
+        destination: impl AsyncWrite + Unpin,
     ) -> CacheContents {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);

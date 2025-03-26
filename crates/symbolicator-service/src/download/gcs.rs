@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
-use tokio::fs::File;
+use tokio::io::AsyncWrite;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::gcs::{self, GcsToken};
@@ -58,7 +58,7 @@ impl GcsDownloader {
         &self,
         source_name: &str,
         file_source: &GcsRemoteFile,
-        destination: &mut File,
+        destination: impl AsyncWrite + Unpin,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;

@@ -3,7 +3,7 @@
 use reqwest::{header, Client};
 
 use symbolicator_sources::HttpRemoteFile;
-use tokio::fs::File;
+use tokio::io::AsyncWrite;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
@@ -32,7 +32,7 @@ impl HttpDownloader {
         &self,
         source_name: &str,
         file_source: &HttpRemoteFile,
-        destination: &mut File,
+        destination: impl AsyncWrite + Unpin,
     ) -> CacheContents {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
