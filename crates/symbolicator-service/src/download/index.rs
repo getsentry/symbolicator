@@ -106,6 +106,10 @@ impl CacheItemRequest for FetchSymstoreIndex {
         let index = SymstoreIndex::load(&data)?;
         Ok(index)
     }
+
+    fn weight(item: &Self::Item) -> u32 {
+        item.files.iter().map(|file| file.len() as u32).sum()
+    }
 }
 
 #[derive(Debug, Clone)]

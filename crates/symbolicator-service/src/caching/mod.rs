@@ -306,7 +306,7 @@ impl Caches {
                 config,
                 config.caches.downloaded.into(),
                 max_lazy_redownloads,
-                default_cap,
+                in_memory.symstore_index_capacity,
             )?,
         })
     }
