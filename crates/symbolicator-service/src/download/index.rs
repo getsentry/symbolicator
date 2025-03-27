@@ -149,8 +149,8 @@ impl SymstoreIndexService {
                     .download_source("http", &remote_file, &mut lastid)
                     .await?;
 
+                // TODO: Temporarily hardcode this to a low number for testing purposes
                 // let lastid = std::str::from_utf8(&lastid).unwrap().parse().unwrap();
-
                 Ok(15)
             })
             .await

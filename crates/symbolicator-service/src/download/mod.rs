@@ -53,7 +53,7 @@ impl ConfigureScope for RemoteFile {
 }
 
 /// HTTP User-Agent string to use.
-//TODO: Revert this
+//TODO: Temporarily changed to curl to test the Intel source.
 const USER_AGENT: &str = "curl/7.72.0";
 
 impl CacheError {
@@ -563,7 +563,6 @@ async fn download_stream(
     Ok(())
 }
 
-#[tracing::instrument(skip_all, err)]
 async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
@@ -579,17 +578,9 @@ async fn download_reqwest(
     let request = tokio::time::timeout(timeout, request);
     let request = measure_download_time(source_name, request);
 
-    let response = match request.await {
-        Ok(Ok(response)) => response,
-        Ok(Err(e)) => {
-            tracing::trace!(error = &e as &dyn std::error::Error, "Reqwest error");
-            return Err(e.into());
-        }
-        Err(_) => return Err(CacheError::Timeout(timeout)),
-    };
+    let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
 
     let status = response.status();
-    tracing::trace!(status = status.as_str(), "Got response");
     if status.is_success() {
         tracing::trace!("Success hitting `{}`", source);
 
