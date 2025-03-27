@@ -328,22 +328,27 @@ pub struct InMemoryCacheConfig {
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
     ///
-    /// Defaults to `100 MiB (= 104_857_600)`.
+    /// Defaults to `100 MiB`.
     pub object_meta_capacity: u64,
 
     /// Capacity (in bytes) for the in-memory `cficaches` Cache.
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
     ///
-    /// Defaults to `600 MiB (= 629_145_600)`.
+    /// Defaults to `400 MiB`.
     pub cficaches_capacity: u64,
 
     /// Capacity (in bytes) for the in-memory "file in bundle" Cache.
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
     ///
-    /// Defaults to `3 GiB (= 3_221_225_472)`
+    /// Defaults to `3 GiB`.
     pub fileinbundle_capacity: u64,
+
+    /// Capacity (in bytes) for the in-memory "symstore index" Cache.
+    ///
+    /// Defaults to `10 MiB`.
+    pub symstore_index_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
@@ -360,6 +365,7 @@ impl Default for InMemoryCacheConfig {
             // We noticed a significant reduction in CPU usage with a cache size of ~2G, which
             // resulted in a hit ratio of ~60-65%. Lets give it a bit more then and see what happens.
             fileinbundle_capacity: 3 * 1024 * meg,
+            symstore_index_capacity: 10 * meg,
         }
     }
 }

@@ -34,9 +34,13 @@ impl SharedServices {
             .clear_tmp(&config)
             .context("failed to clear tmp caches")?;
 
-        let download_svc = DownloadService::new(&config, io_pool.clone());
-
-        let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool);
+        let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone());
+        let download_svc = DownloadService::new(
+            &config,
+            caches.symstore_index.clone(),
+            shared_cache.clone(),
+            io_pool.clone(),
+        );
 
         let sourcefiles_cache = Arc::new(SourceFilesCache::new(
             caches.sourcefiles.clone(),

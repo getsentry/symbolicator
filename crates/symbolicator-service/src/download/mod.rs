@@ -11,6 +11,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
+use index::SymstoreIndexService;
 use reqwest::StatusCode;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -22,8 +23,9 @@ use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::caching::{CacheContents, CacheError};
+use crate::caching::{Cache, CacheContents, CacheError, SharedCacheRef};
 use crate::config::Config;
+use crate::types::Scope;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
@@ -34,6 +36,7 @@ mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
+mod index;
 mod s3;
 pub mod sentry;
 
@@ -50,7 +53,8 @@ impl ConfigureScope for RemoteFile {
 }
 
 /// HTTP User-Agent string to use.
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
+//TODO: Temporarily changed to curl to test the Intel source.
+const USER_AGENT: &str = "curl/7.72.0";
 
 impl CacheError {
     fn download_error(mut error: &dyn Error) -> Self {
@@ -222,8 +226,9 @@ pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
     pub timeouts: DownloadTimeouts,
     pub trusted_client: reqwest::Client,
+    symstore_index_service: SymstoreIndexService,
     sentry: sentry::SentryDownloader,
-    http: http::HttpDownloader,
+    http: Arc<http::HttpDownloader>,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
@@ -233,7 +238,12 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
+    pub fn new(
+        config: &Config,
+        symstore_index_cache: Cache,
+        shared_cache: SharedCacheRef,
+        runtime: tokio::runtime::Handle,
+    ) -> Arc<Self> {
         let timeouts = DownloadTimeouts::from_config(config);
 
         // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
@@ -248,10 +258,21 @@ impl DownloadService {
             crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, true);
 
         let in_memory = &config.caches.in_memory;
+
+        let http = Arc::new(http::HttpDownloader::new(
+            restricted_client.clone(),
+            no_ssl_client,
+            timeouts,
+        ));
+
+        let symstore_index_service =
+            SymstoreIndexService::new(symstore_index_cache, shared_cache, Arc::clone(&http));
+
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
             trusted_client: trusted_client.clone(),
+            symstore_index_service,
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 runtime,
@@ -259,7 +280,7 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
+            http,
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
@@ -419,7 +440,7 @@ impl DownloadService {
         macro_rules! check_source {
             ($source:ident => $file_ty:ty) => {{
                 let mut iter =
-                    SourceLocationIter::new(&$source.files, filetypes, object_id).peekable();
+                    SourceLocationIter::new(&$source.files, filetypes, None, object_id).peekable();
                 if iter.peek().is_none() {
                     // TODO: create a special "no file on source" `RemoteFile`?
                 } else {
@@ -444,8 +465,18 @@ impl DownloadService {
                     }
                 }
                 SourceConfig::Http(cfg) => {
+                    // TODO: Obviously don't hardcode this for Intel
+                    let index = if cfg.id.as_str() == "sentry:intel" {
+                        self.symstore_index_service
+                            .fetch_symstore_index(Scope::Global, Arc::clone(cfg))
+                            .await
+                    } else {
+                        None
+                    };
+
                     let mut iter =
-                        SourceLocationIter::new(&cfg.files, filetypes, object_id).peekable();
+                        SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
+                            .peekable();
                     if iter.peek().is_none() {
                         // TODO: create a special "no file on source" `RemoteFile`?
                     } else {
@@ -731,7 +762,10 @@ mod tests {
 
     use super::*;
 
-    use crate::test;
+    use crate::{
+        caching::{Caches, SharedCacheService},
+        test,
+    };
 
     #[tokio::test]
     async fn test_download() {
@@ -750,7 +784,15 @@ mod tests {
             ..Config::default()
         };
 
-        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let caches = Caches::from_config(&config).unwrap();
+        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
+
+        let service = DownloadService::new(
+            &config,
+            caches.symstore_index,
+            shared_cache,
+            tokio::runtime::Handle::current(),
+        );
 
         // Jump through some hoops here, to prove that we can .await the service.
         let temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -778,7 +820,14 @@ mod tests {
         };
 
         let config = Config::default();
-        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let caches = Caches::from_config(&config).unwrap();
+        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
+        let svc = DownloadService::new(
+            &config,
+            caches.symstore_index,
+            shared_cache,
+            tokio::runtime::Handle::current(),
+        );
         let file_list = svc
             .list_files(&[source.clone()], FileType::all(), &objid)
             .await;

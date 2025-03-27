@@ -95,7 +95,7 @@ impl ObjectsActor {
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
-            data_cache: Arc::new(Cacher::new(data_cache, shared_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache, shared_cache.clone())),
             download_svc,
         }
     }

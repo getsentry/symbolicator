@@ -6,12 +6,14 @@
 #![warn(missing_docs)]
 
 mod filetype;
+mod index;
 mod paths;
 mod remotefile;
 mod sources;
 mod types;
 
 pub use filetype::*;
+pub use index::*;
 pub use paths::*;
 pub use remotefile::*;
 pub use sources::*;
