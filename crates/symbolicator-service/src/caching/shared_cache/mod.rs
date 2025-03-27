@@ -676,8 +676,13 @@ impl SharedCacheService {
     /// shared cache was not found nothing will have been written to `writer`.
     ///
     /// Errors are transparently hidden, either a cache item is available or it is not.
-    #[tracing::instrument(name = "fetch_shared_cache", skip(self, file))]
-    pub async fn fetch(&self, cache: CacheName, key: &str, mut file: tokio::fs::File) -> bool {
+    #[tracing::instrument(name = "fetch_shared_cache", skip(self, destination))]
+    pub async fn fetch(
+        &self,
+        cache: CacheName,
+        key: &str,
+        mut destination: impl AsyncWrite + Unpin + Send + 'static,
+    ) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();
         let key = format!("{}/{key}", cache.as_ref());
@@ -691,7 +696,7 @@ impl SharedCacheService {
         let res = match self.backend.as_ref() {
             SharedCacheBackend::Gcs(state) => {
                 let state = Arc::clone(state);
-                let future = async move { state.fetch(&key, &mut file).await }
+                let future = async move { state.fetch(&key, &mut destination).await }
                     .bind_hub(sentry::Hub::current());
                 let future = CancelOnDrop::new(self.runtime.spawn(future));
                 let future = tokio::time::timeout(STORE_TIMEOUT, future);
@@ -700,7 +705,7 @@ impl SharedCacheService {
                     .map(|res| res.unwrap_or(Err(CacheError::ConnectTimeout)))
                     .unwrap_or(Err(CacheError::Timeout))
             }
-            SharedCacheBackend::Fs(cfg) => cfg.fetch(&key, &mut file).await,
+            SharedCacheBackend::Fs(cfg) => cfg.fetch(&key, &mut destination).await,
         };
         match res {
             Ok(Some(bytes)) => {
