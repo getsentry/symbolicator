@@ -168,10 +168,6 @@ pub trait CacheItemRequest: 'static + Send + Sync + Clone {
     /// Loads an existing element from the cache.
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item>;
 
-    fn refresh(&self, _contents: &CacheContents<Self::Item>) -> Option<Self::Item> {
-        None
-    }
-
     /// The "cost" of keeping this item in the in-memory cache.
     fn weight(item: &Self::Item) -> u32 {
         std::mem::size_of_val(item) as u32
