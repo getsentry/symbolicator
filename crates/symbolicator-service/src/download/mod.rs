@@ -5,14 +5,13 @@
 
 use std::collections::VecDeque;
 use std::error::Error;
-use std::fmt::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
-use index::FetchSymstoreIndex;
+use index::SymstoreIndexService;
 use reqwest::StatusCode;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -21,11 +20,10 @@ pub use symbolicator_sources::{
     SourceFilters, SourceLocation,
 };
 use symbolicator_sources::{
-    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, HttpSourceConfig, S3RemoteFile,
-    SourceLocationIter, SymstoreIndex,
+    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
+use crate::caching::{Cache, CacheContents, CacheError, SharedCacheRef};
 use crate::config::Config;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure, CancelOnDrop};
@@ -228,7 +226,7 @@ pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
     pub timeouts: DownloadTimeouts,
     pub trusted_client: reqwest::Client,
-    symstore_index_cache: Arc<Cacher<FetchSymstoreIndex>>,
+    symstore_index_service: SymstoreIndexService,
     sentry: sentry::SentryDownloader,
     http: Arc<http::HttpDownloader>,
     s3: s3::S3Downloader,
@@ -261,13 +259,20 @@ impl DownloadService {
 
         let in_memory = &config.caches.in_memory;
 
-        let symstore_index_cache = Arc::new(Cacher::new(symstore_index_cache, shared_cache));
+        let http = Arc::new(http::HttpDownloader::new(
+            restricted_client.clone(),
+            no_ssl_client,
+            timeouts,
+        ));
+
+        let symstore_index_service =
+            SymstoreIndexService::new(symstore_index_cache, shared_cache, Arc::clone(&http));
 
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
             trusted_client: trusted_client.clone(),
-            symstore_index_cache,
+            symstore_index_service,
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 runtime,
@@ -275,11 +280,7 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http: Arc::new(http::HttpDownloader::new(
-                restricted_client.clone(),
-                no_ssl_client,
-                timeouts,
-            )),
+            http,
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
@@ -417,43 +418,6 @@ impl DownloadService {
         result
     }
 
-    async fn fetch_symstore_index(
-        &self,
-        scope: Scope,
-        source_config: Arc<HttpSourceConfig>,
-    ) -> Option<SymstoreIndex> {
-        let source_id = source_config.id.to_string();
-        let source_url = source_config.url.clone();
-
-        let mut cache_key = CacheKey::scoped_builder(&scope);
-        write!(&mut cache_key, "{}", source_config.url).unwrap();
-        let cache_key = cache_key.build();
-
-        let request = FetchSymstoreIndex {
-            source: source_config,
-            downloader: Arc::clone(&self.http),
-        };
-
-        match self
-            .symstore_index_cache
-            .compute_memoized(request, cache_key)
-            .await
-            .into_contents()
-        {
-            Ok(index) => Some(index),
-            Err(CacheError::NotFound) => None,
-            Err(e) => {
-                tracing::error!(
-                    source_id,
-                    %source_url,
-                    error = &e as &dyn std::error::Error,
-                    "Failed to compute symstore index",
-                );
-                None
-            }
-        }
-    }
-
     /// Returns all objects matching the [`ObjectId`] at the source.
     ///
     /// Some sources, namely all the symbol servers, simply return the locations at which a
@@ -503,7 +467,8 @@ impl DownloadService {
                 SourceConfig::Http(cfg) => {
                     // TODO: Obviously don't hardcode this for Intel
                     let index = if cfg.id.as_str() == "sentry:intel" {
-                        self.fetch_symstore_index(Scope::Global, Arc::clone(cfg))
+                        self.symstore_index_service
+                            .fetch_symstore_index(Scope::Global, Arc::clone(cfg))
                             .await
                     } else {
                         None
