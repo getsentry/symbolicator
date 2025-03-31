@@ -15,13 +15,14 @@ use crate::caching::{Caches, SharedCacheRef, SharedCacheService};
 use crate::config::Config;
 
 use crate::caches::SourceFilesCache;
-use crate::download::DownloadService;
+use crate::download::{DownloadService, SymstoreIndexService};
 use crate::objects::ObjectsActor;
 
 pub struct SharedServices {
     pub config: Config,
     pub caches: Caches,
     pub download_svc: Arc<DownloadService>,
+    pub symstore_index_svc: Arc<SymstoreIndexService>,
     pub shared_cache: SharedCacheRef,
     pub objects: ObjectsActor,
     pub sourcefiles_cache: Arc<SourceFilesCache>,
@@ -35,12 +36,12 @@ impl SharedServices {
             .context("failed to clear tmp caches")?;
 
         let shared_cache = SharedCacheService::new(config.shared_cache.clone(), io_pool.clone());
-        let download_svc = DownloadService::new(
-            &config,
+        let download_svc = DownloadService::new(&config, io_pool.clone());
+        let symstore_index_svc = Arc::new(SymstoreIndexService::new(
             caches.symstore_index.clone(),
             shared_cache.clone(),
-            io_pool.clone(),
-        );
+            download_svc.clone(),
+        ));
 
         let sourcefiles_cache = Arc::new(SourceFilesCache::new(
             caches.sourcefiles.clone(),
@@ -53,12 +54,14 @@ impl SharedServices {
             caches.objects.clone(),
             shared_cache.clone(),
             download_svc.clone(),
+            symstore_index_svc.clone(),
         );
 
         Ok(Self {
             config,
             caches,
             download_svc,
+            symstore_index_svc,
             shared_cache,
             objects,
             sourcefiles_cache,

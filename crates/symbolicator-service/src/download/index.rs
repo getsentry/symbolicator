@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::fs::File;
-use std::io::Cursor;
+use std::io::{BufReader, Read};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,32 +21,32 @@ use crate::caching::{
 };
 use crate::types::Scope;
 
-use super::http::HttpDownloader;
+use super::DownloadService;
 
 #[derive(Debug, Clone)]
 pub struct FetchSymstoreIndex {
     pub lastid: u32,
     pub source: Arc<HttpSourceConfig>,
-    pub downloader: Arc<HttpDownloader>,
+    pub downloader: Arc<DownloadService>,
 }
 
 #[tracing::instrument(skip(downloader, source), fields(source.url = %source.url), err)]
 async fn download_index_segment(
-    downloader: Arc<HttpDownloader>,
+    downloader: Arc<DownloadService>,
     source: Arc<HttpSourceConfig>,
     segment: u32,
 ) -> CacheContents<SymstoreIndexBuilder> {
     let loc = format!("000Admin/{segment:0>10}");
     let remote_file = HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
-    let mut buf = Vec::new();
+    let temp_file = NamedTempFile::new()?;
 
     tracing::debug!("Downloading index segment");
 
     downloader
-        .download_source("http", &remote_file, &mut buf)
+        .download(remote_file.into(), temp_file.path().to_path_buf())
         .await?;
 
-    let buf = Cursor::new(buf);
+    let buf = BufReader::new(temp_file);
     let mut index = SymstoreIndex::builder();
     index.extend_from_reader(buf)?;
 
@@ -54,7 +54,7 @@ async fn download_index_segment(
 }
 
 async fn write_symstore_index(
-    downloader: Arc<HttpDownloader>,
+    downloader: Arc<DownloadService>,
     source: Arc<HttpSourceConfig>,
     lastid: u32,
     file: &mut File,
@@ -113,17 +113,17 @@ impl CacheItemRequest for FetchSymstoreIndex {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct SymstoreIndexService {
+pub struct SymstoreIndexService {
     cache: Arc<Cacher<FetchSymstoreIndex>>,
-    downloader: Arc<HttpDownloader>,
+    downloader: Arc<DownloadService>,
     lastid_cache: moka::future::Cache<Url, CacheContents<u32>>,
 }
 
 impl SymstoreIndexService {
-    pub(super) fn new(
+    pub fn new(
         cache: Cache,
         shared_cache: SharedCacheRef,
-        downloader: Arc<HttpDownloader>,
+        downloader: Arc<DownloadService>,
     ) -> Self {
         let lastid_cache = moka::future::Cache::builder()
             .max_capacity(100)
@@ -141,17 +141,20 @@ impl SymstoreIndexService {
     async fn get_symstore_lastid(&self, source: Arc<HttpSourceConfig>) -> CacheContents<u32> {
         self.lastid_cache
             .get_with_by_ref(&source.url, async {
-                let mut lastid = Vec::new();
+                let mut temp_file = NamedTempFile::new()?;
                 let loc = "000Admin/lastid.txt";
                 let remote_file =
                     HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
                 self.downloader
-                    .download_source("http", &remote_file, &mut lastid)
+                    .download(remote_file.into(), temp_file.path().to_path_buf())
                     .await?;
 
                 // TODO: Temporarily hardcode this to a low number for testing purposes
                 // let lastid = std::str::from_utf8(&lastid).unwrap().parse().unwrap();
-                Ok(15)
+                let mut buf = String::new();
+                temp_file.read_to_string(&mut buf)?;
+                let lastid = buf.parse().unwrap();
+                Ok(lastid)
             })
             .await
     }

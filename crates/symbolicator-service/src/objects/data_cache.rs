@@ -244,8 +244,9 @@ mod tests {
     use symbolicator_sources::FileType;
     use tempfile::TempDir;
 
-    use crate::caching::{Cache, CacheName, SharedCacheService};
+    use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
+    use crate::download::SymstoreIndexService;
     use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
 
@@ -286,15 +287,20 @@ mod tests {
         )
         .unwrap();
 
-        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
-
-        let download_svc = DownloadService::new(
-            &config,
+        let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let symstore_index_svc = Arc::new(SymstoreIndexService::new(
             symstore_index_cache,
-            shared_cache,
-            tokio::runtime::Handle::current(),
-        );
-        ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)
+            Default::default(),
+            Arc::clone(&download_svc),
+        ));
+
+        ObjectsActor::new(
+            meta_cache,
+            data_cache,
+            Default::default(),
+            download_svc,
+            symstore_index_svc,
+        )
     }
 
     #[tokio::test]

@@ -297,7 +297,7 @@ mod tests {
     use symbolic::common::{DebugId, Uuid};
     use symbolicator_service::caching::Caches;
     use symbolicator_service::config::{CacheConfigs, Config};
-    use symbolicator_service::download::DownloadService;
+    use symbolicator_service::download::{DownloadService, SymstoreIndexService};
     use symbolicator_sources::{
         CommonSourceConfig, DirectoryLayoutType, FilesystemSourceConfig, SourceId,
     };
@@ -321,20 +321,32 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         caches.clear_tmp(&config).unwrap();
         let shared_cache = SharedCacheRef::default();
-        let downloader = DownloadService::new(
-            &config,
+        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let symstore_index_svc = Arc::new(SymstoreIndexService::new(
             caches.symstore_index,
             shared_cache.clone(),
-            tokio::runtime::Handle::current(),
-        );
+            Arc::clone(&downloader),
+        ));
+
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
             shared_cache.clone(),
             downloader.clone(),
+            symstore_index_svc.clone(),
         );
-        let bitcode = BitcodeService::new(caches.auxdifs, shared_cache.clone(), downloader.clone());
-        let il2cpp = Il2cppService::new(caches.il2cpp, shared_cache.clone(), downloader);
+        let bitcode = BitcodeService::new(
+            caches.auxdifs,
+            shared_cache.clone(),
+            downloader.clone(),
+            symstore_index_svc.clone(),
+        );
+        let il2cpp = Il2cppService::new(
+            caches.il2cpp,
+            shared_cache.clone(),
+            downloader,
+            symstore_index_svc.clone(),
+        );
 
         SymCacheActor::new(caches.symcaches, shared_cache, objects, bitcode, il2cpp)
     }

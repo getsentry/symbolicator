@@ -7,7 +7,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
 use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
-use crate::download::DownloadService;
+use crate::download::{self, DownloadService, SymstoreIndexService};
 use crate::types::Scope;
 
 mod candidates;
@@ -84,6 +84,7 @@ pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_svc: Arc<DownloadService>,
+    symstore_index_svc: Arc<SymstoreIndexService>,
 }
 
 impl ObjectsActor {
@@ -92,11 +93,13 @@ impl ObjectsActor {
         data_cache: Cache,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
+        symstore_index_svc: Arc<SymstoreIndexService>,
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
-            data_cache: Arc::new(Cacher::new(data_cache, shared_cache.clone())),
+            data_cache: Arc::new(Cacher::new(data_cache, Arc::clone(&shared_cache))),
             download_svc,
+            symstore_index_svc,
         }
     }
 
@@ -141,10 +144,14 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-        let file_ids = self
-            .download_svc
-            .list_files(&sources, filetypes, &identifier)
-            .await;
+        let file_ids = download::list_files(
+            &self.download_svc,
+            &self.symstore_index_svc,
+            &sources,
+            filetypes,
+            &identifier,
+        )
+        .await;
 
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 

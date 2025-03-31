@@ -15,7 +15,7 @@ use symbolicator_service::caches::CacheVersions;
 use symbolicator_service::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };
-use symbolicator_service::download::{fetch_file, DownloadService};
+use symbolicator_service::download::{self, fetch_file, DownloadService, SymstoreIndexService};
 use symbolicator_service::metric;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
@@ -100,6 +100,7 @@ impl CacheItemRequest for FetchFileRequest {
 pub struct Il2cppService {
     cache: Arc<Cacher<FetchFileRequest>>,
     download_svc: Arc<DownloadService>,
+    symstore_index_svc: Arc<SymstoreIndexService>,
 }
 
 impl Il2cppService {
@@ -107,10 +108,12 @@ impl Il2cppService {
         difs_cache: Cache,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
+        symstore_index_svc: Arc<SymstoreIndexService>,
     ) -> Self {
         Self {
-            cache: Arc::new(Cacher::new(difs_cache, shared_cache)),
+            cache: Arc::new(Cacher::new(difs_cache, Arc::clone(&shared_cache))),
             download_svc,
+            symstore_index_svc,
         }
     }
 
@@ -122,10 +125,14 @@ impl Il2cppService {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
     ) -> Option<Il2cppHandle> {
-        let files = self
-            .download_svc
-            .list_files(&sources, &[FileType::Il2cpp], object_id)
-            .await;
+        let files = download::list_files(
+            &self.download_svc,
+            &self.symstore_index_svc,
+            &sources,
+            &[FileType::Il2cpp],
+            object_id,
+        )
+        .await;
 
         let fetch_jobs = files.into_iter().map(|file_source| {
             let scope = if file_source.is_public() {

@@ -11,7 +11,6 @@ use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use futures::prelude::*;
-use index::SymstoreIndexService;
 use reqwest::StatusCode;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
@@ -23,7 +22,7 @@ use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 
-use crate::caching::{Cache, CacheContents, CacheError, SharedCacheRef};
+use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
 use crate::types::Scope;
 use crate::utils::futures::{m, measure, CancelOnDrop};
@@ -42,6 +41,7 @@ pub mod sentry;
 
 pub use compression::tempfile_in_parent;
 pub use fetch_file::fetch_file;
+pub use index::SymstoreIndexService;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -226,9 +226,8 @@ pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
     pub timeouts: DownloadTimeouts,
     pub trusted_client: reqwest::Client,
-    symstore_index_service: SymstoreIndexService,
     sentry: sentry::SentryDownloader,
-    http: Arc<http::HttpDownloader>,
+    http: http::HttpDownloader,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
     fs: filesystem::FilesystemDownloader,
@@ -238,12 +237,7 @@ pub struct DownloadService {
 
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
-    pub fn new(
-        config: &Config,
-        symstore_index_cache: Cache,
-        shared_cache: SharedCacheRef,
-        runtime: tokio::runtime::Handle,
-    ) -> Arc<Self> {
+    pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = DownloadTimeouts::from_config(config);
 
         // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
@@ -259,20 +253,10 @@ impl DownloadService {
 
         let in_memory = &config.caches.in_memory;
 
-        let http = Arc::new(http::HttpDownloader::new(
-            restricted_client.clone(),
-            no_ssl_client,
-            timeouts,
-        ));
-
-        let symstore_index_service =
-            SymstoreIndexService::new(symstore_index_cache, shared_cache, Arc::clone(&http));
-
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
             trusted_client: trusted_client.clone(),
-            symstore_index_service,
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 runtime,
@@ -280,7 +264,7 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http,
+            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
             s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
@@ -418,94 +402,96 @@ impl DownloadService {
         result
     }
 
-    /// Returns all objects matching the [`ObjectId`] at the source.
-    ///
-    /// Some sources, namely all the symbol servers, simply return the locations at which a
-    /// download attempt should be made without any guarantee the object is actually there.
-    ///
-    /// If the source needs to be contacted to get matching objects this may fail and
-    /// returns a [`CacheError`].
-    ///
-    /// Note that the `filetypes` argument is not more then a hint, not all source types
-    /// will respect this and they may return all DIFs matching the `object_id`.  After
-    /// downloading you may still need to filter the files.
-    pub async fn list_files(
-        &self,
-        sources: &[SourceConfig],
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        let mut remote_files = vec![];
-
-        macro_rules! check_source {
-            ($source:ident => $file_ty:ty) => {{
-                let mut iter =
-                    SourceLocationIter::new(&$source.files, filetypes, None, object_id).peekable();
-                if iter.peek().is_none() {
-                    // TODO: create a special "no file on source" `RemoteFile`?
-                } else {
-                    remote_files
-                        .extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
-                }
-            }};
-        }
-
-        for source in sources {
-            match source {
-                SourceConfig::Sentry(cfg) => {
-                    let future = self.sentry.list_files(cfg.clone(), object_id, filetypes);
-
-                    match future.await {
-                        Ok(files) => remote_files.extend(files),
-                        Err(error) => {
-                            let error: &dyn std::error::Error = &error;
-                            tracing::error!(error, "Failed to fetch file list");
-                            // TODO: create a special "finding files failed" `RemoteFile`?
-                        }
-                    }
-                }
-                SourceConfig::Http(cfg) => {
-                    // TODO: Obviously don't hardcode this for Intel
-                    let index = if cfg.id.as_str() == "sentry:intel" {
-                        self.symstore_index_service
-                            .fetch_symstore_index(Scope::Global, Arc::clone(cfg))
-                            .await
-                    } else {
-                        None
-                    };
-
-                    let mut iter =
-                        SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
-                            .peekable();
-                    if iter.peek().is_none() {
-                        // TODO: create a special "no file on source" `RemoteFile`?
-                    } else {
-                        remote_files.extend(iter.map(|loc| {
-                            let mut file = HttpRemoteFile::new(cfg.clone(), loc);
-
-                            // This is a special case for Portable PDB files that, when requested
-                            // from the NuGet symbol server need a special `SymbolChecksum` header.
-                            if let Some(checksum) = object_id.debug_checksum.as_ref() {
-                                file.headers
-                                    .insert("SymbolChecksum".into(), checksum.into());
-                            }
-
-                            file.into()
-                        }))
-                    }
-                }
-                SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
-                SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
-                SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
-            }
-        }
-        remote_files
-    }
-
     /// Whether this download service is allowed to connect to reserved ip addresses.
     pub fn can_connect_to_reserved_ips(&self) -> bool {
         self.connect_to_reserved_ips
     }
+}
+
+/// Returns all objects matching the [`ObjectId`] at the source.
+///
+/// Some sources, namely all the symbol servers, simply return the locations at which a
+/// download attempt should be made without any guarantee the object is actually there.
+///
+/// If the source needs to be contacted to get matching objects this may fail and
+/// returns a [`CacheError`].
+///
+/// Note that the `filetypes` argument is not more then a hint, not all source types
+/// will respect this and they may return all DIFs matching the `object_id`.  After
+/// downloading you may still need to filter the files.
+pub async fn list_files(
+    downloader: &DownloadService,
+    symstore_index_service: &SymstoreIndexService,
+    sources: &[SourceConfig],
+    filetypes: &[FileType],
+    object_id: &ObjectId,
+) -> Vec<RemoteFile> {
+    let mut remote_files = vec![];
+
+    macro_rules! check_source {
+        ($source:ident => $file_ty:ty) => {{
+            let mut iter =
+                SourceLocationIter::new(&$source.files, filetypes, None, object_id).peekable();
+            if iter.peek().is_none() {
+                // TODO: create a special "no file on source" `RemoteFile`?
+            } else {
+                remote_files.extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
+            }
+        }};
+    }
+
+    for source in sources {
+        match source {
+            SourceConfig::Sentry(cfg) => {
+                let future = downloader
+                    .sentry
+                    .list_files(cfg.clone(), object_id, filetypes);
+
+                match future.await {
+                    Ok(files) => remote_files.extend(files),
+                    Err(error) => {
+                        let error: &dyn std::error::Error = &error;
+                        tracing::error!(error, "Failed to fetch file list");
+                        // TODO: create a special "finding files failed" `RemoteFile`?
+                    }
+                }
+            }
+            SourceConfig::Http(cfg) => {
+                // TODO: Obviously don't hardcode this for Intel
+                let index = if cfg.id.as_str() == "sentry:intel" {
+                    symstore_index_service
+                        .fetch_symstore_index(Scope::Global, Arc::clone(cfg))
+                        .await
+                } else {
+                    None
+                };
+
+                let mut iter =
+                    SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
+                        .peekable();
+                if iter.peek().is_none() {
+                    // TODO: create a special "no file on source" `RemoteFile`?
+                } else {
+                    remote_files.extend(iter.map(|loc| {
+                        let mut file = HttpRemoteFile::new(cfg.clone(), loc);
+
+                        // This is a special case for Portable PDB files that, when requested
+                        // from the NuGet symbol server need a special `SymbolChecksum` header.
+                        if let Some(checksum) = object_id.debug_checksum.as_ref() {
+                            file.headers
+                                .insert("SymbolChecksum".into(), checksum.into());
+                        }
+
+                        file.into()
+                    }))
+                }
+            }
+            SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
+            SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
+            SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
+        }
+    }
+    remote_files
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
@@ -784,15 +770,7 @@ mod tests {
             ..Config::default()
         };
 
-        let caches = Caches::from_config(&config).unwrap();
-        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
-
-        let service = DownloadService::new(
-            &config,
-            caches.symstore_index,
-            shared_cache,
-            tokio::runtime::Handle::current(),
-        );
+        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         // Jump through some hoops here, to prove that we can .await the service.
         let temp_file = tempfile::NamedTempFile::new().unwrap();
@@ -822,15 +800,17 @@ mod tests {
         let config = Config::default();
         let caches = Caches::from_config(&config).unwrap();
         let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
-        let svc = DownloadService::new(
-            &config,
-            caches.symstore_index,
-            shared_cache,
-            tokio::runtime::Handle::current(),
-        );
-        let file_list = svc
-            .list_files(&[source.clone()], FileType::all(), &objid)
-            .await;
+        let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let symstore_index_service =
+            SymstoreIndexService::new(caches.symstore_index, shared_cache, Arc::clone(&svc));
+        let file_list = list_files(
+            &svc,
+            &symstore_index_service,
+            &[source.clone()],
+            FileType::all(),
+            &objid,
+        )
+        .await;
 
         assert!(!file_list.is_empty());
         let item = &file_list[0];
