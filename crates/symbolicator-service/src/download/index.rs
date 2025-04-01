@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -20,15 +20,17 @@ use crate::types::Scope;
 use super::DownloadService;
 
 #[derive(Debug, Clone)]
-enum Inner {
-    Segment(u32),
-    Full(Arc<Cacher<FetchSymstoreIndexSegment>>, u32),
+struct FetchSymstoreIndexSegment {
+    segment_id: u32,
+    source: Arc<HttpSourceConfig>,
+    downloader: Arc<DownloadService>,
 }
 
 #[derive(Debug, Clone)]
-struct FetchSymstoreIndexSegment {
+struct FetchSymstoreIndex {
     scope: Scope,
-    inner: Inner,
+    last_id: u32,
+    segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     source: Arc<HttpSourceConfig>,
     downloader: Arc<DownloadService>,
 }
@@ -72,8 +74,7 @@ async fn download_full_index(
         let downloader = downloader.clone();
         let source = source_config.clone();
         let request = FetchSymstoreIndexSegment {
-            scope: scope.clone(),
-            inner: Inner::Segment(i),
+            segment_id: i,
             source,
             downloader,
         };
@@ -112,22 +113,42 @@ impl CacheItemRequest for FetchSymstoreIndexSegment {
         let downloader = Arc::clone(&self.downloader);
         let source = Arc::clone(&self.source);
 
-        match &self.inner {
-            Inner::Segment(id) => Box::pin(download_index_segment(
-                downloader,
-                source,
-                *id,
-                temp_file.as_file_mut(),
-            )),
-            Inner::Full(cache, last_id) => Box::pin(download_full_index(
-                cache.clone(),
-                downloader,
-                source,
-                self.scope.clone(),
-                *last_id,
-                temp_file.as_file_mut(),
-            )),
-        }
+        Box::pin(download_index_segment(
+            downloader,
+            source,
+            self.segment_id,
+            temp_file.as_file_mut(),
+        ))
+    }
+
+    fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
+        let _result = data.hint(AccessPattern::Sequential);
+        let index = Self::Item::load(&data)?;
+        Ok(index)
+    }
+
+    fn weight(item: &Self::Item) -> u32 {
+        item.iter().map(|file| file.len() as u32).sum()
+    }
+}
+
+impl CacheItemRequest for FetchSymstoreIndex {
+    type Item = SymstoreIndex;
+
+    const VERSIONS: CacheVersions = SYMSTORE_INDEX_VERSIONS;
+
+    fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
+        let downloader = Arc::clone(&self.downloader);
+        let source = Arc::clone(&self.source);
+
+        Box::pin(download_full_index(
+            self.segment_cache.clone(),
+            downloader,
+            source,
+            self.scope.clone(),
+            self.last_id,
+            temp_file.as_file_mut(),
+        ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
@@ -143,7 +164,8 @@ impl CacheItemRequest for FetchSymstoreIndexSegment {
 
 #[derive(Debug, Clone)]
 pub struct SymstoreIndexService {
-    cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
+    cache: Arc<Cacher<FetchSymstoreIndex>>,
+    segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     downloader: Arc<DownloadService>,
     last_id_cache: moka::future::Cache<Url, CacheContents<u32>>,
 }
@@ -161,7 +183,8 @@ impl SymstoreIndexService {
             .build();
 
         Self {
-            cache: Arc::new(Cacher::new(cache, shared_cache)),
+            cache: Arc::new(Cacher::new(cache.clone(), shared_cache.clone())),
+            segment_cache: Arc::new(Cacher::new(cache, shared_cache)),
             downloader,
             last_id_cache,
         }
@@ -170,7 +193,7 @@ impl SymstoreIndexService {
     async fn get_symstore_last_id(&self, source: Arc<HttpSourceConfig>) -> CacheContents<u32> {
         self.last_id_cache
             .get_with_by_ref(&source.url, async {
-                let mut temp_file = NamedTempFile::new()?;
+                let temp_file = NamedTempFile::new()?;
                 let loc = "000Admin/lastid.txt";
                 let remote_file =
                     HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
@@ -196,9 +219,10 @@ impl SymstoreIndexService {
     ) -> Option<SymstoreIndex> {
         let last_id = self.get_symstore_last_id(source.clone()).await.ok()?;
 
-        let request = FetchSymstoreIndexSegment {
+        let request = FetchSymstoreIndex {
             scope: scope.clone(),
-            inner: Inner::Full(self.cache.clone(), last_id),
+            last_id,
+            segment_cache: self.segment_cache.clone(),
             source: source.clone(),
             downloader: self.downloader.clone(),
         };
