@@ -80,7 +80,7 @@ mod tests {
     fn parse_line() {
         let line = r#""igdail32.dll\5BA3F2382a000","D:\DllServers\temp\prod-rs5-pv-2018-09-06-1006323\igdail32.dll""#;
         assert_eq!(
-            SymstoreIndex::parse_line(line).unwrap(),
+            &*SymstoreIndex::parse_line(line).unwrap(),
             "igdail32.dll/5BA3F2382a000/igdail32.dll"
         )
     }

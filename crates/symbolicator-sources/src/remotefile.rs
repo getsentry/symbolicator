@@ -479,9 +479,7 @@ mod tests {
         let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
         let debug_id = DebugId::from_uuid(uuid);
 
-        let index = SymstoreIndex::builder()
-            .insert("ab/cdef1234567890abcd.debug")
-            .build();
+        let index = SymstoreIndex::default().insert("ab/cdef1234567890abcd.debug");
 
         let mut all: Vec<_> = SourceLocationIter::new(
             &Default::default(),
