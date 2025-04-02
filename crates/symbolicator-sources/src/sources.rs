@@ -103,6 +103,8 @@ pub struct CommonSourceConfig {
 
     /// Whether debug files are shared across scopes.
     pub is_public: bool,
+
+    pub has_index: bool,
 }
 
 impl CommonSourceConfig {

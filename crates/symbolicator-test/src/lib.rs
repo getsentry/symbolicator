@@ -290,6 +290,7 @@ impl Server {
             },
             layout: Default::default(),
             is_public: false,
+            has_index: false,
         };
         self.source_with_config(id, path, files)
     }
