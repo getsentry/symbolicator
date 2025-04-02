@@ -8,9 +8,10 @@ use futures::future::BoxFuture;
 use futures::prelude::*;
 use futures::stream::FuturesUnordered;
 use symbolic::common::{AccessPattern, ByteView};
-use symbolicator_sources::{HttpRemoteFile, HttpSourceConfig, SourceLocation, SymstoreIndex};
+use symbolicator_sources::{
+    HttpRemoteFile, HttpSourceConfig, SourceId, SourceLocation, SymstoreIndex,
+};
 use tempfile::NamedTempFile;
-use url::Url;
 
 use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
 use crate::caches::CacheVersions;
@@ -80,7 +81,7 @@ async fn download_full_index(
         };
 
         let mut cache_key = CacheKey::scoped_builder(&scope);
-        writeln!(&mut cache_key, "url: {}", source_config.url).unwrap();
+        writeln!(&mut cache_key, "source_id: {}", source_config.id).unwrap();
         writeln!(&mut cache_key, "segment: {i}").unwrap();
         let cache_key = cache_key.build();
         futures.push(cache.compute_memoized(request, cache_key));
@@ -167,7 +168,7 @@ pub struct SymstoreIndexService {
     cache: Arc<Cacher<FetchSymstoreIndex>>,
     segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     downloader: Arc<DownloadService>,
-    last_id_cache: moka::future::Cache<Url, CacheContents<u32>>,
+    last_id_cache: moka::future::Cache<(Scope, SourceId), CacheContents<u32>>,
 }
 
 impl SymstoreIndexService {
@@ -190,9 +191,13 @@ impl SymstoreIndexService {
         }
     }
 
-    async fn get_symstore_last_id(&self, source: Arc<HttpSourceConfig>) -> CacheContents<u32> {
+    async fn get_symstore_last_id(
+        &self,
+        scope: Scope,
+        source: Arc<HttpSourceConfig>,
+    ) -> CacheContents<u32> {
         self.last_id_cache
-            .get_with_by_ref(&source.url, async {
+            .get_with((scope, source.id.clone()), async {
                 let temp_file = NamedTempFile::new()?;
                 let loc = "000Admin/lastid.txt";
                 let remote_file =
@@ -217,7 +222,10 @@ impl SymstoreIndexService {
         scope: Scope,
         source: Arc<HttpSourceConfig>,
     ) -> Option<SymstoreIndex> {
-        let last_id = self.get_symstore_last_id(source.clone()).await.ok()?;
+        let last_id = self
+            .get_symstore_last_id(scope.clone(), source.clone())
+            .await
+            .ok()?;
 
         let request = FetchSymstoreIndex {
             scope: scope.clone(),
@@ -228,7 +236,7 @@ impl SymstoreIndexService {
         };
 
         let mut cache_key = CacheKey::scoped_builder(&scope);
-        writeln!(&mut cache_key, "url: {}", source.url).unwrap();
+        writeln!(&mut cache_key, "source_id: {}", source.id).unwrap();
         writeln!(&mut cache_key, "last_id: {last_id}").unwrap();
         let cache_key = cache_key.build();
 
