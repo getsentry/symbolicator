@@ -197,3 +197,18 @@ pub mod m {
         }
     }
 }
+
+/// Extension trait to workaround a compiler bug: <https://github.com/rust-lang/rust/issues/96865>.
+///
+/// This extension trait can be used to force `Send` bounds on futures to help the compiler
+/// prove send bounds through multiple nested futures.
+pub trait SendFuture: std::future::Future {
+    fn send(self) -> impl std::future::Future<Output = Self::Output> + Send
+    where
+        Self: Sized + Send,
+    {
+        self
+    }
+}
+
+impl<T: std::future::Future> SendFuture for T {}

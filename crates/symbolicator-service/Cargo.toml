@@ -15,6 +15,7 @@ aws-credential-types = { version = "1.0.1", features = [
     "hardcoded-credentials",
 ] }
 aws-sdk-s3 = "1.4.0"
+bytes = "1.6.0"
 cadence = "1.0.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 crossbeam-utils = "0.8.19"
@@ -71,3 +72,4 @@ zstd = "0.13.0"
 [dev-dependencies]
 sha-1 = "0.10.0"
 symbolicator-test = { path = "../symbolicator-test" }
+insta = "1.42"
