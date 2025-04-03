@@ -501,6 +501,9 @@ impl<T: CacheItemRequest> Cacher<T> {
             .or_insert_with(Box::pin(self.lookup_or_compute(request, &cache_key)))
             .await;
 
+        if !entry.is_fresh() {
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+        }
         entry.into_value().data
     }
 
