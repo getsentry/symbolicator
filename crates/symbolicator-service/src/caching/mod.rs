@@ -199,8 +199,8 @@ pub struct Caches {
     pub diagnostics: Cache,
     /// Proguard mapping files.
     pub proguard: Cache,
-    /// Symstore index files.
-    pub symstore_index: Cache,
+    /// Source index files.
+    pub source_index: Cache,
 }
 
 impl Caches {
@@ -301,12 +301,12 @@ impl Caches {
                 max_lazy_redownloads.clone(),
                 default_cap,
             )?,
-            symstore_index: Cache::from_config(
-                CacheName::SymstoreIndex,
+            source_index: Cache::from_config(
+                CacheName::SourceIndex,
                 config,
                 config.caches.downloaded.into(),
                 max_lazy_redownloads,
-                in_memory.symstore_index_capacity,
+                in_memory.source_index_capacity,
             )?,
         })
     }

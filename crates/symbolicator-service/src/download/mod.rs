@@ -41,7 +41,7 @@ pub mod sentry;
 
 pub use compression::tempfile_in_parent;
 pub use fetch_file::fetch_file;
-pub use index::SymstoreIndexService;
+pub use index::SourceIndexService;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -421,7 +421,7 @@ impl DownloadService {
 /// downloading you may still need to filter the files.
 pub async fn list_files(
     downloader: &DownloadService,
-    symstore_index_service: &SymstoreIndexService,
+    source_index_svc: &SourceIndexService,
     sources: &[SourceConfig],
     filetypes: &[FileType],
     object_id: &ObjectId,
@@ -441,9 +441,7 @@ pub async fn list_files(
     }
 
     for source in sources {
-        let index = symstore_index_service
-            .fetch_index(Scope::Global, source)
-            .await;
+        let index = source_index_svc.fetch_index(Scope::Global, source).await;
         match source {
             SourceConfig::Sentry(cfg) => {
                 let future = downloader
@@ -797,11 +795,11 @@ mod tests {
         let caches = Caches::from_config(&config).unwrap();
         let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
-        let symstore_index_service =
-            SymstoreIndexService::new(caches.symstore_index, shared_cache, Arc::clone(&svc));
+        let source_index_svc =
+            SourceIndexService::new(caches.source_index, shared_cache, Arc::clone(&svc));
         let file_list = list_files(
             &svc,
-            &symstore_index_service,
+            &source_index_svc,
             &[source.clone()],
             FileType::all(),
             &objid,

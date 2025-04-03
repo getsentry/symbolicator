@@ -4,7 +4,7 @@ use symbolic::common::Name;
 use symbolic::demangle::Demangle;
 use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::{Cache, CacheError};
-use symbolicator_service::download::SymstoreIndexService;
+use symbolicator_service::download::SourceIndexService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 
@@ -44,8 +44,8 @@ impl SymbolicationActor {
         let shared_cache = services.shared_cache.clone();
         let objects = services.objects.clone();
         let download_svc = services.download_svc.clone();
-        let symstore_index_svc = Arc::new(SymstoreIndexService::new(
-            caches.symstore_index.clone(),
+        let source_index_svc = Arc::new(SourceIndexService::new(
+            caches.source_index.clone(),
             Arc::clone(&shared_cache),
             Arc::clone(&download_svc),
         ));
@@ -55,14 +55,14 @@ impl SymbolicationActor {
             caches.auxdifs.clone(),
             shared_cache.clone(),
             download_svc.clone(),
-            symstore_index_svc.clone(),
+            source_index_svc.clone(),
         );
 
         let il2cpp = Il2cppService::new(
             caches.il2cpp.clone(),
             shared_cache.clone(),
             download_svc,
-            symstore_index_svc,
+            source_index_svc,
         );
 
         let symcaches = SymCacheActor::new(

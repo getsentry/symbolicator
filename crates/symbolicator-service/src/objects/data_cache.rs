@@ -246,7 +246,7 @@ mod tests {
 
     use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
-    use crate::download::SymstoreIndexService;
+    use crate::download::SourceIndexService;
     use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
 
@@ -278,8 +278,8 @@ mod tests {
         )
         .unwrap();
 
-        let symstore_index_cache = Cache::from_config(
-            CacheName::SymstoreIndex,
+        let source_index_cache = Cache::from_config(
+            CacheName::SourceIndex,
             &config,
             CacheConfig::from(CacheConfigs::default().downloaded),
             Default::default(),
@@ -288,8 +288,8 @@ mod tests {
         .unwrap();
 
         let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
-        let symstore_index_svc = Arc::new(SymstoreIndexService::new(
-            symstore_index_cache,
+        let source_index_svc = Arc::new(SourceIndexService::new(
+            source_index_cache,
             Default::default(),
             Arc::clone(&download_svc),
         ));
@@ -299,7 +299,7 @@ mod tests {
             data_cache,
             Default::default(),
             download_svc,
-            symstore_index_svc,
+            source_index_svc,
         )
     }
 

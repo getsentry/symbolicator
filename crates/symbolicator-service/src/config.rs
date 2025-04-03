@@ -345,10 +345,10 @@ pub struct InMemoryCacheConfig {
     /// Defaults to `3 GiB`.
     pub fileinbundle_capacity: u64,
 
-    /// Capacity (in bytes) for the in-memory "symstore index" Cache.
+    /// Capacity (in bytes) for the in-memory "source index" Cache.
     ///
     /// Defaults to `10 MiB`.
-    pub symstore_index_capacity: u64,
+    pub source_index_capacity: u64,
 }
 
 impl Default for InMemoryCacheConfig {
@@ -365,7 +365,7 @@ impl Default for InMemoryCacheConfig {
             // We noticed a significant reduction in CPU usage with a cache size of ~2G, which
             // resulted in a hit ratio of ~60-65%. Lets give it a bit more then and see what happens.
             fileinbundle_capacity: 3 * 1024 * meg,
-            symstore_index_capacity: 10 * meg,
+            source_index_capacity: 10 * meg,
         }
     }
 }

@@ -10,7 +10,7 @@ use symbolicator_service::caching::{
     CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher,
 };
 use symbolicator_service::download::{
-    self, fetch_file, tempfile_in_parent, DownloadService, SymstoreIndexService,
+    self, fetch_file, tempfile_in_parent, DownloadService, SourceIndexService,
 };
 use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,
@@ -23,7 +23,7 @@ use tempfile::NamedTempFile;
 #[derive(Debug, Clone)]
 pub struct ProguardService {
     pub(crate) download_svc: Arc<DownloadService>,
-    pub(crate) symstore_index_svc: Arc<SymstoreIndexService>,
+    pub(crate) source_index_svc: Arc<SourceIndexService>,
     pub(crate) cache: Arc<Cacher<FetchProguard>>,
     pub(crate) objects: ObjectsActor,
 }
@@ -33,14 +33,14 @@ impl ProguardService {
         let caches = &services.caches;
         let shared_cache = services.shared_cache.clone();
         let download_svc = services.download_svc.clone();
-        let symstore_index_svc = services.symstore_index_svc.clone();
+        let source_index_svc = services.source_index_svc.clone();
         let objects = services.objects.clone();
 
         let cache = Arc::new(Cacher::new(caches.proguard.clone(), shared_cache));
 
         Self {
             download_svc,
-            symstore_index_svc,
+            source_index_svc,
             cache,
             objects,
         }
@@ -62,7 +62,7 @@ impl ProguardService {
 
         let file = download::list_files(
             &self.download_svc,
-            &self.symstore_index_svc,
+            &self.source_index_svc,
             sources,
             &[FileType::Proguard],
             &identifier,

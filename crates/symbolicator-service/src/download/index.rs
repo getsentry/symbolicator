@@ -224,14 +224,14 @@ impl CacheItemRequest for FetchSymstoreIndex {
 }
 
 #[derive(Debug, Clone)]
-pub struct SymstoreIndexService {
+pub struct SourceIndexService {
     cache: Arc<Cacher<FetchSymstoreIndex>>,
     segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     downloader: Arc<DownloadService>,
     last_id_cache: moka::future::Cache<(Scope, SourceId), CacheContents<u32>>,
 }
 
-impl SymstoreIndexService {
+impl SourceIndexService {
     pub fn new(
         cache: Cache,
         shared_cache: SharedCacheRef,
@@ -251,7 +251,7 @@ impl SymstoreIndexService {
         }
     }
 
-    async fn get_symstore_last_id(
+    async fn fetch_symstore_last_id(
         &self,
         scope: Scope,
         source: &IndexSourceConfig,
@@ -281,7 +281,7 @@ impl SymstoreIndexService {
         source: IndexSourceConfig,
     ) -> Option<SymstoreIndex> {
         let last_id = self
-            .get_symstore_last_id(scope.clone(), &source)
+            .fetch_symstore_last_id(scope.clone(), &source)
             .await
             .ok()?;
 

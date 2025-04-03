@@ -17,7 +17,7 @@ use symbolicator_service::caches::CacheVersions;
 use symbolicator_service::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };
-use symbolicator_service::download::{self, fetch_file, DownloadService, SymstoreIndexService};
+use symbolicator_service::download::{self, fetch_file, DownloadService, SourceIndexService};
 use symbolicator_service::metric;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{FileType, RemoteFile, SourceConfig};
@@ -140,7 +140,7 @@ impl CacheItemRequest for FetchFileRequest {
 pub struct BitcodeService {
     cache: Arc<Cacher<FetchFileRequest>>,
     download_svc: Arc<DownloadService>,
-    symstore_index_svc: Arc<SymstoreIndexService>,
+    source_index_svc: Arc<SourceIndexService>,
 }
 
 impl BitcodeService {
@@ -148,12 +148,12 @@ impl BitcodeService {
         difs_cache: Cache,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
-        symstore_index_svc: Arc<SymstoreIndexService>,
+        source_index_svc: Arc<SourceIndexService>,
     ) -> Self {
         Self {
             cache: Arc::new(Cacher::new(difs_cache, Arc::clone(&shared_cache))),
             download_svc,
-            symstore_index_svc,
+            source_index_svc,
         }
     }
 
@@ -208,7 +208,7 @@ impl BitcodeService {
         };
         let files = download::list_files(
             &self.download_svc,
-            &self.symstore_index_svc,
+            &self.source_index_svc,
             &sources,
             file_type,
             &uuid.into(),
