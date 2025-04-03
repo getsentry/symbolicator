@@ -9,7 +9,9 @@ use futures::prelude::*;
 use futures::stream::FuturesUnordered;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
-    HttpRemoteFile, HttpSourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
+    DirectoryLayoutType, FilesystemRemoteFile, FilesystemSourceConfig, GcsRemoteFile,
+    GcsSourceConfig, HttpRemoteFile, HttpSourceConfig, RemoteFile, S3RemoteFile, S3SourceConfig,
+    SourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
 };
 use tempfile::NamedTempFile;
 
@@ -20,10 +22,70 @@ use crate::types::Scope;
 
 use super::DownloadService;
 
+const LASTID_FILE: &str = "000Admin/lastid.txt";
+
+#[derive(Debug, Clone)]
+enum IndexSourceConfig {
+    Filesystem(Arc<FilesystemSourceConfig>),
+    Gcs(Arc<GcsSourceConfig>),
+    Http(Arc<HttpSourceConfig>),
+    S3(Arc<S3SourceConfig>),
+}
+
+impl IndexSourceConfig {
+    fn maybe_from(source: &SourceConfig) -> Option<Self> {
+        match source {
+            SourceConfig::Filesystem(fs) => Some(Self::Filesystem(Arc::clone(fs))),
+            SourceConfig::Gcs(gcs) => Some(Self::Gcs(Arc::clone(gcs))),
+            SourceConfig::Http(http) => Some(Self::Http(Arc::clone(http))),
+            SourceConfig::S3(s3) => Some(Self::S3(Arc::clone(s3))),
+            SourceConfig::Sentry(_) => None,
+        }
+    }
+
+    pub fn id(&self) -> &SourceId {
+        match self {
+            Self::Filesystem(x) => &x.id,
+            Self::Gcs(x) => &x.id,
+            Self::Http(x) => &x.id,
+            Self::S3(x) => &x.id,
+        }
+    }
+
+    fn has_index(&self) -> bool {
+        match self {
+            IndexSourceConfig::Filesystem(fs) => fs.files.has_index,
+            IndexSourceConfig::Gcs(gcs) => gcs.files.has_index,
+            IndexSourceConfig::Http(http) => http.files.has_index,
+            IndexSourceConfig::S3(s3) => s3.files.has_index,
+        }
+    }
+
+    fn layout_ty(&self) -> DirectoryLayoutType {
+        match self {
+            IndexSourceConfig::Filesystem(fs) => fs.files.layout.ty,
+            IndexSourceConfig::Gcs(gcs) => gcs.files.layout.ty,
+            IndexSourceConfig::Http(http) => http.files.layout.ty,
+            IndexSourceConfig::S3(s3) => s3.files.layout.ty,
+        }
+    }
+
+    fn remote_file(&self, loc: SourceLocation) -> RemoteFile {
+        match self {
+            IndexSourceConfig::Filesystem(fs) => {
+                FilesystemRemoteFile::new(Arc::clone(fs), loc).into()
+            }
+            IndexSourceConfig::Gcs(gcs) => GcsRemoteFile::new(Arc::clone(gcs), loc).into(),
+            IndexSourceConfig::Http(http) => HttpRemoteFile::new(Arc::clone(http), loc).into(),
+            IndexSourceConfig::S3(s3) => S3RemoteFile::new(Arc::clone(s3), loc).into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FetchSymstoreIndexSegment {
     segment_id: u32,
-    source: Arc<HttpSourceConfig>,
+    source: IndexSourceConfig,
     downloader: Arc<DownloadService>,
 }
 
@@ -32,25 +94,25 @@ struct FetchSymstoreIndex {
     scope: Scope,
     last_id: u32,
     segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
-    source: Arc<HttpSourceConfig>,
+    source: IndexSourceConfig,
     downloader: Arc<DownloadService>,
 }
 
-#[tracing::instrument(skip(downloader, source), fields(source.url = %source.url), err)]
+#[tracing::instrument(skip(downloader, source), fields(source.id = %source.id()))]
 async fn download_index_segment(
     downloader: Arc<DownloadService>,
-    source: Arc<HttpSourceConfig>,
+    source: IndexSourceConfig,
     segment: u32,
     file: &mut File,
 ) -> CacheContents {
-    let loc = format!("000Admin/{segment:0>10}");
-    let remote_file = HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
+    let loc = SourceLocation::new(format!("000Admin/{segment:0>10}"));
+    let remote_file = source.remote_file(loc);
     let temp_file = NamedTempFile::new()?;
 
     tracing::debug!("Downloading index segment");
 
     downloader
-        .download(remote_file.into(), temp_file.path().to_path_buf())
+        .download(remote_file, temp_file.path().to_path_buf())
         .await?;
 
     let buf = BufReader::new(temp_file);
@@ -65,7 +127,7 @@ async fn download_index_segment(
 async fn download_full_index(
     cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     downloader: Arc<DownloadService>,
-    source_config: Arc<HttpSourceConfig>,
+    source: IndexSourceConfig,
     scope: Scope,
     last_id: u32,
     file: &mut File,
@@ -73,15 +135,15 @@ async fn download_full_index(
     let mut futures = FuturesUnordered::new();
     for i in 1..=last_id {
         let downloader = downloader.clone();
-        let source = source_config.clone();
         let request = FetchSymstoreIndexSegment {
             segment_id: i,
-            source,
+            source: source.clone(),
             downloader,
         };
 
         let mut cache_key = CacheKey::scoped_builder(&scope);
-        writeln!(&mut cache_key, "source_id: {}", source_config.id).unwrap();
+        writeln!(&mut cache_key, "type: symstore_segment").unwrap();
+        writeln!(&mut cache_key, "source_id: {}", source.id()).unwrap();
         writeln!(&mut cache_key, "segment: {i}").unwrap();
         let cache_key = cache_key.build();
         futures.push(cache.compute_memoized(request, cache_key));
@@ -112,11 +174,10 @@ impl CacheItemRequest for FetchSymstoreIndexSegment {
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         let downloader = Arc::clone(&self.downloader);
-        let source = Arc::clone(&self.source);
 
         Box::pin(download_index_segment(
             downloader,
-            source,
+            self.source.clone(),
             self.segment_id,
             temp_file.as_file_mut(),
         ))
@@ -140,12 +201,11 @@ impl CacheItemRequest for FetchSymstoreIndex {
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
         let downloader = Arc::clone(&self.downloader);
-        let source = Arc::clone(&self.source);
 
         Box::pin(download_full_index(
             self.segment_cache.clone(),
             downloader,
-            source,
+            self.source.clone(),
             self.scope.clone(),
             self.last_id,
             temp_file.as_file_mut(),
@@ -194,16 +254,14 @@ impl SymstoreIndexService {
     async fn get_symstore_last_id(
         &self,
         scope: Scope,
-        source: Arc<HttpSourceConfig>,
+        source: &IndexSourceConfig,
     ) -> CacheContents<u32> {
         self.last_id_cache
-            .get_with((scope, source.id.clone()), async {
+            .get_with((scope, source.id().clone()), async {
                 let temp_file = NamedTempFile::new()?;
-                let loc = "000Admin/lastid.txt";
-                let remote_file =
-                    HttpRemoteFile::new(Arc::clone(&source), SourceLocation::new(loc));
+                let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
                 self.downloader
-                    .download(remote_file.into(), temp_file.path().to_path_buf())
+                    .download(remote_file, temp_file.path().to_path_buf())
                     .await?;
 
                 // TODO: Temporarily hardcode this to a low number for testing purposes
@@ -220,10 +278,10 @@ impl SymstoreIndexService {
     async fn fetch_symstore_index(
         &self,
         scope: Scope,
-        source: Arc<HttpSourceConfig>,
+        source: IndexSourceConfig,
     ) -> Option<SymstoreIndex> {
         let last_id = self
-            .get_symstore_last_id(scope.clone(), source.clone())
+            .get_symstore_last_id(scope.clone(), &source)
             .await
             .ok()?;
 
@@ -236,7 +294,8 @@ impl SymstoreIndexService {
         };
 
         let mut cache_key = CacheKey::scoped_builder(&scope);
-        writeln!(&mut cache_key, "source_id: {}", source.id).unwrap();
+        writeln!(&mut cache_key, "type: symstore").unwrap();
+        writeln!(&mut cache_key, "source_id: {}", source.id()).unwrap();
         writeln!(&mut cache_key, "last_id: {last_id}").unwrap();
         let cache_key = cache_key.build();
 
@@ -250,16 +309,14 @@ impl SymstoreIndexService {
         Some(index)
     }
 
-    pub async fn fetch_index(
-        &self,
-        scope: Scope,
-        source: Arc<HttpSourceConfig>,
-    ) -> Option<SourceIndex> {
-        if !source.files.has_index {
+    pub async fn fetch_index(&self, scope: Scope, source: &SourceConfig) -> Option<SourceIndex> {
+        let source = IndexSourceConfig::maybe_from(source)?;
+
+        if !source.has_index() {
             return None;
         }
 
-        match source.files.layout.ty {
+        match source.layout_ty() {
             symbolicator_sources::DirectoryLayoutType::Symstore => self
                 .fetch_symstore_index(scope, source)
                 .await

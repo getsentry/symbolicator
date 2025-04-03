@@ -429,9 +429,9 @@ pub async fn list_files(
     let mut remote_files = vec![];
 
     macro_rules! check_source {
-        ($source:ident => $file_ty:ty) => {{
+        ($source:ident => $file_ty:ty, $index:expr) => {{
             let mut iter =
-                SourceLocationIter::new(&$source.files, filetypes, None, object_id).peekable();
+                SourceLocationIter::new(&$source.files, filetypes, $index, object_id).peekable();
             if iter.peek().is_none() {
                 // TODO: create a special "no file on source" `RemoteFile`?
             } else {
@@ -441,6 +441,9 @@ pub async fn list_files(
     }
 
     for source in sources {
+        let index = symstore_index_service
+            .fetch_index(Scope::Global, source)
+            .await;
         match source {
             SourceConfig::Sentry(cfg) => {
                 let future = downloader
@@ -457,10 +460,6 @@ pub async fn list_files(
                 }
             }
             SourceConfig::Http(cfg) => {
-                let index = symstore_index_service
-                    .fetch_index(Scope::Global, Arc::clone(cfg))
-                    .await;
-
                 let mut iter =
                     SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
                         .peekable();
@@ -481,9 +480,11 @@ pub async fn list_files(
                     }))
                 }
             }
-            SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
-            SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
-            SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
+            SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile, index.as_ref()),
+            SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile, index.as_ref()),
+            SourceConfig::Filesystem(cfg) => {
+                check_source!(cfg => FilesystemRemoteFile, index.as_ref())
+            }
         }
     }
     remote_files
