@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Read};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -132,7 +132,9 @@ async fn download_full_index(
     last_id: u32,
     file: &mut File,
 ) -> CacheContents {
-    let mut futures = FuturesUnordered::new();
+    let mut index = SymstoreIndex::default();
+    // This download is intentionally sequential. Doing it concurrently
+    // causes at least the Intel symbol server to rate limit us.
     for i in 1..=last_id {
         let downloader = downloader.clone();
         let request = FetchSymstoreIndexSegment {
@@ -146,11 +148,8 @@ async fn download_full_index(
         writeln!(&mut cache_key, "source_id: {}", source.id()).unwrap();
         writeln!(&mut cache_key, "segment: {i}").unwrap();
         let cache_key = cache_key.build();
-        futures.push(cache.compute_memoized(request, cache_key));
-    }
+        let result = cache.compute_memoized(request, cache_key).await;
 
-    let mut index = SymstoreIndex::default();
-    while let Some(result) = futures.next().await {
         match result.into_contents() {
             Ok(segment) => index.append(segment),
             Err(e) => {
@@ -258,19 +257,19 @@ impl SourceIndexService {
     ) -> CacheContents<u32> {
         self.last_id_cache
             .get_with((scope, source.id().clone()), async {
-                let temp_file = NamedTempFile::new()?;
+                let mut temp_file = NamedTempFile::new()?;
                 let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
                 self.downloader
                     .download(remote_file, temp_file.path().to_path_buf())
                     .await?;
 
-                // TODO: Temporarily hardcode this to a low number for testing purposes
-                // let mut buf = String::new();
-                // temp_file.read_to_string(&mut buf)?;
-                // let last_id = buf.parse().unwrap();
-                // let last_id = std::str::from_utf8(&last_id).unwrap().parse().unwrap();
-                // Ok(last_id)
-                Ok(15)
+                let mut buf = String::new();
+                temp_file.read_to_string(&mut buf)?;
+                let last_id = std::str::from_utf8(buf.as_bytes())
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                Ok(last_id)
             })
             .await
     }
