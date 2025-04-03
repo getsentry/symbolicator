@@ -5,8 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::BoxFuture;
-use futures::prelude::*;
-use futures::stream::FuturesUnordered;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
     DirectoryLayoutType, FilesystemRemoteFile, FilesystemSourceConfig, GcsRemoteFile,
@@ -17,7 +15,9 @@ use tempfile::NamedTempFile;
 
 use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
 use crate::caches::CacheVersions;
-use crate::caching::{Cache, CacheContents, CacheItemRequest, CacheKey, Cacher, SharedCacheRef};
+use crate::caching::{
+    Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
+};
 use crate::types::Scope;
 
 use super::DownloadService;
@@ -155,8 +155,13 @@ async fn download_full_index(
             Err(e) => {
                 tracing::error!(
                     error = &e as &dyn std::error::Error,
-                    "Failed to download index segment",
+                    segment = i,
+                    "Failed to download symstore index segment",
                 );
+
+                return Err(CacheError::DownloadError(format!(
+                    "Failed to download symstore index segment {i}"
+                )));
             }
         }
     }
@@ -263,12 +268,12 @@ impl SourceIndexService {
                     .download(remote_file, temp_file.path().to_path_buf())
                     .await?;
 
-                let mut buf = String::new();
-                temp_file.read_to_string(&mut buf)?;
-                let last_id = std::str::from_utf8(buf.as_bytes())
-                    .unwrap()
+                let mut buf = Vec::new();
+                temp_file.read_to_end(&mut buf)?;
+                let last_id = std::str::from_utf8(&buf)
+                    .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
                     .parse()
-                    .unwrap();
+                    .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
                 Ok(last_id)
             })
             .await
@@ -278,11 +283,8 @@ impl SourceIndexService {
         &self,
         scope: Scope,
         source: IndexSourceConfig,
-    ) -> Option<SymstoreIndex> {
-        let last_id = self
-            .fetch_symstore_last_id(scope.clone(), &source)
-            .await
-            .ok()?;
+    ) -> CacheContents<SymstoreIndex> {
+        let last_id = self.fetch_symstore_last_id(scope.clone(), &source).await?;
 
         let request = FetchSymstoreIndex {
             scope: scope.clone(),
@@ -298,14 +300,10 @@ impl SourceIndexService {
         writeln!(&mut cache_key, "last_id: {last_id}").unwrap();
         let cache_key = cache_key.build();
 
-        let index = self
-            .cache
+        self.cache
             .compute_memoized(request, cache_key)
             .await
             .into_contents()
-            .ok()?;
-
-        Some(index)
     }
 
     pub async fn fetch_index(&self, scope: Scope, source: &SourceConfig) -> Option<SourceIndex> {
@@ -316,10 +314,13 @@ impl SourceIndexService {
         }
 
         match source.layout_ty() {
-            symbolicator_sources::DirectoryLayoutType::Symstore => self
-                .fetch_symstore_index(scope, source)
-                .await
-                .map(SourceIndex::from),
+            symbolicator_sources::DirectoryLayoutType::Symstore => {
+                let symstore_index = self
+                    .fetch_symstore_index(scope, source)
+                    .await
+                    .unwrap_or_default();
+                Some(symstore_index.into())
+            }
             _ => None,
         }
     }
