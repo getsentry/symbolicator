@@ -9,7 +9,7 @@ use futures::prelude::*;
 use futures::stream::FuturesUnordered;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
-    HttpRemoteFile, HttpSourceConfig, SourceId, SourceLocation, SymstoreIndex,
+    HttpRemoteFile, HttpSourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
 };
 use tempfile::NamedTempFile;
 
@@ -217,7 +217,7 @@ impl SymstoreIndexService {
             .await
     }
 
-    pub(super) async fn fetch_symstore_index(
+    async fn fetch_symstore_index(
         &self,
         scope: Scope,
         source: Arc<HttpSourceConfig>,
@@ -248,5 +248,23 @@ impl SymstoreIndexService {
             .ok()?;
 
         Some(index)
+    }
+
+    pub async fn fetch_index(
+        &self,
+        scope: Scope,
+        source: Arc<HttpSourceConfig>,
+    ) -> Option<SourceIndex> {
+        if !source.files.has_index {
+            return None;
+        }
+
+        match source.files.layout.ty {
+            symbolicator_sources::DirectoryLayoutType::Symstore => self
+                .fetch_symstore_index(scope, source)
+                .await
+                .map(SourceIndex::from),
+            _ => None,
+        }
     }
 }

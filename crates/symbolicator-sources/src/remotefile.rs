@@ -13,7 +13,7 @@ use url::Url;
 use crate::{
     get_directory_paths, CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile,
     GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceFilters,
-    SourceId, SymstoreIndex,
+    SourceId, SourceIndex,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -88,7 +88,7 @@ pub struct SourceLocationIter<'a> {
     /// Filters from a `SourceConfig` to limit the amount of generated paths.
     filters: &'a SourceFilters,
 
-    index: Option<&'a SymstoreIndex>,
+    index: Option<&'a SourceIndex>,
 
     /// Information about the object file to be downloaded.
     object_id: &'a ObjectId,
@@ -105,7 +105,7 @@ impl<'a> SourceLocationIter<'a> {
     pub fn new(
         config: &'a CommonSourceConfig,
         filetypes: &'a [FileType],
-        index: Option<&'a SymstoreIndex>,
+        index: Option<&'a SourceIndex>,
         object_id: &'a ObjectId,
     ) -> Self {
         Self {
@@ -372,6 +372,8 @@ impl fmt::Display for RemoteFileUri {
 mod tests {
     use symbolic::common::{CodeId, DebugId, Uuid};
 
+    use crate::SymstoreIndex;
+
     use super::*;
 
     #[test]
@@ -479,7 +481,9 @@ mod tests {
         let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
         let debug_id = DebugId::from_uuid(uuid);
 
-        let index = SymstoreIndex::default().insert("ab/cdef1234567890abcd.debug");
+        let index = SymstoreIndex::default()
+            .insert("ab/cdef1234567890abcd.debug")
+            .into();
 
         let mut all: Vec<_> = SourceLocationIter::new(
             &Default::default(),

@@ -4,6 +4,19 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
+pub enum SourceIndex {
+    Symstore(SymstoreIndex),
+}
+
+impl SourceIndex {
+    pub fn contains(&self, path: &str) -> bool {
+        match self {
+            SourceIndex::Symstore(symstore_index) => symstore_index.contains(path),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SymstoreIndex {
     files: BTreeSet<Arc<str>>,
@@ -67,6 +80,12 @@ impl SymstoreIndex {
         let f = File::open(path)?;
         let f = BufReader::new(f);
         self.extend_from_reader(f)
+    }
+}
+
+impl From<SymstoreIndex> for SourceIndex {
+    fn from(value: SymstoreIndex) -> Self {
+        Self::Symstore(value)
     }
 }
 

@@ -457,13 +457,9 @@ pub async fn list_files(
                 }
             }
             SourceConfig::Http(cfg) => {
-                let index = if cfg.files.has_index {
-                    symstore_index_service
-                        .fetch_symstore_index(Scope::Global, Arc::clone(cfg))
-                        .await
-                } else {
-                    None
-                };
+                let index = symstore_index_service
+                    .fetch_index(Scope::Global, Arc::clone(cfg))
+                    .await;
 
                 let mut iter =
                     SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
