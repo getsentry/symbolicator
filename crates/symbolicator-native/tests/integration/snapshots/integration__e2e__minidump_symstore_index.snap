@@ -1,0 +1,81 @@
+---
+source: crates/symbolicator-native/tests/integration/e2e.rs
+expression: modules
+---
+- debug_status: found
+  unwind_status: found
+  features:
+    has_debug_info: true
+    has_unwind_info: true
+    has_symbols: true
+    has_sources: false
+  arch: x86
+  type: pe
+  code_id: 5ab380779000
+  code_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
+  debug_id: 3249d99d-0c40-4931-8610-f4e4fb0b6936-1
+  debug_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.pdb"
+  image_addr: "0x2a0000"
+  image_size: 36864
+  candidates:
+    - source: local
+      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/crash.exe/5AB380779000/crash.exe"
+      download:
+        status: notfound
+    - source: local
+      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
+      download:
+        status: ok
+        features:
+          has_debug_info: true
+          has_unwind_info: true
+          has_symbols: true
+          has_sources: false
+      unwind:
+        status: ok
+      debug:
+        status: ok
+- debug_status: missing
+  unwind_status: missing
+  features:
+    has_debug_info: false
+    has_unwind_info: false
+    has_symbols: false
+    has_sources: false
+  arch: unknown
+  type: pe
+  code_id: 590285e9e0000
+  code_file: "C:\\Windows\\System32\\kernel32.dll"
+  debug_id: d3474559-96f7-47d6-bf43-c176b2171e68-1
+  debug_file: wkernel32.pdb
+  image_addr: "0x75050000"
+  image_size: 917504
+  candidates:
+    - source: local
+      location: No object files listed on this source
+      download:
+        status: notfound
+    - source: local
+      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/kernel32.dll/590285E9e0000/kernel32.dll"
+      download:
+        status: notfound
+- debug_status: missing
+  unwind_status: missing
+  features:
+    has_debug_info: false
+    has_unwind_info: false
+    has_symbols: false
+    has_sources: false
+  arch: unknown
+  type: pe
+  code_id: 59b0d8f3183000
+  code_file: "C:\\Windows\\System32\\ntdll.dll"
+  debug_id: 971f98e5-ce60-41ff-b2d7-235bbeb34578-1
+  debug_file: wntdll.pdb
+  image_addr: "0x77170000"
+  image_size: 1585152
+  candidates:
+    - source: local
+      location: No object files listed on this source
+      download:
+        status: notfound

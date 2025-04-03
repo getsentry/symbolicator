@@ -1,15 +1,18 @@
 use std::fs::File;
+use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use symbolicator_native::interface::{FrameStatus, SymbolicateStacktraces};
+use symbolicator_native::interface::{FrameStatus, ProcessMinidump, SymbolicateStacktraces};
 use symbolicator_service::caching::Metadata;
 use symbolicator_service::objects::ObjectDownloadInfo;
 use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
-    DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig, RemoteFileUri,
-    SentrySourceConfig, SourceConfig, SourceId,
+    DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig,
+    RemoteFileUri, SentrySourceConfig, SourceConfig, SourceId,
 };
+use symbolicator_test::read_fixture;
+use tempfile::NamedTempFile;
 
 use crate::{
     assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
@@ -114,6 +117,46 @@ async fn test_path_patterns() {
             );
         }
     }
+}
+
+// Tests that a symstore index works as expected by attempting to
+// symbolicate a minidump.
+#[tokio::test]
+async fn test_minidump_symstore_index() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let source = SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
+        id: SourceId::new("local"),
+        path: fixture("symbols"),
+        files: symbolicator_sources::CommonSourceConfig {
+            layout: DirectoryLayout {
+                ty: DirectoryLayoutType::Symstore,
+                ..Default::default()
+            },
+            has_index: true,
+            ..Default::default()
+        },
+    }));
+
+    let minidump = read_fixture("windows.dmp");
+    let mut minidump_file = NamedTempFile::new().unwrap();
+    minidump_file.write_all(&minidump).unwrap();
+    let mut response = symbolication
+        .process_minidump(ProcessMinidump {
+            platform: None,
+            scope: Scope::Global,
+            minidump_file: minidump_file.into_temp_path(),
+            sources: Arc::new([source]),
+            scraping: Default::default(),
+            rewrite_first_module: Default::default(),
+        })
+        .await
+        .unwrap();
+
+    // We only care about modules we actually tried to fetch here
+    let mut modules = std::mem::take(&mut response.modules);
+    modules.retain(|m| m.debug_status != ObjectFileStatus::Unused);
+
+    assert_snapshot!(modules);
 }
 
 /// Tests permission errors for http, s3 and gcs sources

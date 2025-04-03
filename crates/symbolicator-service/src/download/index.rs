@@ -272,6 +272,7 @@ impl SourceIndexService {
                 temp_file.read_to_end(&mut buf)?;
                 let last_id = std::str::from_utf8(&buf)
                     .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
+                    .trim()
                     .parse()
                     .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
                 Ok(last_id)
