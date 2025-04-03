@@ -10,9 +10,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
+use bytes::Bytes;
+use destiniation::MultiStreamDestination;
 use futures::prelude::*;
 use reqwest::StatusCode;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
@@ -30,15 +31,18 @@ use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 
 mod compression;
+mod destiniation;
 mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
+mod partial;
 mod s3;
 pub mod sentry;
 
-pub use compression::tempfile_in_parent;
-pub use fetch_file::fetch_file;
+pub use self::compression::tempfile_in_parent;
+pub use self::destiniation::Destination;
+pub use self::fetch_file::fetch_file;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -507,20 +511,18 @@ where
 /// This is common functionality used by many downloaders.
 async fn download_stream(
     source_name: &str,
-    stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    mut destination: impl AsyncWrite,
+    stream: impl Stream<Item = Result<Bytes, CacheError>>,
+    mut destination: impl destiniation::WriteStream,
 ) -> CacheContents {
     futures::pin_mut!(stream);
-    let mut destination = std::pin::pin!(destination);
 
     let mut throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
     let result: CacheContents = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            let chunk = chunk.as_ref();
             throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            destination.write_all(chunk).await?;
+            destination.write_buf(chunk).await?;
         }
         Ok(())
     }
@@ -536,7 +538,7 @@ async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: impl AsyncWrite,
+    destination: impl Destination,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
@@ -550,14 +552,31 @@ async fn download_reqwest(
     let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
 
     let status = response.status();
-    if status.is_success() {
+
+    // TODO try_into_streams outside, before messing with the request
+
+    if let Some(range) = partial::BytesContentRange::from_response(&response) {
+        let Ok(streams) = destination.try_into_streams(range.size) else {
+            panic!()
+        };
+
+        let destination = streams.stream(range.start, range.end);
+
+        let timeout = content_length_timeout(range.size, timeouts.streaming);
+        let stream = response.bytes_stream().map_err(CacheError::from);
+        let future = download_stream(source_name, stream, destination);
+
+        future.await
+    } else if status.is_success() {
         tracing::trace!("Success hitting `{}`", source);
 
         let content_length = response
             .headers()
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|hv| hv.to_str().ok())
-            .and_then(|s| s.parse::<i64>().ok());
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let destination = std::pin::pin!(destination.into_write());
 
         let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
         let stream = response.bytes_stream().map_err(CacheError::from);
@@ -719,7 +738,7 @@ where
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: u64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }
