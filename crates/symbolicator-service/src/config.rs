@@ -200,6 +200,47 @@ impl Default for DerivedCacheConfig {
     }
 }
 
+/// Fine-tuning source index cache expiry.
+///
+/// These differ from [`DownloadedCacheConfig`] in the [`Default`] implementation.
+#[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
+#[serde(default)]
+pub struct IndexCacheConfig {
+    /// Maximum duration since last use of cache item (item last used).
+    #[serde(with = "humantime_serde")]
+    pub max_unused_for: Option<Duration>,
+
+    /// Maximum duration since creation of negative cache item (item age).
+    #[serde(with = "humantime_serde")]
+    pub retry_misses_after: Option<Duration>,
+
+    /// Maximum duration since creation of negative cache item (item age).
+    ///
+    /// This setting is specific for items computed from "public" (non-project-specific)
+    /// sources.
+    #[serde(with = "humantime_serde")]
+    pub retry_misses_after_public: Option<Duration>,
+
+    /// Maximum duration since creation of malformed cache item (item age).
+    #[serde(with = "humantime_serde")]
+    pub retry_malformed_after: Option<Duration>,
+
+    /// Maximum number of lazy re-computations
+    pub max_lazy_recomputations: isize,
+}
+
+impl Default for IndexCacheConfig {
+    fn default() -> Self {
+        Self {
+            max_unused_for: Some(Duration::from_secs(3600 * 24 * 7)),
+            retry_misses_after: Some(Duration::from_secs(600)),
+            retry_misses_after_public: Some(Duration::from_secs(600)),
+            retry_malformed_after: Some(Duration::from_secs(600)),
+            max_lazy_recomputations: 20,
+        }
+    }
+}
+
 /// Fine-tuning diagnostics caches.
 #[derive(Debug, Clone, Copy, Deserialize, Eq, PartialEq)]
 #[serde(default)]
@@ -222,6 +263,7 @@ impl Default for DiagnosticsCacheConfig {
 pub enum CacheConfig {
     Downloaded(DownloadedCacheConfig),
     Derived(DerivedCacheConfig),
+    Index(IndexCacheConfig),
     Diagnostics(DiagnosticsCacheConfig),
 }
 
@@ -230,6 +272,7 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.max_unused_for,
             Self::Derived(cfg) => cfg.max_unused_for,
+            Self::Index(cfg) => cfg.max_unused_for,
             Self::Diagnostics(cfg) => cfg.retention,
         }
     }
@@ -238,6 +281,7 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.retry_misses_after,
             Self::Derived(cfg) => cfg.retry_misses_after,
+            Self::Index(cfg) => cfg.retry_misses_after,
             Self::Diagnostics(_cfg) => None,
         }
     }
@@ -246,6 +290,7 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.retry_misses_after_public,
             Self::Derived(cfg) => cfg.retry_misses_after_public,
+            Self::Index(cfg) => cfg.retry_misses_after_public,
             Self::Diagnostics(_cfg) => None,
         }
     }
@@ -254,6 +299,7 @@ impl CacheConfig {
         match self {
             Self::Downloaded(cfg) => cfg.retry_malformed_after,
             Self::Derived(cfg) => cfg.retry_malformed_after,
+            Self::Index(cfg) => cfg.retry_malformed_after,
             Self::Diagnostics(_cfg) => None,
         }
     }
@@ -268,6 +314,12 @@ impl From<DownloadedCacheConfig> for CacheConfig {
 impl From<DerivedCacheConfig> for CacheConfig {
     fn from(source: DerivedCacheConfig) -> Self {
         Self::Derived(source)
+    }
+}
+
+impl From<IndexCacheConfig> for CacheConfig {
+    fn from(source: IndexCacheConfig) -> Self {
+        Self::Index(source)
     }
 }
 
@@ -381,6 +433,8 @@ pub struct CacheConfigs {
     ///
     /// E.g. minidumps which caused a crash in symbolicator will be stored here.
     pub diagnostics: DiagnosticsCacheConfig,
+
+    pub index: IndexCacheConfig,
 
     /// Configuration of various in-memory caches.
     pub in_memory: InMemoryCacheConfig,

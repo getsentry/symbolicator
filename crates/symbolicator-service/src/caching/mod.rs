@@ -304,7 +304,7 @@ impl Caches {
             source_index: Cache::from_config(
                 CacheName::SourceIndex,
                 config,
-                config.caches.downloaded.into(),
+                config.caches.index.into(),
                 max_lazy_redownloads,
                 in_memory.source_index_capacity,
             )?,
