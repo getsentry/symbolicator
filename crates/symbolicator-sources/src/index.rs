@@ -37,6 +37,9 @@ impl SourceIndex {
 /// ```
 /// The part before the comma contains the debug or code file name
 /// and the debug or code ID, separated by a backslash.
+///
+/// See the index on Intel's symbol server for an example:
+/// <https://software.intel.com/sites/downloads/symbols/000Admin>
 #[derive(Debug, Clone, Default)]
 pub struct SymstoreIndex {
     files: BTreeSet<Arc<str>>,
