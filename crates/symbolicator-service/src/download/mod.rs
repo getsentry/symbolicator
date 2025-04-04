@@ -6,15 +6,17 @@
 use std::collections::VecDeque;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use bytes::Bytes;
-use destiniation::MultiStreamDestination;
+use destiniation::{MultiStreamDestination, WriteStream};
 use futures::prelude::*;
 use reqwest::StatusCode;
 
+use stream::FuturesUnordered;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
@@ -24,7 +26,7 @@ use symbolicator_sources::{
 };
 
 use crate::caching::{CacheContents, CacheError};
-use crate::config::Config;
+use crate::config::{CacheConfig, Config};
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
@@ -540,6 +542,78 @@ async fn download_reqwest(
     timeouts: &DownloadTimeouts,
     destination: impl Destination,
 ) -> CacheContents {
+    todo!()
+}
+
+async fn download_reqwest_range(
+    source_name: &str,
+    builder: reqwest::RequestBuilder,
+    timeouts: &DownloadTimeouts,
+    mut destination: impl MultiStreamDestination,
+) -> CacheContents {
+    // Probe if the request can be cloned, if it can't
+    // TODO: probe for no body?
+    let lol = builder.try_clone().unwrap();
+
+    let builder = partial::request(builder);
+
+    // TODO: code duplication
+    let (client, request) = builder.build_split();
+    let request = request?;
+    let source = request.url().to_string();
+    let request = client.execute(request);
+    let request = tokio::time::timeout(timeouts.head, request);
+    let response = request
+        .await
+        .map_err(|_| CacheError::Timeout(timeouts.head))??;
+
+    // Server supports range requests and just sent us the first batch.
+    match partial::BytesContentRange::from_response(&response) {
+        // Server does not know about ranges and returns us the full contents
+        None => {
+            // TODO timeouts
+            let destination = std::pin::pin!(destination.into_write());
+            download_stream(
+                source_name,
+                response.bytes_stream().map_err(CacheError::from),
+                destination,
+            )
+            .await
+        }
+        Some(Ok(range)) => {
+            destination.set_size(range.total_size).await?;
+
+            let mut futures = FuturesUnordered::<Pin<Box<dyn Future<Output = _>>>>::new();
+
+            futures.push(Box::pin(download_stream(
+                source_name,
+                response.bytes_stream().map_err(CacheError::from),
+                destination.stream(0, range.end - range.start),
+            )));
+
+            for range in partial::split(range.end, range.total_size) {
+                futures.push(Box::pin(do_download_reqwest(
+                    source_name,
+                    lol.try_clone().unwrap(),
+                    timeouts,
+                    destination.stream(range.start, range.size()),
+                )));
+            }
+
+            while let Some(_) = futures.try_next().await? {}
+
+            Ok(())
+        }
+        Some(Err(_)) => todo!(),
+    }
+}
+
+async fn do_download_reqwest(
+    source_name: &str,
+    builder: reqwest::RequestBuilder,
+    timeouts: &DownloadTimeouts,
+    destination: impl WriteStream,
+) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
     let source = request.url().to_string();
@@ -555,19 +629,7 @@ async fn download_reqwest(
 
     // TODO try_into_streams outside, before messing with the request
 
-    if let Some(range) = partial::BytesContentRange::from_response(&response) {
-        let Ok(streams) = destination.try_into_streams(range.size) else {
-            panic!()
-        };
-
-        let destination = streams.stream(range.start, range.end);
-
-        let timeout = content_length_timeout(range.size, timeouts.streaming);
-        let stream = response.bytes_stream().map_err(CacheError::from);
-        let future = download_stream(source_name, stream, destination);
-
-        future.await
-    } else if status.is_success() {
+    if status.is_success() {
         tracing::trace!("Success hitting `{}`", source);
 
         let content_length = response
@@ -575,8 +637,6 @@ async fn download_reqwest(
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|hv| hv.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
-
-        let destination = std::pin::pin!(destination.into_write());
 
         let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
         let stream = response.bytes_stream().map_err(CacheError::from);

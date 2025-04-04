@@ -15,6 +15,9 @@ pub trait WriteStream {
     /// See also: [`AsyncWriteExt::write_buf`].
     async fn write_buf(&mut self, buf: Bytes) -> io::Result<()>;
 
+    /// Attempts to flush the output stream.
+    ///
+    /// See also: [`AsyncWriteExt::flush`].
     async fn flush(&mut self) -> io::Result<()>;
 }
 
@@ -37,23 +40,39 @@ where
 /// but some destinations can choose to implement [`Destination::try_into_streams`],
 /// to support concurrent partial downloads.
 pub trait Destination: Sized {
+    /// Type returned from [`Destination::try_into_streams`].
+    type Streams: MultiStreamDestination;
+    /// Type returned from [`Destination::into_write`].
+    type Write: AsyncWrite;
+
     /// Attempts to convert this `Destination` into a destination which
     /// supports parallelized downloads through the [`MultiStreamDestination`] interface.
     ///
     /// Destinations which do not support parallelized downloads will return `Err` here.
     ///
-    /// The specified `size` is the size of the fully downloaded file.
-    /// Some underlying storages first need to resize to support concurrent writes.
-    fn try_into_streams(self, size: u64) -> Result<impl MultiStreamDestination, Self>;
+    fn try_into_streams(self) -> Result<Self::Streams, Self>;
 
     /// Converts the destination into a generic [`AsyncWrite`].
-    fn into_write(self) -> impl AsyncWrite;
+    fn into_write(self) -> Self::Write;
 }
 
 /// A destination which supports multiple concurrent streams writing to it.
 pub trait MultiStreamDestination {
     /// Type returned from [`MultiStreamDestination::stream`].
-    type Stream: WriteStream;
+    type Stream<'a>: WriteStream
+    where
+        Self: 'a;
+    /// Type returned from [`MultiStreamDestination::into_write`].
+    type Write: AsyncWrite;
+
+    /// Configures the amount of bytes that will be written total.
+    ///
+    /// By contract a size must be set before acquiring any
+    /// [streams](`MultiStreamDestination::stream`).
+    ///
+    /// The specified `size` is the size of the fully downloaded file.
+    /// Some underlying storages first need to resize to support concurrent writes.
+    async fn set_size(&mut self, size: u64) -> io::Result<()>;
 
     /// Creates a new stream starting at `offset`.
     ///
@@ -69,46 +88,78 @@ pub trait MultiStreamDestination {
     /// The amount of bytes written to that stream must be specified accurately.
     /// An implementation is free to ignore these constraints and writing past the end of the
     /// returned stream may lead to data corruption.
-    fn stream(&self, offset: u64, size: u64) -> Self::Stream;
+    fn stream(&self, offset: u64, size: u64) -> Self::Stream<'_>;
+
+    /// Converts the destination into a generic [`AsyncWrite`].
+    fn into_write(self) -> Self::Write;
 }
 
 impl MultiStreamDestination for Infallible {
-    type Stream = Vec<u8>;
+    type Stream<'a>
+        = Vec<u8>
+    where
+        Self: 'a;
+    type Write = Vec<u8>;
 
-    fn stream(&self, _offset: u64, _len: u64) -> Self::Stream {
+    async fn set_size(&mut self, _size: u64) -> io::Result<()> {
         match *self {}
+    }
+
+    fn stream(&self, _offset: u64, _len: u64) -> Self::Stream<'_> {
+        match *self {}
+    }
+
+    fn into_write(self) -> Self::Write {
+        match self {}
     }
 }
 
-impl<'a> Destination for &'a mut tokio::fs::File {
+impl Destination for &mut tokio::fs::File {
     #[cfg(unix)]
-    fn try_into_streams(self, _size: u64) -> Result<impl MultiStreamDestination, Self> {
-        Ok(TokioFileMultiStreamDestination(&*self))
+    type Streams = Self;
+    #[cfg(not(unix))]
+    type Streams = Infallible;
+    type Write = Self;
+
+    #[cfg(unix)]
+    fn try_into_streams(self) -> Result<Self::Streams, Self> {
+        Ok(self)
     }
 
     #[cfg(not(unix))]
-    fn try_into_streams(self, _size: u64) -> Result<impl MultiStreamDestination, Self> {
+    fn try_into_streams(self, _size: u64) -> Result<Self::Streams, Self> {
         Err(self)
     }
 
-    fn into_write(self) -> impl AsyncWrite {
+    fn into_write(self) -> Self::Write {
         self
     }
 }
 
-/// Implements [`TokioFileMultiStreamDestination`] for a [`tokio::fs::File`].
 #[cfg(unix)]
-pub struct TokioFileMultiStreamDestination<'a>(&'a tokio::fs::File);
+impl MultiStreamDestination for &mut tokio::fs::File {
+    type Stream<'a>
+        = OffsetFileWriteStream<'a>
+    where
+        Self: 'a;
+    type Write = Self;
 
-#[cfg(unix)]
-impl<'a> MultiStreamDestination for TokioFileMultiStreamDestination<'a> {
-    type Stream = OffsetFileWriteStream<'a>;
+    async fn set_size(&mut self, size: u64) -> io::Result<()> {
+        // While not strictly necessary for the implementation using `pwrite`,
+        // we can already resize the file to prevent sparse files.
+        self.set_len(size).await
+    }
 
-    fn stream(&self, offset: u64, _size: u64) -> Self::Stream {
+    fn stream(&self, offset: u64, size: u64) -> Self::Stream<'_> {
         OffsetFileWriteStream {
-            file: self.0,
+            file: self,
             offset,
+            end: offset + size,
         }
+    }
+
+    fn into_write(self) -> Self::Write {
+        self
     }
 }
 
@@ -116,6 +167,7 @@ impl<'a> MultiStreamDestination for TokioFileMultiStreamDestination<'a> {
 pub struct OffsetFileWriteStream<'a> {
     file: &'a tokio::fs::File,
     offset: u64,
+    end: u64,
 }
 
 #[cfg(unix)]
@@ -128,7 +180,12 @@ impl WriteStream for OffsetFileWriteStream<'_> {
         use std::os::unix::fs::FileExt;
 
         let offset = self.offset;
-        let length = buf.len();
+        let length = buf.len() as u64;
+
+        debug_assert!(
+            offset + length < self.end,
+            "attempt to write past end of stream"
+        );
 
         // SAFETY:
         //
@@ -150,7 +207,7 @@ impl WriteStream for OffsetFileWriteStream<'_> {
         // Update the offset for the next write.
         //
         // There are no concurrent writes, because we have an exclusive reference here.
-        self.offset += length as u64;
+        self.offset += length;
 
         Ok(())
     }
@@ -166,12 +223,14 @@ impl WriteStream for OffsetFileWriteStream<'_> {
 /// The resulting destination will not support concurrent streaming writes.
 pub struct AsyncWriteDestination<T>(pub T);
 
-#[expect(refining_impl_trait, reason = "type safety, access to inner type")]
 impl<T> Destination for AsyncWriteDestination<T>
 where
     T: AsyncWrite,
 {
-    fn try_into_streams(self, _size: u64) -> Result<Infallible, Self> {
+    type Streams = Infallible;
+    type Write = T;
+
+    fn try_into_streams(self) -> Result<Self::Streams, Self> {
         Err(self)
     }
 

@@ -183,6 +183,7 @@ impl S3Downloader {
 
         let timeout = response
             .content_length
+            .and_then(|cl| u64::try_from(cl).ok())
             .map(|cl| content_length_timeout(cl, self.timeouts.streaming));
 
         let mut body = std::pin::pin!(response.body);
