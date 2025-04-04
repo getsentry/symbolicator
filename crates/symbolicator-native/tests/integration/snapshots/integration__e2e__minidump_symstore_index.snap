@@ -19,11 +19,11 @@ expression: modules
   image_size: 36864
   candidates:
     - source: local
-      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/crash.exe/5AB380779000/crash.exe"
+      location: "http://localhost:<port>/symbols/crash.exe/5AB380779000/crash.exe"
       download:
         status: notfound
     - source: local
-      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
+      location: "http://localhost:<port>/symbols/crash.pdb/3249D99D0C4049318610F4E4FB0B69361/crash.pdb"
       download:
         status: ok
         features:
@@ -56,7 +56,7 @@ expression: modules
       download:
         status: notfound
     - source: local
-      location: "file:///Users/sebastian/code/symbolicator/./tests/fixtures/symbols/kernel32.dll/590285E9e0000/kernel32.dll"
+      location: "http://localhost:<port>/symbols/kernel32.dll/590285E9e0000/kernel32.dll"
       download:
         status: notfound
 - debug_status: missing

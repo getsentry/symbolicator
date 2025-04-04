@@ -8,8 +8,8 @@ use symbolicator_service::caching::Metadata;
 use symbolicator_service::objects::ObjectDownloadInfo;
 use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
-    DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig, HttpSourceConfig,
-    RemoteFileUri, SentrySourceConfig, SourceConfig, SourceId,
+    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
+    HttpSourceConfig, RemoteFileUri, SentrySourceConfig, SourceConfig, SourceId,
 };
 use symbolicator_test::read_fixture;
 use tempfile::NamedTempFile;
@@ -124,17 +124,23 @@ async fn test_path_patterns() {
 #[tokio::test]
 async fn test_minidump_symstore_index() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let source = SourceConfig::Filesystem(Arc::new(FilesystemSourceConfig {
-        id: SourceId::new("local"),
-        path: fixture("symbols"),
-        files: symbolicator_sources::CommonSourceConfig {
-            layout: DirectoryLayout {
-                ty: DirectoryLayoutType::Symstore,
-                ..Default::default()
-            },
-            has_index: true,
+    let server = Server::new();
+
+    let files = CommonSourceConfig {
+        layout: DirectoryLayout {
+            ty: DirectoryLayoutType::Symstore,
             ..Default::default()
         },
+        has_index: true,
+        ..Default::default()
+    };
+
+    let source = SourceConfig::Http(Arc::new(HttpSourceConfig {
+        id: SourceId::new("local"),
+        url: server.url("symbols/"),
+        headers: Default::default(),
+        files,
+        accept_invalid_certs: false,
     }));
 
     let minidump = read_fixture("windows.dmp");

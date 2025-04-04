@@ -64,12 +64,16 @@ impl SymstoreIndex {
 
     /// Loads a `SymstoreIndex` from bytes.
     pub fn load(data: &[u8]) -> io::Result<Self> {
+        let mut out = Self::default();
         let reader = BufReader::new(data);
-        Self::from_reader(reader)
+        for line in reader.lines() {
+            out.files.insert(line?.into());
+        }
+        Ok(out)
     }
 
-    /// Loads a `SymstoreIndex` from bytes.
-    pub fn from_reader<R: BufRead>(reader: R) -> io::Result<Self> {
+    /// Parses a `SymstoreIndex` from a reader.
+    pub fn parse_from_reader<R: BufRead>(reader: R) -> io::Result<Self> {
         let mut out = Self::default();
         for line in reader.lines() {
             let line = line?;

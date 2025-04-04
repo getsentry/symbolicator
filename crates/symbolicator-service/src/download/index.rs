@@ -147,7 +147,7 @@ async fn download_index_segment(
         .await?;
 
     let buf = BufReader::new(temp_file);
-    let index = SymstoreIndex::from_reader(buf)?;
+    let index = SymstoreIndex::parse_from_reader(buf)?;
 
     index.write(file)?;
 
