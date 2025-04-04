@@ -154,7 +154,7 @@ impl MultiStreamDestination for &mut tokio::fs::File {
         OffsetFileWriteStream {
             file: self,
             offset,
-            end: offset + size,
+            end: offset + size + 1,
         }
     }
 

@@ -6,7 +6,7 @@ use reqwest::StatusCode;
 const MAX_PARTIAL_RANGES: u64 = 4;
 
 /// The minimum amount of bytes requested in a partial download.
-const MINIMUM_PARTIAL_SIZE: u64 = 12;
+const MINIMUM_PARTIAL_SIZE: u64 = 5;
 
 /// The initial range request sent to the server.
 ///
@@ -24,10 +24,15 @@ pub fn initial_request(request: &mut reqwest::Request) {
     INITIAL_RANGE.apply_to(request);
 }
 
-pub fn split(start: u64, end: u64) -> impl Iterator<Item = Range> {
-    let total_size = end.saturating_sub(start);
+/// Splits the remainder of the remote file into multiple smaller ranges.
+pub fn split(r: BytesContentRange) -> impl Iterator<Item = Range> {
+    // TODO: split the remaining range
 
-    None.into_iter()
+    Some(Range {
+        start: r.end + 1,
+        end: r.total_size - 1, // The range is inclusive
+    })
+    .into_iter()
 }
 
 /// Represents an HTTP Range header.
@@ -37,21 +42,23 @@ pub fn split(start: u64, end: u64) -> impl Iterator<Item = Range> {
 /// Unlike the specification, this range cannot be open ended.
 #[derive(Debug, Copy, Clone)]
 pub struct Range {
-    /// Start of the range.
+    /// Start of the range, inclusive.
     pub start: u64,
-    /// Optional end of the range.
+    /// End of the range, inclusive.
     pub end: u64,
 }
 
 impl Range {
-    /// Returns the size of the range.
+    /// Returns the amount of bytes the range contains.
     pub fn size(&self) -> u64 {
-        self.end.saturating_sub(self.start)
+        // +1 because the end of the range is inclusive,
+        // A 0-0 range is 1 byte in size.
+        self.end.saturating_sub(self.start) + 1
     }
 
     /// Applies this range to a request.
     pub fn apply_to(&self, request: &mut reqwest::Request) {
-        let header = reqwest::header::HeaderValue::from_str(&INITIAL_RANGE.to_string());
+        let header = reqwest::header::HeaderValue::from_str(&self.to_string());
         let header = header.expect("the range header to be a valid");
         request.headers_mut().insert(reqwest::header::RANGE, header);
     }
@@ -59,7 +66,7 @@ impl Range {
 
 impl fmt::Display for Range {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}-{}", self.start, self.end)
+        write!(f, "bytes={}-{}", self.start, self.end)
     }
 }
 

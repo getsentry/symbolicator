@@ -559,14 +559,9 @@ async fn download_reqwest(
     };
 
     let destination = std::pin::pin!(destination.into_write());
-    do_download_reqwest(
-        source_name,
-        client,
-        request,
-        timeouts,
-        destination,
-    )
-    .send().await
+    do_download_reqwest(source_name, client, request, timeouts, destination)
+        .send()
+        .await
 }
 
 pub trait SendFuture: core::future::Future {
@@ -600,8 +595,8 @@ async fn do_download_reqwest_range(
     // Server supports range requests and just sent us the first batch.
     match partial::BytesContentRange::from_response(&response) {
         // Server does not know about ranges and returns us the full contents
-        None => {
-            // TODO timeouts
+        None if response.status().is_success() => {
+            // TODO timeouts and metrics
             let destination = std::pin::pin!(destination.into_write());
             download_stream(
                 source_name,
@@ -618,12 +613,12 @@ async fn do_download_reqwest_range(
             let head = download_stream(
                 source_name,
                 response.bytes_stream().map_err(CacheError::from),
-                destination.stream(0, range.end - range.start),
+                destination.stream(0, range.end - range.start + 1),
             )
             .send();
             futures.push(Either::Left(head));
 
-            for range in partial::split(range.end, range.total_size) {
+            for range in partial::split(range) {
                 let mut request = original.try_clone().unwrap(); // TODO
                 range.apply_to(&mut request);
 
@@ -640,9 +635,18 @@ async fn do_download_reqwest_range(
 
             while let Some(_) = futures.try_next().await? {}
 
+            drop(futures);
+
+            let mut destination = std::pin::pin!(destination.into_write());
+            destination.flush().await?;
+
             Ok(())
         }
-        Some(Err(_)) => todo!(),
+        // Range error or request error
+        // TODO:
+        // - Retry when 416 or range error
+        // - Otherwise: -> Error
+        Some(Err(_)) | None => todo!(),
     }
 }
 
