@@ -246,6 +246,7 @@ mod tests {
 
     use crate::caching::{Cache, CacheName};
     use crate::config::{CacheConfig, CacheConfigs, Config};
+    use crate::download::SourceIndexService;
     use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
 
@@ -277,8 +278,29 @@ mod tests {
         )
         .unwrap();
 
+        let source_index_cache = Cache::from_config(
+            CacheName::SourceIndex,
+            &config,
+            CacheConfig::from(CacheConfigs::default().downloaded),
+            Default::default(),
+            1024,
+        )
+        .unwrap();
+
         let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
-        ObjectsActor::new(meta_cache, data_cache, Default::default(), download_svc)
+        let source_index_svc = Arc::new(SourceIndexService::new(
+            source_index_cache,
+            Default::default(),
+            Arc::clone(&download_svc),
+        ));
+
+        ObjectsActor::new(
+            meta_cache,
+            data_cache,
+            Default::default(),
+            download_svc,
+            source_index_svc,
+        )
     }
 
     #[tokio::test]

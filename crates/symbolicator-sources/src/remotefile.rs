@@ -13,7 +13,7 @@ use url::Url;
 use crate::{
     get_directory_paths, CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile,
     GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceFilters,
-    SourceId,
+    SourceId, SourceIndex,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -88,6 +88,8 @@ pub struct SourceLocationIter<'a> {
     /// Filters from a `SourceConfig` to limit the amount of generated paths.
     filters: &'a SourceFilters,
 
+    index: Option<&'a SourceIndex>,
+
     /// Information about the object file to be downloaded.
     object_id: &'a ObjectId,
 
@@ -103,11 +105,13 @@ impl<'a> SourceLocationIter<'a> {
     pub fn new(
         config: &'a CommonSourceConfig,
         filetypes: &'a [FileType],
+        index: Option<&'a SourceIndex>,
         object_id: &'a ObjectId,
     ) -> Self {
         Self {
             filetypes: filetypes.iter(),
             filters: &config.filters,
+            index,
             object_id,
             layout: config.layout,
             next: vec![],
@@ -125,6 +129,9 @@ impl Iterator for SourceLocationIter<'_> {
                     continue;
                 }
                 self.next = get_directory_paths(self.layout, filetype, self.object_id);
+                if let Some(index) = self.index {
+                    self.next.retain(|path| index.contains(path))
+                }
             } else {
                 return None;
             }
@@ -365,6 +372,8 @@ impl fmt::Display for RemoteFileUri {
 mod tests {
     use symbolic::common::{CodeId, DebugId, Uuid};
 
+    use crate::SymstoreIndex;
+
     use super::*;
 
     #[test]
@@ -445,6 +454,7 @@ mod tests {
         let mut all: Vec<_> = SourceLocationIter::new(
             &Default::default(),
             &[FileType::ElfCode, FileType::ElfDebug],
+            None,
             &ObjectId {
                 debug_id: Some(debug_id),
                 code_id: Some(code_id),
@@ -461,5 +471,33 @@ mod tests {
                 SourceLocation::new("ab/cdef1234567890abcd.debug")
             ]
         );
+    }
+
+    #[test]
+    fn test_iter_elf_index() {
+        // Note that for ELF ObjectId *needs* to have the code_id set otherwise nothing is
+        // created.
+        let code_id = CodeId::new(String::from("abcdefghijklmnopqrstuvwxyz1234567890abcd"));
+        let uuid = Uuid::from_slice(&code_id.as_str().as_bytes()[..16]).unwrap();
+        let debug_id = DebugId::from_uuid(uuid);
+
+        let index = SymstoreIndex::default()
+            .insert("ab/cdef1234567890abcd.debug")
+            .into();
+
+        let mut all: Vec<_> = SourceLocationIter::new(
+            &Default::default(),
+            &[FileType::ElfCode, FileType::ElfDebug],
+            Some(&index),
+            &ObjectId {
+                debug_id: Some(debug_id),
+                code_id: Some(code_id),
+                ..Default::default()
+            },
+        )
+        .collect();
+        all.sort();
+
+        assert_eq!(all, [SourceLocation::new("ab/cdef1234567890abcd.debug")]);
     }
 }

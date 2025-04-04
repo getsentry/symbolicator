@@ -214,6 +214,7 @@ fn prepare_dsym_sources(
                     casing: Default::default(),
                 },
                 is_public: false,
+                has_index: false,
             },
         };
         dsym_sources.push(SourceConfig::Filesystem(local_source.into()));
