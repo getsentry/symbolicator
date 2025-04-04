@@ -22,8 +22,14 @@ use crate::types::Scope;
 
 use super::DownloadService;
 
+/// The path of the file containing the ID of the most recent upload
+/// log file.
 const LASTID_FILE: &str = "000Admin/lastid.txt";
 
+/// A source config for which the notion of an index makes sense.
+///
+/// This is essentially [`SourceConfig`] without the `Sentry` case.
+/// We never want to use an index for Sentry sources.
 #[derive(Debug, Clone)]
 enum IndexSourceConfig {
     Filesystem(Arc<FilesystemSourceConfig>),
@@ -82,23 +88,48 @@ impl IndexSourceConfig {
     }
 }
 
+/// A request to fetch a Symstore index "segment".
+///
+/// By "segment" we mean one of the numbered upload
+/// log files that together make up the index.
 #[derive(Debug, Clone)]
 struct FetchSymstoreIndexSegment {
+    /// Then number of the segment to fectch.
     segment_id: u32,
+    /// The source for which to fetch the index.
     source: IndexSourceConfig,
+    /// The download service usdd to download the
+    /// segment file.
     downloader: Arc<DownloadService>,
 }
 
+/// A request to fetch an entire Symstore index.
+///
+/// On the source, the index exists in the form
+/// of a list of numbered files, each containing
+/// a subset of debug files on the source. This request
+/// takes care of downloading all of these "segments"
+/// and combining them into one index.
 #[derive(Debug, Clone)]
 struct FetchSymstoreIndex {
+    /// The scope of the request.
     scope: Scope,
+    /// The number of the most recently uploaded index segment.
+    ///
+    /// This determines how many segment files we will attempt to
+    /// fetch.
     last_id: u32,
+    /// A cache for index segments.
     segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
+    /// The soure for which to fetch the index.
     source: IndexSourceConfig,
+    /// The download service used to download the segment files.
     downloader: Arc<DownloadService>,
 }
 
-#[tracing::instrument(skip(downloader, source), fields(source.id = %source.id()))]
+/// Downloads the index segment with the given number from the source, parses it,
+/// and writes the result into the provided file.
+#[tracing::instrument(skip(downloader, source, file), fields(source.id = %source.id()))]
 async fn download_index_segment(
     downloader: Arc<DownloadService>,
     source: IndexSourceConfig,
@@ -116,14 +147,22 @@ async fn download_index_segment(
         .await?;
 
     let buf = BufReader::new(temp_file);
-    let mut index = SymstoreIndex::default();
-    index.extend_from_reader(buf)?;
+    let index = SymstoreIndex::from_reader(buf)?;
 
     index.write(file)?;
 
     Ok(())
 }
 
+/// Downloads all the segment files up to `last_id` from the source
+/// and combines them into the complete index.
+///
+/// The resulting index is written to the provided file.
+///
+/// If one segment file can't be fetched or read, the whole index
+/// computation aborts. This guarantees that we don't cache incomplete
+/// indexes as "succesful", but instead recompute them as soon as possible.
+#[tracing::instrument(skip(cache, downloader, source, file), fields(source.id = %source.id()))]
 async fn download_full_index(
     cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     downloader: Arc<DownloadService>,
@@ -227,20 +266,43 @@ impl CacheItemRequest for FetchSymstoreIndex {
     }
 }
 
+/// A service for computing indexes for file sources.
+///
+/// In general we request every debug file from every available
+/// source, but some sources provide an _index_ telling us exactly
+/// which files are available on that source. If we have an index available,
+/// we don't even need to make requests to the source for files not in
+/// the index.
+///
+/// This service takes care of fetching indexes from sources which indicate
+/// that they provide one (via the `has_index` field). The type of index is
+/// internally determined by the source's layout, although only Symstore is
+/// supported for now.
 #[derive(Debug, Clone)]
 pub struct SourceIndexService {
-    cache: Arc<Cacher<FetchSymstoreIndex>>,
-    segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
+    /// The cache for storing Symstore indexes.
+    symstore_cache: Arc<Cacher<FetchSymstoreIndex>>,
+    /// The cache used for storing individual Symstore index segments.
+    symstore_segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
+    /// An in-memory cache for keeping track of the last segment uploaded
+    /// to a Symstore index.
+    symstore_last_id_cache: moka::future::Cache<(Scope, SourceId), CacheContents<u32>>,
+    /// The download service to download index files.
     downloader: Arc<DownloadService>,
-    last_id_cache: moka::future::Cache<(Scope, SourceId), CacheContents<u32>>,
 }
 
 impl SourceIndexService {
+    /// Creates a new `SourceIndexService`.
+    ///
+    /// This service will use the same cache for computing
+    /// both symstore index segments and entire symstore indexes.
     pub fn new(
         cache: Cache,
         shared_cache: SharedCacheRef,
         downloader: Arc<DownloadService>,
     ) -> Self {
+        // Create an in-memory cache for Symstore last IDs.
+        // This is so we don't ask for the last ID on every request.
         let last_id_cache = moka::future::Cache::builder()
             .max_capacity(100)
             .name("last_id")
@@ -248,19 +310,27 @@ impl SourceIndexService {
             .build();
 
         Self {
-            cache: Arc::new(Cacher::new(cache.clone(), shared_cache.clone())),
-            segment_cache: Arc::new(Cacher::new(cache, shared_cache)),
+            symstore_cache: Arc::new(Cacher::new(cache.clone(), shared_cache.clone())),
+            symstore_segment_cache: Arc::new(Cacher::new(cache, shared_cache)),
+            symstore_last_id_cache: last_id_cache,
             downloader,
-            last_id_cache,
         }
     }
 
+    /// Fetches the ID of the most recently uploaded Symstore index
+    /// segment.
+    ///
+    /// This ID is stored in a file called `lastid.txt` in the
+    /// `000Admin` directory.
+    ///
+    /// The last ID is locally cached for an hour, so if a new
+    /// file is uploaded, we will see it at most an hour later.
     async fn fetch_symstore_last_id(
         &self,
         scope: Scope,
         source: &IndexSourceConfig,
     ) -> CacheContents<u32> {
-        self.last_id_cache
+        self.symstore_last_id_cache
             .get_with((scope, source.id().clone()), async {
                 let mut temp_file = NamedTempFile::new()?;
                 let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
@@ -280,6 +350,7 @@ impl SourceIndexService {
             .await
     }
 
+    /// Fetches a Symstore index for the given source.
     async fn fetch_symstore_index(
         &self,
         scope: Scope,
@@ -290,7 +361,7 @@ impl SourceIndexService {
         let request = FetchSymstoreIndex {
             scope: scope.clone(),
             last_id,
-            segment_cache: self.segment_cache.clone(),
+            segment_cache: self.symstore_segment_cache.clone(),
             source: source.clone(),
             downloader: self.downloader.clone(),
         };
@@ -301,12 +372,22 @@ impl SourceIndexService {
         writeln!(&mut cache_key, "last_id: {last_id}").unwrap();
         let cache_key = cache_key.build();
 
-        self.cache
+        self.symstore_cache
             .compute_memoized(request, cache_key)
             .await
             .into_contents()
     }
 
+    /// Fetches a source index for the given source, if the
+    /// source is configured accordingly.
+    ///
+    /// This returns `None` if the source does not have `has_index`
+    /// set or if its layout is not supported. Currently `symstore` is
+    /// the only supported layout.
+    ///
+    /// If fetching the index fails, an empty index is returned. This
+    /// effectively disables the source because the empty index will
+    /// reject any path.
     pub async fn fetch_index(&self, scope: Scope, source: &SourceConfig) -> Option<SourceIndex> {
         let source = IndexSourceConfig::maybe_from(source)?;
 
@@ -316,10 +397,20 @@ impl SourceIndexService {
 
         match source.layout_ty() {
             symbolicator_sources::DirectoryLayoutType::Symstore => {
-                let symstore_index = self
-                    .fetch_symstore_index(scope, source)
-                    .await
-                    .unwrap_or_default();
+                let source_id = source.id().clone();
+
+                let symstore_index = match self.fetch_symstore_index(scope.clone(), source).await {
+                    Ok(index) => index,
+                    Err(e) => {
+                        tracing::error!(
+                            scope = %scope,
+                            %source_id,
+                            error = &e as &dyn std::error::Error,
+                            "Failed to fetch Symstore index",
+                        );
+                        Default::default()
+                    }
+                };
                 Some(symstore_index.into())
             }
             _ => None,

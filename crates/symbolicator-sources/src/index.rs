@@ -1,15 +1,21 @@
 use std::collections::BTreeSet;
-use std::fs::File;
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
 use std::sync::Arc;
 
+/// An index for a debug file source.
+///
+/// This can be used to check whether the source
+/// contains a file with a given path. The answer is
+/// taken as authoritative; if the index doesn't contain
+/// the path we will not attempt to fetch the file from the source.
 #[derive(Debug, Clone)]
 pub enum SourceIndex {
+    /// A Symstore index.
     Symstore(SymstoreIndex),
 }
 
 impl SourceIndex {
+    /// Checks if this index contains the given path.
     pub fn contains(&self, path: &str) -> bool {
         match self {
             SourceIndex::Symstore(symstore_index) => symstore_index.contains(path),
@@ -17,36 +23,72 @@ impl SourceIndex {
     }
 }
 
+/// A Microsoft Symstore index.
+///
+/// This index resides on the source itself in the
+/// directory `000Admin`. Each upload of symbols creates
+/// a numbered text file containing the names and IDs of the files
+/// that were uploaded. The file `lastid.txt` contains the number
+/// of the most current text file.
+///
+/// Lines in the upload text files look like this:
+/// ```
+/// "difx64.dll\4549B50183000","D:\DllServers\temp\prod-rs5-pv-2018-09-06-1006323\difx64.dll"
+/// ```
+/// The part before the comma contains the debug or code file name
+/// and the debug or code ID, separated by a backslash.
 #[derive(Debug, Clone, Default)]
 pub struct SymstoreIndex {
     files: BTreeSet<Arc<str>>,
 }
 
 impl SymstoreIndex {
+    /// Parses a line in a Symstore upload text file.
+    ///
+    /// A line of the form
+    /// ```
+    /// "<name>\<ID>","<other data>"
+    /// is transformed into
+    /// ```
+    /// <name>/<ID>/<name>
+    /// ```
+    /// which corresponds to the path format for Symstore sources.
     fn parse_line(line: &str) -> Option<Arc<str>> {
         let entry = line.split('"').nth(1)?;
         let (name, id) = entry.split_once('\\')?;
         Some(format!("{name}/{id}/{name}").into())
     }
 
+    /// Loads a `SymstoreIndex` from bytes.
     pub fn load(data: &[u8]) -> io::Result<Self> {
         let reader = BufReader::new(data);
-        let mut files = BTreeSet::new();
-        for line in reader.lines() {
-            files.insert(line?.into());
-        }
-
-        Ok(Self { files })
+        Self::from_reader(reader)
     }
 
+    /// Loads a `SymstoreIndex` from bytes.
+    pub fn from_reader<R: BufRead>(reader: R) -> io::Result<Self> {
+        let mut out = Self::default();
+        for line in reader.lines() {
+            let line = line?;
+            if let Some(parsed) = Self::parse_line(&line) {
+                out.files.insert(parsed);
+            }
+        }
+
+        Ok(out)
+    }
+
+    /// Checks whether this index contains the given path.
     pub fn contains(&self, path: &str) -> bool {
         self.files.contains(path)
     }
 
+    /// Returns an iterator over the paths contained in this index.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.files.iter().map(|s| &s[..])
     }
 
+    /// Writes this index to a writer.
     pub fn write(&self, mut destination: impl Write) -> io::Result<()> {
         for line in &self.files {
             writeln!(destination, "{line}")?;
@@ -55,31 +97,18 @@ impl SymstoreIndex {
         Ok(())
     }
 
+    /// Appends the context of another index to this one.
+    ///
+    /// The other index is consumed.
     pub fn append(&mut self, other: Self) {
         self.files.extend(other.files)
     }
 
+    /// Inserts a path into this index.
     #[cfg(test)]
     pub fn insert(mut self, path: &str) -> Self {
         self.files.insert(path.into());
         self
-    }
-
-    pub fn extend_from_reader<R: BufRead>(&mut self, reader: R) -> Result<(), io::Error> {
-        for line in reader.lines() {
-            let line = line?;
-            if let Some(parsed) = Self::parse_line(&line) {
-                self.files.insert(parsed);
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn extend_from_file<P: AsRef<Path>>(&mut self, path: P) -> Result<(), io::Error> {
-        let f = File::open(path)?;
-        let f = BufReader::new(f);
-        self.extend_from_reader(f)
     }
 }
 
@@ -91,8 +120,6 @@ impl From<SymstoreIndex> for SourceIndex {
 
 #[cfg(test)]
 mod tests {
-    use std::fmt::Write;
-
     use super::*;
 
     #[test]
@@ -102,22 +129,5 @@ mod tests {
             &*SymstoreIndex::parse_line(line).unwrap(),
             "igdail32.dll/5BA3F2382a000/igdail32.dll"
         )
-    }
-
-    #[test]
-    fn test_extend_from() {
-        let mut index = SymstoreIndex::default();
-        for i in 1..=209 {
-            let path = format!("/Users/sebastian/Downloads/Intel/000Admin/{i:0>10}");
-            index.extend_from_file(&path).unwrap();
-        }
-
-        let mut out = String::new();
-        for file in &index.files {
-            writeln!(&mut out, "{file}").unwrap();
-        }
-
-        let index2 = SymstoreIndex::load(out.as_bytes()).unwrap();
-        assert_eq!(index.files, index2.files);
     }
 }
