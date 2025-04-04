@@ -121,15 +121,15 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 /// - `4`: An updated symbolic symcache that uses a LEB128 prefixed string table.
 ///
 /// - `3`: Another round of fixes in symcache generation:
-///        - fixes problems with split inlinees and inlinees appearing twice in the call chain
-///        - undecorate Windows C-decorated symbols in symcaches
+///  - fixes problems with split inlinees and inlinees appearing twice in the call chain
+///  - undecorate Windows C-decorated symbols in symcaches
 ///
 /// - `2`: Tons of fixes/improvements in symcache generation:
-///        - fixed problems with DWARF functions that have the
-///          same line records for different inline hierarchy
-///        - fixed problems with PDB where functions have line records that don't belong to them
-///        - fixed problems with PDB/DWARF when parent functions don't have matching line records
-///        - using a new TypeFormatter for PDB that can pretty-print function arguments
+///  - fixed problems with DWARF functions that have the
+///    same line records for different inline hierarchy
+///  - fixed problems with PDB where functions have line records that don't belong to them
+///  - fixed problems with PDB/DWARF when parent functions don't have matching line records
+///  - using a new TypeFormatter for PDB that can pretty-print function arguments
 ///
 /// - `1`: New binary format based on instruction addr lookup.
 ///
