@@ -20,8 +20,8 @@ const INITIAL_RANGE: Range = Range {
 };
 
 /// Prepares a `request` for partially streamed downloads.
-pub fn request(builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-    builder.header(reqwest::header::RANGE, INITIAL_RANGE.to_string())
+pub fn initial_request(request: &mut reqwest::Request) {
+    INITIAL_RANGE.apply_to(request);
 }
 
 pub fn split(start: u64, end: u64) -> impl Iterator<Item = Range> {
@@ -47,6 +47,13 @@ impl Range {
     /// Returns the size of the range.
     pub fn size(&self) -> u64 {
         self.end.saturating_sub(self.start)
+    }
+
+    /// Applies this range to a request.
+    pub fn apply_to(&self, request: &mut reqwest::Request) {
+        let header = reqwest::header::HeaderValue::from_str(&INITIAL_RANGE.to_string());
+        let header = header.expect("the range header to be a valid");
+        request.headers_mut().insert(reqwest::header::RANGE, header);
     }
 }
 

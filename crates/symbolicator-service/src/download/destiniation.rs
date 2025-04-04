@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use std::{convert::Infallible, io, mem::ManuallyDrop};
+use std::{convert::Infallible, future::Future, io, mem::ManuallyDrop};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// A simplified version of [`AsyncWrite`] which only supports
@@ -9,21 +9,21 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 /// but currently Symbolicator only needs this minimized interface,
 /// the full implementation of [`AsyncWrite`] is significantly harder
 /// to implement and get right.
-pub trait WriteStream {
+pub trait WriteStream: Send {
     /// Attempts to write an entire buffer into this writer.
     ///
     /// See also: [`AsyncWriteExt::write_buf`].
-    async fn write_buf(&mut self, buf: Bytes) -> io::Result<()>;
+    fn write_buf(&mut self, buf: Bytes) -> impl Future<Output = io::Result<()>> + Send;
 
     /// Attempts to flush the output stream.
     ///
     /// See also: [`AsyncWriteExt::flush`].
-    async fn flush(&mut self) -> io::Result<()>;
+    fn flush(&mut self) -> impl Future<Output = io::Result<()>> + Send;
 }
 
 impl<T> WriteStream for T
 where
-    T: AsyncWrite + Unpin,
+    T: AsyncWrite + Unpin + Send,
 {
     async fn write_buf(&mut self, mut buf: Bytes) -> io::Result<()> {
         AsyncWriteExt::write_buf(self, &mut buf).await.map(|_| ())
@@ -39,11 +39,11 @@ where
 /// The destination can be simply converted into a [`AsyncWrite`],
 /// but some destinations can choose to implement [`Destination::try_into_streams`],
 /// to support concurrent partial downloads.
-pub trait Destination: Sized {
+pub trait Destination: Sized + Send {
     /// Type returned from [`Destination::try_into_streams`].
     type Streams: MultiStreamDestination;
     /// Type returned from [`Destination::into_write`].
-    type Write: AsyncWrite;
+    type Write: AsyncWrite + Send;
 
     /// Attempts to convert this `Destination` into a destination which
     /// supports parallelized downloads through the [`MultiStreamDestination`] interface.
@@ -57,13 +57,13 @@ pub trait Destination: Sized {
 }
 
 /// A destination which supports multiple concurrent streams writing to it.
-pub trait MultiStreamDestination {
+pub trait MultiStreamDestination: Send {
     /// Type returned from [`MultiStreamDestination::stream`].
     type Stream<'a>: WriteStream
     where
         Self: 'a;
     /// Type returned from [`MultiStreamDestination::into_write`].
-    type Write: AsyncWrite;
+    type Write: AsyncWrite + Send;
 
     /// Configures the amount of bytes that will be written total.
     ///
@@ -72,7 +72,7 @@ pub trait MultiStreamDestination {
     ///
     /// The specified `size` is the size of the fully downloaded file.
     /// Some underlying storages first need to resize to support concurrent writes.
-    async fn set_size(&mut self, size: u64) -> io::Result<()>;
+    fn set_size(&mut self, size: u64) -> impl Future<Output = io::Result<()>> + Send;
 
     /// Creates a new stream starting at `offset`.
     ///
@@ -225,7 +225,7 @@ pub struct AsyncWriteDestination<T>(pub T);
 
 impl<T> Destination for AsyncWriteDestination<T>
 where
-    T: AsyncWrite,
+    T: AsyncWrite + Send,
 {
     type Streams = Infallible;
     type Write = T;

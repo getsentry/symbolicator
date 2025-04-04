@@ -6,14 +6,13 @@
 use std::collections::VecDeque;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
 use bytes::Bytes;
 use destiniation::{MultiStreamDestination, WriteStream};
-use futures::prelude::*;
+use futures::{future::Either, prelude::*};
 use reqwest::StatusCode;
 
 use stream::FuturesUnordered;
@@ -542,25 +541,56 @@ async fn download_reqwest(
     timeouts: &DownloadTimeouts,
     destination: impl Destination,
 ) -> CacheContents {
-    todo!()
+    let (client, request) = builder.build_split();
+    let request = request?;
+
+    // A non-get request or a request with a body is not supported for partial downloads.
+    let destination = if request.method() == reqwest::Method::GET && request.body().is_none() {
+        match destination.try_into_streams() {
+            Ok(streams) => {
+                return do_download_reqwest_range(source_name, client, request, timeouts, streams)
+                    .send()
+                    .await
+            }
+            Err(destination) => destination,
+        }
+    } else {
+        destination
+    };
+
+    let destination = std::pin::pin!(destination.into_write());
+    do_download_reqwest(
+        source_name,
+        client,
+        request,
+        timeouts,
+        destination,
+    )
+    .send().await
 }
 
-async fn download_reqwest_range(
+pub trait SendFuture: core::future::Future {
+    fn send(self) -> impl core::future::Future<Output = Self::Output> + Send
+    where
+        Self: Sized + Send,
+    {
+        self
+    }
+}
+
+impl<T: core::future::Future> SendFuture for T {}
+
+async fn do_download_reqwest_range(
     source_name: &str,
-    builder: reqwest::RequestBuilder,
+    client: reqwest::Client,
+    mut request: reqwest::Request,
     timeouts: &DownloadTimeouts,
     mut destination: impl MultiStreamDestination,
 ) -> CacheContents {
-    // Probe if the request can be cloned, if it can't
-    // TODO: probe for no body?
-    let lol = builder.try_clone().unwrap();
+    let original = request.try_clone().unwrap(); // TODO
 
-    let builder = partial::request(builder);
+    partial::initial_request(&mut request);
 
-    // TODO: code duplication
-    let (client, request) = builder.build_split();
-    let request = request?;
-    let source = request.url().to_string();
     let request = client.execute(request);
     let request = tokio::time::timeout(timeouts.head, request);
     let response = request
@@ -583,21 +613,29 @@ async fn download_reqwest_range(
         Some(Ok(range)) => {
             destination.set_size(range.total_size).await?;
 
-            let mut futures = FuturesUnordered::<Pin<Box<dyn Future<Output = _>>>>::new();
+            let mut futures = FuturesUnordered::new();
 
-            futures.push(Box::pin(download_stream(
+            let head = download_stream(
                 source_name,
                 response.bytes_stream().map_err(CacheError::from),
                 destination.stream(0, range.end - range.start),
-            )));
+            )
+            .send();
+            futures.push(Either::Left(head));
 
             for range in partial::split(range.end, range.total_size) {
-                futures.push(Box::pin(do_download_reqwest(
+                let mut request = original.try_clone().unwrap(); // TODO
+                range.apply_to(&mut request);
+
+                let partial = do_download_reqwest(
                     source_name,
-                    lol.try_clone().unwrap(),
+                    client.clone(),
+                    request,
                     timeouts,
                     destination.stream(range.start, range.size()),
-                )));
+                )
+                .send();
+                futures.push(Either::Right(partial));
             }
 
             while let Some(_) = futures.try_next().await? {}
@@ -610,12 +648,11 @@ async fn download_reqwest_range(
 
 async fn do_download_reqwest(
     source_name: &str,
-    builder: reqwest::RequestBuilder,
+    client: reqwest::Client,
+    request: reqwest::Request,
     timeouts: &DownloadTimeouts,
     destination: impl WriteStream,
 ) -> CacheContents {
-    let (client, request) = builder.build_split();
-    let request = request?;
     let source = request.url().to_string();
     let request = client.execute(request);
 
