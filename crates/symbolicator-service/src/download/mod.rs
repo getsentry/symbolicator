@@ -10,10 +10,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
-use futures::prelude::*;
+use bytes::Bytes;
+use destiniation::{MultiStreamDestination, WriteStream};
+use futures::{future::Either, prelude::*};
 use reqwest::StatusCode;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use stream::FuturesUnordered;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
@@ -23,22 +25,25 @@ use symbolicator_sources::{
 };
 
 use crate::caching::{CacheContents, CacheError};
-use crate::config::Config;
+use crate::config::{CacheConfig, Config};
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 
 mod compression;
+mod destiniation;
 mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
+mod partial;
 mod s3;
 pub mod sentry;
 
-pub use compression::tempfile_in_parent;
-pub use fetch_file::fetch_file;
+pub use self::compression::tempfile_in_parent;
+pub use self::destiniation::Destination;
+pub use self::fetch_file::fetch_file;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -507,20 +512,18 @@ where
 /// This is common functionality used by many downloaders.
 async fn download_stream(
     source_name: &str,
-    stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    mut destination: impl AsyncWrite,
+    stream: impl Stream<Item = Result<Bytes, CacheError>>,
+    mut destination: impl destiniation::WriteStream,
 ) -> CacheContents {
     futures::pin_mut!(stream);
-    let mut destination = std::pin::pin!(destination);
 
     let mut throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
     let result: CacheContents = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            let chunk = chunk.as_ref();
             throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            destination.write_all(chunk).await?;
+            destination.write_buf(chunk).await?;
         }
         Ok(())
     }
@@ -536,10 +539,124 @@ async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: impl AsyncWrite,
+    destination: impl Destination,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
+
+    // A non-get request or a request with a body is not supported for partial downloads.
+    let destination = if request.method() == reqwest::Method::GET && request.body().is_none() {
+        match destination.try_into_streams() {
+            Ok(streams) => {
+                return do_download_reqwest_range(source_name, client, request, timeouts, streams)
+                    .send()
+                    .await
+            }
+            Err(destination) => destination,
+        }
+    } else {
+        destination
+    };
+
+    let destination = std::pin::pin!(destination.into_write());
+    do_download_reqwest(source_name, client, request, timeouts, destination)
+        .send()
+        .await
+}
+
+pub trait SendFuture: core::future::Future {
+    fn send(self) -> impl core::future::Future<Output = Self::Output> + Send
+    where
+        Self: Sized + Send,
+    {
+        self
+    }
+}
+
+impl<T: core::future::Future> SendFuture for T {}
+
+async fn do_download_reqwest_range(
+    source_name: &str,
+    client: reqwest::Client,
+    mut request: reqwest::Request,
+    timeouts: &DownloadTimeouts,
+    mut destination: impl MultiStreamDestination,
+) -> CacheContents {
+    let original = request.try_clone().unwrap(); // TODO
+
+    partial::initial_request(&mut request);
+
+    let request = client.execute(request);
+    let request = tokio::time::timeout(timeouts.head, request);
+    let response = request
+        .await
+        .map_err(|_| CacheError::Timeout(timeouts.head))??;
+
+    // Server supports range requests and just sent us the first batch.
+    match partial::BytesContentRange::from_response(&response) {
+        // Server does not know about ranges and returns us the full contents
+        None if response.status().is_success() => {
+            // TODO timeouts and metrics
+            let destination = std::pin::pin!(destination.into_write());
+            download_stream(
+                source_name,
+                response.bytes_stream().map_err(CacheError::from),
+                destination,
+            )
+            .await
+        }
+        Some(Ok(range)) => {
+            destination.set_size(range.total_size).await?;
+
+            let mut futures = FuturesUnordered::new();
+
+            let head = download_stream(
+                source_name,
+                response.bytes_stream().map_err(CacheError::from),
+                destination.stream(0, range.end - range.start + 1),
+            )
+            .send();
+            futures.push(Either::Left(head));
+
+            for range in partial::split(range) {
+                let mut request = original.try_clone().unwrap(); // TODO
+                range.apply_to(&mut request);
+
+                let partial = do_download_reqwest(
+                    source_name,
+                    client.clone(),
+                    request,
+                    timeouts,
+                    destination.stream(range.start, range.size()),
+                )
+                .send();
+                futures.push(Either::Right(partial));
+            }
+
+            while let Some(_) = futures.try_next().await? {}
+
+            drop(futures);
+
+            let mut destination = std::pin::pin!(destination.into_write());
+            destination.flush().await?;
+
+            Ok(())
+        }
+        // Range error or request error
+        // TODO:
+        // - Retry when 416 or range error
+        // - Otherwise: -> Error
+        Some(Err(_)) | None => todo!(),
+    }
+}
+
+async fn do_download_reqwest(
+    source_name: &str,
+    client: reqwest::Client,
+    request: reqwest::Request,
+    timeouts: &DownloadTimeouts,
+    destination: impl WriteStream,
+) -> CacheContents {
     let source = request.url().to_string();
     let request = client.execute(request);
 
@@ -550,6 +667,9 @@ async fn download_reqwest(
     let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
 
     let status = response.status();
+
+    // TODO try_into_streams outside, before messing with the request
+
     if status.is_success() {
         tracing::trace!("Success hitting `{}`", source);
 
@@ -557,7 +677,7 @@ async fn download_reqwest(
             .headers()
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|hv| hv.to_str().ok())
-            .and_then(|s| s.parse::<i64>().ok());
+            .and_then(|s| s.parse::<u64>().ok());
 
         let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
         let stream = response.bytes_stream().map_err(CacheError::from);
@@ -719,7 +839,7 @@ where
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: u64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }

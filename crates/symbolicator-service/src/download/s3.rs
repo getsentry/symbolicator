@@ -13,12 +13,11 @@ use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
 use futures::TryStreamExt as _;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
-use tokio::io::AsyncWrite;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
 
-use super::content_length_timeout;
+use super::{content_length_timeout, Destination};
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
@@ -101,7 +100,7 @@ impl S3Downloader {
         &self,
         source_name: &str,
         file_source: &S3RemoteFile,
-        destination: impl AsyncWrite,
+        destination: impl Destination,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = file_source.bucket();
@@ -184,11 +183,14 @@ impl S3Downloader {
 
         let timeout = response
             .content_length
+            .and_then(|cl| u64::try_from(cl).ok())
             .map(|cl| content_length_timeout(cl, self.timeouts.streaming));
 
         let mut body = std::pin::pin!(response.body);
         let stream = futures::stream::poll_fn(move |cx| body.as_mut().poll_next(cx))
             .map_err(|err| CacheError::download_error(&err));
+
+        let destination = std::pin::pin!(destination.into_write());
         let future = super::download_stream(source_name, stream, destination);
 
         match timeout {
