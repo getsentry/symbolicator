@@ -267,10 +267,10 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
 
 /// Creates collection of all the DIF object candidates used in the metadata lookups.
 ///
-/// If there were any sources which did not return any [`DownloadService::list_files`]
+/// If there were any sources which did not return any [`download::list_files`]
 /// results they will get a [`ObjectDownloadInfo::NotFound`] entry with a location of `*`.
 /// In practice this will only affect the `sentry` source for now as all other sources
-/// always return [`DownloadService::list_files`] results.
+/// always return [`download::list_files`] results.
 fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObjectCandidates {
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();

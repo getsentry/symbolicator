@@ -32,7 +32,7 @@ impl SourceIndex {
 /// of the most current text file.
 ///
 /// Lines in the upload text files look like this:
-/// ```
+/// ```text
 /// "difx64.dll\4549B50183000","D:\DllServers\temp\prod-rs5-pv-2018-09-06-1006323\difx64.dll"
 /// ```
 /// The part before the comma contains the debug or code file name
@@ -49,10 +49,10 @@ impl SymstoreIndex {
     /// Parses a line in a Symstore upload text file.
     ///
     /// A line of the form
-    /// ```
+    /// ```text
     /// "<name>\<ID>","<other data>"
     /// is transformed into
-    /// ```
+    /// ```text
     /// <name>/<ID>/<name>
     /// ```
     /// which corresponds to the path format for Symstore sources.
