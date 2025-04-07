@@ -7,6 +7,9 @@
 - Validate stack scanned candidate frames against available CFI unwind information. 
   This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
 - Logic for setting the in-app property on frames has been removed from JavaScript symbolication. ([#1656](https://github.com/getsentry/symbolicator/pull/1656))
+- Added support for indexes for symbol sources.
+  Symbol sources can now indicate that they provide an index for available files with the `has_index` flag.
+  For now, only the Symstore index format is supported, and it is only enabled for Symstore sources. ([#1663](https://github.com/getsentry/symbolicator/pull/1663))
 
 ### Dependencies
 
