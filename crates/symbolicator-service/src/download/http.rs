@@ -45,6 +45,7 @@ impl HttpDownloader {
             self.client.get(download_url)
         };
 
+        builder = builder.header(header::USER_AGENT, USER_AGENT);
         let headers = file_source
             .source
             .headers
@@ -55,7 +56,6 @@ impl HttpDownloader {
                 builder = builder.header(key, value.as_str());
             }
         }
-        builder = builder.header(header::USER_AGENT, USER_AGENT);
 
         super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
