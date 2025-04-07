@@ -77,8 +77,11 @@ impl SymstoreIndex {
         let mut out = Self::default();
         for line in reader.lines() {
             let line = line?;
-            if let Some(parsed) = Self::parse_line(&line) {
-                out.files.insert(parsed);
+            match Self::parse_line(&line) {
+                Some(parsed) => {
+                    out.files.insert(parsed);
+                }
+                None => tracing::error!(line, "Invalid line in Symstore index file"),
             }
         }
 

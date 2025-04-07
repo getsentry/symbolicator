@@ -4963,6 +4963,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "symbolic",
+ "tracing",
  "url",
 ]
 
