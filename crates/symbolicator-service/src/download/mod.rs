@@ -53,8 +53,7 @@ impl ConfigureScope for RemoteFile {
 }
 
 /// HTTP User-Agent string to use.
-//TODO: Temporarily changed to curl to test the Intel source.
-const USER_AGENT: &str = "curl/7.72.0";
+const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
 impl CacheError {
     fn download_error(mut error: &dyn Error) -> Self {
