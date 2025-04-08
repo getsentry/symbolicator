@@ -199,6 +199,8 @@ pub struct Caches {
     pub diagnostics: Cache,
     /// Proguard mapping files.
     pub proguard: Cache,
+    /// Source index files.
+    pub source_index: Cache,
 }
 
 impl Caches {
@@ -296,8 +298,15 @@ impl Caches {
                 CacheName::Proguard,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads,
+                max_lazy_redownloads.clone(),
                 default_cap,
+            )?,
+            source_index: Cache::from_config(
+                CacheName::SourceIndex,
+                config,
+                config.caches.index.into(),
+                max_lazy_redownloads,
+                in_memory.source_index_capacity,
             )?,
         })
     }

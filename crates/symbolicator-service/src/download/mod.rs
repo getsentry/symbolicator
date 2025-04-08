@@ -24,6 +24,7 @@ use symbolicator_sources::{
 
 use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
+use crate::types::Scope;
 use crate::utils::futures::{m, measure, CancelOnDrop};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
@@ -34,11 +35,13 @@ mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
+mod index;
 mod s3;
 pub mod sentry;
 
 pub use compression::tempfile_in_parent;
 pub use fetch_file::fetch_file;
+pub use index::SourceIndexService;
 
 impl ConfigureScope for RemoteFile {
     fn to_scope(&self, scope: &mut ::sentry::Scope) {
@@ -248,6 +251,7 @@ impl DownloadService {
             crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, true);
 
         let in_memory = &config.caches.in_memory;
+
         Arc::new(Self {
             runtime: runtime.clone(),
             timeouts,
@@ -397,84 +401,90 @@ impl DownloadService {
         result
     }
 
-    /// Returns all objects matching the [`ObjectId`] at the source.
-    ///
-    /// Some sources, namely all the symbol servers, simply return the locations at which a
-    /// download attempt should be made without any guarantee the object is actually there.
-    ///
-    /// If the source needs to be contacted to get matching objects this may fail and
-    /// returns a [`CacheError`].
-    ///
-    /// Note that the `filetypes` argument is not more then a hint, not all source types
-    /// will respect this and they may return all DIFs matching the `object_id`.  After
-    /// downloading you may still need to filter the files.
-    pub async fn list_files(
-        &self,
-        sources: &[SourceConfig],
-        filetypes: &[FileType],
-        object_id: &ObjectId,
-    ) -> Vec<RemoteFile> {
-        let mut remote_files = vec![];
-
-        macro_rules! check_source {
-            ($source:ident => $file_ty:ty) => {{
-                let mut iter =
-                    SourceLocationIter::new(&$source.files, filetypes, object_id).peekable();
-                if iter.peek().is_none() {
-                    // TODO: create a special "no file on source" `RemoteFile`?
-                } else {
-                    remote_files
-                        .extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
-                }
-            }};
-        }
-
-        for source in sources {
-            match source {
-                SourceConfig::Sentry(cfg) => {
-                    let future = self.sentry.list_files(cfg.clone(), object_id, filetypes);
-
-                    match future.await {
-                        Ok(files) => remote_files.extend(files),
-                        Err(error) => {
-                            let error: &dyn std::error::Error = &error;
-                            tracing::error!(error, "Failed to fetch file list");
-                            // TODO: create a special "finding files failed" `RemoteFile`?
-                        }
-                    }
-                }
-                SourceConfig::Http(cfg) => {
-                    let mut iter =
-                        SourceLocationIter::new(&cfg.files, filetypes, object_id).peekable();
-                    if iter.peek().is_none() {
-                        // TODO: create a special "no file on source" `RemoteFile`?
-                    } else {
-                        remote_files.extend(iter.map(|loc| {
-                            let mut file = HttpRemoteFile::new(cfg.clone(), loc);
-
-                            // This is a special case for Portable PDB files that, when requested
-                            // from the NuGet symbol server need a special `SymbolChecksum` header.
-                            if let Some(checksum) = object_id.debug_checksum.as_ref() {
-                                file.headers
-                                    .insert("SymbolChecksum".into(), checksum.into());
-                            }
-
-                            file.into()
-                        }))
-                    }
-                }
-                SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile),
-                SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile),
-                SourceConfig::Filesystem(cfg) => check_source!(cfg => FilesystemRemoteFile),
-            }
-        }
-        remote_files
-    }
-
     /// Whether this download service is allowed to connect to reserved ip addresses.
     pub fn can_connect_to_reserved_ips(&self) -> bool {
         self.connect_to_reserved_ips
     }
+}
+
+/// Returns all objects matching the [`ObjectId`] at the source.
+///
+/// Some sources, namely all the symbol servers, simply return the locations at which a
+/// download attempt should be made without any guarantee the object is actually there.
+///
+/// If the source needs to be contacted to get matching objects this may fail and
+/// returns a [`CacheError`].
+///
+/// Note that the `filetypes` argument is not more then a hint, not all source types
+/// will respect this and they may return all DIFs matching the `object_id`.  After
+/// downloading you may still need to filter the files.
+pub async fn list_files(
+    downloader: &DownloadService,
+    source_index_svc: &SourceIndexService,
+    sources: &[SourceConfig],
+    filetypes: &[FileType],
+    object_id: &ObjectId,
+) -> Vec<RemoteFile> {
+    let mut remote_files = vec![];
+
+    macro_rules! check_source {
+        ($source:ident => $file_ty:ty, $index:expr) => {{
+            let mut iter =
+                SourceLocationIter::new(&$source.files, filetypes, $index, object_id).peekable();
+            if iter.peek().is_none() {
+                // TODO: create a special "no file on source" `RemoteFile`?
+            } else {
+                remote_files.extend(iter.map(|loc| <$file_ty>::new($source.clone(), loc).into()))
+            }
+        }};
+    }
+
+    for source in sources {
+        let index = source_index_svc.fetch_index(Scope::Global, source).await;
+        match source {
+            SourceConfig::Sentry(cfg) => {
+                let future = downloader
+                    .sentry
+                    .list_files(cfg.clone(), object_id, filetypes);
+
+                match future.await {
+                    Ok(files) => remote_files.extend(files),
+                    Err(error) => {
+                        let error: &dyn std::error::Error = &error;
+                        tracing::error!(error, "Failed to fetch file list");
+                        // TODO: create a special "finding files failed" `RemoteFile`?
+                    }
+                }
+            }
+            SourceConfig::Http(cfg) => {
+                let mut iter =
+                    SourceLocationIter::new(&cfg.files, filetypes, index.as_ref(), object_id)
+                        .peekable();
+                if iter.peek().is_none() {
+                    // TODO: create a special "no file on source" `RemoteFile`?
+                } else {
+                    remote_files.extend(iter.map(|loc| {
+                        let mut file = HttpRemoteFile::new(cfg.clone(), loc);
+
+                        // This is a special case for Portable PDB files that, when requested
+                        // from the NuGet symbol server need a special `SymbolChecksum` header.
+                        if let Some(checksum) = object_id.debug_checksum.as_ref() {
+                            file.headers
+                                .insert("SymbolChecksum".into(), checksum.into());
+                        }
+
+                        file.into()
+                    }))
+                }
+            }
+            SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile, index.as_ref()),
+            SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile, index.as_ref()),
+            SourceConfig::Filesystem(cfg) => {
+                check_source!(cfg => FilesystemRemoteFile, index.as_ref())
+            }
+        }
+    }
+    remote_files
 }
 
 /// Try to run a future up to 3 times with 20 millisecond delays on failure.
@@ -731,7 +741,10 @@ mod tests {
 
     use super::*;
 
-    use crate::test;
+    use crate::{
+        caching::{Caches, SharedCacheService},
+        test,
+    };
 
     #[tokio::test]
     async fn test_download() {
@@ -778,10 +791,19 @@ mod tests {
         };
 
         let config = Config::default();
+        let caches = Caches::from_config(&config).unwrap();
+        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
-        let file_list = svc
-            .list_files(&[source.clone()], FileType::all(), &objid)
-            .await;
+        let source_index_svc =
+            SourceIndexService::new(caches.source_index, shared_cache, Arc::clone(&svc));
+        let file_list = list_files(
+            &svc,
+            &source_index_svc,
+            &[source.clone()],
+            FileType::all(),
+            &objid,
+        )
+        .await;
 
         assert!(!file_list.is_empty());
         let item = &file_list[0];

@@ -7,7 +7,7 @@ use sentry::{Hub, SentryFutureExt};
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
 use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
-use crate::download::DownloadService;
+use crate::download::{self, DownloadService, SourceIndexService};
 use crate::types::Scope;
 
 mod candidates;
@@ -84,6 +84,7 @@ pub struct ObjectsActor {
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_svc: Arc<DownloadService>,
+    source_index_svc: Arc<SourceIndexService>,
 }
 
 impl ObjectsActor {
@@ -92,11 +93,13 @@ impl ObjectsActor {
         data_cache: Cache,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
+        source_index_svc: Arc<SourceIndexService>,
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
-            data_cache: Arc::new(Cacher::new(data_cache, shared_cache)),
+            data_cache: Arc::new(Cacher::new(data_cache, Arc::clone(&shared_cache))),
             download_svc,
+            source_index_svc,
         }
     }
 
@@ -141,10 +144,14 @@ impl ObjectsActor {
             sources,
             purpose,
         } = request;
-        let file_ids = self
-            .download_svc
-            .list_files(&sources, filetypes, &identifier)
-            .await;
+        let file_ids = download::list_files(
+            &self.download_svc,
+            &self.source_index_svc,
+            &sources,
+            filetypes,
+            &identifier,
+        )
+        .await;
 
         let file_metas = self.fetch_file_metas(file_ids, &identifier, scope).await;
 
@@ -260,10 +267,10 @@ fn object_has_features(meta_handle: &ObjectMetaHandle, purpose: ObjectPurpose) -
 
 /// Creates collection of all the DIF object candidates used in the metadata lookups.
 ///
-/// If there were any sources which did not return any [`DownloadService::list_files`]
+/// If there were any sources which did not return any [`download::list_files`]
 /// results they will get a [`ObjectDownloadInfo::NotFound`] entry with a location of `*`.
 /// In practice this will only affect the `sentry` source for now as all other sources
-/// always return [`DownloadService::list_files`] results.
+/// always return [`download::list_files`] results.
 fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObjectCandidates {
     let mut source_ids: BTreeSet<SourceId> =
         sources.iter().map(|source| source.id()).cloned().collect();

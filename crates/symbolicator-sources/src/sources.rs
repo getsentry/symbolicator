@@ -103,6 +103,12 @@ pub struct CommonSourceConfig {
 
     /// Whether debug files are shared across scopes.
     pub is_public: bool,
+
+    /// Whether this source provides an index of available files.
+    ///
+    /// Currently this is only used for sources with the [`Symstore`](DirectoryLayoutType::Symstore)
+    /// layout.
+    pub has_index: bool,
 }
 
 impl CommonSourceConfig {
