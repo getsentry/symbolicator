@@ -1,6 +1,6 @@
 use std::fmt::Write;
 use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::BufReader;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -140,7 +140,7 @@ async fn download_index_segment(
     let remote_file = source.remote_file(loc);
     let temp_file = NamedTempFile::new()?;
 
-    tracing::debug!("Downloading index segment");
+    tracing::debug!(segment, "Downloading index segment");
 
     downloader
         .download(remote_file, temp_file.path().to_path_buf())
@@ -332,15 +332,14 @@ impl SourceIndexService {
     ) -> CacheContents<u32> {
         self.symstore_last_id_cache
             .get_with((scope, source.id().clone()), async {
-                let mut temp_file = NamedTempFile::new()?;
+                let temp_file = NamedTempFile::new()?;
                 let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
                 self.downloader
                     .download(remote_file, temp_file.path().to_path_buf())
                     .await?;
 
-                let mut buf = Vec::new();
-                temp_file.read_to_end(&mut buf)?;
-                let last_id = std::str::from_utf8(&buf)
+                let bv = ByteView::map_file(temp_file.into_file())?;
+                let last_id = std::str::from_utf8(&bv)
                     .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
                     .trim()
                     .parse()
