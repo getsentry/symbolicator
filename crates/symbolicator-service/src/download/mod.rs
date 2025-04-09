@@ -23,6 +23,7 @@ pub use symbolicator_sources::{
 use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
+use tokio::io::AsyncWriteExt;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
@@ -286,7 +287,7 @@ impl DownloadService {
             // XXX: we have to create the file here, as doing so outside in `download`
             // would run into borrow checker problems due to the `&mut`.
             let mut destination = tokio::fs::File::create(destination).await?;
-            match source {
+            let result = match source {
                 RemoteFile::Sentry(source) => {
                     self.sentry
                         .download_source(source_name, source, &mut destination)
@@ -310,7 +311,9 @@ impl DownloadService {
                 RemoteFile::Filesystem(source) => {
                     self.fs.download_source(source, &mut destination).await
                 }
-            }
+            };
+            let _ = destination.flush().await;
+            result
         })
         .await;
 
@@ -688,6 +691,9 @@ async fn do_download_reqwest_range(
             request.measure.set_streams(futures.len());
 
             while futures.try_next().await?.is_some() {}
+            drop(futures);
+
+            let _ = destination.flush().await;
 
             Ok(())
         }
