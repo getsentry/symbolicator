@@ -72,6 +72,7 @@ pub fn tempdir() -> TempDir {
 /// # Panics
 ///
 /// Panics if the fixture path does not exist on the file system.
+#[track_caller]
 pub fn fixture(path: impl AsRef<Path>) -> PathBuf {
     let path = path.as_ref();
 

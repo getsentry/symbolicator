@@ -6,14 +6,16 @@
 use std::collections::VecDeque;
 use std::error::Error;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use ::sentry::SentryFutureExt;
-use futures::prelude::*;
+use bytes::Bytes;
+use futures::{future::Either, prelude::*};
 use reqwest::StatusCode;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
 
+use stream::FuturesUnordered;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
@@ -25,22 +27,25 @@ use symbolicator_sources::{
 use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
 use crate::types::Scope;
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{m, measure, CancelOnDrop, SendFuture as _};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 
 mod compression;
+mod destination;
 mod fetch_file;
 mod filesystem;
 mod gcs;
 mod http;
 mod index;
+mod partial;
 mod s3;
 pub mod sentry;
 
-pub use compression::tempfile_in_parent;
-pub use fetch_file::fetch_file;
+pub use self::compression::tempfile_in_parent;
+pub use self::destination::{Destination, MultiStreamDestination, WriteStream};
+pub use self::fetch_file::fetch_file;
 pub use index::SourceIndexService;
 
 impl ConfigureScope for RemoteFile {
@@ -517,69 +522,203 @@ where
 /// This is common functionality used by many downloaders.
 async fn download_stream(
     source_name: &str,
-    stream: impl Stream<Item = Result<impl AsRef<[u8]>, CacheError>>,
-    mut destination: impl AsyncWrite,
+    stream: impl Stream<Item = Result<Bytes, CacheError>>,
+    mut destination: impl WriteStream,
 ) -> CacheContents {
-    futures::pin_mut!(stream);
-    let mut destination = std::pin::pin!(destination);
+    let mut stream = std::pin::pin!(stream);
 
-    let mut throughput_recorder =
+    let throughput_recorder =
         MeasureSourceDownloadGuard::new("source.download.stream", source_name);
     let result: CacheContents = async {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk?;
-            let chunk = chunk.as_ref();
             throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            destination.write_all(chunk).await?;
+            destination.write_buf(chunk).await?;
         }
         Ok(())
     }
     .await;
     throughput_recorder.done(&result);
-    result?;
 
-    destination.flush().await?;
-    Ok(())
+    result
 }
 
+/// Download the source with a HTTP request.
+///
+/// This is common functionality used by many downloaders.
 async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
-    destination: impl AsyncWrite,
+    destination: impl Destination,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
-    let source = request.url().to_string();
-    let request = client.execute(request);
 
-    let timeout = timeouts.head;
-    let request = tokio::time::timeout(timeout, request);
-    let request = measure_download_time(source_name, request);
+    // A non-get request or a request with a body is not supported for partial downloads.
+    let destination = match request.method() == reqwest::Method::GET && request.body().is_none() {
+        true => destination.try_into_streams().await,
+        false => Err(destination),
+    };
 
-    let response = request.await.map_err(|_| CacheError::Timeout(timeout))??;
+    let measure = MeasureSourceDownloadGuard::new("source.download.body", source_name);
+    let request = SymRequest {
+        source_name,
+        request,
+        client,
+        timeouts,
+        measure: &measure,
+    };
+
+    let result = match destination {
+        Ok(destination) => do_download_reqwest_range(request, destination).send().await,
+        Err(destination) => {
+            let destination = std::pin::pin!(destination.into_write());
+            do_download_reqwest(request, destination).send().await
+        }
+    };
+
+    measure.done(&result);
+
+    result
+}
+
+/// Downloads a remote resource into `destination` using multiple concurrent range requests.
+///
+/// If the server does not support range requests, the function will fallback to a normal
+/// non-concurrent download of the resource.
+///
+/// Invariant: the passed `request` must be cloneable (contain no body).
+async fn do_download_reqwest_range(
+    request: SymRequest<'_>,
+    mut destination: impl MultiStreamDestination,
+) -> CacheContents {
+    let source = request.to_source();
+
+    let response = request
+        .try_clone()
+        // Cloning should never fail, it is an invariant of the function,
+        // which was validated before.
+        .ok_or(CacheError::InternalError)?
+        // Supply the initial range.
+        //
+        // If the server does not support range requests it will give us the full file contents.
+        .with_range(partial::initial_range())
+        .execute()
+        .await?;
+
+    // Server supports range requests and just sent us the first batch.
+    match response.content_range() {
+        // Server does not know about ranges and returns us the full contents.
+        None if response.status().is_success() => {
+            tracing::trace!(
+                "Success hitting `{source}`, but server does not support range requests"
+            );
+            let destination = std::pin::pin!(destination.into_write());
+            response.download(destination).await
+        }
+        None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
+            // This case should never happen, since our initial request is always a valid request,
+            // when this happens, just retry without a range header and log the error for investigation.
+            tracing::error!("initial partial request was rejected with 416, range not satisfiable");
+            drop(response);
+
+            let destination = std::pin::pin!(destination.into_write());
+            do_download_reqwest(request, destination).await
+        }
+        // Server returned some generic error, we need to bubble it up.
+        None => Err(status_to_error(&source, response.status())),
+        // Malformed range header.
+        Some(Err(err)) => {
+            // This case can happen if the server returns an invalid header or a header which does
+            // not specify the total length of the resource, in which case we cancel the original
+            // request and just retry without a range request.
+            //
+            // Either way, we do not expect this to happen.
+            tracing::error!(
+                error = &err as &dyn std::error::Error,
+                "server returned an invalid range"
+            );
+            drop(response);
+
+            let destination = std::pin::pin!(destination.into_write());
+            do_download_reqwest(request, destination).await
+        }
+        // Server indicates it supports ranges.
+        Some(Ok(content_range)) => {
+            tracing::trace!(
+                "Successfully requested an initial range {content_range} from `{source}`"
+            );
+
+            // This would technically not be necessary, the following code would handle this case
+            // correctly. Due to a bug, existing HTTP servers may return a `Content-Length` of `1`,
+            // even if the `Content-Range` indicates that there is no body.
+            //
+            // `Reqwest` will then attempt to validate the body against the specified
+            // `Content-Length` and return an error, because the body finished too early (no bytes).
+            //
+            // Exit early here if the total size of the file is `0`, we know there is not supposed
+            // to be any content, anyways.
+            //
+            // See also:
+            //  - https://github.com/seanmonstar/reqwest/issues/1559
+            //  - https://github.com/tower-rs/tower-http/pull/556
+            if content_range.total_size == 0 {
+                return Ok(());
+            }
+
+            destination.set_size(content_range.total_size).await?;
+
+            let mut futures = FuturesUnordered::new();
+
+            let head = response.download(destination.stream(0, content_range.range().size()));
+            futures.push(Either::Left(head.send()));
+
+            for range in partial::split(content_range) {
+                let request = request
+                    .try_clone()
+                    .ok_or(CacheError::InternalError)?
+                    .with_range(range);
+
+                let destination = destination.stream(range.start, range.size());
+                let partial = do_download_reqwest(request, destination).send();
+                futures.push(Either::Right(partial));
+            }
+
+            request.measure.set_streams(futures.len());
+
+            while futures.try_next().await?.is_some() {}
+
+            Ok(())
+        }
+    }
+}
+
+/// Downloads the requested resource with a single download request into the `destination`.
+async fn do_download_reqwest(
+    request: SymRequest<'_>,
+    destination: impl WriteStream,
+) -> CacheContents {
+    let source = request.to_source();
+    let response = request.execute().await?;
 
     let status = response.status();
     if status.is_success() {
-        tracing::trace!("Success hitting `{}`", source);
+        tracing::trace!("Success hitting `{source}`");
+        response.download(destination).await
+    } else {
+        Err(status_to_error(&source, status))
+    }
+}
 
-        let content_length = response
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|hv| hv.to_str().ok())
-            .and_then(|s| s.parse::<i64>().ok());
+/// Converts a status code to an error.
+///
+/// Any status code will be converted to an error, callers must ensure success cases
+/// are handled before turning the status code into an error using this function.
+fn status_to_error(source: &str, status: StatusCode) -> CacheError {
+    debug_assert!(!status.is_success());
 
-        let timeout = content_length.map(|cl| content_length_timeout(cl, timeouts.streaming));
-        let stream = response.bytes_stream().map_err(CacheError::from);
-        let future = download_stream(source_name, stream, destination);
-
-        match timeout {
-            Some(timeout) => tokio::time::timeout(timeout, future)
-                .await
-                .map_err(|_| CacheError::Timeout(timeout))?,
-            None => future.await,
-        }
-    } else if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+    if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
         tracing::debug!(
             "Insufficient permissions to download `{}`: {}",
             source,
@@ -590,16 +729,16 @@ async fn download_reqwest(
         // let details = response.text().await?;
         let details = status.to_string();
 
-        Err(CacheError::PermissionDenied(details))
-        // If it's a client error, chances are it's a 404.
+        CacheError::PermissionDenied(details)
     } else if status.is_client_error() {
+        // If it's a client error, chances are it's a 404.
         tracing::debug!(
             "Unexpected client error status code from `{}`: {}",
             source,
             status
         );
 
-        Err(CacheError::NotFound)
+        CacheError::NotFound
     } else if status == StatusCode::FOUND {
         tracing::debug!(
             "Potential login page detected when downloading from `{}`: {}",
@@ -607,14 +746,118 @@ async fn download_reqwest(
             status
         );
 
-        Err(CacheError::PermissionDenied(
-            "Potential login page detected".to_string(),
-        ))
+        CacheError::PermissionDenied("Potential login page detected".to_string())
     } else {
         tracing::debug!("Unexpected status code from `{}`: {}", source, status);
 
         let details = status.to_string();
-        Err(CacheError::DownloadError(details))
+        CacheError::DownloadError(details)
+    }
+}
+
+/// A HTTP request Symbolicator wants to make.
+struct SymRequest<'a> {
+    source_name: &'a str,
+    request: reqwest::Request,
+    client: reqwest::Client,
+    timeouts: &'a DownloadTimeouts,
+    measure: &'a MeasureSourceDownloadGuard<'a>,
+}
+
+impl<'a> SymRequest<'a> {
+    /// Returns the source location for debugging purposes.
+    fn to_source(&self) -> String {
+        self.request.url().to_string()
+    }
+
+    /// Applies a [`partial::Range`] to the request.
+    fn with_range(mut self, range: partial::Range) -> Self {
+        let header = reqwest::header::HeaderValue::from_str(&range.to_string())
+            .expect("the range header to be a always valid");
+
+        self.request
+            .headers_mut()
+            .insert(reqwest::header::RANGE, header);
+
+        self
+    }
+
+    /// Attempts to clone the request.
+    ///
+    /// This will fail if the request contains a body which cannot be cloned.
+    /// See also: [`reqwest::Request::try_clone`].
+    fn try_clone(&self) -> Option<Self> {
+        Some(Self {
+            source_name: self.source_name,
+            request: self.request.try_clone()?,
+            client: self.client.clone(),
+            timeouts: self.timeouts,
+            measure: self.measure,
+        })
+    }
+
+    /// Executes the request and returns the corresponding [`SymResponse`].
+    async fn execute(self) -> CacheContents<SymResponse<'a>> {
+        let request = self.client.execute(self.request);
+        let request = tokio::time::timeout(self.timeouts.head, request);
+        // Use a separate measure for the head request.
+        //
+        // We're only interested in the total combined throughput of all concurrent requests.
+        // The head requests can still be tracked individually.
+        let request = measure_download_time(self.source_name, request);
+
+        let response = request
+            .await
+            .map_err(|_| CacheError::Timeout(self.timeouts.head))??;
+
+        Ok(SymResponse {
+            timeouts: self.timeouts,
+            measure: self.measure,
+            response,
+        })
+    }
+}
+
+/// A HTTP response Symbolicator received.
+struct SymResponse<'a> {
+    timeouts: &'a DownloadTimeouts,
+    measure: &'a MeasureSourceDownloadGuard<'a>,
+    response: reqwest::Response,
+}
+
+impl SymResponse<'_> {
+    /// Returns the [`StatusCode`] of the response.
+    fn status(&self) -> StatusCode {
+        self.response.status()
+    }
+
+    /// Returns the content range, the server replied with.
+    fn content_range(
+        &self,
+    ) -> Option<Result<partial::BytesContentRange, partial::InvalidBytesRange>> {
+        partial::BytesContentRange::from_response(&self.response)
+    }
+
+    /// Downloads the resource into `destination`, applying timeouts.
+    async fn download(self, mut destination: impl WriteStream) -> CacheContents {
+        let timeout = self
+            .response
+            .content_length()
+            .map(|cl| content_length_timeout(cl, self.timeouts.streaming))
+            .unwrap_or(self.timeouts.max_download);
+
+        let mut stream = self.response.bytes_stream().map_err(CacheError::from);
+        // Transfer the contents, into the destination and track progress.
+        tokio::time::timeout(timeout, async move {
+            while let Some(chunk) = stream.next().await.transpose()? {
+                self.measure.add_bytes_transferred(chunk.len() as u64);
+                destination.write_buf(chunk).await?;
+            }
+
+            Ok(())
+        })
+        .await
+        .map_err(|_| CacheError::Timeout(timeout))?
     }
 }
 
@@ -641,7 +884,8 @@ pub struct MeasureSourceDownloadGuard<'a> {
     task_name: &'a str,
     source_name: &'a str,
     creation_time: Instant,
-    bytes_transferred: Option<u64>,
+    bytes_transferred: AtomicU64,
+    streams: AtomicUsize,
 }
 
 impl<'a> MeasureSourceDownloadGuard<'a> {
@@ -651,17 +895,26 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
             state: MeasureState::Pending,
             task_name,
             source_name,
-            bytes_transferred: None,
+            bytes_transferred: AtomicU64::new(0),
             creation_time: Instant::now(),
+            streams: AtomicUsize::new(0),
         }
+    }
+
+    /// Sets the amount of concurrent streams used for the download.
+    ///
+    /// This value will be used as a tag for the emitted metrics.
+    pub fn set_streams(&self, num_streams: usize) {
+        self.streams
+            .store(num_streams, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// A checked add to the amount of bytes transferred during the download.
     ///
     /// This value will be emitted when the download's future is completed or cancelled.
-    pub fn add_bytes_transferred(&mut self, additional_bytes: u64) {
-        let bytes = self.bytes_transferred.get_or_insert(0);
-        *bytes = bytes.saturating_add(additional_bytes);
+    pub fn add_bytes_transferred(&self, additional_bytes: u64) {
+        self.bytes_transferred
+            .fetch_add(additional_bytes, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Marks the download as terminated.
@@ -677,15 +930,19 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
             MeasureState::Done(status) => status,
         };
 
+        let streams = (*self.streams.get_mut()).to_string();
+
         let duration = self.creation_time.elapsed();
         metric!(
             timer("download_duration") = duration,
             "task_name" => self.task_name,
             "status" => status,
             "source" => self.source_name,
+            "streams" => &streams,
         );
 
-        if let Some(bytes_transferred) = self.bytes_transferred {
+        let bytes_transferred = *self.bytes_transferred.get_mut();
+        if bytes_transferred > 0 {
             // Times are recorded in milliseconds, so match that unit when calculating throughput,
             // recording a byte / ms value.
             // This falls back to the throughput being equivalent to the amount of bytes transferred
@@ -694,11 +951,21 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 .checked_div(duration.as_millis())
                 .and_then(|t| t.try_into().ok())
                 .unwrap_or(bytes_transferred);
+
             metric!(
                 histogram("download_throughput") = throughput,
                 "task_name" => self.task_name,
                 "status" => status,
                 "source" => self.source_name,
+                "streams" => &streams,
+            );
+
+            metric!(
+                histogram("download_size") = bytes_transferred,
+                "task_name" => self.task_name,
+                "status" => status,
+                "source" => self.source_name,
+                "streams" => &streams,
             );
         }
     }
@@ -729,7 +996,7 @@ where
 /// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
 ///
 /// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: i64, timeout_per_gb: Duration) -> Duration {
+fn content_length_timeout(content_length: u64, timeout_per_gb: Duration) -> Duration {
     let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
     timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
 }
@@ -739,6 +1006,9 @@ mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
 
+    use symbolicator_sources::{HttpSourceConfig, SourceId};
+    use symbolicator_test::fixture;
+
     use super::*;
 
     use crate::{
@@ -746,34 +1016,87 @@ mod tests {
         test,
     };
 
-    #[tokio::test]
-    async fn test_download() {
-        test::setup();
+    fn config() -> Config {
+        Config {
+            connect_to_reserved_ips: true,
+            ..Config::default()
+        }
+    }
 
+    async fn download(location: &'static str) -> tempfile::NamedTempFile {
         let (_srv, source) = test::symbol_server();
         let file_source = match source {
             SourceConfig::Http(source) => {
-                HttpRemoteFile::new(source, SourceLocation::new("hello.txt")).into()
+                HttpRemoteFile::new(source, SourceLocation::new(location)).into()
             }
             _ => panic!("unexpected source"),
         };
 
-        let config = Config {
-            connect_to_reserved_ips: true,
-            ..Config::default()
-        };
+        let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
 
-        let service = DownloadService::new(&config, tokio::runtime::Handle::current());
-
-        // Jump through some hoops here, to prove that we can .await the service.
         let temp_file = tempfile::NamedTempFile::new().unwrap();
         service
             .download(file_source, temp_file.path().to_owned())
             .await
             .unwrap();
 
-        let content = std::fs::read_to_string(temp_file.path()).unwrap();
+        temp_file
+    }
+
+    #[tokio::test]
+    async fn test_download_small() {
+        test::setup();
+
+        let file = download("hello.txt").await;
+        let content = std::fs::read_to_string(file.path()).unwrap();
         assert_eq!(content, "hello world\n")
+    }
+
+    /// This test requests a much larger file than [`test_download`], which will initiate a
+    /// concurrent download on platforms which support it.
+    #[tokio::test]
+    async fn test_download_large() {
+        test::setup();
+
+        let file = download("7f/883fcdc55336d0a809b0150f09500b.debug").await;
+        let content = std::fs::read(file.path()).unwrap();
+
+        let expected =
+            std::fs::read(fixture("symbols/7f/883fcdc55336d0a809b0150f09500b.debug")).unwrap();
+
+        assert_eq!(content, expected);
+    }
+
+    /// Another download, but this time the server does not respond with a `Content-Range` header.
+    ///
+    /// This test is using the `garbage_data/` endpoint provided by the test framework,
+    /// which is just a simple axum handler, which does not implement `Range` requests,
+    /// unlike the `symbols/` endpoint.
+    #[tokio::test]
+    async fn test_download_missing_content_range() {
+        test::setup();
+
+        let server = test::Server::new();
+
+        let source = Arc::new(HttpSourceConfig {
+            id: SourceId::new("local"),
+            url: server.url("/garbage_data/"),
+            headers: Default::default(),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        });
+        let file_source = HttpRemoteFile::new(source, SourceLocation::new("hello_world")).into();
+
+        let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
+        let file = tempfile::NamedTempFile::new().unwrap();
+        service
+            .download(file_source, file.path().to_owned())
+            .await
+            .unwrap();
+
+        let content = std::fs::read_to_string(file.path()).unwrap();
+
+        assert_eq!(content, "hello_world");
     }
 
     #[tokio::test]

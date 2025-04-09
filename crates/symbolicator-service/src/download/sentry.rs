@@ -9,14 +9,13 @@ use std::time::Duration;
 use sentry::SentryFutureExt;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use tokio::io::AsyncWrite;
 use url::Url;
 
 use symbolicator_sources::{
     ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
 };
 
-use super::{FileType, USER_AGENT};
+use super::{Destination, FileType, USER_AGENT};
 use crate::caching::{CacheContents, CacheError};
 use crate::config::InMemoryCacheConfig;
 use crate::utils::futures::{m, measure, CancelOnDrop};
@@ -256,7 +255,7 @@ impl SentryDownloader {
         &self,
         source_name: &str,
         file_source: &SentryRemoteFile,
-        destination: impl AsyncWrite,
+        destination: impl Destination,
     ) -> CacheContents {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);

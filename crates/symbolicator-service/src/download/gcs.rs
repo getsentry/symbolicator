@@ -3,11 +3,12 @@
 use std::sync::Arc;
 
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
-use tokio::io::AsyncWrite;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::gcs::{self, GcsToken};
 use crate::utils::http::DownloadTimeouts;
+
+use super::Destination;
 
 /// An LRU cache for GCS OAuth tokens.
 type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheContents<GcsToken>>;
@@ -58,7 +59,7 @@ impl GcsDownloader {
         &self,
         source_name: &str,
         file_source: &GcsRemoteFile,
-        destination: impl AsyncWrite,
+        destination: impl Destination,
     ) -> CacheContents {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
