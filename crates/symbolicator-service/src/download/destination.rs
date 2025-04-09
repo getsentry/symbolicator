@@ -121,7 +121,7 @@ impl<'a> Destination for &'a mut tokio::fs::File {
 
         Ok(FileMultiStreamDestination {
             original: self,
-            std: Arc::new(dup),
+            file: Arc::new(dup),
         })
     }
 
@@ -138,7 +138,7 @@ impl<'a> Destination for &'a mut tokio::fs::File {
 /// File based multi stream destination.
 pub struct FileMultiStreamDestination<'a> {
     original: &'a mut tokio::fs::File,
-    std: Arc<std::fs::File>,
+    file: Arc<std::fs::File>,
 }
 
 #[cfg(unix)]
@@ -152,12 +152,13 @@ impl<'file> MultiStreamDestination for FileMultiStreamDestination<'file> {
     async fn set_size(&mut self, size: u64) -> io::Result<()> {
         // While not strictly necessary for the implementation using `pwrite`,
         // we can already resize the file to prevent sparse files.
-        self.original.set_len(size).await
+        let file = Arc::clone(&self.file);
+        tokio::task::spawn_blocking(move || file.set_len(size)).await?
     }
 
     fn stream(&self, offset: u64, size: u64) -> Self::Stream<'_> {
         OffsetFileWriteStream {
-            file: Arc::clone(&self.std),
+            file: Arc::clone(&self.file),
             offset,
             end: offset + size + 1,
         }
