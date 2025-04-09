@@ -140,11 +140,19 @@ async fn download_index_segment(
     let remote_file = source.remote_file(loc);
     let temp_file = NamedTempFile::new()?;
 
-    tracing::debug!(segment, "Downloading index segment");
+    tracing::debug!(segment, "Downloading Symstore index segment");
 
-    downloader
+    if let Err(e) = downloader
         .download(remote_file, temp_file.path().to_path_buf())
-        .await?;
+        .await
+    {
+        tracing::error!(
+            error = &e as &dyn std::error::Error,
+            source_id = %source.id(),
+            segment,
+            "Failed to download Symstore index segment",
+        )
+    }
 
     let buf = BufReader::new(temp_file);
     let index = SymstoreIndex::parse_from_reader(buf)?;
@@ -191,13 +199,7 @@ async fn download_full_index(
 
         match result.into_contents() {
             Ok(segment) => index.append(segment),
-            Err(e) => {
-                tracing::error!(
-                    error = &e as &dyn std::error::Error,
-                    segment = i,
-                    "Failed to download symstore index segment",
-                );
-
+            Err(_) => {
                 return Err(CacheError::DownloadError(format!(
                     "Failed to download symstore index segment {i}"
                 )));
@@ -325,28 +327,46 @@ impl SourceIndexService {
     ///
     /// The last ID is locally cached for an hour, so if a new
     /// file is uploaded, we will see it at most an hour later.
-    async fn fetch_symstore_last_id(
+    async fn fetch_symstore_last_id_memoized(
         &self,
         scope: Scope,
         source: &IndexSourceConfig,
     ) -> CacheContents<u32> {
         self.symstore_last_id_cache
             .get_with((scope, source.id().clone()), async {
-                let temp_file = NamedTempFile::new()?;
-                let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
-                self.downloader
-                    .download(remote_file, temp_file.path().to_path_buf())
-                    .await?;
+                let res = self.fetch_symstore_last_id(source).await;
 
-                let bv = ByteView::map_file(temp_file.into_file())?;
-                let last_id = std::str::from_utf8(&bv)
-                    .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
-                    .trim()
-                    .parse()
-                    .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
-                Ok(last_id)
+                if let Err(ref e) = res {
+                    tracing::error!(
+                        error = e as &dyn std::error::Error,
+                        source_id = %source.id(),
+                        "Failed to fetch Symstore index last ID",
+                    );
+                }
+
+                res
             })
             .await
+    }
+
+    /// Fetches the ID of the most recently uploaded Symstore index
+    /// segment.
+    ///
+    /// This ID is stored in a file called `lastid.txt` in the
+    /// `000Admin` directory.
+    async fn fetch_symstore_last_id(&self, source: &IndexSourceConfig) -> Result<u32, CacheError> {
+        let temp_file = NamedTempFile::new()?;
+        let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
+        self.downloader
+            .download(remote_file, temp_file.path().to_path_buf())
+            .await?;
+        let bv = ByteView::map_file(temp_file.into_file())?;
+        let last_id = std::str::from_utf8(&bv)
+            .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
+            .trim()
+            .parse()
+            .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
+        Ok(last_id)
     }
 
     /// Fetches a Symstore index for the given source.
@@ -355,7 +375,9 @@ impl SourceIndexService {
         scope: Scope,
         source: IndexSourceConfig,
     ) -> CacheContents<SymstoreIndex> {
-        let last_id = self.fetch_symstore_last_id(scope.clone(), &source).await?;
+        let last_id = self
+            .fetch_symstore_last_id_memoized(scope.clone(), &source)
+            .await?;
 
         let request = FetchSymstoreIndex {
             scope: scope.clone(),
@@ -396,20 +418,10 @@ impl SourceIndexService {
 
         match source.layout_ty() {
             symbolicator_sources::DirectoryLayoutType::Symstore => {
-                let source_id = source.id().clone();
-
-                let symstore_index = match self.fetch_symstore_index(scope.clone(), source).await {
-                    Ok(index) => index,
-                    Err(e) => {
-                        tracing::error!(
-                            scope = %scope,
-                            %source_id,
-                            error = &e as &dyn std::error::Error,
-                            "Failed to fetch Symstore index",
-                        );
-                        Default::default()
-                    }
-                };
+                let symstore_index = self
+                    .fetch_symstore_index(scope.clone(), source)
+                    .await
+                    .unwrap_or_default();
                 Some(symstore_index.into())
             }
             _ => None,
