@@ -94,7 +94,7 @@ mod tests {
     fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
         Arc::new(GcsSourceConfig {
             id: SourceId::new("gcs-test"),
-            bucket: "sentryio-system-symbols-0".to_owned(),
+            bucket: "sentryio-system-symbols-0-test".to_owned(),
             prefix: "/ios".to_owned(),
             source_key: Arc::new(source_key),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
