@@ -4,6 +4,7 @@
 
 ### Various fixes & improvements
 
+- Speed up large file downloads, by using multiple concurrent http range requests. ([#1670](https://github.com/getsentry/symbolicator/pull/1670))
 - Validate stack scanned candidate frames against available CFI unwind information. 
   This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
 - Logic for setting the in-app property on frames has been removed from JavaScript symbolication. ([#1656](https://github.com/getsentry/symbolicator/pull/1656))
