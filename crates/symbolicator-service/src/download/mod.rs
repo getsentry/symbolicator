@@ -13,6 +13,7 @@ use std::time::{Duration, Instant, SystemTime};
 use ::sentry::SentryFutureExt;
 use bytes::Bytes;
 use futures::{future::Either, prelude::*};
+use partial::BytesContentRange;
 use reqwest::StatusCode;
 
 use stream::FuturesUnordered;
@@ -854,9 +855,12 @@ impl SymResponse<'_> {
 
     /// Downloads the resource into `destination`, applying timeouts.
     async fn download(self, mut destination: impl WriteStream) -> CacheContents {
-        let timeout = self
-            .response
-            .content_length()
+        // Use the content range, if available for a timeout, we're really just interested in
+        // limiting the total time, not the time of individual requests.
+        let timeout = BytesContentRange::from_response(&self.response)
+            .and_then(|r| r.ok())
+            .map(|r| r.total_size)
+            .or_else(|| self.response.content_length())
             .map(|cl| content_length_timeout(cl, self.timeouts.streaming))
             .unwrap_or(self.timeouts.max_download);
 
