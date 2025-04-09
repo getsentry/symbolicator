@@ -1,5 +1,10 @@
 use bytes::Bytes;
-use std::{convert::Infallible, future::Future, io, sync::Arc};
+use std::{
+    convert::Infallible,
+    future::Future,
+    io::{self, Write},
+    sync::Arc,
+};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 /// A simplified version of [`AsyncWrite`] which only supports
@@ -81,6 +86,9 @@ pub trait MultiStreamDestination: Send {
     /// returned stream may lead to data corruption.
     fn stream(&self, offset: u64, size: u64) -> Self::Stream<'_>;
 
+    /// Flushes this output stream, ensuring that all intermediately buffered contents reach their destination.
+    fn flush(&mut self) -> impl Future<Output = io::Result<()>> + Send;
+
     /// Converts the destination into a generic [`AsyncWrite`].
     fn into_write(self) -> Self::Write;
 }
@@ -97,6 +105,10 @@ impl MultiStreamDestination for Infallible {
     }
 
     fn stream(&self, _offset: u64, _len: u64) -> Self::Stream<'_> {
+        match *self {}
+    }
+
+    async fn flush(&mut self) -> io::Result<()> {
         match *self {}
     }
 
@@ -162,6 +174,10 @@ impl<'file> MultiStreamDestination for FileMultiStreamDestination<'file> {
             offset,
             end: offset + size + 1,
         }
+    }
+    async fn flush(&mut self) -> io::Result<()> {
+        let mut file = Arc::clone(&self.std);
+        tokio::task::spawn_blocking(move || file.flush()).await?
     }
 
     fn into_write(self) -> Self::Write {
@@ -269,7 +285,7 @@ mod tests {
         futures.push(dd.write_buf(Bytes::from("dd")));
         while futures.next().await.transpose().unwrap().is_some() {}
 
-        streams.into_write().flush().await.unwrap();
+        streams.flush().await.unwrap();
 
         // The original file handle is still usable and can read the written contents.
         let mut contents = String::new();
