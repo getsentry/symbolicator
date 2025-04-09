@@ -578,6 +578,14 @@ async fn download_reqwest(
         }
     };
 
+    if let Err(err) = &result {
+        tracing::debug!(
+            error = err as &dyn std::error::Error,
+            source_name = source_name,
+            "failed to download file"
+        );
+    }
+
     measure.done(&result);
 
     result
@@ -620,7 +628,11 @@ async fn do_download_reqwest_range(
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
             // This case should never happen, since our initial request is always a valid request,
             // when this happens, just retry without a range header and log the error for investigation.
-            tracing::error!("initial partial request was rejected with 416, range not satisfiable");
+            tracing::error!(
+                source_name = request.source_name,
+                source = source,
+                "initial partial request was rejected with 416, range not satisfiable"
+            );
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
@@ -637,6 +649,8 @@ async fn do_download_reqwest_range(
             // Either way, we do not expect this to happen.
             tracing::error!(
                 error = &err as &dyn std::error::Error,
+                source_name = request.source_name,
+                source = source,
                 "server returned an invalid range"
             );
             drop(response);
