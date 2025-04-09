@@ -647,8 +647,25 @@ async fn do_download_reqwest_range(
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
             tracing::trace!(
-                "Successfully requested an initial range {content_range:?} from `{source}`"
+                "Successfully requested an initial range {content_range} from `{source}`"
             );
+
+            // This would technically not be necessary, the following code would handle this case
+            // correctly. Due to a bug, existing HTTP servers may return a `Content-Length` of `1`,
+            // even if the `Content-Range` indicates that there is no body.
+            //
+            // `Reqwest` will then attempt to validate the body against the specified
+            // `Content-Length` and return an error, because the body finished too early (no bytes).
+            //
+            // Exit early here if the total size of the file is `0`, we know there is not supposed
+            // to be any content, anyways.
+            //
+            // See also:
+            //  - https://github.com/seanmonstar/reqwest/issues/1559
+            //  - https://github.com/tower-rs/tower-http/pull/556
+            if content_range.total_size == 0 {
+                return Ok(());
+            }
 
             destination.set_size(content_range.total_size).await?;
 

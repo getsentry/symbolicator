@@ -32,6 +32,10 @@ pub const fn initial_range() -> Range {
 
 /// Splits the remainder of the remote file into multiple smaller ranges.
 pub fn split(r: BytesContentRange) -> impl Iterator<Item = Range> {
+    if r.total_size == 0 {
+        return None.into_iter().flatten();
+    }
+
     // Ranges are inclusive. This range represents the correct
     // bounds of the remainder of the supplied content range.
     let remainder = Range {
@@ -146,6 +150,12 @@ impl BytesContentRange {
     }
 }
 
+impl fmt::Display for BytesContentRange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "bytes {}-{}/{}", self.start, self.end, self.total_size)
+    }
+}
+
 /// An error which can be returned when parsing a [`BytesContentRange`].
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum InvalidBytesRange {
@@ -229,6 +239,17 @@ mod tests {
             start: 0,
             end: 11,
             total_size: 12,
+        };
+
+        assert_split!(r, @"[]");
+    }
+
+    #[test]
+    fn test_split_empty() {
+        let r = BytesContentRange {
+            start: 0,
+            end: 0,
+            total_size: 0,
         };
 
         assert_split!(r, @"[]");
