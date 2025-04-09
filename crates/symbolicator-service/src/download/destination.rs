@@ -176,7 +176,7 @@ impl<'file> MultiStreamDestination for FileMultiStreamDestination<'file> {
         }
     }
     async fn flush(&mut self) -> io::Result<()> {
-        let mut file = Arc::clone(&self.std);
+        let mut file = Arc::clone(&self.file);
         tokio::task::spawn_blocking(move || file.flush()).await?
     }
 
