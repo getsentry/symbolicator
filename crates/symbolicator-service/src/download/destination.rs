@@ -230,3 +230,53 @@ impl<T> From<T> for AsyncWriteDestination<T> {
         Self(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use futures::{stream::FuturesUnordered, StreamExt as _};
+    use tokio::io::AsyncReadExt;
+
+    use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_partial_streams_unix() {
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut tokio_file = tokio::fs::File::options()
+            .write(true)
+            .read(true)
+            .open(temp_file.path())
+            .await
+            .unwrap();
+
+        let destination = &mut tokio_file;
+
+        let mut streams = destination.try_into_streams().await.unwrap();
+        streams.set_size(10).await.unwrap();
+
+        let mut aa = streams.stream(0, 2);
+        let mut bb = streams.stream(2, 4);
+        let mut cc = streams.stream(4, 6);
+        let mut dd = streams.stream(6, 8);
+        let mut ee = streams.stream(8, 10);
+
+        let mut futures = FuturesUnordered::new();
+        futures.push(aa.write_buf(Bytes::from("aa")));
+        futures.push(cc.write_buf(Bytes::from("cc")));
+        futures.push(bb.write_buf(Bytes::from("bb")));
+        futures.push(ee.write_buf(Bytes::from("ee")));
+        futures.push(dd.write_buf(Bytes::from("dd")));
+        while futures.next().await.transpose().unwrap().is_some() {}
+
+        streams.into_write().flush().await.unwrap();
+
+        // The original file handle is still usable and can read the written contents.
+        let mut contents = String::new();
+        tokio_file.read_to_string(&mut contents).await.unwrap();
+        assert_eq!(&contents, "aabbccddee");
+
+        // A new file can also read the contents.
+        let contents = std::fs::read_to_string(temp_file.path()).unwrap();
+        assert_eq!(&contents, "aabbccddee");
+    }
+}

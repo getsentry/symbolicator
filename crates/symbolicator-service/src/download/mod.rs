@@ -755,7 +755,13 @@ impl<'a> SymRequest<'a> {
 
     /// Applies a [`partial::Range`] to the request.
     fn with_range(mut self, range: partial::Range) -> Self {
-        range.apply_to(&mut self.request);
+        let header = reqwest::header::HeaderValue::from_str(&range.to_string())
+            .expect("the range header to be a always valid");
+
+        self.request
+            .headers_mut()
+            .insert(reqwest::header::RANGE, header);
+
         self
     }
 
@@ -1045,6 +1051,10 @@ mod tests {
     }
 
     /// Another download, but this time the server does not respond with a `Content-Range` header.
+    ///
+    /// This test is using the `garbage_data/` endpoint provided by the test framework,
+    /// which is just a simple axum handler, which does not implement `Range` requests,
+    /// unlike the `symbols/` endpoint.
     #[tokio::test]
     async fn test_download_missing_content_range() {
         test::setup();

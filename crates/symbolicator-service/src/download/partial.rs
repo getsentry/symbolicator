@@ -3,6 +3,8 @@ use std::{fmt, str::FromStr};
 use reqwest::StatusCode;
 
 /// The maximum amount of partial requests per download.
+///
+/// Note: this does not include the original request.
 const MAX_PARTIAL_RANGES: u64 = 4;
 
 /// The amount of bytes when a download should split into multiple parts,
@@ -89,13 +91,6 @@ impl Range {
         // A 0-0 range is 1 byte in size.
         self.end - self.start + 1
     }
-
-    /// Applies this range to a request.
-    pub fn apply_to(&self, request: &mut reqwest::Request) {
-        let header = reqwest::header::HeaderValue::from_str(&self.to_string());
-        let header = header.expect("the range header to be a valid");
-        request.headers_mut().insert(reqwest::header::RANGE, header);
-    }
 }
 
 impl fmt::Debug for Range {
@@ -116,7 +111,7 @@ impl fmt::Display for Range {
 /// where all values are present: `bytes <start>-<end>/<size>`.
 ///
 /// All other variations like `bytes */<size>` are not supported.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BytesContentRange {
     /// Start of the returned range, offset in bytes.
     pub start: u64,
@@ -152,7 +147,7 @@ impl BytesContentRange {
 }
 
 /// An error which can be returned when parsing a [`BytesContentRange`].
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum InvalidBytesRange {
     /// The header is malformed.
     #[error("content range header is malformed")]
@@ -305,5 +300,47 @@ mod tests {
             bytes=1060-1409,
         ]
         "###);
+    }
+
+    #[test]
+    fn test_byte_content_range_valid() {
+        macro_rules! assert_bcr {
+            ($s:literal = $start:literal-$end:literal/$size:literal) => {{
+                assert_eq!(
+                    BytesContentRange::from_str($s),
+                    Ok(BytesContentRange {
+                        start: $start,
+                        end: $end,
+                        total_size: $size,
+                    })
+                );
+            }};
+        }
+
+        assert_bcr!("bytes 0-0/0" = 0 - 0 / 0);
+        assert_bcr!("bytes 0-12/123" = 0 - 12 / 123);
+        assert_bcr!("bytes 1-23/123" = 1 - 23 / 123);
+        assert_bcr!("bytes 1-122/123" = 1 - 122 / 123);
+        assert_bcr!("bytes     0-12/123" = 0 - 12 / 123);
+        assert_bcr!("   bytes 0-12/123   " = 0 - 12 / 123);
+        assert_bcr!("bytes 0- 12/ 123" = 0 - 12 / 123);
+    }
+
+    #[test]
+    fn test_byte_content_range_invalid() {
+        macro_rules! assert_bcr {
+            ($s:literal, $v:ident) => {{
+                assert_eq!(BytesContentRange::from_str($s), Err(InvalidBytesRange::$v));
+            }};
+        }
+
+        assert_bcr!("bits 0-12/123", NotBytes);
+        assert_bcr!("bytes */123", RangeNotSatisfiable);
+        assert_bcr!("bytes 0-12/*", UnknownLength);
+        assert_bcr!("bytes 0-12", Malformed);
+        assert_bcr!("bytes a-12/123", Malformed);
+        assert_bcr!("bytes 0-a/123", Malformed);
+        assert_bcr!("bytes 23/123", Malformed);
+        assert_bcr!("0-12/123", NotBytes);
     }
 }
