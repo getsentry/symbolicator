@@ -2,9 +2,10 @@ use std::fmt::Write;
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures::future::BoxFuture;
+use moka::ops::compute::Op;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
     DirectoryLayoutType, FilesystemRemoteFile, FilesystemSourceConfig, GcsRemoteFile,
@@ -25,6 +26,12 @@ use super::DownloadService;
 /// The path of the file containing the ID of the most recent upload
 /// log file.
 const LASTID_FILE: &str = "000Admin/lastid.txt";
+
+/// The time for which a successfully fetched Symstore "last id" should be cached in memory.
+const LASTID_OK_CACHE_TIME: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// The time for which an error fetching a Symstore "last id " should be cached in memory.
+const LASTID_ERROR_CACHE_TIME: Duration = Duration::from_secs(10 * 60);
 
 /// A source config for which the notion of an index makes sense.
 ///
@@ -288,7 +295,8 @@ pub struct SourceIndexService {
     symstore_segment_cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
     /// An in-memory cache for keeping track of the last segment uploaded
     /// to a Symstore index.
-    symstore_last_id_cache: moka::future::Cache<(Scope, SourceId), CacheContents<u32>>,
+    symstore_last_id_cache:
+        moka::future::Cache<(Scope, SourceId), (CacheContents<u32>, SystemTime)>,
     /// The download service to download index files.
     downloader: Arc<DownloadService>,
 }
@@ -305,16 +313,15 @@ impl SourceIndexService {
     ) -> Self {
         // Create an in-memory cache for Symstore last IDs.
         // This is so we don't ask for the last ID on every request.
-        let last_id_cache = moka::future::Cache::builder()
+        let symstore_last_id_cache = moka::future::Cache::builder()
             .max_capacity(100)
             .name("last_id")
-            .time_to_live(Duration::from_secs(24 * 60 * 60))
             .build();
 
         Self {
             symstore_cache: Arc::new(Cacher::new(cache.clone(), shared_cache.clone())),
             symstore_segment_cache: Arc::new(Cacher::new(cache, shared_cache)),
-            symstore_last_id_cache: last_id_cache,
+            symstore_last_id_cache,
             downloader,
         }
     }
@@ -325,28 +332,81 @@ impl SourceIndexService {
     /// This ID is stored in a file called `lastid.txt` in the
     /// `000Admin` directory.
     ///
-    /// The last ID is locally cached for an hour, so if a new
-    /// file is uploaded, we will see it at most an hour later.
+    /// The last ID is locally cached for an hour, and download failures
+    /// are cached for 10 minutes. If downloading a new last ID fails but there
+    /// is an existing succesful download, it will be reused for another hour.
     async fn fetch_symstore_last_id_memoized(
         &self,
         scope: Scope,
         source: &IndexSourceConfig,
     ) -> CacheContents<u32> {
-        self.symstore_last_id_cache
-            .get_with((scope, source.id().clone()), async {
-                let res = self.fetch_symstore_last_id(source).await;
+        let compute = async || {
+            let res = self.fetch_symstore_last_id(source).await;
 
-                if let Err(ref e) = res {
-                    tracing::error!(
-                        error = e as &dyn std::error::Error,
-                        source_id = %source.id(),
-                        "Failed to fetch Symstore index last ID",
-                    );
+            if let Err(ref e) = res {
+                tracing::error!(
+                    error = e as &dyn std::error::Error,
+                    source_id = %source.id(),
+                    "Failed to fetch Symstore index last ID",
+                );
+            }
+
+            res
+        };
+
+        let comp_result = self
+            .symstore_last_id_cache
+            .entry((scope, source.id().clone()))
+            .and_compute_with(|entry| async {
+                let now = SystemTime::now();
+                let Some(entry) = entry else {
+                    // If there is no existing entry, there's nothing to do but compute one.
+                    let v = compute().await;
+                    return Op::Put((v, now));
+                };
+
+                let (res, ts) = entry.into_value();
+
+                // How long the existing entry should be reused depends on
+                // whether it's a success or a failure.
+                let cache_time = if res.is_ok() {
+                    LASTID_OK_CACHE_TIME
+                } else {
+                    LASTID_ERROR_CACHE_TIME
+                };
+
+                if ts.elapsed().unwrap() > cache_time {
+                    // The old entry is expired, we might need to update it.
+                    let res_new = compute().await;
+
+                    // If the old value was a success and the new one is a failure,
+                    // reuse the old one, but with the updated timestamp so it's
+                    // cached for another day.
+                    //
+                    // In all other cases use the new entry.
+                    match (&res, &res_new) {
+                        (Ok(_), Err(_)) => Op::Put((res, now)),
+                        _ => Op::Put((res_new, now)),
+                    }
+                } else {
+                    // If the old entry is not expired there's nothing to do.
+                    Op::Nop
                 }
-
-                res
             })
-            .await
+            .await;
+
+        // This should never happen: in `and_compute_with` above, if there is no existing entry
+        // we compute one and insert it. In all other cases we only do `Put` and `Nop`, so there
+        // should not be a case where nothing is in the cache.
+        let Some(entry) = comp_result.into_entry() else {
+            tracing::error!(
+                source_id = %source.id(),
+                "Unexpected missing last ID",
+            );
+            return Err(CacheError::InternalError);
+        };
+
+        entry.into_value().0
     }
 
     /// Fetches the ID of the most recently uploaded Symstore index
