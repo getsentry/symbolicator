@@ -147,7 +147,7 @@ fn process_file(
         };
 
         fs::write(
-            new_filename.parent().unwrap().join("meta"),
+            new_filename.with_extension("meta"),
             serde_json::to_vec(&meta)?,
         )?;
 
