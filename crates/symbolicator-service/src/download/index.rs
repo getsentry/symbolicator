@@ -340,7 +340,7 @@ impl SourceIndexService {
         scope: Scope,
         source: &IndexSourceConfig,
     ) -> CacheContents<u32> {
-        let compute = || async {
+        let compute = async || {
             let res = self.fetch_symstore_last_id(source).await;
 
             if let Err(ref e) = res {
