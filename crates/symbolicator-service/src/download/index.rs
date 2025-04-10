@@ -367,6 +367,8 @@ impl SourceIndexService {
 
                 let (res, ts) = entry.into_value();
 
+                // How long the existing entry should be reused depends on
+                // whether it's a success or a failure.
                 let cache_time = if res.is_ok() {
                     LASTID_OK_CACHE_TIME
                 } else {
@@ -379,7 +381,7 @@ impl SourceIndexService {
 
                     // If the old value was a success and the new one is a failure,
                     // reuse the old one, but with the updated timestamp so it's
-                    // cached for another hour.
+                    // cached for another day.
                     //
                     // In all other cases use the new entry.
                     match (&res, &res_new) {
@@ -387,7 +389,7 @@ impl SourceIndexService {
                         _ => Op::Put((res_new, now)),
                     }
                 } else {
-                    // If the old entry is still good there's nothing to do.
+                    // If the old entry is not expired there's nothing to do.
                     Op::Nop
                 }
             })
