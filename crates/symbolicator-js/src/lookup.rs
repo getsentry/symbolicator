@@ -1030,8 +1030,12 @@ impl ArtifactFetcher {
             .await
         {
             Ok(results) => results,
-            Err(_err) => {
-                // TODO(sourcemap): handle errors
+            Err(err) => {
+                tracing::error!(
+                    error = &err as &dyn std::error::Error,
+                    lookup_url = %self.source.url,
+                    "Failed to query Sentry for files",
+                );
                 return false;
             }
         };
