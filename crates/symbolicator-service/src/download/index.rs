@@ -93,6 +93,27 @@ impl IndexSourceConfig {
             IndexSourceConfig::S3(s3) => S3RemoteFile::new(Arc::clone(s3), loc).into(),
         }
     }
+    /// Returns a key that uniquely identifies the source for metrics.
+    ///
+    /// If this is a built-in source the source_id is returned, otherwise this falls
+    /// back to the source type name.
+    fn source_metric_key(&self) -> &str {
+        // The IDs of built-in sources (see: SENTRY_BUILTIN_SOURCES in sentry) always start with
+        // "sentry:" (e.g. "sentry:electron") and are safe to use as a key. If this is a custom
+        // source, then the source_id is a random string which inflates the cardinality of this
+        // metric as the tag values will greatly vary.
+        let id = self.id().as_str();
+        if id.starts_with("sentry:") {
+            id
+        } else {
+            match self {
+                Self::S3(..) => "s3",
+                Self::Gcs(..) => "gcs",
+                Self::Http(..) => "http",
+                Self::Filesystem(..) => "filesystem",
+            }
+        }
+    }
 }
 
 /// A request to fetch a Symstore index "segment".
@@ -405,6 +426,13 @@ impl SourceIndexService {
             );
             return Err(CacheError::InternalError);
         };
+
+        // Emit the current lastid, but only if it was just computed, taking 0
+        // as a placeholder in case of errors.
+        if entry.is_fresh() | entry.is_old_value_replaced() {
+            let lastid = entry.value().0.as_ref().copied().unwrap_or_default();
+            metric!(gauge("index.symstore.lastid") = lastid as u64, "source" => source.source_metric_key());
+        }
 
         entry.into_value().0
     }
