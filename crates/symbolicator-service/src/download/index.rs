@@ -356,6 +356,7 @@ impl SourceIndexService {
     /// The last ID is locally cached for an hour, and download failures
     /// are cached for 10 minutes. If downloading a new last ID fails but there
     /// is an existing succesful download, it will be reused for another hour.
+    #[tracing::instrument(skip(self, source), fields(source.id = %source.id()))]
     async fn fetch_symstore_last_id_memoized(
         &self,
         scope: Scope,
@@ -382,6 +383,7 @@ impl SourceIndexService {
                 let now = SystemTime::now();
                 let Some(entry) = entry else {
                     // If there is no existing entry, there's nothing to do but compute one.
+                    tracing::info!("Fetching last ID for the first time");
                     let v = compute().await;
                     return Op::Put((v, now));
                 };
@@ -397,6 +399,7 @@ impl SourceIndexService {
                 };
 
                 if ts.elapsed().unwrap() > cache_time {
+                    tracing::info!("Last ID is older than {} seconds", cache_time.as_secs());
                     // The old entry is expired, we might need to update it.
                     let res_new = compute().await;
 
@@ -406,8 +409,14 @@ impl SourceIndexService {
                     //
                     // In all other cases use the new entry.
                     match (&res, &res_new) {
-                        (Ok(_), Err(_)) => Op::Put((res, now)),
-                        _ => Op::Put((res_new, now)),
+                        (Ok(v), Err(_)) => {
+                            tracing::info!("Reusing old value {v}");
+                            Op::Put((res, now))
+                        }
+                        _ => {
+                            tracing::info!("Inserting new value {res_new:?}");
+                            Op::Put((res_new, now))
+                        }
                     }
                 } else {
                     // If the old entry is not expired there's nothing to do.
@@ -429,7 +438,7 @@ impl SourceIndexService {
 
         // Emit the current lastid, but only if it was just computed, taking 0
         // as a placeholder in case of errors.
-        if entry.is_fresh() | entry.is_old_value_replaced() {
+        if entry.is_fresh() || entry.is_old_value_replaced() {
             let lastid = entry.value().0.as_ref().copied().unwrap_or_default();
             metric!(gauge("index.symstore.lastid") = lastid as u64, "source" => source.source_metric_key());
         }
@@ -442,6 +451,7 @@ impl SourceIndexService {
     ///
     /// This ID is stored in a file called `lastid.txt` in the
     /// `000Admin` directory.
+    #[tracing::instrument(skip_all, fields(source.id = %source.id()), ret)]
     async fn fetch_symstore_last_id(&self, source: &IndexSourceConfig) -> Result<u32, CacheError> {
         let temp_file = NamedTempFile::new()?;
         let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
