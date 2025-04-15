@@ -48,8 +48,8 @@ jobs:
 
     runs-on: |-
       ${{fromJson('{
-        "amd64": "ubuntu-24.04",
-        "arm64": "ubuntu-24.04-arm"
+        "amd64": "ubuntu-22.04",
+        "arm64": "ubuntu-22.04-arm"
       }')[matrix.arch] }}
 
     env:
@@ -159,7 +159,7 @@ jobs:
     if: "needs.build-setup.outputs.full_ci == 'true'"
 
     name: Assemble for Github Container Registry
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
 
     env:
       TARGET_IMAGE: ghcr.io/getsentry/symbolicator
