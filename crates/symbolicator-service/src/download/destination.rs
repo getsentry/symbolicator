@@ -1,11 +1,9 @@
 use bytes::Bytes;
-use std::{
-    convert::Infallible,
-    future::Future,
-    io::{self, Write},
-    sync::Arc,
-};
+use std::{convert::Infallible, future::Future, io};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+
+#[cfg(unix)]
+use std::{io::Write, sync::Arc};
 
 /// A simplified version of [`AsyncWrite`] which only supports
 /// [`write_all`](AsyncWriteExt::write_all).
@@ -117,14 +115,11 @@ impl MultiStreamDestination for Infallible {
     }
 }
 
+#[cfg(unix)]
 impl<'a> Destination for &'a mut tokio::fs::File {
-    #[cfg(unix)]
     type Streams = FileMultiStreamDestination<'a>;
-    #[cfg(not(unix))]
-    type Streams = Infallible;
     type Write = Self;
 
-    #[cfg(unix)]
     async fn try_into_streams(self) -> Result<Self::Streams, Self> {
         let dup = match self.try_clone().await {
             Ok(file) => file.into_std().await,
@@ -137,8 +132,17 @@ impl<'a> Destination for &'a mut tokio::fs::File {
         })
     }
 
-    #[cfg(not(unix))]
-    async fn try_into_streams(self, _size: u64) -> Result<Self::Streams, Self> {
+    fn into_write(self) -> Self::Write {
+        self
+    }
+}
+
+#[cfg(not(unix))]
+impl Destination for &mut tokio::fs::File {
+    type Streams = Infallible;
+    type Write = Self;
+
+    async fn try_into_streams(self) -> Result<Self::Streams, Self> {
         Err(self)
     }
 
@@ -148,6 +152,7 @@ impl<'a> Destination for &'a mut tokio::fs::File {
 }
 
 /// File based multi stream destination.
+#[cfg(unix)]
 pub struct FileMultiStreamDestination<'a> {
     original: &'a mut tokio::fs::File,
     file: Arc<std::fs::File>,
