@@ -1,9 +1,9 @@
 use bytes::Bytes;
-use std::{convert::Infallible, future::Future, io, sync::Arc};
+use std::{convert::Infallible, future::Future, io};
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 #[cfg(unix)]
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 
 /// A simplified version of [`AsyncWrite`] which only supports
 /// [`write_all`](AsyncWriteExt::write_all).
@@ -152,6 +152,7 @@ impl Destination for &mut tokio::fs::File {
 }
 
 /// File based multi stream destination.
+#[cfg(unix)]
 pub struct FileMultiStreamDestination<'a> {
     original: &'a mut tokio::fs::File,
     file: Arc<std::fs::File>,
