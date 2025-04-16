@@ -831,6 +831,19 @@ impl<'a> SymRequest<'a> {
             .await
             .map_err(|_| CacheError::Timeout(self.timeouts.head))??;
 
+        let headers: ::sentry::protocol::value::Map<_, ::sentry::protocol::Value> = response
+            .headers()
+            .iter()
+            .filter_map(|(k, v)| Some((k.as_str().to_owned(), v.to_str().ok()?.into())))
+            .collect();
+
+        ::sentry::configure_scope(|scope| {
+            scope.set_extra(
+                "reqwest_response_headers",
+                ::sentry::protocol::Value::Object(headers),
+            );
+        });
+
         Ok(SymResponse {
             timeouts: self.timeouts,
             measure: self.measure,
