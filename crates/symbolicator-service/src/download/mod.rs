@@ -643,7 +643,7 @@ async fn do_download_reqwest_range(
             do_download_reqwest(request, destination).await
         }
         // Server returned some generic error, we need to bubble it up.
-        None => Err(status_to_error(&source, response.status())),
+        None => Err(response_to_error(&source, response).await),
         // Malformed range header.
         Some(Err(err)) => {
             // This case can happen if the server returns an invalid header or a header which does
@@ -728,16 +728,26 @@ async fn do_download_reqwest(
         tracing::trace!("Success hitting `{source}`");
         response.download(destination).await
     } else {
-        Err(status_to_error(&source, status))
+        Err(response_to_error(&source, response).await)
     }
 }
 
-/// Converts a status code to an error.
+/// Converts a response to an error.
 ///
-/// Any status code will be converted to an error, callers must ensure success cases
-/// are handled before turning the status code into an error using this function.
-fn status_to_error(source: &str, status: StatusCode) -> CacheError {
+/// Any response will be converted to an error, callers must ensure success cases
+/// are handled before turning the response into an error using this function.
+async fn response_to_error(source: &str, response: SymResponse<'_>) -> CacheError {
+    let status = response.status();
     debug_assert!(!status.is_success());
+
+    if let Ok(details) = response.response.text().await {
+        ::sentry::configure_scope(|scope| {
+            scope.set_extra(
+                "reqwest_response_body",
+                ::sentry::protocol::Value::String(details.clone()),
+            );
+        });
+    };
 
     if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
         tracing::debug!(
