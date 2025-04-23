@@ -109,6 +109,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
 ///
+/// - `9`: Fixes symcache generation from symbol tables (<https://github.com/getsentry/symbolic/pull/915>)
+///
 /// - `8`: Restructuring the cache directory format.
 ///
 /// - `7`: Fixes inlinee lookup. (<https://github.com/getsentry/symbolic/pull/883>)
@@ -135,8 +137,9 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(8, CachePathFormat::V2),
+    current: CacheVersion::new(9, CachePathFormat::V2),
     fallbacks: &[
+        CacheVersion::new(8, CachePathFormat::V2),
         CacheVersion::new(7, CachePathFormat::V1),
         CacheVersion::new(6, CachePathFormat::V1),
     ],
@@ -148,6 +151,7 @@ pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(5, CachePathFormat::V1),
         CacheVersion::new(6, CachePathFormat::V1),
         CacheVersion::new(7, CachePathFormat::V1),
+        CacheVersion::new(8, CachePathFormat::V2),
     ],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
