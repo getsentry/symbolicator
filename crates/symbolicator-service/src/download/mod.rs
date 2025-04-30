@@ -16,6 +16,13 @@ use futures::{future::Either, prelude::*};
 use partial::BytesContentRange;
 use reqwest::StatusCode;
 
+use crate::caching::{CacheContents, CacheError};
+use crate::config::Config;
+use crate::types::Scope;
+use crate::utils::futures::{m, measure, CancelOnDrop, SendFuture as _};
+use crate::utils::gcs::GcsError;
+use crate::utils::http::DownloadTimeouts;
+use crate::utils::sentry::ConfigureScope;
 use stream::FuturesUnordered;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
@@ -25,14 +32,6 @@ use symbolicator_sources::{
     FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
 };
 use tokio::io::AsyncWriteExt;
-
-use crate::caching::{CacheContents, CacheError};
-use crate::config::Config;
-use crate::types::Scope;
-use crate::utils::futures::{m, measure, CancelOnDrop, SendFuture as _};
-use crate::utils::gcs::GcsError;
-use crate::utils::http::DownloadTimeouts;
-use crate::utils::sentry::ConfigureScope;
 
 mod compression;
 mod destination;

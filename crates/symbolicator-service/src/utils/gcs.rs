@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
+use gcp_auth::Token;
 use jsonwebtoken::errors::Error as JwtError;
 use jsonwebtoken::EncodingKey;
 use reqwest::Client;
@@ -28,6 +29,15 @@ impl GcsToken {
     /// The token in the HTTP Bearer-header format, header value only.
     pub fn bearer_token(&self) -> &str {
         &self.bearer_token
+    }
+}
+
+impl From<Arc<Token>> for GcsToken {
+    fn from(value: Arc<Token>) -> Self {
+        GcsToken {
+            expires_at: value.expires_at(),
+            bearer_token: value.as_str().into(),
+        }
     }
 }
 

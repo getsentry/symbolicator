@@ -19,7 +19,7 @@ pub struct GcsSourceConfig {
 
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
+    pub source_key: Option<Arc<GcsSourceKey>>,
 
     /// Configuration common to all sources.
     #[serde(flatten)]

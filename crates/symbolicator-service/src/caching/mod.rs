@@ -174,7 +174,9 @@ pub use config::CacheName;
 pub use fs::{Cache, ExpirationStrategy, ExpirationTime};
 pub use memory::{CacheItemRequest, Cacher};
 pub use metadata::{CacheEntry, Metadata};
-pub use shared_cache::{CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService};
+pub use shared_cache::{
+    token_provider, CacheStoreReason, SharedCacheConfig, SharedCacheRef, SharedCacheService,
+};
 
 pub struct Caches {
     /// Caches for object files.

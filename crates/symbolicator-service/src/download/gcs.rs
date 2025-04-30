@@ -1,10 +1,9 @@
 //! Support to download from Google Cloud Storage buckets.
 
 use std::sync::Arc;
-
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
 
-use crate::caching::{CacheContents, CacheError};
+use crate::caching::{token_provider, CacheContents, CacheError};
 use crate::utils::gcs::{self, GcsToken};
 use crate::utils::http::DownloadTimeouts;
 
@@ -28,7 +27,7 @@ impl GcsDownloader {
                 .max_capacity(token_capacity)
                 .build(),
             client,
-            timeouts,
+            timeouts
         }
     }
 
@@ -36,22 +35,38 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheContents<GcsToken> {
+    async fn get_token(&self, source_key: Option<&Arc<GcsSourceKey>>) -> CacheContents<GcsToken> {
         metric!(counter("source.gcs.token.access") += 1);
 
-        let init = Box::pin(async {
-            metric!(counter("source.gcs.token.computation") += 1);
-            let token = gcs::request_new_token(&self.client, source_key).await;
-            token.map_err(CacheError::from)
-        });
-        let replace_if =
-            |entry: &CacheContents<GcsToken>| entry.as_ref().map_or(true, |t| t.is_expired());
+        match source_key {
+            Some(source_key) => {
+                let init = Box::pin(async {
+                    metric!(counter("source.gcs.token.computation") += 1);
+                    let token = gcs::request_new_token(&self.client, source_key).await;
+                    token.map_err(CacheError::from)
+                });
+                let replace_if = |entry: &CacheContents<GcsToken>| {
+                    entry.as_ref().map_or(true, |t| t.is_expired())
+                };
 
-        self.token_cache
-            .entry_by_ref(source_key)
-            .or_insert_with_if(init, replace_if)
-            .await
-            .into_value()
+                self.token_cache
+                    .entry_by_ref(source_key)
+                    .or_insert_with_if(init, replace_if)
+                    .await
+                    .into_value()
+            }
+            None => {
+                if let Ok(token_provider) = token_provider().await {
+                    let token = token_provider
+                        .token(&["https://www.googleapis.com/auth/devstorage.read_write"])
+                        .await
+                        .map_err(|e| CacheError::DownloadError(e.to_string()))?;
+                    Ok(token.into())
+                } else {
+                    Err(CacheError::DownloadError("No token provided".into()))
+                }
+            }
+        }
     }
 
     /// Downloads a source hosted on GCS.
@@ -64,7 +79,9 @@ impl GcsDownloader {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
-        let token = self.get_token(&file_source.source.source_key).await?;
+        let token = self
+            .get_token(file_source.source.source_key.as_ref())
+            .await?;
         tracing::debug!("Got valid GCS token");
 
         let url = gcs::download_url(bucket, &key)?;
@@ -97,7 +114,7 @@ mod tests {
             id: SourceId::new("gcs-test"),
             bucket: "sentryio-system-symbols-0-test".to_owned(),
             prefix: "/ios".to_owned(),
-            source_key: Arc::new(source_key),
+            source_key: Some(Arc::new(source_key)),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         })
     }
@@ -180,10 +197,10 @@ mod tests {
 
     #[test]
     fn test_gcs_remote_dif_uri() {
-        let source_key = Arc::new(GcsSourceKey {
+        let source_key = Some(Arc::new(GcsSourceKey {
             private_key: String::from("ABC"),
             client_email: String::from("someone@example.com"),
-        });
+        }));
         let source = Arc::new(GcsSourceConfig {
             id: SourceId::new("gcs-id"),
             bucket: String::from("bucket"),
