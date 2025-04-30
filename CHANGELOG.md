@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+- Added socks proxy support via environment variables by @DmitryRomanov. ([#1699](https://github.com/getsentry/symbolicator/pull/1699))
+
 ### Dependencies
 
 - Bump Native SDK from v0.8.3 to v0.8.4 ([#1694](https://github.com/getsentry/symbolicator/pull/1694))
