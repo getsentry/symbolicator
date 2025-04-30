@@ -32,8 +32,8 @@ impl GcsToken {
     }
 }
 
-impl From<Arc<Token>> for GcsToken {
-    fn from(value: Arc<Token>) -> Self {
+impl From<&Token> for GcsToken {
+    fn from(value: &Token) -> Self {
         GcsToken {
             expires_at: value.expires_at(),
             bearer_token: value.as_str().into(),

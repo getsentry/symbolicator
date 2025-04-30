@@ -1,5 +1,6 @@
 //! Support to download from Google Cloud Storage buckets.
 
+use std::ops::Deref;
 use std::sync::Arc;
 use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
 
@@ -61,7 +62,7 @@ impl GcsDownloader {
                         .token(&["https://www.googleapis.com/auth/devstorage.read_write"])
                         .await
                         .map_err(|e| CacheError::DownloadError(e.to_string()))?;
-                    Ok(token.into())
+                    Ok(token.deref().into())
                 } else {
                     Err(CacheError::DownloadError("No token provided".into()))
                 }
