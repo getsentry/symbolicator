@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+- Introduce the possibility to use `gcp_auth::provider()` for authentication instead of providing a `private_key` and `client_email`. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
+
 ### Dependencies
 
 - Bump Native SDK from v0.8.3 to v0.8.4 ([#1694](https://github.com/getsentry/symbolicator/pull/1694))
