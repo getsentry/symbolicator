@@ -27,7 +27,7 @@ impl GcsDownloader {
                 .max_capacity(token_capacity)
                 .build(),
             client,
-            timeouts
+            timeouts,
         }
     }
 
