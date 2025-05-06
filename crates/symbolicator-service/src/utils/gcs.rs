@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
-use gcp_auth::Token;
 use jsonwebtoken::errors::Error as JwtError;
 use jsonwebtoken::EncodingKey;
 use reqwest::Client;
@@ -11,16 +10,32 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
-use symbolicator_sources::GcsSourceKey;
+use symbolicator_sources::{GcsSourceKey, GcsSourceToken};
+
+/// A wrapper for a GCS bearer token.
+///
+/// It does not contain expiration information and should only be used to authorize
+/// requests.
+pub struct GcsToken {
+    bearer_token: Arc<str>
+}
+
+impl GcsToken {
+    pub fn bearer_token(&self) -> &str {
+        &self.bearer_token
+    }
+}
 
 /// A JWT token usable for GCS.
+///
+/// Contains `expires_at` information so it can be cached and expired properly.
 #[derive(Debug, Clone)]
-pub struct GcsToken {
+pub struct CacheableToken {
     bearer_token: Arc<str>,
     expires_at: DateTime<Utc>,
 }
 
-impl GcsToken {
+impl CacheableToken {
     /// Whether the token is expired or is still valid.
     pub fn is_expired(&self) -> bool {
         self.expires_at < Utc::now()
@@ -32,11 +47,18 @@ impl GcsToken {
     }
 }
 
-impl From<&Token> for GcsToken {
-    fn from(value: &Token) -> Self {
+impl From<CacheableToken> for GcsToken {
+    fn from(value: CacheableToken) -> Self {
         GcsToken {
-            expires_at: value.expires_at(),
-            bearer_token: value.as_str().into(),
+            bearer_token: value.bearer_token,
+        }
+    }
+}
+
+impl From<&GcsSourceToken> for GcsToken {
+    fn from(value: &GcsSourceToken) -> Self {
+        GcsToken {
+            bearer_token: value.token.clone()
         }
     }
 }
@@ -126,7 +148,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Jw
 pub async fn request_new_token(
     client: &Client,
     source_key: &GcsSourceKey,
-) -> Result<GcsToken, GcsError> {
+) -> Result<CacheableToken, GcsError> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
@@ -148,7 +170,7 @@ pub async fn request_new_token(
         .map_err(GcsError::Auth)?;
     let bearer_token = format!("Bearer {}", token.access_token).into();
 
-    Ok(GcsToken {
+    Ok(CacheableToken {
         bearer_token,
         expires_at,
     })

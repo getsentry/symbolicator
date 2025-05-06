@@ -85,8 +85,6 @@ where
     }
 }
 
-static TOKEN_PROVIDER: OnceCell<Arc<dyn TokenProvider>> = OnceCell::const_new();
-
 pub async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::Error> {
     // For fresh k8s pods the GKE metadata server may not accept connections
     // yet, so we need to retry this for a bit.
@@ -131,20 +129,6 @@ pub async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyho
     }
 }
 
-pub async fn token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::Error> {
-    if let Some(token_provider) = TOKEN_PROVIDER.get() {
-        return Ok(token_provider.clone());
-    }
-
-    match initialize_token_provider().await {
-        Ok(provider) => {
-            let _ = TOKEN_PROVIDER.set(provider.clone());
-            Ok(provider)
-        }
-        Err(err) => Err(err).context("Failed to initialise GCS authentication token after retries"),
-    }
-}
-
 impl GcsState {
     pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
         let token_provider = match config.service_account_path {
@@ -152,7 +136,7 @@ impl GcsState {
                 let service_account = CustomServiceAccount::from_file(path)?;
                 Arc::new(service_account)
             }
-            None => token_provider().await?,
+            None => initialize_token_provider().await?,
         };
         Ok(Self {
             config,

@@ -19,7 +19,7 @@ pub struct GcsSourceConfig {
 
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
-    pub source_key: Option<Arc<GcsSourceKey>>,
+    pub source_authentication: GcsSourceAuthorization,
 
     /// Configuration common to all sources.
     #[serde(flatten)]
@@ -64,6 +64,18 @@ impl GcsRemoteFile {
 }
 
 /// GCS authorization information.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum GcsSourceAuthorization {
+    /// (email, private_key) pair used for authorization.
+    SourceKey(Arc<GcsSourceKey>),
+    /// Authorization token used directly.
+    SourceToken(GcsSourceToken),
+}
+
+/// GCS authorization credentials.
+///
+/// These are used to obtain a token which is then used for GCS communication.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct GcsSourceKey {
     /// Gcs authorization key.
@@ -71,4 +83,13 @@ pub struct GcsSourceKey {
 
     /// The client email.
     pub client_email: String,
+}
+
+/// GCS authorization token.
+///
+/// This token will be used directly to authorize against GCS.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub struct GcsSourceToken {
+    /// Gcs bearer token.
+    pub token: Arc<str>,
 }
