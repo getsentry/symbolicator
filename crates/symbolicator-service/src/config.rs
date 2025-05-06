@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use sentry::types::Dsn;
-use serde::{de, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de};
 use tracing::level_filters::LevelFilter;
 
 use symbolicator_sources::SourceConfig;
@@ -65,7 +65,9 @@ pub struct Logging {
     pub level: LevelFilter,
     /// Controls the log format.
     pub format: LogFormat,
-    /// When set to true, backtraces are forced on.
+    /// DEPRECATED: Modifying the environment is not safe
+    /// in a multithreaded program, so this option no longer
+    /// has any effect.
     pub enable_backtraces: bool,
 }
 
@@ -74,7 +76,7 @@ impl Default for Logging {
         Logging {
             level: LevelFilter::INFO,
             format: LogFormat::Auto,
-            enable_backtraces: true,
+            enable_backtraces: false,
         }
     }
 }

@@ -38,13 +38,15 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
 /// Initializes logging for the symbolicator.
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
-/// configuration. Additionally, this toggles `RUST_BACKTRACE` based on the [`enable_stacktraces`]
-/// config value.
+/// configuration.
 ///
-/// [`enable_stacktraces`]: crate::config::Logging::enable_backtraces
+///
 pub fn init_logging(config: &Config) {
     if config.logging.enable_backtraces {
-        env::set_var("RUST_BACKTRACE", "1");
+        tracing::warn!(
+            "`enable_backtraces` is deprecated: run Symbolicator with \
+            `RUST_BACKTRACE=1` to enable backtraces."
+        );
     }
 
     let rust_log =

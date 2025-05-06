@@ -62,7 +62,6 @@ fn main() -> Result<()> {
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
     let mut logging_guard = logging::init(logging::Config {
-        backtraces: true,
         tracing: cli.tracing,
         sentry: cli.sentry,
         metrics: cli.metrics,

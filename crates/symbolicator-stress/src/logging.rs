@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::future::Future;
 use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::pin::Pin;
@@ -8,7 +7,6 @@ use symbolicator_service::{logging, metrics};
 
 #[derive(Debug, Default)]
 pub struct Config {
-    pub backtraces: bool,
     pub sentry: bool,
     pub tracing: bool,
     pub metrics: bool,
@@ -22,10 +20,6 @@ pub struct Guard {
 }
 
 pub fn init(config: Config) -> Guard {
-    if config.backtraces {
-        env::set_var("RUST_BACKTRACE", "1");
-    }
-
     let mut guard = Guard::default();
 
     if config.sentry {
