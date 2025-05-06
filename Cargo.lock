@@ -3719,6 +3719,7 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-native-tls",
+ "tokio-socks",
  "tokio-util",
  "tower 0.5.2",
  "tower-service",
@@ -4680,9 +4681,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "505fffb576a1b80919cec4d5d372b44be58bc94a1d09a58f9dc62135136d842c"
+checksum = "0ce94bca4fae4d2564d48c2c285a79954bec8c928d845c1119561d4efb21684d"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4696,9 +4697,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfd518742b39fcd6d81ce8cb219f5f0517ab2dd9e6c43dc91ec12010e1cd7247"
+checksum = "cc92884a09ed2317ee31e5ba998419c1e2f2d74e107884e57727bc0b20966313"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4707,9 +4708,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23eae23242dffa2e8e66c0e20f4ca1e28391f64e361db1e921a209c9bc70ec3a"
+checksum = "6a1150bdda9314f6cfeeea801c23f5593c6e6a6c72e64f67e48d723a12b8efdb"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4720,9 +4721,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d10ebcb00918663c4c9638868c6b703b5275c6740d1b50a7a1babd1f7837b33"
+checksum = "0918f9961d04f15002fad6de1ab38c4cfbdb7ddc4647a382a2df99df2245de76"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4752,9 +4753,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "153faacda0d58dc1eb3e8bbd5dab998041e95bd7f4ab2caeeadc89410617f144"
+checksum = "9f66537def48fbc704a92e4fdaab7833bc7cb2255faca8182592fb5fa617eb82"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -4765,9 +4766,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96a20ce8025c9d4b349b8bb60b384de2ab4cb9bdc6954a403f445093c7c51c77"
+checksum = "58c06679bb7123d5bd69d94b19e83a5c952e2f46daafeedd28ffc6ba4e8d8c95"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4777,9 +4778,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b1fd939700b0669263693f23481e5992589810979e02df7ffb4c69ae065ee63"
+checksum = "bfac886721503d040708d5d50ba04e727aaf143425010da440c57615ee837b7a"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4793,9 +4794,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b8fc34d5dd149f5cd06a3853ccb83decbed12d0f64b293bf9f8cf1f8b44c3df"
+checksum = "b57cba690658f5ebc31cd2dbd4c382af29a71e6871716984978dbca807680fab"
 dependencies = [
  "itertools 0.13.0",
  "js-source-scopes",
@@ -4808,9 +4809,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "12.15.4"
+version = "12.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a0ed431e4133f2d0650788ace236e0c3d97625c5f4cab413bd82105a10c3b37"
+checksum = "c17dcc8e087bdfeaa2c5b4b8d3d04ab28639a34aa81a78c2b1d72d94c4607efe"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -5369,6 +5370,18 @@ checksum = "0c7bc40d0e5a97695bb96e27995cd3a08538541b0a846f65bba7a359f36700d4"
 dependencies = [
  "rustls 0.23.11",
  "rustls-pki-types",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-socks"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d4770b8024672c1101b3f6733eab95b18007dbe0847a8afe341fcf79e06043f"
+dependencies = [
+ "either",
+ "futures-util",
+ "thiserror 1.0.61",
  "tokio",
 ]
 

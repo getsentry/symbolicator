@@ -3,8 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
-use sentry::types::DebugId;
 use sentry::SentryFutureExt;
+use sentry::types::DebugId;
 use serde::Deserialize;
 use symbolicator_service::download::retry;
 use symbolicator_service::download::sentry::{SearchQuery, SentryDownloader};
@@ -13,7 +13,7 @@ use url::Url;
 
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::config::InMemoryCacheConfig;
-use symbolicator_service::utils::futures::{m, measure, CancelOnDrop};
+use symbolicator_service::utils::futures::{CancelOnDrop, m, measure};
 use symbolicator_service::utils::http::DownloadTimeouts;
 use symbolicator_sources::{RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig};
 

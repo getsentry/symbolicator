@@ -4,13 +4,13 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 use proguard::ProguardCache;
 use symbolic::common::{AccessPattern, AsSelf, ByteView, DebugId, SelfCell};
-use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caches::CacheVersions;
+use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher,
 };
 use symbolicator_service::download::{
-    self, fetch_file, tempfile_in_parent, DownloadService, SourceIndexService,
+    self, DownloadService, SourceIndexService, fetch_file, tempfile_in_parent,
 };
 use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,

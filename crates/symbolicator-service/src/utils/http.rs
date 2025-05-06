@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
 use once_cell::sync::Lazy;
-use reqwest::{redirect, StatusCode, Url};
+use reqwest::{StatusCode, Url, redirect};
 
 use crate::config::Config;
 

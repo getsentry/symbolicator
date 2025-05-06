@@ -19,7 +19,7 @@ use reqwest::StatusCode;
 use crate::caching::{CacheContents, CacheError};
 use crate::config::Config;
 use crate::types::Scope;
-use crate::utils::futures::{m, measure, CancelOnDrop, SendFuture as _};
+use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;

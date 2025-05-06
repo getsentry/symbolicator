@@ -4,8 +4,8 @@ use std::sync::Arc;
 use symbolicator_sources::RemoteFile;
 use tempfile::NamedTempFile;
 
-use super::compression::maybe_decompress_file;
 use super::DownloadService;
+use super::compression::maybe_decompress_file;
 use crate::caching::{CacheContents, CacheError};
 
 /// Downloads the gives [`RemoteFile`] and decompresses it.

@@ -12,12 +12,12 @@ use sentry::{Hub, SentryFutureExt};
 
 use symbolic::common::{ByteView, DebugId};
 use symbolic::debuginfo::macho::{BcSymbolMap, UuidMapping};
-use symbolicator_service::caches::versions::BITCODE_CACHE_VERSIONS;
 use symbolicator_service::caches::CacheVersions;
+use symbolicator_service::caches::versions::BITCODE_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };
-use symbolicator_service::download::{self, fetch_file, DownloadService, SourceIndexService};
+use symbolicator_service::download::{self, DownloadService, SourceIndexService, fetch_file};
 use symbolicator_service::metric;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{FileType, RemoteFile, SourceConfig};

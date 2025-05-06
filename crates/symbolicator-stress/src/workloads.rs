@@ -5,12 +5,12 @@ use std::sync::Arc;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
+use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
+use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{
     ProcessMinidump, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
 };
-use symbolicator_native::SymbolicationActor;
 use symbolicator_service::download::SourceConfig;
 use symbolicator_service::types::{RawObjectInfo, Scope};
 

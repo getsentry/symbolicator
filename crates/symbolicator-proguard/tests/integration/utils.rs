@@ -3,7 +3,7 @@ use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_test as test;
 
-pub use test::{assert_snapshot, fixture, read_fixture, source_config, symbol_server, Server};
+pub use test::{Server, assert_snapshot, fixture, read_fixture, source_config, symbol_server};
 
 /// Setup tests and create a test service.
 ///

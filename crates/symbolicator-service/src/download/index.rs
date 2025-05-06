@@ -14,8 +14,8 @@ use symbolicator_sources::{
 };
 use tempfile::NamedTempFile;
 
-use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
 use crate::caches::CacheVersions;
+use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
 use crate::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher, SharedCacheRef,
 };

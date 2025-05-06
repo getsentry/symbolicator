@@ -20,20 +20,20 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use futures::future;
-use futures::{channel::oneshot, FutureExt as _};
-use sentry::protocol::SessionStatus;
+use futures::{FutureExt as _, channel::oneshot};
 use sentry::SentryFutureExt;
+use sentry::protocol::SessionStatus;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_js::SourceMapService;
+use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
+use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{
     CompletedSymbolicationResponse, ProcessMinidump, SymbolicateStacktraces,
 };
-use symbolicator_native::SymbolicationActor;
+use symbolicator_proguard::ProguardService;
 use symbolicator_proguard::interface::{
     CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
 };
-use symbolicator_proguard::ProguardService;
 use symbolicator_service::caching::CacheContents;
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
@@ -683,18 +683,24 @@ mod tests {
         // Make three requests that never get resolved. Since the server is configured to only accept a maximum of
         // two concurrent requests, the first two should succeed and the third one should fail.
         let request = get_symbolication_request(vec![source.clone()]);
-        assert!(service
-            .symbolicate_stacktraces(request, RequestOptions::default())
-            .is_ok());
+        assert!(
+            service
+                .symbolicate_stacktraces(request, RequestOptions::default())
+                .is_ok()
+        );
 
         let request = get_symbolication_request(vec![source.clone()]);
-        assert!(service
-            .symbolicate_stacktraces(request, RequestOptions::default())
-            .is_ok());
+        assert!(
+            service
+                .symbolicate_stacktraces(request, RequestOptions::default())
+                .is_ok()
+        );
 
         let request = get_symbolication_request(vec![source]);
-        assert!(service
-            .symbolicate_stacktraces(request, RequestOptions::default())
-            .is_err());
+        assert!(
+            service
+                .symbolicate_stacktraces(request, RequestOptions::default())
+                .is_err()
+        );
     }
 }

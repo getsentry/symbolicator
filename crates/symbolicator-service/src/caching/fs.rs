@@ -1,8 +1,8 @@
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicIsize;
 use std::time::{Duration, Instant, SystemTime};
 
 use filetime::FileTime;

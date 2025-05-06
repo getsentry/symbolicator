@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
+use crate::ProguardService;
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
     ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
-use crate::metrics::{record_symbolication_metrics, SymbolicationStats};
-use crate::ProguardService;
+use crate::metrics::{SymbolicationStats, record_symbolication_metrics};
 
 use futures::future;
-use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolic::debuginfo::ObjectDebugSession;
+use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
 

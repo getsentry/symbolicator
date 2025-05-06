@@ -2,7 +2,7 @@
 name = "symbolicator-test"
 version = "25.4.0"
 authors = ["Sentry <hello@getsentry.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [dependencies]

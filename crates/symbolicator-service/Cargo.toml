@@ -2,7 +2,7 @@
 name = "symbolicator-service"
 version = "25.4.0"
 authors = ["Sentry <hello@getsentry.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [features]
@@ -39,6 +39,7 @@ reqwest = { workspace = true, features = [
     "json",
     "stream",
     "hickory-dns",
+    "socks",
 ] }
 rustc-hash = "2.0.0"
 sentry = { version = "0.34.0", features = ["tracing"] }

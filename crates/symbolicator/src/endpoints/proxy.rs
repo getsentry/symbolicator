@@ -56,12 +56,12 @@ pub async fn proxy_symstore_request(
         Err(CacheError::NotFound) => {
             return Ok(Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(Body::empty())?)
+                .body(Body::empty())?);
         }
         Err(e) => {
             return Err(e)
                 .context("failed to download object")
-                .map_err(|e| e.into())
+                .map_err(|e| e.into());
         }
     };
 

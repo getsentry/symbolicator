@@ -128,20 +128,65 @@ Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar el
 
         // trim to column 0
         let (before, line, after) = get_context_lines(source, 3, 0, Some(2)).unwrap();
-        assert_eq!(before, vec!["Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Sit amet mattis  {snip}", ""]);
-        assert_eq!(line, "Netus et malesuada fames ac turpis egestas. Id eu nisl nunc mi ipsum faucibus vitae aliquet nec. Adipiscing commodo elit at imperdiet dui ac {snip}");
-        assert_eq!(after, vec!["", "Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar elementum integer enim neque volutpat ac. Mollis aliquam ut po {snip}"]);
+        assert_eq!(
+            before,
+            vec![
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Sit amet mattis  {snip}",
+                ""
+            ]
+        );
+        assert_eq!(
+            line,
+            "Netus et malesuada fames ac turpis egestas. Id eu nisl nunc mi ipsum faucibus vitae aliquet nec. Adipiscing commodo elit at imperdiet dui ac {snip}"
+        );
+        assert_eq!(
+            after,
+            vec![
+                "",
+                "Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar elementum integer enim neque volutpat ac. Mollis aliquam ut po {snip}"
+            ]
+        );
 
         // trim to column 500
         let (before, line, after) = get_context_lines(source, 3, 500, Some(2)).unwrap();
-        assert_eq!(before, vec!["{snip} enim ut sem viverra. Facilisi nullam vehicula ipsum a arcu cursus vitae. Non enim praesent elementum facilisis leo vel. Egestas congue quisq {snip}", ""]);
-        assert_eq!(line, "{snip} ci. Eget arcu dictum varius duis. Nunc lobortis mattis aliquam faucibus purus in massa tempor. Id leo in vitae turpis. Et malesuada fames ac {snip}");
-        assert_eq!(after, vec!["", "{snip} rna et pharetra pharetra massa massa ultricies. Integer malesuada nunc vel risus commodo viverra maecenas. Neque viverra justo nec ultrices  {snip}"]);
+        assert_eq!(
+            before,
+            vec![
+                "{snip} enim ut sem viverra. Facilisi nullam vehicula ipsum a arcu cursus vitae. Non enim praesent elementum facilisis leo vel. Egestas congue quisq {snip}",
+                ""
+            ]
+        );
+        assert_eq!(
+            line,
+            "{snip} ci. Eget arcu dictum varius duis. Nunc lobortis mattis aliquam faucibus purus in massa tempor. Id leo in vitae turpis. Et malesuada fames ac {snip}"
+        );
+        assert_eq!(
+            after,
+            vec![
+                "",
+                "{snip} rna et pharetra pharetra massa massa ultricies. Integer malesuada nunc vel risus commodo viverra maecenas. Neque viverra justo nec ultrices  {snip}"
+            ]
+        );
 
         // trim to column 1000
         let (before, line, after) = get_context_lines(source, 3, 1000, Some(2)).unwrap();
-        assert_eq!(before, vec!["{snip} ementum eu facilisis sed. Cras ornare arcu dui vivamus arcu felis bibendum ut. Nibh tortor id aliquet lectus proin nibh nisl condimentum id.", ""]);
-        assert_eq!(line, "{snip} a fames ac turpis egestas. Dictum fusce ut placerat orci nulla pellentesque. Cras pulvinar mattis nunc sed blandit libero volutpat sed cras.");
-        assert_eq!(after, vec!["", "{snip} ed enim ut sem viverra aliquet eget. Tincidunt ornare massa eget egestas purus. Curabitur gravida arcu ac tortor dignissim convallis aenean."]);
+        assert_eq!(
+            before,
+            vec![
+                "{snip} ementum eu facilisis sed. Cras ornare arcu dui vivamus arcu felis bibendum ut. Nibh tortor id aliquet lectus proin nibh nisl condimentum id.",
+                ""
+            ]
+        );
+        assert_eq!(
+            line,
+            "{snip} a fames ac turpis egestas. Dictum fusce ut placerat orci nulla pellentesque. Cras pulvinar mattis nunc sed blandit libero volutpat sed cras."
+        );
+        assert_eq!(
+            after,
+            vec![
+                "",
+                "{snip} ed enim ut sem viverra aliquet eget. Tincidunt ornare massa eget egestas purus. Curabitur gravida arcu ac tortor dignissim convallis aenean."
+            ]
+        );
     }
 }

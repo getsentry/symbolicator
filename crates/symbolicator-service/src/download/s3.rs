@@ -5,12 +5,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use aws_config::ecs::EcsCredentialsProvider;
-use aws_credential_types::provider::ProvideCredentials;
 use aws_credential_types::Credentials;
-use aws_sdk_s3::error::ProvideErrorMetadata;
-use aws_sdk_s3::error::SdkError;
+use aws_credential_types::provider::ProvideCredentials;
 use aws_sdk_s3::Client;
 pub use aws_sdk_s3::Error as S3Error;
+use aws_sdk_s3::error::ProvideErrorMetadata;
+use aws_sdk_s3::error::SdkError;
 use futures::TryStreamExt as _;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
 use tokio::io::AsyncWriteExt as _;
@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt as _;
 use crate::caching::{CacheContents, CacheError};
 use crate::utils::http::DownloadTimeouts;
 
-use super::{content_length_timeout, Destination};
+use super::{Destination, content_length_timeout};
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 

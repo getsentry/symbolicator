@@ -21,7 +21,7 @@ use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
 use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey};
-use crate::download::{fetch_file, tempfile_in_parent, DownloadService};
+use crate::download::{DownloadService, fetch_file, tempfile_in_parent};
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 

@@ -10,8 +10,8 @@ use crate::metric;
 use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
-use super::multipart::{read_multipart_data, stream_multipart_file};
 use super::ResponseError;
+use super::multipart::{read_multipart_data, stream_multipart_file};
 
 pub async fn handle_minidump_request(
     extract::State(service): extract::State<RequestService>,
@@ -102,7 +102,7 @@ pub async fn handle_minidump_request(
 
 #[cfg(test)]
 mod tests {
-    use reqwest::{multipart, Client, StatusCode};
+    use reqwest::{Client, StatusCode, multipart};
 
     use crate::service::SymbolicationResponse;
     use crate::test;

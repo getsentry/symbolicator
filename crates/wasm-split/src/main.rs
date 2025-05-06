@@ -12,8 +12,8 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::PathBuf;
 use uuid::Uuid;
-use wasmbin::sections::{CustomSection, Section};
 use wasmbin::Module;
+use wasmbin::sections::{CustomSection, Section};
 
 /// Adds build IDs to wasm files.
 ///
