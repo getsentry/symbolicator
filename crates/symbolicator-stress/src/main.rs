@@ -61,11 +61,15 @@ fn main() -> Result<()> {
     let config_path = cli.config;
     let service_config = SymbolicatorConfig::get(config_path.as_deref())?;
 
-    let mut logging_guard = logging::init(logging::Config {
-        tracing: cli.tracing,
-        sentry: cli.sentry,
-        metrics: cli.metrics,
-    });
+    // SAFETY: We are definitely single-threaded right now, so `init` is safe to call.
+    let mut logging_guard = unsafe {
+        logging::init(logging::Config {
+            backtraces: true,
+            tracing: cli.tracing,
+            sentry: cli.sentry,
+            metrics: cli.metrics,
+        })
+    };
 
     let megs = 1024 * 1024;
     let runtime = tokio::runtime::Builder::new_multi_thread()

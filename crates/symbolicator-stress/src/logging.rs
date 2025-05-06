@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::env;
 use std::future::Future;
 use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::pin::Pin;
@@ -7,6 +8,7 @@ use symbolicator_service::{logging, metrics};
 
 #[derive(Debug, Default)]
 pub struct Config {
+    pub backtraces: bool,
     pub sentry: bool,
     pub tracing: bool,
     pub metrics: bool,
@@ -19,7 +21,17 @@ pub struct Guard {
     pub udp_sink: Option<Pin<Box<dyn Future<Output = ()> + Send>>>,
 }
 
-pub fn init(config: Config) -> Guard {
+/// Initializes logging according to the config.
+///
+/// # Safety
+/// This function uses [`std::env::set_var`] to modify the environment. That function is only safe
+/// to call in single-threaded contexts to prevent unsynchronized concurrent access to the environment.
+pub unsafe fn init(config: Config) -> Guard {
+    if config.backtraces {
+        // SAFETY: As documented, this function may only be called in a single-threaded context.
+        unsafe { env::set_var("RUST_BACKTRACE", "1") };
+    }
+
     let mut guard = Guard::default();
 
     if config.sentry {

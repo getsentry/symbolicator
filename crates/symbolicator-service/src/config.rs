@@ -65,9 +65,7 @@ pub struct Logging {
     pub level: LevelFilter,
     /// Controls the log format.
     pub format: LogFormat,
-    /// DEPRECATED: Modifying the environment is not safe
-    /// in a multithreaded program, so this option no longer
-    /// has any effect.
+    /// When set to true, backtraces are forced on.
     pub enable_backtraces: bool,
 }
 
@@ -76,7 +74,7 @@ impl Default for Logging {
         Logging {
             level: LevelFilter::INFO,
             format: LogFormat::Auto,
-            enable_backtraces: false,
+            enable_backtraces: true,
         }
     }
 }

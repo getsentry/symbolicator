@@ -103,7 +103,10 @@ pub fn execute() -> Result<()> {
         ..Default::default()
     });
 
-    logging::init_logging(&config);
+    // SAFETY: We are definitely single-threaded right now, so `init_logging`
+    // is safe to call.
+    unsafe { logging::init_logging(&config) };
+
     if let Some(ref statsd) = config.metrics.statsd {
         let mut tags = config.metrics.custom_tags.clone();
 
