@@ -72,7 +72,7 @@ impl GcsDownloader {
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
         let token = self
-            .get_token(&file_source.source.source_authentication)
+            .get_token(&file_source.source.source_authorization)
             .await?;
         tracing::debug!("Got valid GCS token");
 
@@ -103,7 +103,7 @@ mod tests {
             id: SourceId::new("gcs-test"),
             bucket: "sentryio-system-symbols-0-test".to_owned(),
             prefix: "/ios".to_owned(),
-            source_authentication: GcsSourceAuthorization::SourceKey(Arc::new(source_key)),
+            source_authorization: GcsSourceAuthorization::SourceKey(Arc::new(source_key)),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         })
     }
@@ -205,7 +205,7 @@ mod tests {
             id: SourceId::new("gcs-id"),
             bucket: String::from("bucket"),
             prefix: String::from("prefix"),
-            source_authentication: source_key,
+            source_authorization: source_key,
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         });
         let location = SourceLocation::new("a/key/with spaces");
