@@ -91,7 +91,7 @@ pub struct GcsSourceKey {
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct GcsSourceToken {
     /// Gcs bearer token.
-    pub token: Arc<str>,
+    pub bearer_token: Arc<str>,
 }
 
 mod test {

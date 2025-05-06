@@ -58,7 +58,7 @@ impl From<CacheableToken> for GcsToken {
 impl From<&GcsSourceToken> for GcsToken {
     fn from(value: &GcsSourceToken) -> Self {
         GcsToken {
-            bearer_token: value.token.clone()
+            bearer_token: value.bearer_token.clone()
         }
     }
 }
