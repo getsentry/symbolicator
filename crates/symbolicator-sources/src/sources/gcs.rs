@@ -93,3 +93,89 @@ pub struct GcsSourceToken {
     /// Gcs bearer token.
     pub token: Arc<str>,
 }
+
+mod test {
+    use insta::{assert_debug_snapshot};
+    use crate::GcsSourceConfig;
+
+    #[test]
+    fn test_parse_request_source_key() {
+        let json = r#"
+        {
+            "id": "some-source-id",
+            "bucket": "some-bucket",
+            "prefix": "some-prefix",
+            "private_key": "some-private-key",
+            "client_email": "some-client@email"
+        }"#;
+        let config = serde_json::from_str::<GcsSourceConfig>(json).unwrap();
+        assert_debug_snapshot!(config, @r###"
+GcsSourceConfig {
+    id: SourceId(
+        "some-source-id",
+    ),
+    bucket: "some-bucket",
+    prefix: "some-prefix",
+    source_authentication: SourceKey(
+        GcsSourceKey {
+            private_key: "some-private-key",
+            client_email: "some-client@email",
+        },
+    ),
+    files: CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes: [],
+            path_patterns: [],
+            requires_checksum: false,
+        },
+        layout: DirectoryLayout {
+            ty: Native,
+            casing: Default,
+        },
+        is_public: false,
+        has_index: false,
+    },
+}
+        "###);
+    }
+
+    #[test]
+    fn test_parse_request_token() {
+        let json = r#"
+        {
+            "id": "some-source-id",
+            "bucket": "some-bucket",
+            "prefix": "some-prefix",
+            "token": "some-token"
+        }"#;
+        let config = serde_json::from_str::<GcsSourceConfig>(json).unwrap();
+        assert_debug_snapshot!(config, @r###"
+GcsSourceConfig {
+    id: SourceId(
+        "some-source-id",
+    ),
+    bucket: "some-bucket",
+    prefix: "some-prefix",
+    source_authentication: SourceToken(
+        GcsSourceToken {
+            token: "some-token",
+        },
+    ),
+    files: CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes: [],
+            path_patterns: [],
+            requires_checksum: false,
+        },
+        layout: DirectoryLayout {
+            ty: Native,
+            casing: Default,
+        },
+        is_public: false,
+        has_index: false,
+    },
+}
+        "###);
+    }
+
+}
