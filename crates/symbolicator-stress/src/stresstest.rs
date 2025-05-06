@@ -12,7 +12,7 @@ use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use tokio::sync::Semaphore;
 
-use crate::workloads::{prepare_payload, process_payload, WorkloadsConfig};
+use crate::workloads::{WorkloadsConfig, prepare_payload, process_payload};
 
 pub async fn perform_stresstest(
     service_config: SymbolicatorConfig,

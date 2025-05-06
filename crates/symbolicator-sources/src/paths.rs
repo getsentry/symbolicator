@@ -911,10 +911,7 @@ mod tests {
                 "/Applications/Program.app/Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
                 "libGLESv2.dylib",
             ),
-            (
-                "libGLESv2.so",
-                "libGLESv2.so",
-            ),
+            ("libGLESv2.so", "libGLESv2.so"),
             (
                 "/Applications/Program.app/Contents/Frameworks/Slack Helper.app/Contents/MacOS/Slack Helper",
                 "Slack Helper",
@@ -927,10 +924,7 @@ mod tests {
                 "/Volumes/Program/Program.app/Contents/Frameworks/Slack Helper (Renderer).app/Contents/MacOS/Slack Helper (Renderer)",
                 "Slack Helper (Renderer)",
             ),
-            (
-                "/Applications/Program.app/Contents/MacOS/Slack",
-                "Slack",
-            ),
+            ("/Applications/Program.app/Contents/MacOS/Slack", "Slack"),
             (
                 "C:\\Users\\Sebastian\\AppData\\Local\\Programs\\Program\\vk_swiftshader.dll",
                 "C:\\projects\\src\\out\\Default\\vk_swiftshader.dll.pdb",

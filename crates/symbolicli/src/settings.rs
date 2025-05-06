@@ -5,7 +5,7 @@ use std::time::Duration;
 use symbolicator_service::config::{CacheConfigs, Config};
 use symbolicator_sources::SourceConfig;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
 use reqwest::Url;
 use serde::Deserialize;
@@ -169,7 +169,9 @@ impl Settings {
                 .or_else(|| project_config_file.auth_token.take())
                 .or_else(|| global_config_file.auth_token.take())
             else {
-                bail!("No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable.");
+                bail!(
+                    "No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable."
+                );
             };
 
             let sentry_url = cli
@@ -187,7 +189,9 @@ impl Settings {
                 .or_else(|| project_config_file.org.take())
                 .or_else(|| global_config_file.org.take())
             else {
-                bail!("No organization provided. Pass it either via the `--org` option or put it in .symboliclirc.");
+                bail!(
+                    "No organization provided. Pass it either via the `--org` option or put it in .symboliclirc."
+                );
             };
 
             let Some(project) = cli
@@ -195,7 +199,9 @@ impl Settings {
                 .or_else(|| project_config_file.project.take())
                 .or_else(|| global_config_file.project.take())
             else {
-                bail!("No project provided. Pass it either via the `--project` option or put it in .symboliclirc.");
+                bail!(
+                    "No project provided. Pass it either via the `--project` option or put it in .symboliclirc."
+                );
             };
 
             Mode::Online {
@@ -255,18 +261,20 @@ fn find_global_config_file() -> Result<PathBuf> {
 }
 
 fn find_project_config_file() -> Option<PathBuf> {
-    std::env::current_dir().ok().and_then(|mut path| loop {
-        path.push(CONFIG_RC_FILE_NAME);
-        if path.exists() {
-            return Some(path);
-        }
-        path.set_file_name("symbolicli.toml");
-        if path.exists() {
-            return Some(path);
-        }
-        path.pop();
-        if !path.pop() {
-            return None;
+    std::env::current_dir().ok().and_then(|mut path| {
+        loop {
+            path.push(CONFIG_RC_FILE_NAME);
+            if path.exists() {
+                return Some(path);
+            }
+            path.set_file_name("symbolicli.toml");
+            if path.exists() {
+                return Some(path);
+            }
+            path.pop();
+            if !path.pop() {
+                return None;
+            }
         }
     })
 }

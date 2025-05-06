@@ -3,12 +3,12 @@ use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::io;
 use std::path::Path;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rayon::prelude::*;
 
-use crate::caching::fs::{metadata_path, METADATA_EXTENSION};
+use crate::caching::fs::{METADATA_EXTENSION, metadata_path};
 use crate::config::Config;
 use crate::metric;
 

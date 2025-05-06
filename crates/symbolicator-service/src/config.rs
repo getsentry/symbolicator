@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use sentry::types::Dsn;
-use serde::{de, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de};
 use tracing::level_filters::LevelFilter;
 
 use symbolicator_sources::SourceConfig;

@@ -13,8 +13,8 @@ use symbolicator_service::objects::ObjectHandle;
 use tempfile::NamedTempFile;
 
 use crate::lookup::{
-    open_bundle, ArtifactBundle, ArtifactBundles, CachedFile, CachedFileUri, FileKey,
-    OwnedSourceMapCache,
+    ArtifactBundle, ArtifactBundles, CachedFile, CachedFileUri, FileKey, OwnedSourceMapCache,
+    open_bundle,
 };
 use crate::utils::get_release_file_candidate_urls;
 

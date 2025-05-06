@@ -20,7 +20,7 @@ use symbolicator_service::types::Scope;
 use symbolicator_service::utils::sentry::ConfigureScope;
 use symbolicator_sources::{FileType, ObjectId, SourceConfig};
 
-use super::derived::{derive_from_object_handle, DerivedCache};
+use super::derived::{DerivedCache, derive_from_object_handle};
 
 pub type OwnedPortablePdbCache = SelfCell<ByteView<'static>, PortablePdbCache<'static>>;
 

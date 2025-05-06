@@ -151,8 +151,8 @@
 //! the cache item itself is being computed / loaded.
 
 use std::io;
-use std::sync::atomic::AtomicIsize;
 use std::sync::Arc;
+use std::sync::atomic::AtomicIsize;
 
 use crate::config::Config;
 

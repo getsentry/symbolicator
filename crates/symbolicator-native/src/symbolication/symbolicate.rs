@@ -17,9 +17,9 @@ use crate::interface::{
     FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
     SymbolicatedFrame,
 };
-use crate::metrics::{record_symbolication_metrics, StacktraceMetrics};
+use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
 
-use super::demangle::{DemangleCache, DEMANGLE_OPTIONS};
+use super::demangle::{DEMANGLE_OPTIONS, DemangleCache};
 use super::dotnet::symbolicate_dotnet_frame;
 use super::module_lookup::{CacheFileEntry, ModuleLookup};
 use super::native::{get_relative_caller_addr, symbolicate_native_frame};

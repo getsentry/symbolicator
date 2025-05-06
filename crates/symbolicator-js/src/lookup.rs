@@ -31,11 +31,11 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use symbolic::common::{ByteView, DebugId, SelfCell};
+use symbolic::debuginfo::Object;
 use symbolic::debuginfo::js::{discover_debug_id, discover_sourcemaps_location};
 use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
-use symbolic::debuginfo::Object;
 use symbolic::sourcemapcache::SourceMapCache;
 use symbolicator_sources::{
     HttpRemoteFile, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
@@ -48,6 +48,7 @@ use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor
 use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
 
+use crate::SourceMapService;
 use crate::api_lookup::{ArtifactHeaders, JsLookupResult, SentryLookupApi};
 use crate::bundle_lookup::FileInBundleCache;
 use crate::interface::{
@@ -60,7 +61,6 @@ use crate::utils::{
     cache_busting_key, extract_file_stem, get_release_file_candidate_urls, join_paths,
     resolve_sourcemap_url,
 };
-use crate::SourceMapService;
 
 pub type OwnedSourceMapCache = SelfCell<ByteView<'static>, SourceMapCache<'static>>;
 

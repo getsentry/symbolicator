@@ -255,7 +255,7 @@ impl<T> From<T> for AsyncWriteDestination<T> {
 
 #[cfg(test)]
 mod tests {
-    use futures::{stream::FuturesUnordered, StreamExt as _};
+    use futures::{StreamExt as _, stream::FuturesUnordered};
     use tokio::io::AsyncReadExt;
 
     use super::*;

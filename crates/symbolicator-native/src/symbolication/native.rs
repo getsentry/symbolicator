@@ -1,4 +1,4 @@
-use symbolic::common::{split_path, InstructionInfo, Language};
+use symbolic::common::{InstructionInfo, Language, split_path};
 use symbolic::symcache::SymCache;
 use symbolicator_service::metric;
 use symbolicator_service::utils::hex::HexValue;
@@ -7,7 +7,7 @@ use crate::interface::{
     AdjustInstructionAddr, FrameStatus, RawFrame, Registers, Signal, SymbolicatedFrame,
 };
 
-use super::demangle::{demangle_symbol, DemangleCache};
+use super::demangle::{DemangleCache, demangle_symbol};
 use super::module_lookup::CacheLookupResult;
 
 pub fn symbolicate_native_frame(
@@ -141,7 +141,9 @@ pub fn get_relative_caller_addr(
             Ok(addr)
         }
     } else {
-        tracing::warn!("Underflow when trying to subtract image start addr from caller address before heuristics");
+        tracing::warn!(
+            "Underflow when trying to subtract image start addr from caller address before heuristics"
+        );
         metric!(counter("relative_addr.underflow") += 1);
         Err(FrameStatus::MissingSymbol)
     }

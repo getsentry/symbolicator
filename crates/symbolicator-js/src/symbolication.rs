@@ -4,16 +4,16 @@ use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
 
+use crate::SourceMapService;
 use crate::interface::{
     CompletedJsSymbolicationResponse, JsFrame, JsModuleError, JsModuleErrorKind, JsStacktrace,
     SymbolicateJsStacktraces,
 };
 use crate::lookup::SourceMapLookup;
-use crate::metrics::{record_stacktrace_metrics, SymbolicationStats};
+use crate::metrics::{SymbolicationStats, record_stacktrace_metrics};
 use crate::utils::{
     fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, join_paths,
 };
-use crate::SourceMapService;
 
 impl SourceMapService {
     #[tracing::instrument(skip_all)]

@@ -15,8 +15,8 @@ use symbolicator_test::read_fixture;
 use tempfile::NamedTempFile;
 
 use crate::{
-    assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
-    source_config, Server,
+    Server, assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
+    source_config,
 };
 
 // FIXME: Using this fixture in combination with the public microsoft symbol server means that
@@ -62,7 +62,7 @@ async fn test_sources_filetypes() {
     let hitcounter = Server::new();
 
     let request = request_fixture(vec![
-        hitcounter.source("not-found", "/respond_statuscode/404/")
+        hitcounter.source("not-found", "/respond_statuscode/404/"),
     ]);
     let response = symbolication.symbolicate(request).await;
 
@@ -106,10 +106,12 @@ async fn test_path_patterns() {
         let candidate = module.candidates.into_inner().pop().unwrap();
 
         if should_be_found {
-            assert!(candidate
-                .location
-                .to_string()
-                .ends_with("wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb"));
+            assert!(
+                candidate
+                    .location
+                    .to_string()
+                    .ends_with("wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb")
+            );
         } else {
             assert_eq!(
                 &candidate.location.to_string(),
@@ -287,24 +289,30 @@ async fn test_reserved_ip_addresses() {
     // source bundle lookup
 
     assert_eq!(candidates[1].source, SourceId::new("getsentry"));
-    assert!(candidates[1]
-        .location
-        .to_string()
-        .starts_with("http://dev.getsentry.net"));
+    assert!(
+        candidates[1]
+            .location
+            .to_string()
+            .starts_with("http://dev.getsentry.net")
+    );
     assert_eq!(candidates[1].download, ObjectDownloadInfo::NotFound);
 
     assert_eq!(candidates[3].source, SourceId::new("ip"));
-    assert!(candidates[3]
-        .location
-        .to_string()
-        .starts_with("http://127.0.0.1"));
+    assert!(
+        candidates[3]
+            .location
+            .to_string()
+            .starts_with("http://127.0.0.1")
+    );
     assert_eq!(candidates[3].download, ObjectDownloadInfo::NotFound);
 
     assert_eq!(candidates[5].source, SourceId::new("localhost"));
-    assert!(candidates[5]
-        .location
-        .to_string()
-        .starts_with("http://localhost"));
+    assert!(
+        candidates[5]
+            .location
+            .to_string()
+            .starts_with("http://localhost")
+    );
     assert_eq!(candidates[5].download, ObjectDownloadInfo::NotFound);
 
     // ---
@@ -324,24 +332,30 @@ async fn test_reserved_ip_addresses() {
     };
 
     assert_eq!(candidates[1].source, SourceId::new("getsentry"));
-    assert!(candidates[1]
-        .location
-        .to_string()
-        .starts_with("http://dev.getsentry.net"));
+    assert!(
+        candidates[1]
+            .location
+            .to_string()
+            .starts_with("http://dev.getsentry.net")
+    );
     assert_eq!(candidates[1].download, error);
 
     assert_eq!(candidates[3].source, SourceId::new("ip"));
-    assert!(candidates[3]
-        .location
-        .to_string()
-        .starts_with("http://127.0.0.1"));
+    assert!(
+        candidates[3]
+            .location
+            .to_string()
+            .starts_with("http://127.0.0.1")
+    );
     assert_eq!(candidates[3].download, error);
 
     assert_eq!(candidates[5].source, SourceId::new("localhost"));
-    assert!(candidates[5]
-        .location
-        .to_string()
-        .starts_with("http://localhost"));
+    assert!(
+        candidates[5]
+            .location
+            .to_string()
+            .starts_with("http://localhost")
+    );
     assert_eq!(candidates[5].download, error);
 }
 

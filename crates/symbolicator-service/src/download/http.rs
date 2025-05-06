@@ -1,6 +1,6 @@
 //! Support to download from HTTP sources.
 
-use reqwest::{header, Client};
+use reqwest::{Client, header};
 
 use symbolicator_sources::HttpRemoteFile;
 

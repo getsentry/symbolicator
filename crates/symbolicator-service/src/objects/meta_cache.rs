@@ -15,14 +15,14 @@ use symbolic::common::ByteView;
 use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
-use crate::caches::versions::META_CACHE_VERSIONS;
 use crate::caches::CacheVersions;
+use crate::caches::versions::META_CACHE_VERSIONS;
 use crate::caching::{CacheContents, CacheItemRequest, CacheKey, CacheKeyBuilder, Cacher};
 use crate::download::DownloadService;
 use crate::types::Scope;
 
-use super::candidates::ObjectFeatures;
 use super::FetchFileDataRequest;
+use super::candidates::ObjectFeatures;
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]

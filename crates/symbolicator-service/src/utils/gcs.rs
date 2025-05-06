@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
-use jsonwebtoken::errors::Error as JwtError;
 use jsonwebtoken::EncodingKey;
+use jsonwebtoken::errors::Error as JwtError;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

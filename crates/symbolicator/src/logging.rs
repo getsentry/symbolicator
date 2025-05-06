@@ -38,13 +38,17 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
 /// Initializes logging for the symbolicator.
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
-/// configuration. Additionally, this toggles `RUST_BACKTRACE` based on the [`enable_stacktraces`]
+/// configuration. Additionally, this toggles `RUST_BACKTRACE` based on the
+/// [`enable_backtraces`](crate::config::Logging::enable_backtraces)
 /// config value.
 ///
-/// [`enable_stacktraces`]: crate::config::Logging::enable_backtraces
-pub fn init_logging(config: &Config) {
+/// # Safety
+/// This function uses [`std::env::set_var`] to modify the environment. That function is only safe
+/// to call in single-threaded contexts to prevent unsynchronized concurrent access to the environment.
+pub unsafe fn init_logging(config: &Config) {
     if config.logging.enable_backtraces {
-        env::set_var("RUST_BACKTRACE", "1");
+        // SAFETY: As documented, this function may only be called in a single-threaded context.
+        unsafe { env::set_var("RUST_BACKTRACE", "1") };
     }
 
     let rust_log =
