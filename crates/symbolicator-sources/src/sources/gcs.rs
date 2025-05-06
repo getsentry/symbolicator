@@ -189,5 +189,4 @@ GcsSourceConfig {
 }
         "###);
     }
-
 }

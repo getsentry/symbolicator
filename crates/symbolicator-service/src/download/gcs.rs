@@ -35,7 +35,10 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &GcsSourceAuthorization) -> CacheContents<GcsSourceToken> {
+    async fn get_token(
+        &self,
+        source_key: &GcsSourceAuthorization,
+    ) -> CacheContents<GcsSourceToken> {
         metric!(counter("source.gcs.token.access") += 1);
 
         match source_key {
@@ -90,7 +93,10 @@ impl GcsDownloader {
 mod tests {
     use super::*;
 
-    use symbolicator_sources::{CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, GcsSourceToken, RemoteFileUri, SourceId, SourceLocation};
+    use symbolicator_sources::{
+        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, GcsSourceToken, RemoteFileUri,
+        SourceId, SourceLocation,
+    };
 
     use crate::test;
 
@@ -137,7 +143,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_use_token_from_request() {
-        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken::new("this-is-a-secret-token".into()));
+        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken::new(
+            "this-is-a-secret-token".into(),
+        ));
         let downloader =
             GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
         let token = downloader.get_token(&auth).await.unwrap();
