@@ -137,9 +137,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_use_token_from_request() {
-        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken {
-            bearer_token: "this-is-a-secret-token".into(),
-        });
+        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken::new("this-is-a-secret-token".into()));
         let downloader =
             GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
         let token = downloader.get_token(&auth).await.unwrap();

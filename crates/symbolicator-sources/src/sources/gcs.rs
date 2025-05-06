@@ -91,21 +91,23 @@ pub struct GcsSourceKey {
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct GcsSourceToken {
     /// Gcs bearer token.
-    pub bearer_token: Arc<str>,
+    bearer_token: Arc<str>,
 }
 
 impl GcsSourceToken {
+    /// Constructs a new bearer token.
     pub fn new(bearer_token: Arc<str>) -> Self {
         Self { bearer_token }
     }
 
+    /// The token in the HTTP Bearer-header format, header value only.
     pub fn bearer_token(&self) -> &str {
         &self.bearer_token
     }
 }
 
+#[cfg(test)]
 mod test {
-    use insta::{assert_debug_snapshot};
     use crate::GcsSourceConfig;
 
     #[test]
@@ -118,8 +120,8 @@ mod test {
             "private_key": "some-private-key",
             "client_email": "some-client@email"
         }"#;
-        let config = serde_json::from_str::<GcsSourceConfig>(json).unwrap();
-        assert_debug_snapshot!(config, @r###"
+        let config: GcsSourceConfig = serde_json::from_str(json).unwrap();
+        insta::assert_debug_snapshot!(config, @r###"
 GcsSourceConfig {
     id: SourceId(
         "some-source-id",
@@ -158,8 +160,8 @@ GcsSourceConfig {
             "prefix": "some-prefix",
             "bearer_token": "some-token"
         }"#;
-        let config = serde_json::from_str::<GcsSourceConfig>(json).unwrap();
-        assert_debug_snapshot!(config, @r###"
+        let config: GcsSourceConfig = serde_json::from_str(json).unwrap();
+        insta::assert_debug_snapshot!(config, @r###"
 GcsSourceConfig {
     id: SourceId(
         "some-source-id",
