@@ -6,6 +6,8 @@
 
 - Added socks proxy support via environment variables by @DmitryRomanov. ([#1699](https://github.com/getsentry/symbolicator/pull/1699))
 - Fixed a potential crash when demangling swift symbols. ([#1700](https://github.com/getsentry/symbolicator/pull/1700))
+- Deprecated the `logging.enable_backtraces` config setting due to unsafety. Use `RUST_BACKTRACE=1` to enable backtraces
+  instead. ([#1702](https://github.com/getsentry/symbolicator/pull/1702))
 
 ### Dependencies
 
