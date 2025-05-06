@@ -4,7 +4,7 @@
 
 ### Various fixes & improvements
 
-- Introduce the possibility to use `gcp_auth::provider()` for authentication instead of providing a `private_key` and `client_email`. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
+- Clients can now send `bearer_token` instead of providing a `private_key` and `client_email` for authorization. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
 
 ### Dependencies
 

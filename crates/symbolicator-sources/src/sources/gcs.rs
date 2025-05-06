@@ -116,7 +116,7 @@ GcsSourceConfig {
     ),
     bucket: "some-bucket",
     prefix: "some-prefix",
-    source_authentication: SourceKey(
+    source_authorization: SourceKey(
         GcsSourceKey {
             private_key: "some-private-key",
             client_email: "some-client@email",
@@ -146,7 +146,7 @@ GcsSourceConfig {
             "id": "some-source-id",
             "bucket": "some-bucket",
             "prefix": "some-prefix",
-            "token": "some-token"
+            "bearer_token": "some-token"
         }"#;
         let config = serde_json::from_str::<GcsSourceConfig>(json).unwrap();
         assert_debug_snapshot!(config, @r###"
@@ -156,9 +156,9 @@ GcsSourceConfig {
     ),
     bucket: "some-bucket",
     prefix: "some-prefix",
-    source_authentication: SourceToken(
+    source_authorization: SourceToken(
         GcsSourceToken {
-            token: "some-token",
+            bearer_token: "some-token",
         },
     ),
     files: CommonSourceConfig {
