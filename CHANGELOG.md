@@ -4,7 +4,7 @@
 
 ### Various fixes & improvements
 
-- Clients can now send `bearer_token` instead of providing a `private_key` and `client_email` for authorization. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
+- Clients can now send `bearer_token` instead of providing a `private_key` and `client_email` for GCS authorization. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
 
 ### Dependencies
 
