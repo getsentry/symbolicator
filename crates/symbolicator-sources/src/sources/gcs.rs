@@ -94,6 +94,16 @@ pub struct GcsSourceToken {
     pub bearer_token: Arc<str>,
 }
 
+impl GcsSourceToken {
+    pub fn new(bearer_token: Arc<str>) -> Self {
+        Self { bearer_token }
+    }
+
+    pub fn bearer_token(&self) -> &str {
+        &self.bearer_token
+    }
+}
+
 mod test {
     use insta::{assert_debug_snapshot};
     use crate::GcsSourceConfig;

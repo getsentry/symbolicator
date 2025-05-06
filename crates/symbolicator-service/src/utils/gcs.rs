@@ -12,20 +12,6 @@ use url::Url;
 
 use symbolicator_sources::{GcsSourceKey, GcsSourceToken};
 
-/// A wrapper for a GCS bearer token.
-///
-/// It does not contain expiration information and should only be used to authorize
-/// requests.
-pub struct GcsToken {
-    bearer_token: Arc<str>
-}
-
-impl GcsToken {
-    pub fn bearer_token(&self) -> &str {
-        &self.bearer_token
-    }
-}
-
 /// A JWT token usable for GCS.
 ///
 /// Contains `expires_at` information so it can be cached and expired properly.
@@ -42,24 +28,8 @@ impl CacheableToken {
     }
 
     /// The token in the HTTP Bearer-header format, header value only.
-    pub fn bearer_token(&self) -> &str {
+    pub fn bearer_token(&self) -> &Arc<str> {
         &self.bearer_token
-    }
-}
-
-impl From<CacheableToken> for GcsToken {
-    fn from(value: CacheableToken) -> Self {
-        GcsToken {
-            bearer_token: value.bearer_token,
-        }
-    }
-}
-
-impl From<&GcsSourceToken> for GcsToken {
-    fn from(value: &GcsSourceToken) -> Self {
-        GcsToken {
-            bearer_token: value.bearer_token.clone()
-        }
     }
 }
 

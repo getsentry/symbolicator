@@ -1,10 +1,10 @@
 //! Support to download from Google Cloud Storage buckets.
 
 use std::sync::Arc;
-use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey};
+use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey, GcsSourceToken};
 
 use crate::caching::{CacheContents, CacheError};
-use crate::utils::gcs::{self, CacheableToken, GcsToken};
+use crate::utils::gcs::{self, CacheableToken};
 use crate::utils::http::DownloadTimeouts;
 
 use super::Destination;
@@ -35,7 +35,7 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &GcsSourceAuthorization) -> CacheContents<GcsToken> {
+    async fn get_token(&self, source_key: &GcsSourceAuthorization) -> CacheContents<GcsSourceToken> {
         metric!(counter("source.gcs.token.access") += 1);
 
         match source_key {
@@ -54,10 +54,9 @@ impl GcsDownloader {
                     .or_insert_with_if(init, replace_if)
                     .await
                     .into_value()
-                    .map(Into::into)
-
+                    .map(|token| GcsSourceToken::new(token.bearer_token().clone()))
             }
-            GcsSourceAuthorization::SourceToken(source_token) => Ok(source_token.into()),
+            GcsSourceAuthorization::SourceToken(source_token) => Ok(source_token.clone()),
         }
     }
 

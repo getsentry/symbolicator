@@ -85,7 +85,7 @@ where
     }
 }
 
-pub async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::Error> {
+async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::Error> {
     // For fresh k8s pods the GKE metadata server may not accept connections
     // yet, so we need to retry this for a bit.
     const MAX_DELAY: Duration = Duration::from_secs(60);
