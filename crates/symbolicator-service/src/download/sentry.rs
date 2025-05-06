@@ -7,8 +7,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use sentry::SentryFutureExt;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use url::Url;
 
 use symbolicator_sources::{
@@ -18,7 +18,7 @@ use symbolicator_sources::{
 use super::{Destination, FileType, USER_AGENT};
 use crate::caching::{CacheContents, CacheError};
 use crate::config::InMemoryCacheConfig;
-use crate::utils::futures::{m, measure, CancelOnDrop};
+use crate::utils::futures::{CancelOnDrop, m, measure};
 use crate::utils::http::DownloadTimeouts;
 
 #[derive(Clone, Debug, Deserialize)]

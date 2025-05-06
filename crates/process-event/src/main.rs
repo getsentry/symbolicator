@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use ::reqwest::blocking::multipart;
 use clap::Parser;
 use reqwest::blocking as reqwest;
-use serde_json::{to_string, Map, Value};
+use serde_json::{Map, Value, to_string};
 use symbolic::common::split_path;
 
 #[path = "../../symbolicator-service/src/utils/hex.rs"]

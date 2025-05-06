@@ -10,7 +10,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, Context as _, Error, Result};
+use anyhow::{Context as _, Error, Result, anyhow};
 use futures::{Future, TryStreamExt};
 use gcp_auth::{CustomServiceAccount, Token, TokenProvider};
 use reqwest::{Body, Client, StatusCode};
@@ -20,7 +20,7 @@ use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
-use tokio::sync::{mpsc, oneshot, OnceCell};
+use tokio::sync::{OnceCell, mpsc, oneshot};
 use tokio_util::io::{ReaderStream, StreamReader};
 use url::Url;
 

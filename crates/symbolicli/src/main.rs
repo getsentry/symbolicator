@@ -9,8 +9,8 @@ use remote::EventKey;
 
 use settings::Mode;
 use symbolicator_js::SourceMapService;
-use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_native::SymbolicationActor;
+use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
@@ -77,7 +77,9 @@ async fn main() -> Result<()> {
                 ..
             } = mode
             else {
-                anyhow::bail!("Event not found in local file system and `symbolicli` is in offline mode. Stopping.");
+                anyhow::bail!(
+                    "Event not found in local file system and `symbolicli` is in offline mode. Stopping."
+                );
             };
 
             let mut headers = header::HeaderMap::new();
@@ -278,7 +280,7 @@ impl Payload {
 mod remote {
     use std::io::Write;
 
-    use anyhow::{bail, Context, Result};
+    use anyhow::{Context, Result, bail};
     use reqwest::{StatusCode, Url};
     use serde::Deserialize;
     use tempfile::{NamedTempFile, TempPath};

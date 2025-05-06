@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{arg, Parser};
+use clap::{Parser, arg};
 
 use symbolicator_service::caching;
 use symbolicator_service::metrics;

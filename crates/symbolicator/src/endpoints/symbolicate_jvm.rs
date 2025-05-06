@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract, Json};
+use axum::{Json, extract};
 use serde::{Deserialize, Serialize};
 use symbolicator_proguard::interface::{
     JvmException, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
@@ -11,8 +11,8 @@ use symbolicator_sources::SourceConfig;
 use crate::service::{RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
-use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::endpoints::ResponseError;
+use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 
 #[derive(Serialize, Deserialize)]
 pub struct JvmSymbolicationRequestBody {

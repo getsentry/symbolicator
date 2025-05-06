@@ -4,8 +4,8 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
-use serde::{de, Deserialize, Deserializer, Serialize};
-use symbolic::common::{split_path, CodeId, DebugId};
+use serde::{Deserialize, Deserializer, Serialize, de};
+use symbolic::common::{CodeId, DebugId, split_path};
 
 /// A Wrapper around [`glob::Pattern`] that allows de/serialization.
 #[derive(Debug, Clone)]

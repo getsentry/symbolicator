@@ -77,10 +77,12 @@ async fn test_download_proguard_file() {
     let source = SourceConfig::Sentry(Arc::new(source));
     let debug_id = DebugId::from_str("246fb328-fc4e-406a-87ff-fc35f6149d8f").unwrap();
 
-    assert!(symbolication
-        .download_proguard_file(&[source], &Scope::Global, debug_id)
-        .await
-        .is_ok());
+    assert!(
+        symbolication
+            .download_proguard_file(&[source], &Scope::Global, debug_id)
+            .await
+            .is_ok()
+    );
 }
 
 #[tokio::test]

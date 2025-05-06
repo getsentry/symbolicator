@@ -64,7 +64,7 @@ pub struct Debug {
 mod timestamp {
     use std::time::{Duration, SystemTime};
 
-    use serde::{de::Error as _, ser::Error as _, Deserialize, Deserializer, Serializer};
+    use serde::{Deserialize, Deserializer, Serializer, de::Error as _, ser::Error as _};
 
     /// Serializes a [`SystemTime`] as seconds since the UNIX epoch.
     pub(super) fn serialize<S>(timestamp: &SystemTime, s: S) -> Result<S::Ok, S::Error>

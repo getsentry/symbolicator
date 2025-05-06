@@ -4,7 +4,7 @@ use symbolicator_native::interface::{CompletedSymbolicationResponse, FrameStatus
 use symbolicator_service::objects::{ObjectDownloadInfo, ObjectUseInfo};
 use symbolicator_service::types::ObjectFileStatus;
 
-use crate::{example_request, setup_service, Server};
+use crate::{Server, example_request, setup_service};
 
 #[tokio::test]
 async fn test_download_errors() {

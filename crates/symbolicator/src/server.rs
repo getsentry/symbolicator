@@ -9,8 +9,8 @@ use anyhow::{Context, Result};
 
 #[cfg(feature = "https")]
 use axum_server::tls_rustls::RustlsConfig;
-use futures::future::try_join_all;
 use futures::future::BoxFuture;
+use futures::future::try_join_all;
 
 use crate::config::Config;
 use crate::endpoints;

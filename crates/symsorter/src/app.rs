@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use console::style;
