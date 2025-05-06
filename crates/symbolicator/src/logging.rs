@@ -39,8 +39,6 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
 ///
 /// This considers the `RUST_LOG` environment variable and defaults it to the level specified in the
 /// configuration.
-///
-///
 pub fn init_logging(config: &Config) {
     if config.logging.enable_backtraces {
         tracing::warn!(
