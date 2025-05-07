@@ -45,7 +45,7 @@ impl GcsDownloader {
             GcsSourceAuthorization::SourceKey(source_key) => {
                 let init = Box::pin(async {
                     metric!(counter("source.gcs.token.computation") += 1);
-                    let token = gcs::request_new_token(&self.client, &source_key).await;
+                    let token = gcs::request_new_token(&self.client, source_key).await;
                     token.map_err(CacheError::from)
                 });
                 let replace_if = |entry: &CacheContents<CacheableToken>| {
