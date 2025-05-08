@@ -13,20 +13,22 @@ use url::Url;
 use symbolicator_sources::GcsSourceKey;
 
 /// A JWT token usable for GCS.
+///
+/// Contains `expires_at` information so it can be cached and expired properly.
 #[derive(Debug, Clone)]
-pub struct GcsToken {
+pub struct CacheableToken {
     bearer_token: Arc<str>,
     expires_at: DateTime<Utc>,
 }
 
-impl GcsToken {
+impl CacheableToken {
     /// Whether the token is expired or is still valid.
     pub fn is_expired(&self) -> bool {
         self.expires_at < Utc::now()
     }
 
     /// The token in the HTTP Bearer-header format, header value only.
-    pub fn bearer_token(&self) -> &str {
+    pub fn bearer_token(&self) -> &Arc<str> {
         &self.bearer_token
     }
 }
@@ -116,7 +118,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Jw
 pub async fn request_new_token(
     client: &Client,
     source_key: &GcsSourceKey,
-) -> Result<GcsToken, GcsError> {
+) -> Result<CacheableToken, GcsError> {
     let expires_at = Utc::now() + Duration::minutes(58);
     let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
 
@@ -138,7 +140,7 @@ pub async fn request_new_token(
         .map_err(GcsError::Auth)?;
     let bearer_token = format!("Bearer {}", token.access_token).into();
 
-    Ok(GcsToken {
+    Ok(CacheableToken {
         bearer_token,
         expires_at,
     })

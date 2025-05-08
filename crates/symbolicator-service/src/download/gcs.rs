@@ -1,17 +1,16 @@
 //! Support to download from Google Cloud Storage buckets.
 
 use std::sync::Arc;
-
-use symbolicator_sources::{GcsRemoteFile, GcsSourceKey};
+use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey, GcsSourceToken};
 
 use crate::caching::{CacheContents, CacheError};
-use crate::utils::gcs::{self, GcsToken};
+use crate::utils::gcs::{self, CacheableToken};
 use crate::utils::http::DownloadTimeouts;
 
 use super::Destination;
 
 /// An LRU cache for GCS OAuth tokens.
-type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheContents<GcsToken>>;
+type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheContents<CacheableToken>>;
 
 /// Downloader implementation that supports the GCS source.
 #[derive(Debug)]
@@ -36,22 +35,32 @@ impl GcsDownloader {
     ///
     /// If the cache contains a valid token, then this token is returned. Otherwise, a new token is
     /// requested from GCS and stored in the cache.
-    async fn get_token(&self, source_key: &Arc<GcsSourceKey>) -> CacheContents<GcsToken> {
+    async fn get_token(
+        &self,
+        source_key: &GcsSourceAuthorization,
+    ) -> CacheContents<GcsSourceToken> {
         metric!(counter("source.gcs.token.access") += 1);
 
-        let init = Box::pin(async {
-            metric!(counter("source.gcs.token.computation") += 1);
-            let token = gcs::request_new_token(&self.client, source_key).await;
-            token.map_err(CacheError::from)
-        });
-        let replace_if =
-            |entry: &CacheContents<GcsToken>| entry.as_ref().map_or(true, |t| t.is_expired());
+        match source_key {
+            GcsSourceAuthorization::SourceKey(source_key) => {
+                let init = Box::pin(async {
+                    metric!(counter("source.gcs.token.computation") += 1);
+                    let token = gcs::request_new_token(&self.client, source_key).await;
+                    token.map_err(CacheError::from)
+                });
+                let replace_if = |entry: &CacheContents<CacheableToken>| {
+                    entry.as_ref().map_or(true, |t| t.is_expired())
+                };
 
-        self.token_cache
-            .entry_by_ref(source_key)
-            .or_insert_with_if(init, replace_if)
-            .await
-            .into_value()
+                self.token_cache
+                    .entry_by_ref(source_key)
+                    .or_insert_with_if(init, replace_if)
+                    .await
+                    .into_value()
+                    .map(|token| GcsSourceToken::new(token.bearer_token().clone()))
+            }
+            GcsSourceAuthorization::SourceToken(source_token) => Ok(source_token.clone()),
+        }
     }
 
     /// Downloads a source hosted on GCS.
@@ -64,7 +73,9 @@ impl GcsDownloader {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
-        let token = self.get_token(&file_source.source.source_key).await?;
+        let token = self
+            .get_token(&file_source.source.source_authorization)
+            .await?;
         tracing::debug!("Got valid GCS token");
 
         let url = gcs::download_url(bucket, &key)?;
@@ -83,8 +94,8 @@ mod tests {
     use super::*;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, RemoteFileUri, SourceId,
-        SourceLocation,
+        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, GcsSourceToken, RemoteFileUri,
+        SourceId, SourceLocation,
     };
 
     use crate::test;
@@ -97,7 +108,7 @@ mod tests {
             id: SourceId::new("gcs-test"),
             bucket: "sentryio-system-symbols-0-test".to_owned(),
             prefix: "/ios".to_owned(),
-            source_key: Arc::new(source_key),
+            source_authorization: GcsSourceAuthorization::SourceKey(Arc::new(source_key)),
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         })
     }
@@ -128,6 +139,17 @@ mod tests {
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
         let hash = format!("{hash:x}");
         assert_eq!(hash, "206e63c06da135be1858dde03778caf25f8465b8");
+    }
+
+    #[tokio::test]
+    async fn test_use_token_from_request() {
+        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken::new(
+            "this-is-a-secret-token".into(),
+        ));
+        let downloader =
+            GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
+        let token = downloader.get_token(&auth).await.unwrap();
+        assert_eq!(token.bearer_token(), "this-is-a-secret-token");
     }
 
     #[tokio::test]
@@ -180,15 +202,15 @@ mod tests {
 
     #[test]
     fn test_gcs_remote_dif_uri() {
-        let source_key = Arc::new(GcsSourceKey {
+        let source_key = GcsSourceAuthorization::SourceKey(Arc::new(GcsSourceKey {
             private_key: String::from("ABC"),
             client_email: String::from("someone@example.com"),
-        });
+        }));
         let source = Arc::new(GcsSourceConfig {
             id: SourceId::new("gcs-id"),
             bucket: String::from("bucket"),
             prefix: String::from("prefix"),
-            source_key,
+            source_authorization: source_key,
             files: CommonSourceConfig::with_layout(DirectoryLayoutType::Unified),
         });
         let location = SourceLocation::new("a/key/with spaces");

@@ -5003,6 +5003,7 @@ dependencies = [
  "insta",
  "once_cell",
  "serde",
+ "serde_json",
  "serde_yaml",
  "symbolic",
  "tracing",

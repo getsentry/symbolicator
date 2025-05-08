@@ -19,7 +19,7 @@ pub struct GcsSourceConfig {
 
     /// Authorization information for this bucket. Needs read access.
     #[serde(flatten)]
-    pub source_key: Arc<GcsSourceKey>,
+    pub source_authorization: GcsSourceAuthorization,
 
     /// Configuration common to all sources.
     #[serde(flatten)]
@@ -64,6 +64,18 @@ impl GcsRemoteFile {
 }
 
 /// GCS authorization information.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum GcsSourceAuthorization {
+    /// (email, private_key) pair used for authorization.
+    SourceKey(Arc<GcsSourceKey>),
+    /// Authorization token used directly.
+    SourceToken(GcsSourceToken),
+}
+
+/// GCS authorization credentials.
+///
+/// These are used to obtain a token which is then used for GCS communication.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Deserialize, Serialize)]
 pub struct GcsSourceKey {
     /// Gcs authorization key.
@@ -71,4 +83,110 @@ pub struct GcsSourceKey {
 
     /// The client email.
     pub client_email: String,
+}
+
+/// GCS authorization token.
+///
+/// This token will be used directly to authorize against GCS.
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+pub struct GcsSourceToken {
+    /// Gcs bearer token.
+    bearer_token: Arc<str>,
+}
+
+impl GcsSourceToken {
+    /// Constructs a new bearer token.
+    pub fn new(bearer_token: Arc<str>) -> Self {
+        Self { bearer_token }
+    }
+
+    /// The token in the HTTP Bearer-header format, header value only.
+    pub fn bearer_token(&self) -> &str {
+        &self.bearer_token
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::GcsSourceConfig;
+
+    #[test]
+    fn test_parse_request_source_key() {
+        let json = r#"
+        {
+            "id": "some-source-id",
+            "bucket": "some-bucket",
+            "prefix": "some-prefix",
+            "private_key": "some-private-key",
+            "client_email": "some-client@email"
+        }"#;
+        let config: GcsSourceConfig = serde_json::from_str(json).unwrap();
+        insta::assert_debug_snapshot!(config, @r###"
+GcsSourceConfig {
+    id: SourceId(
+        "some-source-id",
+    ),
+    bucket: "some-bucket",
+    prefix: "some-prefix",
+    source_authorization: SourceKey(
+        GcsSourceKey {
+            private_key: "some-private-key",
+            client_email: "some-client@email",
+        },
+    ),
+    files: CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes: [],
+            path_patterns: [],
+            requires_checksum: false,
+        },
+        layout: DirectoryLayout {
+            ty: Native,
+            casing: Default,
+        },
+        is_public: false,
+        has_index: false,
+    },
+}
+        "###);
+    }
+
+    #[test]
+    fn test_parse_request_token() {
+        let json = r#"
+        {
+            "id": "some-source-id",
+            "bucket": "some-bucket",
+            "prefix": "some-prefix",
+            "bearer_token": "some-token"
+        }"#;
+        let config: GcsSourceConfig = serde_json::from_str(json).unwrap();
+        insta::assert_debug_snapshot!(config, @r###"
+GcsSourceConfig {
+    id: SourceId(
+        "some-source-id",
+    ),
+    bucket: "some-bucket",
+    prefix: "some-prefix",
+    source_authorization: SourceToken(
+        GcsSourceToken {
+            bearer_token: "some-token",
+        },
+    ),
+    files: CommonSourceConfig {
+        filters: SourceFilters {
+            filetypes: [],
+            path_patterns: [],
+            requires_checksum: false,
+        },
+        layout: DirectoryLayout {
+            ty: Native,
+            casing: Default,
+        },
+        is_public: false,
+        has_index: false,
+    },
+}
+        "###);
+    }
 }

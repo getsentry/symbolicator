@@ -6,6 +6,7 @@
 
 - Added socks proxy support via environment variables by @DmitryRomanov. ([#1699](https://github.com/getsentry/symbolicator/pull/1699))
 - Fixed a potential crash when demangling swift symbols. ([#1700](https://github.com/getsentry/symbolicator/pull/1700))
+- Clients can now send `bearer_token` instead of providing a `private_key` and `client_email` for GCS authorization. ([#1697](https://github.com/getsentry/symbolicator/pull/1697))
 
 ### Dependencies
 

@@ -85,6 +85,50 @@ where
     }
 }
 
+async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::Error> {
+    // For fresh k8s pods the GKE metadata server may not accept connections
+    // yet, so we need to retry this for a bit.
+    const MAX_DELAY: Duration = Duration::from_secs(60);
+    const RETRY_INTERVAL: Duration = Duration::from_millis(500);
+
+    let start = Instant::now();
+    loop {
+        let future = async move {
+            gcp_auth::provider()
+                .await
+                .context("Failed to initialise authentication token")
+        };
+        match tokio::time::timeout(Duration::from_secs(1), future)
+            .await
+            .unwrap_or_else(|_elapsed| {
+                Err(Error::msg("Timeout initialising GCS authentication token"))
+            }) {
+            Ok(token_provider) => break Ok(token_provider),
+            Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
+            Err(err) => {
+                let remaining = MAX_DELAY - start.elapsed();
+                tracing::warn!("Error initialising GCS authentication token: {}", &err);
+                match err.downcast_ref::<gcp_auth::Error>() {
+                    Some(gcp_auth::Error::NoAuthMethod(gcloud, svc, user)) => {
+                        tracing::error!(
+                            "No GCP auth: gcloud: {}, svc: {}, user: {}",
+                            gcloud,
+                            svc,
+                            user,
+                        );
+                    }
+                    _ => tracing::warn!("Error initialising GCS authentication token: {}", &err),
+                }
+                tracing::info!(
+                    "Waiting for GKE metadata server, {}s remaining",
+                    remaining.as_secs(),
+                );
+                tokio::time::sleep(RETRY_INTERVAL).await;
+            }
+        }
+    }
+}
+
 impl GcsState {
     pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
         let token_provider = match config.service_account_path {
@@ -92,51 +136,7 @@ impl GcsState {
                 let service_account = CustomServiceAccount::from_file(path)?;
                 Arc::new(service_account)
             }
-            None => {
-                // For fresh k8s pods the GKE metadata server may not accept connections
-                // yet, so we need to retry this for a bit.
-                const MAX_DELAY: Duration = Duration::from_secs(60);
-                const RETRY_INTERVAL: Duration = Duration::from_millis(500);
-                let start = Instant::now();
-                loop {
-                    let future = async move {
-                        gcp_auth::provider()
-                            .await
-                            .context("Failed to initialise authentication token")
-                    };
-                    match tokio::time::timeout(Duration::from_secs(1), future)
-                        .await
-                        .unwrap_or_else(|_elapsed| {
-                            Err(Error::msg("Timeout initialising GCS authentication token"))
-                        }) {
-                        Ok(token_provider) => break token_provider,
-                        Err(err) if start.elapsed() > MAX_DELAY => return Err(err),
-                        Err(err) => {
-                            let remaining = MAX_DELAY - start.elapsed();
-                            tracing::warn!("Error initialising GCS authentication token: {}", &err);
-                            match err.downcast_ref::<gcp_auth::Error>() {
-                                Some(gcp_auth::Error::NoAuthMethod(gcloud, svc, user)) => {
-                                    tracing::error!(
-                                        "No GCP auth: gcloud: {}, svc: {}, user: {}",
-                                        gcloud,
-                                        svc,
-                                        user,
-                                    );
-                                }
-                                _ => tracing::warn!(
-                                    "Error initialising GCS authentication token: {}",
-                                    &err
-                                ),
-                            }
-                            tracing::info!(
-                                "Waiting for GKE metadata server, {}s remaining",
-                                remaining.as_secs(),
-                            );
-                            tokio::time::sleep(RETRY_INTERVAL).await;
-                        }
-                    }
-                }
-            }
+            None => initialize_token_provider().await?,
         };
         Ok(Self {
             config,
