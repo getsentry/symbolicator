@@ -631,7 +631,7 @@ async fn do_download_reqwest_range(
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
             // This case should never happen, since our initial request is always a valid request,
             // when this happens, just retry without a range header and log the error for investigation.
-            tracing::error!(
+            tracing::debug!(
                 source_name = request.source_name,
                 source = source,
                 "initial partial request was rejected with 416, range not satisfiable"
@@ -650,7 +650,7 @@ async fn do_download_reqwest_range(
             // request and just retry without a range request.
             //
             // Either way, we do not expect this to happen.
-            tracing::error!(
+            tracing::debug!(
                 error = &err as &dyn std::error::Error,
                 source_name = request.source_name,
                 source = source,
