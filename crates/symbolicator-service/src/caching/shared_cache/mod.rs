@@ -195,9 +195,7 @@ impl GcsState {
         match status {
             _ if status.is_success() => {
                 tracing::trace!("Success hitting shared_cache GCS {}", key);
-                let stream = response
-                    .bytes_stream()
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+                let stream = response.bytes_stream().map_err(std::io::Error::other);
                 let mut stream = StreamReader::new(stream);
 
                 // NOTE: this is not really a `STORE`, but we use the same timeout here regardless,
