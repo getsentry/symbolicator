@@ -423,6 +423,5 @@ pub(crate) fn metadata_path(path: impl AsRef<Path>) -> PathBuf {
 pub(crate) fn write_metadata(path: impl AsRef<Path>, metadata: &Metadata) -> io::Result<()> {
     let md_path = metadata_path(path);
     let mut md_file = File::create(md_path)?;
-    serde_json::to_writer(&mut md_file, metadata)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    serde_json::to_writer(&mut md_file, metadata).map_err(io::Error::other)
 }

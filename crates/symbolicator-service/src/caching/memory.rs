@@ -662,12 +662,9 @@ fn persist_tempfile(
     mut temp_file: NamedTempFile,
     cache_path: &Path,
 ) -> std::io::Result<std::fs::File> {
-    let parent = cache_path.parent().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "no parent directory to persist item",
-        )
-    })?;
+    let parent = cache_path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("no parent directory to persist item"))?;
 
     // The `cleanup` process could potentially remove the parent directories we are
     // operating in, so be defensive here and retry the fs operations.

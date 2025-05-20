@@ -8,10 +8,10 @@ fn emit_version_var() -> Result<(), io::Error> {
         .output()?;
 
     if !cmd.status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("`git describe' failed: {}", cmd.status),
-        ));
+        return Err(io::Error::other(format!(
+            "`git describe' failed: {}",
+            cmd.status
+        )));
     }
 
     let ver = String::from_utf8_lossy(&cmd.stdout);
@@ -29,10 +29,10 @@ fn emit_release_var() -> Result<(), io::Error> {
         .output()?;
 
     if !cmd.status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("`git rev-parse' failed: {}", cmd.status),
-        ));
+        return Err(io::Error::other(format!(
+            "`git rev-parse' failed: {}",
+            cmd.status
+        )));
     }
 
     let ver = String::from_utf8_lossy(&cmd.stdout);
