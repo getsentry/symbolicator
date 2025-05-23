@@ -17,11 +17,10 @@ use partial::BytesContentRange;
 use reqwest::StatusCode;
 
 use crate::caching::{CacheContents, CacheError};
-use crate::config::Config;
+use crate::config::{Config, DownloadTimeouts};
 use crate::types::Scope;
 use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
-use crate::utils::http::DownloadTimeouts;
 use crate::utils::sentry::ConfigureScope;
 use stream::FuturesUnordered;
 pub use symbolicator_sources::{
@@ -243,7 +242,7 @@ pub struct DownloadService {
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
-        let timeouts = DownloadTimeouts::from_config(config);
+        let timeouts = config.timeouts;
 
         // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
         // | -----------| ----------------------------|---------------------------|

@@ -16,7 +16,7 @@ use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3Sou
 use tokio::io::AsyncWriteExt as _;
 
 use crate::caching::{CacheContents, CacheError};
-use crate::utils::http::DownloadTimeouts;
+use crate::config::DownloadTimeouts;
 
 use super::{Destination, content_length_timeout};
 

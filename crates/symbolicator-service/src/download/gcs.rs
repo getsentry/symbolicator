@@ -4,8 +4,8 @@ use std::sync::Arc;
 use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey, GcsSourceToken};
 
 use crate::caching::{CacheContents, CacheError};
+use crate::config::DownloadTimeouts;
 use crate::utils::gcs::{self, CacheableToken};
-use crate::utils::http::DownloadTimeouts;
 
 use super::Destination;
 

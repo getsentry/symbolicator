@@ -4,8 +4,10 @@ use reqwest::{Client, header};
 
 use symbolicator_sources::HttpRemoteFile;
 
-use crate::caching::{CacheContents, CacheError};
-use crate::utils::http::DownloadTimeouts;
+use crate::{
+    caching::{CacheContents, CacheError},
+    config::DownloadTimeouts,
+};
 
 use super::{Destination, USER_AGENT};
 

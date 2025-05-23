@@ -6,7 +6,7 @@ use ipnetwork::Ipv4Network;
 use once_cell::sync::Lazy;
 use reqwest::{StatusCode, Url, redirect};
 
-use crate::config::Config;
+use crate::config::DownloadTimeouts;
 
 static RESERVED_IP_BLOCKS: Lazy<Vec<Ipv4Network>> = Lazy::new(|| {
     [
@@ -51,41 +51,6 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
     }
 
     true
-}
-
-/// Various timeouts for all the Downloaders
-#[derive(Copy, Clone, Debug)]
-pub struct DownloadTimeouts {
-    /// The timeout for establishing a connection.
-    pub connect: Duration,
-    /// The timeout for receiving the first headers.
-    pub head: Duration,
-    /// An adaptive timeout per 1GB of content.
-    pub streaming: Duration,
-    /// Global timeout for one download.
-    pub max_download: Duration,
-}
-
-impl DownloadTimeouts {
-    pub fn from_config(config: &Config) -> Self {
-        Self {
-            connect: config.connect_timeout,
-            head: config.head_timeout,
-            streaming: config.streaming_timeout,
-            max_download: config.max_download_timeout,
-        }
-    }
-}
-
-impl Default for DownloadTimeouts {
-    fn default() -> Self {
-        Self {
-            connect: Duration::from_millis(500),
-            head: Duration::from_secs(5),
-            streaming: Duration::from_secs(250),
-            max_download: Duration::from_secs(315),
-        }
-    }
 }
 
 /// Creates a [`reqwest::Client`] with the provided options.

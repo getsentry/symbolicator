@@ -245,7 +245,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::caching::{Cache, CacheName};
-    use crate::config::{CacheConfig, CacheConfigs, Config};
+    use crate::config::{CacheConfig, CacheConfigs, Config, DownloadTimeouts};
     use crate::download::SourceIndexService;
     use crate::objects::{FindObject, ObjectPurpose, ObjectsActor};
     use crate::test::{self, tempdir};
@@ -255,7 +255,10 @@ mod tests {
     async fn make_objects_actor(tempdir: &TempDir) -> ObjectsActor {
         let config = Config {
             connect_to_reserved_ips: true,
-            max_download_timeout: Duration::from_millis(100),
+            timeouts: DownloadTimeouts {
+                max_download: Duration::from_millis(100),
+                ..Default::default()
+            },
             cache_dir: Some(tempdir.path().to_path_buf()),
             ..Default::default()
         };
