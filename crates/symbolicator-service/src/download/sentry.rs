@@ -17,9 +17,8 @@ use symbolicator_sources::{
 
 use super::{Destination, FileType, USER_AGENT};
 use crate::caching::{CacheContents, CacheError};
-use crate::config::InMemoryCacheConfig;
+use crate::config::{DownloadTimeouts, InMemoryCacheConfig};
 use crate::utils::futures::{CancelOnDrop, m, measure};
-use crate::utils::http::DownloadTimeouts;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

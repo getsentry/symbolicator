@@ -475,28 +475,6 @@ pub struct Config {
     /// Allow reserved IP addresses for requests to sources.
     pub connect_to_reserved_ips: bool,
 
-    /// The maximum timeout for downloads.
-    ///
-    /// This is the upper limit the download service will take for downloading from a single
-    /// source, regardless of how many retries are involved. The default is set to 315s,
-    /// just above the amount of time it would take for a 4MB/s connection to download 2GB.
-    #[serde(with = "humantime_serde")]
-    pub max_download_timeout: Duration,
-
-    /// The timeout for establishing a connection in a download.
-    ///
-    /// This timeout applies to each individual attempt to establish a
-    /// connection with a symbol source if retries take place.
-    #[serde(with = "humantime_serde")]
-    pub connect_timeout: Duration,
-
-    /// The timeout for the initial HEAD request in a download.
-    ///
-    /// This timeout applies to each individual attempt to establish a
-    /// connection with a symbol source if retries take place.
-    #[serde(with = "humantime_serde")]
-    pub head_timeout: Duration,
-
     /// Whether to enable the host deny list.
     ///
     /// The host deny list temporarily blocks symbol sources when
@@ -525,15 +503,8 @@ pub struct Config {
     /// A list of hosts to never block regardless of download failures.
     pub deny_list_never_block_hosts: Vec<String>,
 
-    /// The timeout per GB for streaming downloads.
-    ///
-    /// For downloads with a known size, this timeout applies per individual
-    /// download attempt. If the download size is not known, it is ignored and
-    /// only `max_download_timeout` applies. The default is set to 250s,
-    /// just above the amount of time it would take for a 4MB/s connection to
-    /// download 1GB.
-    #[serde(with = "humantime_serde")]
-    pub streaming_timeout: Duration,
+    #[serde(flatten)]
+    pub timeouts: DownloadTimeouts,
 
     /// The maximum number of requests that symbolicator will process concurrently.
     ///
@@ -627,19 +598,13 @@ impl Default for Config {
             symstore_proxy: true,
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
-            // We want to have a hard download timeout of 5 minutes.
-            // This means a download connection needs to sustain ~6,7MB/s to download a 2GB file.
-            max_download_timeout: Duration::from_secs(5 * 60),
-            connect_timeout: Duration::from_secs(1),
-            head_timeout: Duration::from_secs(5),
-            // Allow a 4MB/s connection to download 1GB without timing out.
-            streaming_timeout: Duration::from_secs(250),
             deny_list_enabled: true,
             deny_list_time_window: Duration::from_secs(60),
             deny_list_bucket_size: Duration::from_secs(5),
             deny_list_threshold: 20,
             deny_list_block_time: Duration::from_secs(24 * 60 * 60),
             deny_list_never_block_hosts: Vec::new(),
+            timeouts: DownloadTimeouts::default(),
             // This value is tuned according to Symbolicator's observed real-world performance.
             max_concurrent_requests: Some(200),
             shared_cache: None,
@@ -679,6 +644,54 @@ impl Config {
         }
         // check for empty files explicitly
         serde_yaml::from_str(&config).context("failed to parse config YAML")
+    }
+}
+
+/// Download timeout configuration.
+#[derive(Copy, Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct DownloadTimeouts {
+    /// The timeout for establishing a connection in a download.
+    ///
+    /// This timeout applies to each individual attempt to establish a
+    /// connection with a symbol source if retries take place.
+    #[serde(rename = "connect_timeout", with = "humantime_serde")]
+    pub connect: Duration,
+    /// The timeout for the initial HEAD request in a download.
+    ///
+    /// This timeout applies to each individual attempt to establish a
+    /// connection with a symbol source if retries take place.
+    #[serde(rename = "head_timeout", with = "humantime_serde")]
+    pub head: Duration,
+    /// The timeout per GB for streaming downloads.
+    ///
+    /// For downloads with a known size, this timeout applies per individual
+    /// download attempt. If the download size is not known, it is ignored and
+    /// only `max_download_timeout` applies. The default is set to 250s,
+    /// just above the amount of time it would take for a 4MB/s connection to
+    /// download 1GB.
+    #[serde(rename = "streaming_timeout", with = "humantime_serde")]
+    pub streaming: Duration,
+    /// The maximum timeout for downloads.
+    ///
+    /// This is the upper limit the download service will take for downloading from a single
+    /// source, regardless of how many retries are involved. The default is set to 315s,
+    /// just above the amount of time it would take for a 4MB/s connection to download 2GB.
+    #[serde(rename = "max_download_timeout", with = "humantime_serde")]
+    pub max_download: Duration,
+}
+
+impl Default for DownloadTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(1),
+            head: Duration::from_secs(5),
+            // Allow a 4MB/s connection to download 1GB without timing out.
+            streaming: Duration::from_secs(250),
+            // We want to have a hard download timeout of 5 minutes.
+            // This means a download connection needs to sustain ~6,7MB/s to download a 2GB file.
+            max_download: Duration::from_secs(300),
+        }
     }
 }
 
@@ -798,9 +811,9 @@ mod tests {
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         let default_cfg = Config::default();
-        assert_eq!(cfg.max_download_timeout, default_cfg.max_download_timeout);
-        assert_eq!(cfg.connect_timeout, default_cfg.connect_timeout);
-        assert_eq!(cfg.streaming_timeout, default_cfg.streaming_timeout);
+        assert_eq!(cfg.timeouts.max_download, default_cfg.timeouts.max_download);
+        assert_eq!(cfg.timeouts.connect, default_cfg.timeouts.connect);
+        assert_eq!(cfg.timeouts.streaming, default_cfg.timeouts.streaming);
     }
 
     #[test]
@@ -812,9 +825,9 @@ mod tests {
             streaming_timeout: 0s
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
-        assert_eq!(cfg.max_download_timeout, Duration::from_secs(0));
-        assert_eq!(cfg.connect_timeout, Duration::from_secs(0));
-        assert_eq!(cfg.streaming_timeout, Duration::from_secs(0));
+        assert_eq!(cfg.timeouts.max_download, Duration::from_secs(0));
+        assert_eq!(cfg.timeouts.connect, Duration::from_secs(0));
+        assert_eq!(cfg.timeouts.streaming, Duration::from_secs(0));
     }
 
     #[test]

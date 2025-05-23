@@ -12,9 +12,8 @@ use symbolicator_service::metric;
 use url::Url;
 
 use symbolicator_service::caching::{CacheContents, CacheError};
-use symbolicator_service::config::InMemoryCacheConfig;
+use symbolicator_service::config::{DownloadTimeouts, InMemoryCacheConfig};
 use symbolicator_service::utils::futures::{CancelOnDrop, m, measure};
-use symbolicator_service::utils::http::DownloadTimeouts;
 use symbolicator_sources::{RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig};
 
 use crate::interface::ResolvedWith;
