@@ -83,7 +83,7 @@ impl GcsDownloader {
         let builder = self
             .client
             .get(url)
-            .header("authorization", token.bearer_token());
+            .header("authorization", format!("Bearer {}", token.bearer_token()));
 
         super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
