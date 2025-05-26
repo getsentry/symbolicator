@@ -138,10 +138,9 @@ pub async fn request_new_token(
         .json::<GcsTokenResponse>()
         .await
         .map_err(GcsError::Auth)?;
-    let bearer_token = format!("Bearer {}", token.access_token).into();
 
     Ok(CacheableToken {
-        bearer_token,
+        bearer_token: token.access_token.into(),
         expires_at,
     })
 }
