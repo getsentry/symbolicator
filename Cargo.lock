@@ -4193,6 +4193,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-vars"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd17b13c31689268178a0fdc71bca328adcd4384f55a537e01ee8b6ab0857e34"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.204"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4973,6 +4982,7 @@ dependencies = [
  "rustc-hash 2.0.0",
  "sentry",
  "serde",
+ "serde-vars",
  "serde_json",
  "serde_yaml",
  "sha-1",
