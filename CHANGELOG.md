@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Various fixes & improvements
+
+- Environment variables can now be used in the config file. ([#1715](https://github.com/getsentry/symbolicator/pull/1715))
+
 ### Dependencies
 
 - Bump Native SDK from v0.8.5 to v0.9.0 ([#1714](https://github.com/getsentry/symbolicator/pull/1714))
