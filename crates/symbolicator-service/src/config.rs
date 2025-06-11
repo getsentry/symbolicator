@@ -639,11 +639,15 @@ impl Config {
         reader
             .read_to_string(&mut config)
             .context("failed reading config file")?;
+
+        // check for empty files explicitly
         if config.trim().is_empty() {
             anyhow::bail!("config file empty");
         }
-        // check for empty files explicitly
-        serde_yaml::from_str(&config).context("failed to parse config YAML")
+
+        let mut source = serde_vars::EnvSource::default();
+        serde_vars::deserialize(serde_yaml::Deserializer::from_str(&config), &mut source)
+            .context("failed to parse config YAML")
     }
 }
 
