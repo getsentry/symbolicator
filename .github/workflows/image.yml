@@ -242,7 +242,7 @@ jobs:
         run: |
           IMAGE_URL="ghcr.io/getsentry/symbolicator:${{ github.sha }}"
           docker pull "$IMAGE_URL"
-          docker login --username=sentrybuilder --password ${{ secrets.DOCKER_HUB_RW_TOKEN }}
+          docker login --username=sentrybuilder --password-stdin <<< "${{ secrets.DOCKER_HUB_RW_TOKEN }}"
 
           # We push 3 tags to Dockerhub:
           # first, the full sha of the commit
