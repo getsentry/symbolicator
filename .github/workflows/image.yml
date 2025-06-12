@@ -232,7 +232,7 @@ jobs:
   publish-to-dockerhub:
     name: Publish Symbolicator to DockerHub
     runs-on: ubuntu-latest
-    if: ${{ (github.ref_name == 'main') }}
+    if: ${{ (github.ref_name == 'master') }}
     needs:
       - assemble
     steps:
