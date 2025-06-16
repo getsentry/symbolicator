@@ -228,3 +228,28 @@ jobs:
           docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
             "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
             "${GHCR_IMAGE}:amd64-${{ github.sha }}"
+
+  publish-to-dockerhub:
+    name: Publish Symbolicator to DockerHub
+    runs-on: ubuntu-latest
+    if: ${{ (github.ref_name == 'master' && github.event_name == 'push') }}
+    needs:
+      - assemble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Push built docker image
+        shell: bash
+        run: |
+          IMAGE_URL="ghcr.io/getsentry/symbolicator:${{ github.sha }}"
+          docker login --username=sentrybuilder --password-stdin <<< "${{ secrets.DOCKER_HUB_RW_TOKEN }}"
+
+          # We push 3 tags to Dockerhub:
+          # first, the full sha of the commit
+          docker buildx imagetools create --tag getsentry/symbolicator:${GITHUB_SHA} ghcr.io/getsentry/symbolicator:${{ github.sha }}
+
+          # second, the short sha of the commit
+          SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
+          docker buildx imagetools create --tag getsentry/symbolicator:${SHORT_SHA} ghcr.io/getsentry/symbolicator:${{ github.sha }}
+
+          # finally, nightly
+          docker buildx imagetools create --tag getsentry/symbolicator:nightly ghcr.io/getsentry/symbolicator:${{ github.sha }}
