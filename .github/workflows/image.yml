@@ -181,6 +181,10 @@ jobs:
             "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
             "${TARGET_IMAGE}:amd64-${{ github.sha }}"
 
+          docker buildx imagetools create -t "${TARGET_IMAGE}:nightly" \
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
+
   assemble-ar:
     needs: [build-setup, build-image]
     if: "needs.build-setup.outputs.full_ci == 'true'"
