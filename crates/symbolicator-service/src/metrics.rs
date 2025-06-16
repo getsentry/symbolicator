@@ -1,7 +1,7 @@
 //! Provides access to the metrics sytem.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
-use std::net::ToSocketAddrs;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
@@ -394,8 +394,7 @@ impl LocalAggregator {
 }
 
 /// Tell the metrics system to report to statsd.
-pub fn configure_statsd<A: ToSocketAddrs>(prefix: &str, host: A, tags: BTreeMap<String, String>) {
-    let addrs: Vec<_> = host.to_socket_addrs().unwrap().collect();
+pub fn configure_statsd(prefix: &str, addrs: Vec<SocketAddr>, tags: BTreeMap<String, String>) {
     if !addrs.is_empty() {
         tracing::info!("Reporting metrics to statsd at {}", addrs[0]);
     }
