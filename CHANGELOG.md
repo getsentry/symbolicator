@@ -1,5 +1,12 @@
 # Changelog
 
+## 25.6.1
+
+### Various fixes & improvements
+
+- fix(metrics): Validate statsd port (#1718) by @loewenheim
+- ci: push nightly to ghcr (#1717) by @aldy505
+
 ## 25.6.0
 
 ### Various fixes & improvements
