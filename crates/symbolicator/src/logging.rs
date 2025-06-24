@@ -1,8 +1,9 @@
 use std::env;
 
+use sentry::integrations::tracing::EventFilter;
 use symbolicator_service::logging::init_json_logging;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::fmt::fmt;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -54,25 +55,36 @@ pub unsafe fn init_logging(config: &Config) {
     let rust_log =
         env::var("RUST_LOG").unwrap_or_else(|_| get_rust_log(config.logging.level).to_string());
 
-    let subscriber = fmt()
-        .with_timer(UtcTime::rfc_3339())
-        .with_target(true)
-        .with_env_filter(&rust_log);
+    let fmt_layer = {
+        let layer = tracing_subscriber::fmt::layer()
+            .with_timer(UtcTime::rfc_3339())
+            .with_target(true);
 
-    match (config.logging.format, console::user_attended()) {
-        (LogFormat::Auto, true) | (LogFormat::Pretty, _) => subscriber
-            .pretty()
-            .finish()
-            .with(sentry::integrations::tracing::layer())
-            .init(),
-        (LogFormat::Auto, false) | (LogFormat::Simplified, _) => subscriber
-            .compact()
-            .with_ansi(false)
-            .finish()
-            .with(sentry::integrations::tracing::layer())
-            .init(),
-        (LogFormat::Json, _) => init_json_logging(&rust_log, std::io::stdout),
+        match (config.logging.format, console::user_attended()) {
+            (LogFormat::Auto, true) | (LogFormat::Pretty, _) => layer.pretty().boxed(),
+            (LogFormat::Auto, false) | (LogFormat::Simplified, _) => {
+                layer.compact().with_ansi(false).boxed()
+            }
+            (LogFormat::Json, _) => {
+                init_json_logging(&rust_log, std::io::stdout);
+                return;
+            }
+        }
     }
+    .with_filter(EnvFilter::new(&rust_log));
+
+    // Same as the default filter, except it sends everything at or above INFO as logs instead of breadcrumbs.
+    let sentry_layer =
+        sentry::integrations::tracing::layer().event_filter(|md| match *md.level() {
+            tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
+            tracing::Level::WARN | tracing::Level::INFO => EventFilter::Log,
+            tracing::Level::DEBUG | tracing::Level::TRACE => EventFilter::Ignore,
+        });
+
+    tracing_subscriber::registry()
+        .with(fmt_layer)
+        .with(sentry_layer)
+        .init();
 }
 
 /// Logs an error to the configured logger or `stderr` if not yet configured.
