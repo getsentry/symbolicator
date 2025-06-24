@@ -17,7 +17,12 @@ clap = { version = "4.3.2", features = ["derive"] }
 console = "0.15.0"
 futures = "0.3.12"
 hostname = "0.4.0"
-sentry = { version = "0.41.0", features = ["anyhow", "tracing", "tower", "tower-http", "logs"] }
+sentry = { version = "0.41.0", features = [
+    "anyhow",
+    "tracing",
+    "tower",
+    "tower-http",
+] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 symbolic = { workspace = true }

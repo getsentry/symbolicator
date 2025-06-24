@@ -12,7 +12,6 @@ futures = "0.3.12"
 humantime = "2.0.1"
 sentry = { version = "0.41.0", features = [
     "anyhow",
-    "debug-images",
     "tracing",
     "logs",
 ] }
