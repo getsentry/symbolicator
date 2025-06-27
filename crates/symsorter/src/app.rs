@@ -219,7 +219,7 @@ fn process_zip_archive(
         }
         Ok(())
     } else {
-        result.with_context(|| format!("failed to process file {}", zip_file_name))
+        result.with_context(|| format!("failed to process file {zip_file_name}"))
     }
 }
 

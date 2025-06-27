@@ -45,7 +45,7 @@ fn report_demangling_failure(symbol: String, language: Language) -> String {
         sentry::with_scope(
             |scope| scope.set_extra("identifier", symbol.clone().into()),
             || {
-                let message = format!("Failed to demangle {} identifier", language);
+                let message = format!("Failed to demangle {language} identifier");
                 sentry::capture_message(&message, sentry::Level::Error);
             },
         );
