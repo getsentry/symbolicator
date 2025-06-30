@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 25.6.2
 
 ### Dependencies
 
