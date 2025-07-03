@@ -37,7 +37,7 @@ pub fn create_app(service: RequestService) -> Router {
     // The layers here go "top to bottom" according to the reading order here.
     let layer = ServiceBuilder::new()
         .layer(NewSentryLayer::new_from_top())
-        .layer(SentryHttpLayer::with_transaction())
+        .layer(SentryHttpLayer::new().enable_transaction())
         .layer(MetricsLayer)
         .layer(DefaultBodyLimit::max(100 * 1024 * 1024));
     // We have a global 100M body limit, but a 5M symbolicate body limit
