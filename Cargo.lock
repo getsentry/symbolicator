@@ -3918,7 +3918,7 @@ checksum = "7a66a03ae7c801facd77a29370b4faec201768915ac14a721ba36f20bc9c209b"
 [[package]]
 name = "reqwest"
 version = "0.12.15"
-source = "git+https://github.com/lcian/reqwest?branch=lcian%2Fdeps%2Fbump-rustls-pki-types#45f622c52274dd1ff4b731f25592d5f3018284ca"
+source = "git+https://github.com/getsentry/reqwest?branch=restricted-connector#d4ad2343bb881bdd09c452ebe8bd9393e622f906"
 dependencies = [
  "async-compression",
  "base64 0.22.1",
