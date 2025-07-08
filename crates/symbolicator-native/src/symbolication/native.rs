@@ -131,9 +131,9 @@ pub fn get_relative_caller_addr(
                 .object_info
                 .abs_to_rel_addr(absolute_caller_addr)
                 .ok_or_else(|| {
-                    tracing::warn!(
-                            "Underflow when trying to subtract image start addr from caller address after heuristics"
-                        );
+                    tracing::debug!(
+                        "Underflow when trying to subtract image start addr from caller address after heuristics"
+                    );
                     metric!(counter("relative_addr.underflow") += 1);
                     FrameStatus::MissingSymbol
                 })
@@ -141,7 +141,7 @@ pub fn get_relative_caller_addr(
             Ok(addr)
         }
     } else {
-        tracing::warn!(
+        tracing::debug!(
             "Underflow when trying to subtract image start addr from caller address before heuristics"
         );
         metric!(counter("relative_addr.underflow") += 1);
