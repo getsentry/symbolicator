@@ -22,7 +22,16 @@ reqwest = { workspace = true, features = [
     "stream",
     "hickory-dns",
 ] }
-sentry = { version = "0.34.0", features = ["tracing"] }
+sentry = { version = "0.41.0", default-features = false, features = [
+    # default features, except `release-health` is disabled
+    "backtrace",
+    "contexts",
+    "debug-images",
+    "panic",
+    "transport",
+    # additional features
+    "tracing",
+]}
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.81"
 sha2 = "0.10.6"

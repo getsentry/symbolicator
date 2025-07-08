@@ -42,7 +42,17 @@ reqwest = { workspace = true, features = [
     "socks",
 ] }
 rustc-hash = "2.0.0"
-sentry = { version = "0.34.0", features = ["tracing"] }
+sentry = { version = "0.41.0", default-features = false, features = [
+    # default features, except `release-health` is disabled
+    "backtrace",
+    "contexts",
+    "debug-images",
+    "panic",
+    "transport",
+    # additional features
+    "tracing",
+    "logs",
+]}
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde-vars = { workspace = true }
 serde_json = "1.0.81"

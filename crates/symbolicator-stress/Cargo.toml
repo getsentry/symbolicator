@@ -10,11 +10,18 @@ axum = "0.7.2"
 clap = { version = "4.3.2", features = ["derive"] }
 futures = "0.3.12"
 humantime = "2.0.1"
-sentry = { version = "0.34.0", features = [
-    "anyhow",
+sentry = { version = "0.41.0", default-features = false, features = [
+    # default features, except `release-health` is disabled
+    "backtrace",
+    "contexts",
     "debug-images",
+    "panic",
+    "transport",
+    # additional features
+    "anyhow",
     "tracing",
-] }
+    "logs",
+]}
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = "1.0.81"
 serde_yaml = "0.9.14"

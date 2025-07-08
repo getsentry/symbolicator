@@ -101,6 +101,7 @@ pub fn execute() -> Result<()> {
                 0.0
             }
         })),
+        enable_logs: true,
         ..Default::default()
     });
 
