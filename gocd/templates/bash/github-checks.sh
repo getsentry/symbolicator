@@ -1,6 +1,6 @@
 #!/bin/bash
 
-/devinfra/scripts/checks/githubactions/checkruns.py \
+checks-githubactions-checkruns \
   getsentry/symbolicator \
   ${GO_REVISION_SYMBOLICATOR_REPO} \
   'Tests' \
