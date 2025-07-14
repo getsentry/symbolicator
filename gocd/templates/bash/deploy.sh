@@ -1,7 +1,7 @@
 #!/bin/bash
 
 eval $(regions-project_env-vars --region="${SENTRY_REGION}")
-/devinfra/scripts/k8s/k8stunnel
+/devinfra/scripts/get-cluster-credentials
 k8s-deploy \
   --type="statefulset" \
   --label-selector="${LABEL_SELECTOR}" \
