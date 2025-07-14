@@ -1,6 +1,6 @@
 #!/bin/bash
 
-eval $(regions-project_env-vars --region="${SENTRY_REGION}")
+eval $(regions-project-env-vars --region="${SENTRY_REGION}")
 /devinfra/scripts/get-cluster-credentials
 k8s-deploy \
   --type="statefulset" \
