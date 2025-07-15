@@ -1,5 +1,15 @@
 # Changelog
 
+## 25.7.0
+
+### Various fixes & improvements
+
+- fix(ci): Update from windows 2019 to windows 2022 (#1730) by @hubertdeng123
+- ref(gocd): use console script entry points (#1729) by @mchen-sentry
+- ref(instr): Lower log level of noisy underflow message (#1726) by @Dav1dde
+- feat(logging): Send tracing events at or above INFO to Sentry as logs instead of breadcrumbs (#1719) by @lcian
+- deps: Update minidump to upstream 0.26.0 (#1725) by @loewenheim
+
 ## 25.6.2
 
 ### Dependencies

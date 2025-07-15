@@ -3661,7 +3661,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5121,7 +5121,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5159,7 +5159,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -5167,7 +5167,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "data-url",
  "futures",
@@ -5194,7 +5194,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -5225,7 +5225,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "futures",
  "insta",
@@ -5243,7 +5243,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -5294,7 +5294,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -5311,7 +5311,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5334,7 +5334,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "axum",
  "humantime",
@@ -5352,7 +5352,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5375,7 +5375,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6196,7 +6196,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-split"
-version = "25.6.2"
+version = "25.7.0"
 dependencies = [
  "anyhow",
  "clap",
