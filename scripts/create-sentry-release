@@ -27,7 +27,7 @@ gsutil cp \
   .
 
 echo 'Uploading debug information and source bundle...'
-sentry-cli upload-dif ./symbolicator-*-debug.zip ./symbolicator-*.src.zip
+sentry-cli upload-dif ./symbolicator-*.zip
 
 echo 'Creating a new deploy in Sentry...'
 sentry-cli releases new "${VERSION}"
