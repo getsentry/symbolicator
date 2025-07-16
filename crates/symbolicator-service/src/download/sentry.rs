@@ -170,14 +170,14 @@ impl SentryDownloader {
         }
 
         let mut index_url = source.url.clone();
+
+        // Specify debug and code id, Sentry will search for artifacts matching either identifier.
         if let Some(ref debug_id) = object_id.debug_id {
             index_url
                 .query_pairs_mut()
                 .append_pair("debug_id", &debug_id.to_string());
-        } else if let Some(ref code_id) = object_id.code_id {
-            // NOTE: We only query by code-id if we do *not* have a debug-id.
-            // This matches the Sentry backend behavior here:
-            // <https://github.com/getsentry/sentry/blob/17644550024d6a2eb01356ee48ec0d3ef95c043d/src/sentry/api/endpoints/debug_files.py#L155-L161>
+        }
+        if let Some(ref code_id) = object_id.code_id {
             index_url
                 .query_pairs_mut()
                 .append_pair("code_id", code_id.as_str());
