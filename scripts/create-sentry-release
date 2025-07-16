@@ -22,8 +22,7 @@ sentry-cli --version
 
 echo 'Pulling debug information...'
 gsutil cp \
-  "gs://dicd-team-devinfra-cd--symbolicator/difs/${VERSION}/symbolicator-*-debug.zip" \
-  "gs://dicd-team-devinfra-cd--symbolicator/difs/${VERSION}/symbolicator-*.src.zip" \
+  "gs://dicd-team-devinfra-cd--symbolicator/difs/${VERSION}/symbolicator-*.zip" \
   .
 
 echo 'Uploading debug information and source bundle...'
