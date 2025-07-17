@@ -373,6 +373,7 @@ impl ProguardService {
                         .file()
                         .map(String::from)
                         .or_else(|| original_frame.filename.clone()),
+                    method_synthesized: new_frame.method_synthesized(),
                     ..original_frame.clone()
                 };
 
@@ -877,6 +878,7 @@ y.b -> y.b:
                 abs_path: Some("CustomThreadFactory".into()),
                 filename: Some("CustomThreadFactory".into()),
                 index: 0,
+                method_synthesized: true,
                 ..Default::default()
             }
         );

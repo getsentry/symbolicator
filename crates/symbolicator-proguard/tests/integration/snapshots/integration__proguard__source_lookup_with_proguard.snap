@@ -102,6 +102,7 @@ stacktraces:
         lineno: 0
         in_app: true
         index: 18
+        method_synthesized: true
       - function: onCreate$lambda-1
         module: io.sentry.samples.instrumentation.ui.EditActivity
         lineno: 37

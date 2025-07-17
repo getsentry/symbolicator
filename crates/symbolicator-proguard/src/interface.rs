@@ -103,6 +103,14 @@ pub struct JvmFrame {
     /// instead of using line numbers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
+
+    /// Whether this frame's method was synthesized by the compiler.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub method_synthesized: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// An exception in a JVM event.
