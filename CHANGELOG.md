@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Dependencies
+
+- Bump `proguard` from v5.5.0 to v5.6.1
+  This also bumps the proguard cache version from v3 to v4. ([#1734](https://github.com/getsentry/symbolicator/pull/1734))
+
 ## 25.7.0
 
 ### Various fixes & improvements

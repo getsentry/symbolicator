@@ -55,6 +55,7 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 
 
 [workspace.dependencies]
+proguard = "5.6.1"
 reqwest = "0.12.15"
 serde-vars = "0.2.0"
 symbolic = "12.15.5"
