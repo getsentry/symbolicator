@@ -3683,10 +3683,12 @@ dependencies = [
 
 [[package]]
 name = "proguard"
-version = "5.5.0"
+version = "5.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bafe48b490e1b00c4b69f24f9ec2957dd850930460515802f5a7399e015f18ed"
+checksum = "3a199b2f766cfc8f351e1dfcb9974ed0e27f6d22bdbf000230c90e1da6200b39"
 dependencies = [
+ "serde",
+ "serde_json",
  "thiserror 1.0.61",
  "watto",
 ]
@@ -4474,9 +4476,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.204"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc76f558e0cbb2a839d37354c575f1dc3fdc6546b5be373ba43d95f231bf7c12"
+checksum = "5f0e2c6ed6606019b4e29e69dbaba95b11854410e5347d525002456dbbb786b6"
 dependencies = [
  "serde_derive",
 ]
@@ -4492,9 +4494,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.204"
+version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0cd7e117be63d3c3678776753929474f3b04a43a080c744d6b0ae2a8c28e222"
+checksum = "5b0276cf7f2c73365f7157c8123c21cd9a50fbbd844757af28ca1f5925fc2a00"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4503,11 +4505,12 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.120"
+version = "1.0.140"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e0d21c9a8cae1235ad58a00c11cb40d4b1e5c784f1ef2c537876ed6ffd8b7c5"
+checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
 dependencies = [
  "itoa",
+ "memchr",
  "ryu",
  "serde",
 ]
@@ -5265,6 +5268,7 @@ dependencies = [
  "jsonwebtoken",
  "moka",
  "once_cell",
+ "proguard",
  "rand 0.8.5",
  "rayon",
  "reqwest",

@@ -265,19 +265,24 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Proguard Cache, with the following versions:
 ///
+/// - `4`: Information about classes/methods being synthesized is now part
+///   of the cache format.
+///
 /// - `3`: Restructuring the cache directory format.
 ///
 /// - `2`: Use proguard cache format (<https://github.com/getsentry/symbolicator/pull/1491>).
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(3, CachePathFormat::V2),
-    fallbacks: &[CacheVersion::new(2, CachePathFormat::V1)],
+    current: CacheVersion::new(4, CachePathFormat::V2),
+    fallbacks: &[],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
+        CacheVersion::new(3, CachePathFormat::V2),
     ],
 };
+static_assert!(proguard::PRGCACHE_VERSION == 2);
 
 /// Symstore index cache, with the following versions:
 ///
