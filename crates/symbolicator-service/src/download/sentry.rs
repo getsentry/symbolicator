@@ -171,6 +171,9 @@ impl SentryDownloader {
 
         let mut index_url = source.url.clone();
 
+        // Raise the amount of results Sentry returns to us (default is 20).
+        index_url.query_pairs_mut().append_pair("per_page", "40");
+
         // Specify debug and code id, Sentry will search for artifacts matching either identifier.
         if let Some(ref debug_id) = object_id.debug_id {
             index_url
@@ -224,10 +227,14 @@ impl SentryDownloader {
                 .map_err(|_| CacheError::InternalError)?;
 
             if let Ok(result) = &result {
-                // TODO(flub): These queries do not handle pagination.  But sentry only starts to
-                // paginate at 20 results so we get away with this for now.
-                if result.len() >= 20 {
-                    tracing::error!(query = ?query.index_url, "Sentry API Query returned 20 results");
+                // TODO(flub): These queries do not handle pagination.
+                if result.len() >= 40 {
+                    tracing::error!(
+                        query = ?query.index_url,
+                        debug_id = ?object_id.debug_id,
+                        code_id = ?object_id.code_id,
+                        "Sentry API Query returned 20 results"
+                    );
                 }
             }
 
