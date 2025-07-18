@@ -5,7 +5,6 @@ use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use rand::seq::SliceRandom;
-use rand::thread_rng;
 use rayon::prelude::*;
 
 use crate::caching::fs::{METADATA_EXTENSION, metadata_path};
@@ -80,7 +79,7 @@ impl Caches {
             proguard,
             source_index,
         ];
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         caches.as_mut_slice().shuffle(&mut rng);
 
         // Collect results so we can fail the entire function.  But we do not want to early

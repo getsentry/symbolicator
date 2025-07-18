@@ -9,30 +9,28 @@ license = "MIT"
 https = []
 
 [dependencies]
-anyhow = "1.0.57"
-aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
-aws-credential-types = { version = "1.0.1", features = [
-    "hardcoded-credentials",
-] }
-aws-sdk-s3 = "1.4.0"
-bytes = "1.6.0"
-cadence = "1.0.0"
-chrono = { version = "0.4.19", features = ["serde"] }
-crossbeam-utils = "0.8.19"
-filetime = "0.2.16"
-flate2 = "1.0.23"
-futures = "0.3.12"
-gcp_auth = "0.12.2"
-humantime = "2.1.0"
-humantime-serde = "1.1.1"
-idna = "1.0.2"
-ipnetwork = "0.20.0"
-jsonwebtoken = "9.1.0"
-moka = { version = "0.12.8", features = ["future", "sync"] }
-once_cell = "1.17.1"
+anyhow = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+bytes = { workspace = true }
+cadence = { workspace = true }
+chrono = { workspace = true }
+crossbeam-utils = { workspace = true }
+filetime = { workspace = true }
+flate2 = { workspace = true }
+futures = { workspace = true }
+gcp_auth = { workspace = true }
+humantime = { workspace = true }
+humantime-serde = { workspace = true }
+idna = { workspace = true }
+ipnetwork = { workspace = true }
+jsonwebtoken = { workspace = true }
+moka = { workspace = true }
+once_cell = { workspace = true }
 proguard = { workspace = true }
-rand = "0.8.5"
-rayon = "1.10.0"
+rand = { workspace = true }
+rayon = { workspace = true }
 reqwest = { workspace = true, features = [
     "gzip",
     "brotli",
@@ -42,47 +40,33 @@ reqwest = { workspace = true, features = [
     "hickory-dns",
     "socks",
 ] }
-rustc-hash = "2.0.0"
-sentry = { version = "0.41.0", default-features = false, features = [
-    # default features, except `release-health` is disabled
-    "backtrace",
-    "contexts",
-    "debug-images",
-    "panic",
-    "transport",
-    # additional features
-    "tracing",
-    "logs",
-]}
-serde = { version = "1.0.137", features = ["derive", "rc"] }
+rustc-hash = { workspace = true }
+sentry = { workspace = true, features = ["logs"] }
+serde = { workspace = true }
 serde-vars = { workspace = true }
-serde_json = "1.0.81"
-serde_yaml = "0.9.14"
-sha2 = "0.10.6"
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
 symbolic = { workspace = true, features = [
     "cfi",
     "common-serde",
     "debuginfo",
     "symcache",
 ] }
-symbolicator-sources = { path = "../symbolicator-sources" }
-tempfile = "3.2.0"
-thiserror = "1.0.31"
-thread_local = "1.1.7"
+symbolicator-sources = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+thread_local = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
 tokio-util = { workspace = true, features = ["io"] }
-tracing = "0.1.34"
-tracing-subscriber = { version = "0.3.17", features = [
-    "env-filter",
-    "time",
-    "json",
-] }
-url = { version = "2.2.0", features = ["serde"] }
-uuid = { version = "1.0.0", features = ["v4", "serde"] }
-zip = { version = "2.3.0", default-features = false, features = ["deflate"] }
-zstd = "0.13.0"
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["json"] }
+url = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true, features = ["deflate"] }
+zstd = { workspace = true }
 
 [dev-dependencies]
-sha-1 = "0.10.0"
-symbolicator-test = { path = "../symbolicator-test" }
-insta = "1.42"
+sha-1 = { workspace = true }
+symbolicator-test = { workspace = true }
+insta = { workspace = true }
