@@ -63,7 +63,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["json"] }
 url = { workspace = true }
 uuid = { workspace = true }
-zip = { workspace = true, features = ["deflate"] }
+zip = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]

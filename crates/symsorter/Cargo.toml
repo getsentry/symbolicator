@@ -17,8 +17,5 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 symbolic = { workspace = true, features = ["debuginfo-serde"] }
 walkdir = { workspace = true }
-zip = { workspace = true, features = [
-    "deflate",
-    "bzip2",
-] }
+zip = { workspace = true, features = ["bzip2"] }
 zstd = { workspace = true }

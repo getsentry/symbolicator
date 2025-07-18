@@ -148,5 +148,5 @@ url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 walkdir = "2.3.1"
 wasmbin = { version = "0.8.1", features = ["exception-handling"] }
-zip = { version = "2.3.0", default-features = false }
+zip = { version = "2.3.0", default-features = false, features = ["deflate"] }
 zstd = "0.13.0"
