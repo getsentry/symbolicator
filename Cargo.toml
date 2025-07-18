@@ -58,7 +58,9 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 anyhow = "1.0.57"
 axum = { version = "0.7.2", features = ["multipart"] }
 axum-server = "0.6.0"
+bindgen = "0.69.1"
 clap = { version = "4.3.2", features = ["derive"] }
+cmake = "0.1.46"
 console = "0.15.0"
 futures = "0.3.12"
 hostname = "0.4.0"
