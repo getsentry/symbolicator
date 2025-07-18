@@ -10,41 +10,39 @@ default-run = "symbolicator"
 https = ["axum-server/tls-rustls", "symbolicator-service/https"]
 
 [dependencies]
-anyhow = "1.0.57"
-axum = { version = "0.7.2", features = ["multipart"] }
-axum-server = "0.6.0"
-clap = { version = "4.3.2", features = ["derive"] }
-console = "0.15.0"
-futures = "0.3.12"
-hostname = "0.4.0"
-sentry = { version = "0.41.0", features = ["anyhow", "tracing", "tower", "tower-http"] }
-serde = { version = "1.0.137", features = ["derive", "rc"] }
-serde_json = "1.0.81"
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["multipart"] }
+axum-server = { workspace = true }
+clap = { workspace = true }
+console = { workspace = true}
+futures = { workspace = true}
+hostname = { workspace = true}
+sentry = { workspace = true, features = ["release-health", "tower", "tower-http"] }
+serde = { workspace = true }
+serde_json = { workspace = true}
 symbolic = { workspace = true }
-symbolicator-crash = { path = "../symbolicator-crash", optional = true }
-symbolicator-js = { path = "../symbolicator-js" }
-symbolicator-native = { path = "../symbolicator-native" }
-symbolicator-proguard = { path = "../symbolicator-proguard" }
-symbolicator-service = { path = "../symbolicator-service" }
-symbolicator-sources = { path = "../symbolicator-sources" }
-tempfile = "3.2.0"
-thiserror = "1.0.31"
+symbolicator-crash = { workspace = true, optional = true }
+symbolicator-js = { workspace = true }
+symbolicator-native = { workspace = true }
+symbolicator-proguard = { workspace = true }
+symbolicator-service = { workspace = true }
+symbolicator-sources = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true}
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 tokio-metrics = { workspace = true }
 tokio-util = { workspace = true, features = ["io"] }
-tower = "0.4"
-tower-layer = "0.3"
-tower-service = "0.3"
-tracing = "0.1.34"
-tracing-subscriber = { version = "0.3.17", features = ["env-filter", "time"] }
-uuid = { version = "1.0.0", features = ["v4", "serde"] }
+tower = { workspace = true}
+tower-layer = { workspace = true}
+tower-service = { workspace = true}
+tracing = { workspace = true}
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
-insta = { version = "1.18.0", features = ["redactions", "yaml"] }
+insta = { workspace = true }
 reqwest = { workspace = true, features = ["multipart"] }
-symbolicator-test = { path = "../symbolicator-test" }
+symbolicator-test = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]
-jemallocator = { version = "0.5", features = [
-    "unprefixed_malloc_on_supported_platforms",
-] }
+jemallocator = { workspace = true }

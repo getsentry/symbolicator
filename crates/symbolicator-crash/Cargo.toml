@@ -13,5 +13,5 @@ publish = false
 [dependencies]
 
 [build-dependencies]
-bindgen = "0.69.1"
-cmake = { version = "0.1.46" }
+bindgen = { workspace = true }
+cmake = { workspace = true }

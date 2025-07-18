@@ -6,15 +6,15 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-axum = "0.7.2"
-humantime = "2.0.1"
-insta = { version = "1.18.0", features = ["redactions", "yaml"] }
-regex = "1.5.5"
+axum = { workspace = true }
+humantime = { workspace = true }
+insta = { workspace = true }
+regex = { workspace = true }
 reqwest = { workspace = true, features = ["gzip", "json", "stream", "hickory-dns", "multipart"] }
-serde = { version = "1.0.137", features = ["derive", "rc"] }
-serde_json = "1.0.94"
-symbolicator-sources = { path = "../symbolicator-sources" }
-tempfile = "3.2.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+symbolicator-sources = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
-tower-http = { version = "0.5.0", features = ["fs", "trace"] }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tower-http = { workspace = true }
+tracing-subscriber = { workspace = true }
