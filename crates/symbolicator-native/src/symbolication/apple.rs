@@ -1,10 +1,9 @@
 use std::fs::File;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
-use once_cell::sync::Lazy;
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
 use symbolicator_service::types::{Platform, RawObjectInfo, Scope, ScrapingConfig};
@@ -143,7 +142,7 @@ impl SymbolicationActor {
 }
 
 /// Format sent by Unreal Engine on macOS
-static OS_MACOS_REGEX: Lazy<Regex> = Lazy::new(|| {
+static OS_MACOS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^Mac OS X (?P<version>\d+\.\d+\.\d+)( \((?P<build>[a-fA-F0-9]+)\))?$").unwrap()
 });
 

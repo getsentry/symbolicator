@@ -1,6 +1,6 @@
 use std::fmt::Write;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use symbolic::debuginfo::js::discover_sourcemaps_location;
@@ -8,8 +8,8 @@ use symbolic::debuginfo::js::discover_sourcemaps_location;
 use crate::api_lookup::ArtifactHeaders;
 use crate::lookup::SourceMapUrl;
 
-static WEBPACK_NAMESPACE_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^webpack(-internal)?://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
+static WEBPACK_NAMESPACE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^webpack(-internal)?://[a-zA-Z0-9_\-@\.]+/\./").unwrap());
 
 // Names that do not provide any reasonable value, and that can possibly obstruct
 // better available names. In case we encounter one, we fallback to current frame fn name if available.
@@ -112,7 +112,7 @@ pub fn fixup_webpack_filename(filename: &str) -> String {
 
 // As a running joke, here you have a 8 year old comment from 2015:
 // TODO(dcramer): replace CLEAN_MODULE_RE with tokenizer completely
-static CLEAN_MODULE_RE: Lazy<Regex> = Lazy::new(|| {
+static CLEAN_MODULE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?ix)
 ^

@@ -10,7 +10,6 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 console = { workspace = true }
-once_cell = { workspace = true }
 rayon = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
