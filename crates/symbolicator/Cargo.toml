@@ -11,7 +11,7 @@ https = ["axum-server/tls-rustls", "symbolicator-service/https"]
 
 [dependencies]
 anyhow = { workspace = true }
-axum = { workspace = true }
+axum = { workspace = true, features = ["multipart"] }
 axum-server = { workspace = true }
 clap = { workspace = true }
 console = { workspace = true}

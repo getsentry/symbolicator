@@ -64,7 +64,7 @@ aws-credential-types = { version = "1.0.1", features = [
 ] }
 aws-sdk-s3 = "1.4.0"
 aws-types = "1.0.1"
-axum = { version = "0.7.2", features = ["multipart"] }
+axum = { version = "0.7.2" }
 axum-server = "0.6.0"
 bindgen = "0.69.1"
 bytes = "1.6.0"
@@ -118,6 +118,7 @@ serde-vars = "0.2.0"
 serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
+sketches-ddsketch = "0.3.0"
 symbolic = "12.15.5"
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
