@@ -233,6 +233,18 @@ jobs:
             "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
             "${GHCR_IMAGE}:amd64-${{ github.sha }}"
 
+  self-hosted-end-to-end:
+    needs: [assemble]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Run Sentry self-hosted e2e CI
+        uses: getsentry/self-hosted@master
+        with:
+          project_name: symbolicator
+          image_url: ghcr.io/getsentry/symbolicator:${{ github.sha }}
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   publish-to-dockerhub:
     name: Publish Symbolicator to DockerHub
     runs-on: ubuntu-latest
