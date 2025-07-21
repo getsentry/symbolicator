@@ -1,14 +1,14 @@
 use std::fmt::Write;
 use std::net::IpAddr;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
-use once_cell::sync::Lazy;
 use reqwest::{StatusCode, Url, redirect};
 
 use crate::config::DownloadTimeouts;
 
-static RESERVED_IP_BLOCKS: Lazy<Vec<Ipv4Network>> = Lazy::new(|| {
+static RESERVED_IP_BLOCKS: LazyLock<Vec<Ipv4Network>> = LazyLock::new(|| {
     [
         // https://en.wikipedia.org/wiki/Reserved_IP_addresses#IPv4
         "0.0.0.0/8",
