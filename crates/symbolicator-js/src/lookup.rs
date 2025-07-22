@@ -684,6 +684,8 @@ impl ArtifactFetcher {
             .fetch_sourcemap_cache(&minified_source, sourcemap)
             .await;
 
+        // Remove the minified file context we added above before returning
+        sentry::configure_scope(|scope| scope.remove_context("Minified file"));
         (minified_source, Some(smcache))
     }
 
