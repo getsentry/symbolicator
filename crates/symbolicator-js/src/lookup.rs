@@ -612,6 +612,9 @@ impl ArtifactFetcher {
                 sentry::protocol::Context::Other(minified_file_context),
             );
         });
+        let _defer = symbolicator_service::utils::defer::defer(|| {
+            sentry::configure_scope(|scope| scope.remove_context("Minified file"))
+        });
 
         // Then fetch the corresponding sourcemap reference and debug_id
         let (sourcemap_url, source_debug_id) = match &minified_source.entry {
@@ -684,8 +687,6 @@ impl ArtifactFetcher {
             .fetch_sourcemap_cache(&minified_source, sourcemap)
             .await;
 
-        // Remove the minified file context we added above before returning
-        sentry::configure_scope(|scope| scope.remove_context("Minified file"));
         (minified_source, Some(smcache))
     }
 
