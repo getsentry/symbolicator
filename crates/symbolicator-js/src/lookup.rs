@@ -695,6 +695,15 @@ impl ArtifactFetcher {
     /// (because multiple files can share one [`DebugId`]).
     #[tracing::instrument(skip(self))]
     pub async fn get_file(&mut self, key: &FileKey) -> CachedFileEntry {
+        sentry::configure_scope(|scope| {
+            if let Ok(val) = serde_json::to_value(key) {
+                scope.set_extra("file_key", val);
+            }
+        });
+        let _defer = symbolicator_service::utils::defer::defer(|| {
+            sentry::configure_scope(|scope| scope.remove_extra("file_key"));
+        });
+
         self.metrics.needed_files += 1;
 
         // Try looking up the file in one of the artifact bundles that we know about.
