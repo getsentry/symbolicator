@@ -551,7 +551,7 @@ struct ArtifactFetcher {
 impl ArtifactFetcher {
     /// Fetches the minified file, and the corresponding [`OwnedSourceMapCache`] for the file
     /// identified by its `abs_path`, or optionally its [`DebugId`].
-    #[tracing::instrument(skip(self, abs_path), fields(%abs_path))]
+    #[tracing::instrument(skip(self))]
     async fn fetch_minified_and_sourcemap(
         &mut self,
         abs_path: String,
@@ -584,6 +584,37 @@ impl ArtifactFetcher {
                 }
             }
         }
+
+        // Attach the minified file to the scope as a context
+        sentry::configure_scope(|scope| {
+            let mut minified_file_context = BTreeMap::new();
+            if let Ok(value) = serde_json::to_value(&minified_source.uri) {
+                minified_file_context.insert("URI".to_owned(), value);
+            }
+            if let Ok(value) = serde_json::to_value(minified_source.resolved_with) {
+                minified_file_context.insert("Resolved with".to_owned(), value);
+            }
+            if let Ok(entry) = minified_source.entry.as_ref() {
+                let sourcemap_url = match entry.sourcemap_url.as_deref() {
+                    Some(SourceMapUrl::Data(_)) => serde_json::Value::String("Data".to_owned()),
+                    Some(SourceMapUrl::Remote(url)) => serde_json::Value::String(url.clone()),
+                    None => serde_json::Value::Null,
+                };
+                minified_file_context.insert("Sourcemap URL".to_owned(), sourcemap_url);
+
+                if let Ok(value) = serde_json::to_value(entry.debug_id) {
+                    minified_file_context.insert("Debug ID".to_owned(), value);
+                }
+            }
+
+            scope.set_context(
+                "Minified file",
+                sentry::protocol::Context::Other(minified_file_context),
+            );
+        });
+        let _defer = symbolicator_service::utils::defer::defer(|| {
+            sentry::configure_scope(|scope| scope.remove_context("Minified file"))
+        });
 
         // Then fetch the corresponding sourcemap reference and debug_id
         let (sourcemap_url, source_debug_id) = match &minified_source.entry {

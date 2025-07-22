@@ -1,3 +1,4 @@
+pub mod defer;
 pub mod futures;
 pub mod gcs;
 pub mod hex;
