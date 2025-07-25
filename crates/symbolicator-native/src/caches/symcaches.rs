@@ -268,7 +268,7 @@ fn write_symcache(
 
     converter.process_object(symbolic_object).map_err(|e| {
         let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
-        tracing::error!(error = dynerr, "Could not process SymCache");
+        tracing::debug!(error = dynerr, "Could not process SymCache");
 
         CacheError::Malformed(e.to_string())
     })?;
