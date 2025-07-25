@@ -185,7 +185,7 @@ fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheContent
 
     let cficache = CfiCache::from_object(object_handle.object()).map_err(|e| {
         let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
-        tracing::error!(error = dynerr, "Could not process CFI Cache");
+        tracing::debug!(error = dynerr, "Could not process CFI Cache");
 
         CacheError::Malformed(e.to_string())
     })?;

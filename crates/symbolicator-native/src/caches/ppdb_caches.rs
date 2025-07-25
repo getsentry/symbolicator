@@ -146,7 +146,7 @@ fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheConte
         .process_portable_pdb(ppdb_obj.portable_pdb())
         .map_err(|e| {
             let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
-            tracing::error!(error = dynerr, "Could not process PortablePDB Cache");
+            tracing::debug!(error = dynerr, "Could not process PortablePDB Cache");
 
             CacheError::Malformed(e.to_string())
         })?;
