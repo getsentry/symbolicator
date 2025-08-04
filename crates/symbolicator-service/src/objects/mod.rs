@@ -221,9 +221,10 @@ fn select_meta(all_lookups: Vec<FoundMeta>, purpose: ObjectPurpose) -> Option<Fo
         // Skip objects which and not suitable for what we're asked to provide.  Keep errors
         // though, if we don't find any object we need to return an error.
         if let Ok(ref meta_handle) = meta_lookup.handle
-            && !object_has_features(meta_handle, purpose) {
-                continue;
-            }
+            && !object_has_features(meta_handle, purpose)
+        {
+            continue;
+        }
 
         // We iterate in order of preferred sources, so only select a later object if the
         // quality is better.

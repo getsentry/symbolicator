@@ -378,13 +378,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             // Write metadata if we have them
             if let Some(metadata) = metadata.as_ref()
-                && let Err(e) = super::fs::write_metadata(&cache_path, metadata) {
-                    tracing::error!(
-                        error = &e as &dyn std::error::Error,
-                        path = %cache_path.display(),
-                        "Failed to write metadata file",
-                    );
-                };
+                && let Err(e) = super::fs::write_metadata(&cache_path, metadata)
+            {
+                tracing::error!(
+                    error = &e as &dyn std::error::Error,
+                    path = %cache_path.display(),
+                    "Failed to write metadata file",
+                );
+            };
 
             // Clean up old versions
             for version in T::VERSIONS.previous {
@@ -403,13 +404,14 @@ impl<T: CacheItemRequest> Cacher<T> {
 
                 let md_path = super::fs::metadata_path(cache_dir.join(&item_path));
                 if let Err(e) = fs::remove_file(&md_path)
-                    && e.kind() != std::io::ErrorKind::NotFound {
-                        tracing::error!(
-                            error = &e as &dyn std::error::Error,
-                            path = %md_path.display(),
-                            "Failed to remove old cache metadata file"
-                        );
-                    }
+                    && e.kind() != std::io::ErrorKind::NotFound
+                {
+                    tracing::error!(
+                        error = &e as &dyn std::error::Error,
+                        path = %md_path.display(),
+                        "Failed to remove old cache metadata file"
+                    );
+                }
             }
         }
     }

@@ -186,9 +186,10 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
 
     if let Some(ref code_id) = id.code_id
         && let Some(ref object_code_id) = object.code_id()
-            && object_code_id != code_id {
-                return false;
-            }
+        && object_code_id != code_id
+    {
+        return false;
+    }
 
     true
 }

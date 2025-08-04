@@ -574,14 +574,15 @@ impl ArtifactFetcher {
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
             if let Some(debug_id) = debug_id
-                && rand::random::<f64>() < 0.0001 {
-                    tracing::error!(
-                        source_url = %self.source.url,
-                        abs_path,
-                        %debug_id,
-                        "Failed to fetch source with debug id"
-                    );
-                }
+                && rand::random::<f64>() < 0.0001
+            {
+                tracing::error!(
+                    source_url = %self.source.url,
+                    abs_path,
+                    %debug_id,
+                    "Failed to fetch source with debug id"
+                );
+            }
         }
 
         // Attach the minified file to the scope as a context
@@ -670,14 +671,15 @@ impl ArtifactFetcher {
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
             if let Some(debug_id) = debug_id
-                && rand::random::<f64>() < 0.0001 {
-                    tracing::error!(
-                        source_url = %self.source.url,
-                        abs_path,
-                        %debug_id,
-                        "Failed to fetch sourcemap with debug id"
-                    );
-                }
+                && rand::random::<f64>() < 0.0001
+            {
+                tracing::error!(
+                    source_url = %self.source.url,
+                    abs_path,
+                    %debug_id,
+                    "Failed to fetch sourcemap with debug id"
+                );
+            }
         }
 
         // Now that we (may) have both files, we can create a `SourceMapCache` for it

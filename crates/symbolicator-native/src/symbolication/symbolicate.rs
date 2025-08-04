@@ -190,9 +190,10 @@ fn symbolicate_stacktrace(
                 let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
                 let demangled = mangled.and_then(|m| Name::from(m).demangle(DEMANGLE_OPTIONS));
                 if let Some(demangled) = demangled
-                    && let Some(old_mangled) = frame.function.replace(demangled) {
-                        frame.symbol = Some(old_mangled);
-                    }
+                    && let Some(old_mangled) = frame.function.replace(demangled)
+                {
+                    frame.symbol = Some(old_mangled);
+                }
 
                 // Temporary workaround: Skip false-positive frames from stack scanning after the
                 // fact.

@@ -160,11 +160,12 @@ impl ModuleLookup {
                     .get(i + 1)
                     .map(|entry| entry.object_info.raw.image_addr.0);
                 if let Some(entry) = modules.get_mut(i)
-                    && entry.object_info.raw.image_size.unwrap_or(0) == 0 {
-                        let entry_addr = entry.object_info.raw.image_addr.0;
-                        let size = next_addr.unwrap_or(entry_addr) - entry_addr;
-                        entry.object_info.raw.image_size = Some(size);
-                    }
+                    && entry.object_info.raw.image_size.unwrap_or(0) == 0
+                {
+                    let entry_addr = entry.object_info.raw.image_addr.0;
+                    let size = next_addr.unwrap_or(entry_addr) - entry_addr;
+                    entry.object_info.raw.image_size = Some(size);
+                }
             }
         }
 
@@ -180,11 +181,11 @@ impl ModuleLookup {
                 .debug_file
                 .as_ref()
                 .and_then(|debug_file| rewrite_first_module.rewrite(debug_file))
-            {
-                original_first_debug_file =
-                    std::mem::take(&mut first_module.object_info.raw.debug_file);
-                first_module.object_info.raw.debug_file = Some(new_debug_file);
-            }
+        {
+            original_first_debug_file =
+                std::mem::take(&mut first_module.object_info.raw.debug_file);
+            first_module.object_info.raw.debug_file = Some(new_debug_file);
+        }
 
         Self {
             modules,
@@ -199,9 +200,10 @@ impl ModuleLookup {
         // Restore the original name of the first module's debug file, if there
         // was a replacement.
         if let Some(original) = self.original_first_debug_file
-            && let Some(entry) = self.modules.first_mut() {
-                entry.object_info.raw.debug_file = Some(original);
-            }
+            && let Some(entry) = self.modules.first_mut()
+        {
+            entry.object_info.raw.debug_file = Some(original);
+        }
 
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules
