@@ -159,13 +159,12 @@ impl ModuleLookup {
                 let next_addr = modules
                     .get(i + 1)
                     .map(|entry| entry.object_info.raw.image_addr.0);
-                if let Some(entry) = modules.get_mut(i) {
-                    if entry.object_info.raw.image_size.unwrap_or(0) == 0 {
+                if let Some(entry) = modules.get_mut(i)
+                    && entry.object_info.raw.image_size.unwrap_or(0) == 0 {
                         let entry_addr = entry.object_info.raw.image_addr.0;
                         let size = next_addr.unwrap_or(entry_addr) - entry_addr;
                         entry.object_info.raw.image_size = Some(size);
                     }
-                }
             }
         }
 
@@ -174,8 +173,8 @@ impl ModuleLookup {
         // Rewrite the first (by address) module's debug file name according to the configured
         // rewrite rules. If a rewrite ahppens, also save the original name so we can restore it
         // after symbolication.
-        if let Some(first_module) = modules.first_mut() {
-            if let Some(new_debug_file) = first_module
+        if let Some(first_module) = modules.first_mut()
+            && let Some(new_debug_file) = first_module
                 .object_info
                 .raw
                 .debug_file
@@ -186,7 +185,6 @@ impl ModuleLookup {
                     std::mem::take(&mut first_module.object_info.raw.debug_file);
                 first_module.object_info.raw.debug_file = Some(new_debug_file);
             }
-        }
 
         Self {
             modules,
@@ -200,11 +198,10 @@ impl ModuleLookup {
     pub fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
         // Restore the original name of the first module's debug file, if there
         // was a replacement.
-        if let Some(original) = self.original_first_debug_file {
-            if let Some(entry) = self.modules.first_mut() {
+        if let Some(original) = self.original_first_debug_file
+            && let Some(entry) = self.modules.first_mut() {
                 entry.object_info.raw.debug_file = Some(original);
             }
-        }
 
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules

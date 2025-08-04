@@ -137,13 +137,12 @@ impl SentryDownloader {
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT);
 
-        if propagate_traces {
-            if let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
+        if propagate_traces
+            && let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
                 for (k, v) in span.iter_headers() {
                     request = request.header(k, v);
                 }
             }
-        }
 
         let response = request.send().await?;
 

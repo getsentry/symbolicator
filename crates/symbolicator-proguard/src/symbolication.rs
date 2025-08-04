@@ -299,11 +299,10 @@ impl ProguardService {
             for frame in frames.iter_mut() {
                 // mark the frame as in_app after deobfuscation based on the release package name
                 // only if it's not present
-                if let Some(package) = release_package {
-                    if frame.module.starts_with(package) && frame.in_app.is_none() {
+                if let Some(package) = release_package
+                    && frame.module.starts_with(package) && frame.in_app.is_none() {
                         frame.in_app = Some(true);
                     }
-                }
             }
 
             // Also count the frames as symbolicated at this point
