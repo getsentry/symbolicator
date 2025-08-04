@@ -70,13 +70,11 @@ fn main() -> anyhow::Result<()> {
 
         let event = serde_json::from_reader(file)?;
         let mut json = event::massage_event_json(event);
-        if dif_candidates {
-            if let Some(obj) = json.as_object_mut() {
-                obj.insert(
-                    String::from("options"),
-                    serde_json::json!({ "dif_candidates": true }),
-                );
-            }
+        if dif_candidates && let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                String::from("options"),
+                serde_json::json!({ "dif_candidates": true }),
+            );
         }
 
         req.json(&json).send()

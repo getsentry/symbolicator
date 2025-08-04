@@ -149,7 +149,7 @@ impl OwnedProguardCache {
         })
     }
 
-    pub fn get(&self) -> &proguard::ProguardCache {
+    pub fn get(&self) -> &proguard::ProguardCache<'_> {
         &self.inner.get().cache
     }
 }

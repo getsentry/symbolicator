@@ -340,7 +340,7 @@ fn get_debuginfod_path(filetype: FileType, identifier: &ObjectId) -> Option<Stri
 /// We prefer to use the file type as indicator for going back to the object
 /// type. If that is not possible, we use the object type that is stored on the
 /// identifier which might be unreliable.
-fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow<str>> {
+fn get_search_target_id(filetype: FileType, identifier: &ObjectId) -> Option<Cow<'_, str>> {
     match filetype {
         // For these we fall back to the identifier's object type.
         FileType::SourceBundle | FileType::Breakpad | FileType::Il2cpp => {
@@ -575,16 +575,16 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
     }
 
     for pattern in patterns {
-        if let Some(ref path) = object_id.code_file {
-            if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
-                return true;
-            }
+        if let Some(ref path) = object_id.code_file
+            && pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS)
+        {
+            return true;
         }
 
-        if let Some(ref path) = object_id.debug_file {
-            if pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS) {
-                return true;
-            }
+        if let Some(ref path) = object_id.debug_file
+            && pattern.matches_with(&canonicalize_path(path), GLOB_OPTIONS)
+        {
+            return true;
         }
     }
 
