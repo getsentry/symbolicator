@@ -711,7 +711,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfe321a6b21f5d8eabd0ade9c55d3d0335f3c3157fc2b3e87f05f34b539e4df5"
 dependencies = [
- "base64-simd 0.8.0",
+ "base64-simd",
  "bytes",
  "bytes-utils",
  "futures-core",
@@ -750,7 +750,7 @@ dependencies = [
  "aws-smithy-async",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
- "rustc_version 0.4.0",
+ "rustc_version",
  "tracing",
 ]
 
@@ -868,20 +868,11 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "base64-simd"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "781dd20c3aff0bd194fe7d2a977dd92f21c173891f3a03b677359e5fa457e5d5"
-dependencies = [
- "simd-abstraction",
-]
-
-[[package]]
-name = "base64-simd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "339abbe78e73178762e23bea9dfd08e697eb3f3301cd4be981c0f78ba5859195"
 dependencies = [
- "outref 0.5.1",
+ "outref",
  "vsimd",
 ]
 
@@ -1264,7 +1255,7 @@ version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
 dependencies = [
- "rustc_version 0.4.0",
+ "rustc_version",
 ]
 
 [[package]]
@@ -2216,7 +2207,7 @@ dependencies = [
  "new_debug_unreachable",
  "once_cell",
  "phf",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "triomphe",
 ]
 
@@ -3133,7 +3124,7 @@ dependencies = [
  "loom",
  "parking_lot",
  "portable-atomic",
- "rustc_version 0.4.0",
+ "rustc_version",
  "smallvec",
  "tagptr",
  "thiserror 1.0.61",
@@ -3343,12 +3334,6 @@ dependencies = [
  "serde",
  "windows-sys 0.52.0",
 ]
-
-[[package]]
-name = "outref"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f222829ae9293e33a9f5e9f440c6760a3d450a64affe1846486b140db81c1f4"
 
 [[package]]
 name = "outref"
@@ -4045,18 +4030,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc-hash"
-version = "2.0.0"
+version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
-
-[[package]]
-name = "rustc_version"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
-dependencies = [
- "semver 0.9.0",
-]
+checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_version"
@@ -4064,7 +4040,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver 1.0.23",
+ "semver",
 ]
 
 [[package]]
@@ -4297,24 +4273,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
-dependencies = [
- "semver-parser",
-]
-
-[[package]]
-name = "semver"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61697e0a1c7e512e84a621326239844a24d8207b4669b41bc18b32ea5cbf988b"
-
-[[package]]
-name = "semver-parser"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 
 [[package]]
 name = "sentry"
@@ -4383,7 +4344,7 @@ dependencies = [
  "hostname 0.4.0",
  "libc",
  "os_info",
- "rustc_version 0.4.0",
+ "rustc_version",
  "sentry-core",
  "uname",
 ]
@@ -4648,15 +4609,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "simd-abstraction"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cadb29c57caadc51ff8346233b5cec1d240b68ce55cf1afc764818791876987"
-dependencies = [
- "outref 0.1.0",
-]
-
-[[package]]
 name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4741,17 +4693,16 @@ dependencies = [
 
 [[package]]
 name = "sourcemap"
-version = "9.1.2"
+version = "9.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27c4ea7042fd1a155ad95335b5d505ab00d5124ea0332a06c8390d200bb1a76a"
+checksum = "e22afbcb92ce02d23815b9795523c005cb9d3c214f8b7a66318541c240ea7935"
 dependencies = [
- "base64-simd 0.7.0",
+ "base64-simd",
  "bitvec",
  "data-encoding",
  "debugid",
  "if_chain",
- "rustc-hash 1.1.0",
- "rustc_version 0.2.3",
+ "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "unicode-id-start",
@@ -4846,7 +4797,7 @@ dependencies = [
  "allocator-api2",
  "bumpalo",
  "ptr_meta",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "triomphe",
 ]
 
@@ -4858,7 +4809,7 @@ checksum = "9d7077ba879f95406459bc0c81f3141c529b34580bc64d7ab7bd15e7118a0391"
 dependencies = [
  "hstr",
  "once_cell",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "serde",
 ]
 
@@ -4877,7 +4828,7 @@ dependencies = [
  "new_debug_unreachable",
  "num-bigint",
  "once_cell",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "serde",
  "siphasher",
  "swc_allocator",
@@ -4900,7 +4851,7 @@ dependencies = [
  "num-bigint",
  "once_cell",
  "phf",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "scoped-tls",
  "string_enum",
  "swc_atoms",
@@ -4920,7 +4871,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "phf",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "serde",
  "smallvec",
  "smartstring",
@@ -4981,9 +4932,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ce94bca4fae4d2564d48c2c285a79954bec8c928d845c1119561d4efb21684d"
+checksum = "09a930b8654e87fd5712c0543ee804ffe6edfae61524f0f8f58635e1933913e8"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4997,9 +4948,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc92884a09ed2317ee31e5ba998419c1e2f2d74e107884e57727bc0b20966313"
+checksum = "30b004e99a8eadb72b6e56d4e3703aa33c4e3c8bd200df5ca02e561bc26e29a8"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -5008,9 +4959,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a1150bdda9314f6cfeeea801c23f5593c6e6a6c72e64f67e48d723a12b8efdb"
+checksum = "70f4d06896c59fabe3fe36d7bc003c975f0a0af67d380e14a95eaebffe4f8de5"
 dependencies = [
  "debugid",
  "memmap2",
@@ -5021,9 +4972,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0918f9961d04f15002fad6de1ab38c4cfbdb7ddc4647a382a2df99df2245de76"
+checksum = "3683cc9da9b16af51c247843dd391715fa0cd6f310082b4552c812de28821c22"
 dependencies = [
  "debugid",
  "elementtree",
@@ -5053,9 +5004,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f66537def48fbc704a92e4fdaab7833bc7cb2255faca8182592fb5fa617eb82"
+checksum = "bd3903bafe2ed4c3512ff4c6eb77cc22b6f43662f3b9f7e3fe4f152927f54ec8"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -5066,9 +5017,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58c06679bb7123d5bd69d94b19e83a5c952e2f46daafeedd28ffc6ba4e8d8c95"
+checksum = "9493bcd4837ae512a6109d49baa45d0212563513aab474087874309481f61652"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -5078,9 +5029,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfac886721503d040708d5d50ba04e727aaf143425010da440c57615ee837b7a"
+checksum = "1046f4d8d725dbefac132ea66f537a197aa6067cdaf38bcb72bcf9bbd2098e50"
 dependencies = [
  "flate2",
  "indexmap",
@@ -5094,9 +5045,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b57cba690658f5ebc31cd2dbd4c382af29a71e6871716984978dbca807680fab"
+checksum = "169236215f496db70505ae89bfe0e1d06daf179364c0f441f7fbcb9e889af21f"
 dependencies = [
  "itertools 0.13.0",
  "js-source-scopes",
@@ -5109,9 +5060,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "12.15.5"
+version = "12.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c17dcc8e087bdfeaa2c5b4b8d3d04ab28639a34aa81a78c2b1d72d94c4607efe"
+checksum = "d061639ad8fe3728dd0376734347fb474939e0037d23b09902d8ea19d1b18946"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -5269,7 +5220,7 @@ dependencies = [
  "rand 0.9.0",
  "rayon",
  "reqwest",
- "rustc-hash 2.0.0",
+ "rustc-hash 2.1.1",
  "sentry",
  "serde",
  "serde-vars",
@@ -6253,7 +6204,7 @@ dependencies = [
  "bitflags 2.6.0",
  "hashbrown 0.14.5",
  "indexmap",
- "semver 1.0.23",
+ "semver",
  "serde",
 ]
 
