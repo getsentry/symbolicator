@@ -573,15 +573,15 @@ impl ArtifactFetcher {
                 .record_not_found(SourceFileType::Source, debug_id.is_some());
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
-            if let Some(debug_id) = debug_id {
-                if rand::random::<f64>() < 0.0001 {
-                    tracing::error!(
-                        source_url = %self.source.url,
-                        abs_path,
-                        %debug_id,
-                        "Failed to fetch source with debug id"
-                    );
-                }
+            if let Some(debug_id) = debug_id
+                && rand::random::<f64>() < 0.0001
+            {
+                tracing::error!(
+                    source_url = %self.source.url,
+                    abs_path,
+                    %debug_id,
+                    "Failed to fetch source with debug id"
+                );
             }
         }
 
@@ -670,15 +670,15 @@ impl ArtifactFetcher {
                 .record_not_found(SourceFileType::SourceMap, debug_id.is_some());
 
             // Temporarily sample cases of a file not being found even though it has a debug id.
-            if let Some(debug_id) = debug_id {
-                if rand::random::<f64>() < 0.0001 {
-                    tracing::error!(
-                        source_url = %self.source.url,
-                        abs_path,
-                        %debug_id,
-                        "Failed to fetch sourcemap with debug id"
-                    );
-                }
+            if let Some(debug_id) = debug_id
+                && rand::random::<f64>() < 0.0001
+            {
+                tracing::error!(
+                    source_url = %self.source.url,
+                    abs_path,
+                    %debug_id,
+                    "Failed to fetch sourcemap with debug id"
+                );
             }
         }
 

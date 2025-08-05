@@ -263,7 +263,7 @@ impl AllObjectCandidates {
 
     /// Returns an iterator over the [`ObjectCandidates`](ObjectCandidate)
     /// in this collection.
-    pub fn iter(&self) -> std::slice::Iter<ObjectCandidate> {
+    pub fn iter(&self) -> std::slice::Iter<'_, ObjectCandidate> {
         self.0.as_slice().iter()
     }
 }
