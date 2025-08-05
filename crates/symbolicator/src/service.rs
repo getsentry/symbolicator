@@ -397,11 +397,11 @@ impl RequestService {
         metric!(gauge("requests.in_flight") = num_requests as u64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
-        if let Some(max_concurrent_requests) = self.inner.max_concurrent_requests
-            && num_requests >= max_concurrent_requests
-        {
-            metric!(counter("requests.rejected") += 1);
-            return Err(MaxRequestsError);
+        if let Some(max_concurrent_requests) = self.inner.max_concurrent_requests {
+            if num_requests >= max_concurrent_requests {
+                metric!(counter("requests.rejected") += 1);
+                return Err(MaxRequestsError);
+            }
         }
 
         // Using `task_name` as the tag should be fine, there is only a small
@@ -446,10 +446,10 @@ impl RequestService {
 
             let response = match response {
                 Ok(Ok(mut response)) => {
-                    if !options.dif_candidates
-                        && let CompletedResponse::Native(ref mut res) = response
-                    {
-                        clear_dif_candidates(res)
+                    if !options.dif_candidates {
+                        if let CompletedResponse::Native(ref mut res) = response {
+                            clear_dif_candidates(res)
+                        }
                     }
                     sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))

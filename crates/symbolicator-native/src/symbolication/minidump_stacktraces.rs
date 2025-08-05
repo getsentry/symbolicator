@@ -127,7 +127,7 @@ pub fn parse_stacktraces_from_minidump(
 
 fn parse_stacktraces_from_raw_extension(
     buf: &[u8],
-) -> Result<format::Format<'_>, ExtractStacktraceError> {
+) -> Result<format::Format, ExtractStacktraceError> {
     format::Format::parse(buf).map_err(ExtractStacktraceError::from)
 }
 
@@ -278,7 +278,7 @@ mod format {
         }
 
         /// An [`Iterator`] of [`Thread`] objects that are part of the extension.
-        pub fn threads(&self) -> impl Iterator<Item = Thread<'_>> {
+        pub fn threads(&self) -> impl Iterator<Item = Thread> {
             self.threads.iter().map(move |raw_thread| Thread {
                 format: self,
                 thread: raw_thread,
@@ -301,7 +301,7 @@ mod format {
         /// An [`Iterator`] of [`Frame`] objects associated with this [`Thread`].
         ///
         /// Returns [`Error::FrameIndexOutOfBounds`] when the frame indices are out of bounds.
-        pub fn frames(&self) -> Result<impl Iterator<Item = Frame<'_>>, Error> {
+        pub fn frames(&self) -> Result<impl Iterator<Item = Frame>, Error> {
             let start_frame = self.thread.start_frame as usize;
             let end_frame = self.thread.start_frame as usize + self.thread.num_frames as usize;
 
