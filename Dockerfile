@@ -60,7 +60,7 @@ RUN sentry-cli --version \
 FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends openssl ca-certificates gosu curl cabextract \
+    && apt-get install -y --no-install-recommends 'openssl=3.0.16-1~deb12u1' 'libssl3=3.0.16-1~deb12u1' ca-certificates gosu curl cabextract \
     && rm -rf /var/lib/apt/lists/*
 
 ENV \
