@@ -201,14 +201,24 @@ impl Cache {
                         stats += dir_stats;
                         if dir_is_empty {
                             tracing::debug!("Removing directory `{}`", directory.display());
-                            if !dry_run && let Err(e) = remove_dir_all(&path) {
-                                sentry::with_scope(
-                                    |scope| {
-                                        scope.set_extra("path", path.display().to_string().into())
-                                    },
-                                    || tracing::error!("Failed to clean cache directory: {:?}", e),
-                                );
-                                dir_is_empty = false;
+                            if !dry_run {
+                                if let Err(e) = remove_dir_all(&path) {
+                                    sentry::with_scope(
+                                        |scope| {
+                                            scope.set_extra(
+                                                "path",
+                                                path.display().to_string().into(),
+                                            )
+                                        },
+                                        || {
+                                            tracing::error!(
+                                                "Failed to clean cache directory: {:?}",
+                                                e
+                                            )
+                                        },
+                                    );
+                                    dir_is_empty = false;
+                                }
                             }
                         }
                         if dir_is_empty {

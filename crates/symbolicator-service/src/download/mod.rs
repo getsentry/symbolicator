@@ -383,10 +383,10 @@ impl DownloadService {
                 ::sentry::capture_error(e);
             }
 
-            if let Some(ref deny_list) = self.host_deny_list
-                && source_can_be_blocked
-            {
-                deny_list.register_failure(&source_metric_key, host);
+            if let Some(ref deny_list) = self.host_deny_list {
+                if source_can_be_blocked {
+                    deny_list.register_failure(&source_metric_key, host);
+                }
             }
         }
 
@@ -1167,7 +1167,7 @@ mod tests {
         let file_list = list_files(
             &svc,
             &source_index_svc,
-            std::slice::from_ref(&source),
+            &[source.clone()],
             FileType::all(),
             &objid,
         )

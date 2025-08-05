@@ -184,11 +184,12 @@ fn object_matches_id(object: &Object<'_>, id: &ObjectId) -> bool {
         return parsed_id.uuid() == debug_id.uuid() && parsed_id.appendix() >= debug_id.appendix();
     }
 
-    if let Some(ref code_id) = id.code_id
-        && let Some(ref object_code_id) = object.code_id()
-        && object_code_id != code_id
-    {
-        return false;
+    if let Some(ref code_id) = id.code_id {
+        if let Some(ref object_code_id) = object.code_id() {
+            if object_code_id != code_id {
+                return false;
+            }
+        }
     }
 
     true

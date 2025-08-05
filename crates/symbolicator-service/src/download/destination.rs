@@ -226,6 +226,33 @@ impl WriteStream for OffsetFileWriteStream {
     }
 }
 
+/// Turns a [`AsyncWrite`] into a [`Destination`].
+///
+/// The resulting destination will not support concurrent streaming writes.
+pub struct AsyncWriteDestination<T>(pub T);
+
+impl<T> Destination for AsyncWriteDestination<T>
+where
+    T: AsyncWrite + Send,
+{
+    type Streams = Infallible;
+    type Write = T;
+
+    async fn try_into_streams(self) -> Result<Self::Streams, Self> {
+        Err(self)
+    }
+
+    fn into_write(self) -> T {
+        self.0
+    }
+}
+
+impl<T> From<T> for AsyncWriteDestination<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use futures::{StreamExt as _, stream::FuturesUnordered};

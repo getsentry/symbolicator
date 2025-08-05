@@ -120,10 +120,10 @@ fn get_descriptor_from_bundle<'b>(
     let bundle = bundle.get();
     let ty = key.as_type();
 
-    if let Some(debug_id) = key.debug_id()
-        && let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty)
-    {
-        return Some(descriptor);
+    if let Some(debug_id) = key.debug_id() {
+        if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
+            return Some(descriptor);
+        }
     }
     if let Some(abs_path) = key.abs_path() {
         for url in get_release_file_candidate_urls(abs_path) {

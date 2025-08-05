@@ -81,13 +81,13 @@ impl FileInBundleCache {
         file_entry: &CachedFileEntry,
     ) {
         let mut file_entry = file_entry.clone();
-        if matches!(key, FileKey::SourceMap { .. })
-            && let Ok(cached_file) = file_entry.entry.as_mut()
-        {
-            // SourceMaps are usually very large, and we only need them for
-            // `sourcemapcache` creation. So do not persist the actual contents here.
-            // Rather load them later in `sourcemapcache` generation if needed.
-            cached_file.contents = None;
+        if matches!(key, FileKey::SourceMap { .. }) {
+            if let Ok(cached_file) = file_entry.entry.as_mut() {
+                // SourceMaps are usually very large, and we only need them for
+                // `sourcemapcache` creation. So do not persist the actual contents here.
+                // Rather load them later in `sourcemapcache` generation if needed.
+                cached_file.contents = None;
+            }
         }
         let key = (bundle_uri.clone(), key.clone());
         self.cache.insert(key, (file_entry, resolved_with))
