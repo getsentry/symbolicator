@@ -225,13 +225,12 @@ impl SymbolicatorSymbolProvider {
         let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
 
         // Rewrite the first module's debug file according to the configured rewrite rules.
-        if module.debug_identifier() == self.first_module_debug_id {
-            if let Some(new_debug_file) = debug_file
+        if module.debug_identifier() == self.first_module_debug_id
+            && let Some(new_debug_file) = debug_file
                 .as_ref()
                 .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
-            {
-                debug_file = Some(new_debug_file);
-            }
+        {
+            debug_file = Some(new_debug_file);
         }
 
         let identifier = ObjectId {
@@ -463,10 +462,10 @@ async fn stackwalk(
 
                 // if the debug_id/file is empty, it might be possible to
                 // backfill that using the reference in the executable file.
-                if let Ok(Some(cfi_item)) = &cfi_module.cache {
-                    if let Some(cfi_module_info) = &cfi_item.1 {
-                        maybe_backfill_debugid(&mut obj_info.raw, cfi_module_info);
-                    }
+                if let Ok(Some(cfi_item)) = &cfi_module.cache
+                    && let Some(cfi_module_info) = &cfi_item.1
+                {
+                    maybe_backfill_debugid(&mut obj_info.raw, cfi_module_info);
                 }
 
                 object_file_status_from_cache_contents(&cfi_module.cache)
@@ -626,17 +625,17 @@ fn merge_clientside_with_processed_stacktraces(
         .collect();
 
     for thread in processed_stacktraces {
-        if let Some(thread_id) = thread.thread_id {
-            if let Some(client_thread) = client_traces_by_id.remove(&thread_id) {
-                // NOTE: we could gather all kinds of metrics here, as in:
-                // - are we finding more or less frames via CFI?
-                // - how many frames are the same
-                // - etc.
-                // We could also be a lot smarter about which threads/frames we chose. For now we
-                // will just always prefer client-side stack traces
-                if !client_thread.frames.is_empty() {
-                    thread.frames = client_thread.frames;
-                }
+        if let Some(thread_id) = thread.thread_id
+            && let Some(client_thread) = client_traces_by_id.remove(&thread_id)
+        {
+            // NOTE: we could gather all kinds of metrics here, as in:
+            // - are we finding more or less frames via CFI?
+            // - how many frames are the same
+            // - etc.
+            // We could also be a lot smarter about which threads/frames we chose. For now we
+            // will just always prefer client-side stack traces
+            if !client_thread.frames.is_empty() {
+                thread.frames = client_thread.frames;
             }
         }
     }

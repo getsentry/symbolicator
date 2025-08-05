@@ -34,10 +34,10 @@ pub fn get_function_for_token<'a>(
     }
 
     // If not found, ask the callsite (previous token) for function name if possible.
-    if let Some(token_name) = callsite_fn_name {
-        if !token_name.is_empty() {
-            return token_name;
-        }
+    if let Some(token_name) = callsite_fn_name
+        && !token_name.is_empty()
+    {
+        return token_name;
     }
 
     // If there was no minified name at all, return even useless, filtered one from the original token.
