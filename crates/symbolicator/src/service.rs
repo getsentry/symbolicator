@@ -24,6 +24,7 @@ use futures::{FutureExt as _, channel::oneshot};
 use sentry::SentryFutureExt;
 use sentry::protocol::SessionStatus;
 use serde::{Deserialize, Deserializer, Serialize};
+use tokio::time::interval;
 use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_native::SymbolicationActor;
@@ -36,7 +37,7 @@ use symbolicator_proguard::interface::{
 };
 use symbolicator_service::caching::CacheContents;
 use symbolicator_service::config::Config;
-use symbolicator_service::metric;
+use symbolicator_service::{caching, metric};
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Platform;
@@ -165,6 +166,50 @@ fn clear_dif_candidates(response: &mut CompletedSymbolicationResponse) {
 #[derive(Clone)]
 pub struct RequestService {
     inner: Arc<RequestServiceInner>,
+}
+
+pub struct CleanerService {
+    config: Config,
+    pool: tokio::runtime::Handle,
+}
+
+impl CleanerService {
+    pub fn create(config: Config, background_pool: tokio::runtime::Handle) -> Option<Self> {
+        if !config.cache_cleanup_enabled || config.cache_dir.is_none() {
+            return None;
+        }
+
+        Some(Self {
+            config,
+            pool: background_pool,
+        })
+    }
+
+    pub fn start(self) {
+        let interval = self
+            .config
+            .cache_cleanup_interval
+            .unwrap_or_else(|| Duration::from_secs(60 * 60 * 24)); // Default to 24 hours
+        tracing::info!("cache cleanup interval: {:?}", interval);
+        self.pool.spawn(async move {
+            CleanerService::run_cache_cleanup(interval, &self.config).await;
+        });
+    }
+
+    async fn run_cache_cleanup(interval_duration: Duration, config: &Config) {
+        let mut ticker = interval(interval_duration);
+        ticker.tick().await; // skip the first tick to avoid running immediately
+        loop {
+            ticker.tick().await;
+            tracing::info!("cleaning up cache directory");
+            let result = caching::cleanup(config,false);
+            if let Err(e) = result {
+                tracing::error!("cache cleanup failed: {}", e);
+            } else {
+                tracing::info!("cache cleanup completed successfully");
+            }
+        }
+    }
 }
 
 // We want a shared future here because otherwise polling for a response would hold the global lock.
@@ -500,6 +545,8 @@ impl RequestService {
 
         Ok(request_id)
     }
+
+
 }
 
 /// The maximum delay we allow for polling a finished request before dropping it.

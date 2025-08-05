@@ -167,7 +167,7 @@ pub fn execute() -> Result<()> {
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
         Command::Cleanup { dry_run } => {
-            caching::cleanup(config, dry_run).context("failed to clean up caches")?
+            caching::cleanup(&config, dry_run).context("failed to clean up caches")?
         }
     }
 

@@ -444,6 +444,13 @@ pub struct Config {
     /// Which directory to use when caching. Default is not to cache.
     pub cache_dir: Option<PathBuf>,
 
+    /// Whether to enable cache cleaning.
+    pub cache_cleanup_enabled: bool,
+
+    /// How often to clean the cache.
+    #[serde(with = "humantime_serde")]
+    pub cache_cleanup_interval: Option<Duration>,
+
     /// Host and port to bind the HTTP webserver to.
     pub bind: String,
 
@@ -586,6 +593,8 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             cache_dir: default_cache_dir(),
+            cache_cleanup_enabled: false,
+            cache_cleanup_interval: Some(Duration::from_secs(60 * 60 * 24)), // 24 hours
             bind: default_bind(),
             #[cfg(feature = "https")]
             bind_https: None,

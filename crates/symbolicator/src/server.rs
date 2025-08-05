@@ -15,7 +15,7 @@ use futures::future::try_join_all;
 use crate::config::Config;
 use crate::endpoints;
 use crate::metric;
-use crate::service::RequestService;
+use crate::service::{RequestService,CleanerService};
 
 #[cfg(feature = "https")]
 fn read_pem_file(path: &PathBuf) -> Result<Vec<u8>> {
@@ -44,6 +44,11 @@ pub fn run(config: Config) -> Result<()> {
         .enable_all()
         .thread_stack_size(8 * megs)
         .build()?;
+    let background_pool = tokio::runtime::Builder::new_multi_thread()
+        .thread_name("sym-background")
+        .enable_all()
+        .thread_stack_size(8 * megs)
+        .build()?;
 
     let mut servers: Vec<BoxFuture<_>> = vec![];
 
@@ -53,6 +58,18 @@ pub fn run(config: Config) -> Result<()> {
         cpu_pool.handle().to_owned(),
     )
     .context("failed to create service state")?;
+
+    // The cleaner service runs in the background and does not block the main thread.
+    // It will periodically clean up the cache based on the configuration.
+    if let Some(cleaner) = CleanerService::create(
+        config.clone(),
+        background_pool.handle().to_owned(),
+    ) {
+        tracing::info!("starting cache cleaner service");
+        cleaner.start();
+    } else {
+        tracing::warn!("no cleaner service configured, cache cleanup will not run");
+    }
 
     let svc = endpoints::create_app(service).into_make_service();
 

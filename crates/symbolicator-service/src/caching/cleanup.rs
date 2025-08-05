@@ -18,8 +18,8 @@ use super::{Cache, Caches};
 ///
 /// This will clean up all caches based on configured cache retention.
 /// If `dry_run` is `true`, no files will actually be deleted.
-pub fn cleanup(config: Config, dry_run: bool) -> Result<()> {
-    Caches::from_config(&config)?.cleanup(dry_run)
+pub fn cleanup(config: &Config, dry_run: bool) -> Result<()> {
+    Caches::from_config(config)?.cleanup(dry_run)
 }
 
 impl Caches {
