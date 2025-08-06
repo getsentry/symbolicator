@@ -867,7 +867,10 @@ mod tests {
     fn test_cache_cleanup_defaults() {
         let cfg = Config::default();
         assert_eq!(cfg.cache_cleanup_enabled, false);
-        assert_eq!(cfg.cache_cleanup_interval, Some(Duration::from_secs(60 * 60 * 24))); // 24 hours
+        assert_eq!(
+            cfg.cache_cleanup_interval,
+            Some(Duration::from_secs(60 * 60 * 24))
+        ); // 24 hours
     }
 
     #[test]
@@ -878,7 +881,10 @@ mod tests {
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(cfg.cache_cleanup_enabled, true);
-        assert_eq!(cfg.cache_cleanup_interval, Some(Duration::from_secs(2 * 3600))); // 2 hours
+        assert_eq!(
+            cfg.cache_cleanup_interval,
+            Some(Duration::from_secs(2 * 3600))
+        ); // 2 hours
     }
 
     #[test]
@@ -889,7 +895,10 @@ mod tests {
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(cfg.cache_cleanup_enabled, false);
-        assert_eq!(cfg.cache_cleanup_interval, Some(Duration::from_secs(30 * 60))); // 30 minutes
+        assert_eq!(
+            cfg.cache_cleanup_interval,
+            Some(Duration::from_secs(30 * 60))
+        ); // 30 minutes
     }
 
     #[test]

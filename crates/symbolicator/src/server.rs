@@ -15,7 +15,7 @@ use futures::future::try_join_all;
 use crate::config::Config;
 use crate::endpoints;
 use crate::metric;
-use crate::service::{RequestService,CleanerService};
+use crate::service::{CleanerService, RequestService};
 
 #[cfg(feature = "https")]
 fn read_pem_file(path: &PathBuf) -> Result<Vec<u8>> {
@@ -61,10 +61,9 @@ pub fn run(config: Config) -> Result<()> {
 
     // The cleaner service runs in the background and does not block the main thread.
     // It will periodically clean up the cache based on the configuration.
-    if let Some(cleaner) = CleanerService::create(
-        config.clone(),
-        background_pool.handle().to_owned(),
-    ) {
+    if let Some(cleaner) =
+        CleanerService::create(config.clone(), background_pool.handle().to_owned())
+    {
         tracing::info!("starting cache cleaner service");
         cleaner.start();
     } else {

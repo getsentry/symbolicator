@@ -24,7 +24,6 @@ use futures::{FutureExt as _, channel::oneshot};
 use sentry::SentryFutureExt;
 use sentry::protocol::SessionStatus;
 use serde::{Deserialize, Deserializer, Serialize};
-use tokio::time::interval;
 use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_native::SymbolicationActor;
@@ -37,13 +36,14 @@ use symbolicator_proguard::interface::{
 };
 use symbolicator_service::caching::CacheContents;
 use symbolicator_service::config::Config;
-use symbolicator_service::{caching, metric};
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Platform;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
+use symbolicator_service::{caching, metric};
 use symbolicator_sources::SourceConfig;
+use tokio::time::interval;
 use uuid::Uuid;
 
 pub use symbolicator_service::objects::{
@@ -202,7 +202,7 @@ impl CleanerService {
         loop {
             ticker.tick().await;
             tracing::info!("cleaning up cache directory");
-            let result = caching::cleanup(config,false);
+            let result = caching::cleanup(config, false);
             if let Err(e) = result {
                 tracing::error!("cache cleanup failed: {}", e);
             } else {
@@ -545,8 +545,6 @@ impl RequestService {
 
         Ok(request_id)
     }
-
-
 }
 
 /// The maximum delay we allow for polling a finished request before dropping it.
@@ -762,7 +760,7 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        
+
         let cleaner = CleanerService::create(config, handle);
         assert!(cleaner.is_some());
     }
@@ -778,7 +776,7 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        
+
         let cleaner = CleanerService::create(config, handle);
         assert!(cleaner.is_none());
     }
@@ -793,7 +791,7 @@ mod tests {
             ..Default::default()
         };
         let handle = tokio::runtime::Handle::current();
-        
+
         let cleaner = CleanerService::create(config, handle);
         assert!(cleaner.is_none());
     }
