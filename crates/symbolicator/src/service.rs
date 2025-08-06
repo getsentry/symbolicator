@@ -750,4 +750,51 @@ mod tests {
                 .is_err()
         );
     }
+
+    #[tokio::test]
+    async fn test_cleaner_service_creation_enabled() {
+        test::setup();
+        let cache_dir = test::tempdir();
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            cache_cleanup_enabled: true,
+            cache_cleanup_interval: Some(Duration::from_millis(100)),
+            ..Default::default()
+        };
+        let handle = tokio::runtime::Handle::current();
+        
+        let cleaner = CleanerService::create(config, handle);
+        assert!(cleaner.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_cleaner_service_creation_disabled() {
+        test::setup();
+        let cache_dir = test::tempdir();
+        let config = Config {
+            cache_dir: Some(cache_dir.path().to_owned()),
+            cache_cleanup_enabled: false,
+            cache_cleanup_interval: Some(Duration::from_millis(100)),
+            ..Default::default()
+        };
+        let handle = tokio::runtime::Handle::current();
+        
+        let cleaner = CleanerService::create(config, handle);
+        assert!(cleaner.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_cleaner_service_creation_no_cache_dir() {
+        test::setup();
+        let config = Config {
+            cache_dir: None,
+            cache_cleanup_enabled: true,
+            cache_cleanup_interval: Some(Duration::from_millis(100)),
+            ..Default::default()
+        };
+        let handle = tokio::runtime::Handle::current();
+        
+        let cleaner = CleanerService::create(config, handle);
+        assert!(cleaner.is_none());
+    }
 }
