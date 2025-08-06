@@ -133,6 +133,7 @@ impl Cache {
     /// Cleans up this cache based on configured cache retention.
     ///
     /// If `dry_run` is `true`, no files will actually be deleted.
+    #[tracing::instrument(skip(self), fields(cache = %self.name))]
     pub fn cleanup(&self, dry_run: bool) -> Result<()> {
         tracing::info!("Cleaning up `{}` cache", self.name);
         let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
