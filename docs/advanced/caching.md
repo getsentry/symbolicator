@@ -121,6 +121,15 @@ external actor at any time (one such actor is `symbolicator cleanup` itself
 which does not really attempt to synchronize with the main symbolicator
 service).
 
+For automatic cleanup, symbolicator provides a two config options:
+
+```yaml
+cache_cleanup_enabled: true # enable automatic cleanup
+cache_cleanup_interval: 1h # interval to run the cleanup (deafult 24h)
+```
+
+When enabled, Symbolicator will run the cleanup command periodically in the background.
+
 Symbolicator assumes a fully POSIX-compliant filesystem to be able to serve
 requests without interruptions while files are being deleted. **Using a network
 share for the cache folder will not work.**
