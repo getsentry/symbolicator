@@ -159,7 +159,7 @@ jobs:
     if: "needs.build-setup.outputs.full_ci == 'true'"
 
     name: Assemble for Github Container Registry
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     env:
       TARGET_IMAGE: ghcr.io/getsentry/symbolicator
@@ -232,6 +232,10 @@ jobs:
           docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
             "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
             "${GHCR_IMAGE}:amd64-${{ github.sha }}"
+
+          docker buildx imagetools create -t "${TARGET_IMAGE}:nightly" \
+            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
+            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
 
   self-hosted-end-to-end:
     needs: [assemble]
