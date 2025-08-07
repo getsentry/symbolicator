@@ -234,8 +234,8 @@ jobs:
             "${GHCR_IMAGE}:amd64-${{ github.sha }}"
 
           docker buildx imagetools create -t "${TARGET_IMAGE}:nightly" \
-            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
-            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
+            "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
+            "${GHCR_IMAGE}:amd64-${{ github.sha }}"
 
   self-hosted-end-to-end:
     needs: [assemble]
