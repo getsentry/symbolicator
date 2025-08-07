@@ -6,6 +6,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, arg};
 
+use humantime::Duration;
 use symbolicator_service::caching;
 use symbolicator_service::metrics;
 
@@ -27,7 +28,7 @@ fn get_long_crate_version() -> &'static str {
 }
 
 /// Symbolicator commands.
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(bin_name = "symbolicator")]
 enum Command {
     /// Run the web server.
@@ -41,12 +42,12 @@ enum Command {
         #[arg(long)]
         dry_run: bool,
         /// Instead of exiting immediately, perform the cleanup
-        /// periodically.
+        /// periodically with a pause of length INTERVAL between runs.
         ///
-        /// The interval between runs is controlled by the
-        /// `cache_cleanup_interval` config option.
-        #[arg(long)]
-        repeat: bool,
+        /// If no INTERVAL is passed, the `cache_cleanup_interval`
+        /// config option is used.
+        #[arg(long, value_name = "INTERVAL")]
+        repeat: Option<Option<Duration>>,
     },
 }
 
@@ -173,9 +174,12 @@ pub fn execute() -> Result<()> {
 
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
-        Command::Cleanup { dry_run, repeat } => {
-            caching::cleanup(config, dry_run, repeat).context("failed to clean up caches")?
-        }
+        Command::Cleanup { dry_run, repeat } => caching::cleanup(
+            config,
+            dry_run,
+            repeat.map(|inner| inner.map(|time| time.into())),
+        )
+        .context("failed to clean up caches")?,
     }
 
     Ok(())

@@ -20,10 +20,12 @@ use super::{Cache, Caches};
 /// This will clean up all caches based on configured cache retention.
 /// If `dry_run` is `true`, no files will actually be deleted.
 ///
-/// If `repeat` is `true` the command will loop with an interval
-/// controlled by the `cache_cleanup_interval` config setting.
-pub fn cleanup(config: Config, dry_run: bool, repeat: bool) -> Result<()> {
-    let loop_interval = repeat.then_some(config.cache_cleanup_interval);
+/// There are three possible cases for `repeat`:
+/// * `None`: Don't loop.
+/// * `Some(None)`: Loop with the interval controlled by the `cache_cleanup_interval` config option.
+/// * `Some(Some(interval))`: Loop with the given interval.
+pub fn cleanup(config: Config, dry_run: bool, repeat: Option<Option<Duration>>) -> Result<()> {
+    let loop_interval = repeat.map(|interval| interval.unwrap_or(config.cache_cleanup_interval));
     Caches::from_config(&config)?.cleanup(dry_run, loop_interval)
 }
 
