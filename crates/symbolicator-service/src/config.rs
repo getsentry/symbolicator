@@ -466,6 +466,13 @@ pub struct Config {
     /// Fine-tune cache expiry
     pub caches: CacheConfigs,
 
+    /// The interval between runs of the `cleanup`
+    /// command (if run with `--loop`).
+    ///
+    /// Defaults to 15min.
+    #[serde(with = "humantime_serde")]
+    pub cache_cleanup_interval: Duration,
+
     /// Enables symbol proxy mode.
     pub symstore_proxy: bool,
 
@@ -595,6 +602,7 @@ impl Default for Config {
             metrics: Metrics::default(),
             sentry_dsn: None,
             caches: CacheConfigs::default(),
+            cache_cleanup_interval: Duration::from_secs(900),
             symstore_proxy: true,
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,

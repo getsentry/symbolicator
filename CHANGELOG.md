@@ -11,6 +11,11 @@
 
 - Symbolicated JVM frames are now marked according to whether their method was
   synthesized by the compiler. ([#1735](https://github.com/getsentry/symbolicator/pull/1735))
+- Cache cleanup can now run periodically. ([#1759](https://github.com/getsentry/symbolicator/pull/1759))
+  - There is a new config option `cache_cleanup_interval` (defaults to 15min).
+  - The `cleanup` command has gained a `--repeat [INTERVAL]` option that will
+    cause it to loop with a pause of length `INTERVAL` between runs. If no
+    `INTERVAL` is passed the value of `cache_cleanup_interval` is used.
 
 ## 25.7.0
 
