@@ -647,7 +647,7 @@ fn test_cleanup() {
         assert!(entry.is_file());
     }
 
-    caches.cleanup(false).unwrap();
+    caches.cleanup(false, None).unwrap();
 
     // All positive private files should've been cleaned up
     for entry in positive_scoped.iter() {
