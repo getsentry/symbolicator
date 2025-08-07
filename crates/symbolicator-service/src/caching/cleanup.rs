@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::fs::{read_dir, remove_dir_all, remove_file};
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use rand::seq::SliceRandom;
@@ -18,8 +19,12 @@ use super::{Cache, Caches};
 ///
 /// This will clean up all caches based on configured cache retention.
 /// If `dry_run` is `true`, no files will actually be deleted.
-pub fn cleanup(config: Config, dry_run: bool) -> Result<()> {
-    Caches::from_config(&config)?.cleanup(dry_run)
+///
+/// If `repeat` is `true` the command will loop with an interval
+/// controlled by the `cache_cleanup_interval` config setting.
+pub fn cleanup(config: Config, dry_run: bool, repeat: bool) -> Result<()> {
+    let loop_interval = repeat.then_some(config.cache_cleanup_interval);
+    Caches::from_config(&config)?.cleanup(dry_run, loop_interval)
 }
 
 impl Caches {
@@ -41,7 +46,10 @@ impl Caches {
     /// in random order.
     ///
     /// If `dry_run` is `true`, no files will actually be deleted.
-    pub fn cleanup(&self, dry_run: bool) -> Result<()> {
+    ///
+    /// If `loop_interval` is `Some(interval)`, this function will
+    /// loop with a sleep of length `interval` between iterations.
+    pub fn cleanup(&self, dry_run: bool, loop_interval: Option<Duration>) -> Result<()> {
         // Destructure so we do not accidentally forget to cleanup one of our members.
         let Self {
             objects,
@@ -58,13 +66,6 @@ impl Caches {
             source_index,
         } = &self;
 
-        // We want to clean up the caches in a random order. Ideally, this should not matter at all,
-        // but we have seen some cleanup jobs getting stuck or dying reproducibly on certain types
-        // of caches. A random shuffle increases the chance that the cleanup will make progress on
-        // other caches.
-        // The cleanup job dying on specific caches is a very bad thing and should definitely be
-        // fixed, but in the meantime a random shuffle should provide more head room for a proper
-        // fix in this case.
         let mut caches = vec![
             objects,
             object_meta,
@@ -80,25 +81,41 @@ impl Caches {
             source_index,
         ];
         let mut rng = rand::rng();
-        caches.as_mut_slice().shuffle(&mut rng);
 
-        // Collect results so we can fail the entire function.  But we do not want to early
-        // return since we should at least attempt to clean up all caches.
-        let results: Vec<_> = caches.into_par_iter().map(|c| c.cleanup(dry_run)).collect();
+        // If `loop_interval` is `None` we break out of this loop after the first iteration.
+        loop {
+            // We want to clean up the caches in a random order. Ideally, this should not matter at all,
+            // but we have seen some cleanup jobs getting stuck or dying reproducibly on certain types
+            // of caches. A random shuffle increases the chance that the cleanup will make progress on
+            // other caches.
+            // The cleanup job dying on specific caches is a very bad thing and should definitely be
+            // fixed, but in the meantime a random shuffle should provide more head room for a proper
+            // fix in this case.
+            caches.as_mut_slice().shuffle(&mut rng);
 
-        let mut first_error = None;
-        for result in results {
-            if let Err(err) = result {
-                let stderr: &dyn std::error::Error = &*err;
-                tracing::error!(stderr, "Failed to cleanup cache");
-                if first_error.is_none() {
-                    first_error = Some(err);
+            // Collect results so we can fail the entire function.  But we do not want to early
+            // return since we should at least attempt to clean up all caches.
+            let results: Vec<_> = caches.par_iter().map(|c| c.cleanup(dry_run)).collect();
+
+            let mut first_error = None;
+            for result in results {
+                if let Err(err) = result {
+                    let stderr: &dyn std::error::Error = &*err;
+                    tracing::error!(stderr, "Failed to cleanup cache");
+                    if first_error.is_none() {
+                        first_error = Some(err);
+                    }
                 }
             }
-        }
-        match first_error {
-            Some(err) => Err(err),
-            None => Ok(()),
+
+            let Some(interval) = loop_interval else {
+                break match first_error {
+                    Some(err) => Err(err),
+                    None => Ok(()),
+                };
+            };
+
+            std::thread::sleep(interval)
         }
     }
 }

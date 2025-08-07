@@ -40,6 +40,13 @@ enum Command {
         /// Only simulate the cleanup without deleting any files.
         #[arg(long)]
         dry_run: bool,
+        /// Instead of exiting immediately, perform the cleanup
+        /// periodically.
+        ///
+        /// The interval between runs is controlled by the
+        /// `cache_cleanup_interval` config option.
+        #[arg(long)]
+        repeat: bool,
     },
 }
 
@@ -166,8 +173,8 @@ pub fn execute() -> Result<()> {
 
     match cli.command {
         Command::Run => server::run(config).context("failed to start the server")?,
-        Command::Cleanup { dry_run } => {
-            caching::cleanup(config, dry_run).context("failed to clean up caches")?
+        Command::Cleanup { dry_run, repeat } => {
+            caching::cleanup(config, dry_run, repeat).context("failed to clean up caches")?
         }
     }
 
