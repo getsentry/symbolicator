@@ -108,14 +108,15 @@ impl Caches {
                 }
             }
 
-            let Some(interval) = loop_interval else {
-                break match first_error {
-                    Some(err) => Err(err),
-                    None => Ok(()),
-                };
-            };
-
-            std::thread::sleep(interval)
+            match loop_interval {
+                Some(interval) => std::thread::sleep(interval),
+                None => {
+                    break match first_error {
+                        Some(err) => Err(err),
+                        None => Ok(()),
+                    };
+                }
+            }
         }
     }
 }
