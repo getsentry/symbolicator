@@ -17,11 +17,13 @@ fn get_rust_log(level: LevelFilter) -> &'static str {
         LevelFilter::WARN => {
             "WARN,\
              breakpad_symbols=ERROR,\
+             goblin=ERROR,\
              minidump=ERROR"
         }
         LevelFilter::INFO => {
             "INFO,\
              breakpad_symbols=ERROR,\
+             goblin=ERROR,\
              minidump=ERROR,\
              trust_dns_proto=WARN"
         }
