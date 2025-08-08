@@ -16,6 +16,10 @@
   - The `cleanup` command has gained a `--repeat [INTERVAL]` option that will
     cause it to loop with a pause of length `INTERVAL` between runs. If no
     `INTERVAL` is passed the value of `cache_cleanup_interval` is used.
+- Caches can now be periodically cleaned up from within Symbolicator. The new
+  `enable_cache_cleanup` config option (defaults to `false`) causes Symbolicator
+  to start a cleanup background thread. The time between cleanup runs is determined
+  by the `cache_cleanup_interval` config option. ([#1761](https://github.com/getsentry/symbolicator/pull/1761))
 
 ## 25.7.0
 

@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use axum_server::tls_rustls::RustlsConfig;
 use futures::future::BoxFuture;
 use futures::future::try_join_all;
+use symbolicator_service::caching::Caches;
 
 use crate::config::Config;
 use crate::endpoints;
@@ -82,6 +83,12 @@ pub fn run(config: Config) -> Result<()> {
         let server_https = axum_server::from_tcp_rustls(socket_https, tls_config).serve(svc);
         servers.push(Box::pin(server_https));
     }
+
+    if config.enable_cache_cleanup {
+        let caches =
+            Caches::from_config(&config).context("Failed to initialize cache configurations")?;
+        std::thread::spawn(move || caches.cleanup(false, Some(config.cache_cleanup_interval)));
+    };
 
     web_pool.block_on(try_join_all(servers))?;
     tracing::info!("System shutdown complete");

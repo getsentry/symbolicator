@@ -466,6 +466,12 @@ pub struct Config {
     /// Fine-tune cache expiry
     pub caches: CacheConfigs,
 
+    /// Whether to enable automatic periodic cache cleanup.
+    ///
+    /// The time between cleaning runs is determined
+    /// by the value of `cache_cleanup_interval`.
+    pub enable_cache_cleanup: bool,
+
     /// The interval between runs of the `cleanup`
     /// command (if run with `--loop`).
     ///
@@ -602,6 +608,7 @@ impl Default for Config {
             metrics: Metrics::default(),
             sentry_dsn: None,
             caches: CacheConfigs::default(),
+            enable_cache_cleanup: false,
             cache_cleanup_interval: Duration::from_secs(900),
             symstore_proxy: true,
             sources: Arc::from(vec![]),
