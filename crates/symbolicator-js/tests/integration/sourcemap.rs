@@ -5,7 +5,7 @@ use reqwest::Url;
 use serde_json::json;
 use symbolicator_js::interface::{JsFrame, JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_service::types::{Scope, ScrapingConfig};
-use symbolicator_sources::{SentrySourceConfig, SourceId};
+use symbolicator_sources::{SentrySourceConfig, SentryToken, SourceId};
 
 use crate::{assert_snapshot, setup_service};
 
@@ -774,7 +774,7 @@ async fn test_manual_processing() {
             "https://sentry.io/api/0/projects/{org}/{project}/artifact-lookup/"
         ))
         .unwrap(),
-        token: token.to_string(),
+        token: SentryToken(token.to_string()),
     };
 
     let request = make_js_request(source, frames, modules, release, dist);

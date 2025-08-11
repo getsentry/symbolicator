@@ -62,7 +62,7 @@ impl S3Downloader {
                     self.create_s3_client(
                         Credentials::from_keys(
                             key.access_key.clone(),
-                            key.secret_key.clone(),
+                            key.secret_key.0.as_ref(),
                             None,
                         ),
                         &key.region,
@@ -214,8 +214,8 @@ mod tests {
     use std::path::Path;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, RemoteFileUri, S3SourceConfig, SourceId,
-        SourceLocation,
+        CommonSourceConfig, DirectoryLayoutType, RemoteFileUri, S3SecretKey, S3SourceConfig,
+        SourceId, SourceLocation,
     };
 
     use crate::test;
@@ -237,7 +237,7 @@ mod tests {
                 region: S3Region::from("us-east-1"),
                 aws_credentials_provider: AwsCredentialsProvider::Static,
                 access_key,
-                secret_key,
+                secret_key: S3SecretKey(secret_key.into()),
             })
         }
     }
@@ -340,7 +340,7 @@ mod tests {
     async fn setup_bucket(source_key: S3SourceKey) {
         let provider = Credentials::from_keys(
             source_key.access_key.clone(),
-            source_key.secret_key.clone(),
+            source_key.secret_key.0.as_ref(),
             None,
         );
         let shared_config = aws_config::from_env()
@@ -420,7 +420,7 @@ mod tests {
             region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: "".into(),
-            secret_key: "".into(),
+            secret_key: S3SecretKey("".into()),
         };
         let source = s3_source(broken_key);
         let downloader = S3Downloader::new(Default::default(), 100);
@@ -448,7 +448,7 @@ mod tests {
             region: S3Region::from("us-east-1"),
             aws_credentials_provider: AwsCredentialsProvider::Static,
             access_key: String::from("abc"),
-            secret_key: String::from("123"),
+            secret_key: S3SecretKey("123".into()),
         });
         let source = Arc::new(S3SourceConfig {
             id: SourceId::new("s3-id"),

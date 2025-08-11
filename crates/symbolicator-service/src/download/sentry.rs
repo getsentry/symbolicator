@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use symbolicator_sources::{
-    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig,
+    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig, SentryToken,
 };
 
 use super::{Destination, FileType, USER_AGENT};
@@ -76,7 +76,7 @@ impl SentryFileType {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SearchQuery {
     pub index_url: Url,
-    pub token: String,
+    pub token: SentryToken,
 }
 
 /// An LRU Cache for Sentry DIF (Native Debug Files) lookups.
@@ -133,7 +133,7 @@ impl SentryDownloader {
     {
         let mut request = client
             .get(query.index_url.clone())
-            .bearer_auth(&query.token)
+            .bearer_auth(&query.token.0)
             .header("Accept-Encoding", "identity")
             .header("User-Agent", USER_AGENT);
 
@@ -259,7 +259,7 @@ impl SentryDownloader {
 
         let mut builder = self.client.get(url).header("User-Agent", USER_AGENT);
         if file_source.use_credentials() {
-            builder = builder.bearer_auth(&file_source.source.token);
+            builder = builder.bearer_auth(&file_source.source.token.0);
         }
 
         super::download_reqwest(source_name, builder, &self.timeouts, destination).await
@@ -277,7 +277,7 @@ mod tests {
         let source = SentrySourceConfig {
             id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
-            token: "token".into(),
+            token: SentryToken("token".into()),
         };
         let file_source =
             SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
@@ -290,7 +290,7 @@ mod tests {
         let source = SentrySourceConfig {
             id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
-            token: "token".into(),
+            token: SentryToken("token".to_owned()),
         };
         let file_source =
             SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);

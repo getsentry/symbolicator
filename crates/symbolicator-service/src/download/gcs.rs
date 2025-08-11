@@ -57,7 +57,9 @@ impl GcsDownloader {
                     .or_insert_with_if(init, replace_if)
                     .await
                     .into_value()
-                    .map(|token| GcsSourceToken::new(token.bearer_token().clone()))
+                    .map(|token| GcsSourceToken {
+                        bearer_token: token.bearer_token().clone(),
+                    })
             }
             GcsSourceAuthorization::SourceToken(source_token) => Ok(source_token.clone()),
         }
@@ -83,7 +85,7 @@ impl GcsDownloader {
         let builder = self
             .client
             .get(url)
-            .header("authorization", format!("Bearer {}", token.bearer_token()));
+            .header("authorization", format!("Bearer {}", token.bearer_token.0));
 
         super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
@@ -94,8 +96,8 @@ mod tests {
     use super::*;
 
     use symbolicator_sources::{
-        CommonSourceConfig, DirectoryLayoutType, GcsSourceConfig, GcsSourceToken, RemoteFileUri,
-        SourceId, SourceLocation,
+        CommonSourceConfig, DirectoryLayoutType, GcsBearerToken, GcsPrivateKey, GcsSourceConfig,
+        GcsSourceToken, RemoteFileUri, SourceId, SourceLocation,
     };
 
     use crate::test;
@@ -143,13 +145,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_use_token_from_request() {
-        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken::new(
-            "this-is-a-secret-token".into(),
-        ));
+        let auth = GcsSourceAuthorization::SourceToken(GcsSourceToken {
+            bearer_token: GcsBearerToken("this-is-a-secret-token".into()),
+        });
         let downloader =
             GcsDownloader::new(Client::new(), Default::default(), 100.try_into().unwrap());
         let token = downloader.get_token(&auth).await.unwrap();
-        assert_eq!(token.bearer_token(), "this-is-a-secret-token");
+        assert_eq!(token.bearer_token.0.as_ref(), "this-is-a-secret-token");
     }
 
     #[tokio::test]
@@ -179,7 +181,7 @@ mod tests {
         test::setup();
 
         let broken_credentials = GcsSourceKey {
-            private_key: "".to_owned(),
+            private_key: GcsPrivateKey("".to_owned().into()),
             client_email: "".to_owned(),
         };
 
@@ -203,7 +205,7 @@ mod tests {
     #[test]
     fn test_gcs_remote_dif_uri() {
         let source_key = GcsSourceAuthorization::SourceKey(Arc::new(GcsSourceKey {
-            private_key: String::from("ABC"),
+            private_key: GcsPrivateKey("ABC".to_owned().into()),
             client_email: String::from("someone@example.com"),
         }));
         let source = Arc::new(GcsSourceConfig {

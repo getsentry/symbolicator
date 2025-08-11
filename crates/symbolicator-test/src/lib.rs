@@ -36,7 +36,8 @@ use tracing_subscriber::fmt::fmt;
 
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
-    GcsSourceKey, HttpSourceConfig, SentrySourceConfig, SourceConfig, SourceFilters, SourceId,
+    GcsPrivateKey, GcsSourceKey, HttpSourceConfig, SentrySourceConfig, SentryToken, SourceConfig,
+    SourceFilters, SourceId,
 };
 
 pub use tempfile::TempDir;
@@ -392,7 +393,7 @@ where
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         url: server.url("/lookup"),
-        token: String::new(),
+        token: SentryToken(String::new()),
     };
 
     (server, source)
@@ -433,7 +434,7 @@ where
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         url: server.url("/files/dsyms/"),
-        token: String::new(),
+        token: SentryToken(String::new()),
     };
 
     (server, source)
@@ -450,7 +451,7 @@ pub fn gcs_source_key_from_env() -> Option<GcsSourceKey> {
         None
     } else {
         Some(GcsSourceKey {
-            private_key,
+            private_key: GcsPrivateKey(private_key.into()),
             client_email,
         })
     }
