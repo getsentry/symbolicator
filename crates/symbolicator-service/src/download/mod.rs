@@ -477,6 +477,7 @@ pub async fn list_files(
                         // from the NuGet symbol server need a special `SymbolChecksum` header.
                         if let Some(checksum) = object_id.debug_checksum.as_ref() {
                             file.headers
+                                .0
                                 .insert("SymbolChecksum".into(), checksum.into());
                         }
 

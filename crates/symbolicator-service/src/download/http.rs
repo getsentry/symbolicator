@@ -50,8 +50,9 @@ impl HttpDownloader {
         let headers = file_source
             .source
             .headers
+            .0
             .iter()
-            .chain(file_source.headers.iter());
+            .chain(file_source.headers.0.iter());
         for (key, value) in headers {
             if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
                 builder = builder.header(key, value.as_str());

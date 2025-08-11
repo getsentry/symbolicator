@@ -822,9 +822,10 @@ impl ArtifactFetcher {
         url.set_fragment(Some(&cache_key.to_string()));
 
         let mut remote_file = HttpRemoteFile::from_url(url, self.scraping.verify_ssl);
-        remote_file.headers.extend(
+        remote_file.headers.0.extend(
             self.scraping
                 .headers
+                .0
                 .iter()
                 .map(|(key, value)| (key.clone(), value.clone())),
         );
