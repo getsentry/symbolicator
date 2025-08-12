@@ -16,7 +16,7 @@ pub struct SentrySourceConfig {
     pub url: Url,
 
     /// Bearer authorization token.
-    pub token: String,
+    pub token: SentryToken,
 }
 
 /// The Sentry-specific [`RemoteFile`].
@@ -93,5 +93,16 @@ pub struct SentryFileId(pub Arc<str>);
 impl fmt::Display for SentryFileId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// A sentry authentication token.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SentryToken(pub String);
+
+impl fmt::Debug for SentryToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<sentry token>")
     }
 }

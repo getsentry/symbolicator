@@ -57,9 +57,10 @@ impl SymbolicationActor {
                         HttpRemoteFile::from_url(url.clone(), scraping.verify_ssl);
 
                     if scraping.enabled && is_valid_origin(&url, &scraping.allowed_origins) {
-                        remote_file.headers.extend(
+                        remote_file.headers.0.extend(
                             scraping
                                 .headers
+                                .0
                                 .iter()
                                 .map(|(key, value)| (key.clone(), value.clone())),
                         );

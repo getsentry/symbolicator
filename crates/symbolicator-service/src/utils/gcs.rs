@@ -1,7 +1,5 @@
 //! Access to Google Cloud Storeage
 
-use std::sync::Arc;
-
 use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::errors::Error as JwtError;
@@ -10,14 +8,14 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use url::Url;
 
-use symbolicator_sources::GcsSourceKey;
+use symbolicator_sources::{GcsBearerToken, GcsSourceKey};
 
 /// A JWT token usable for GCS.
 ///
 /// Contains `expires_at` information so it can be cached and expired properly.
 #[derive(Debug, Clone)]
 pub struct CacheableToken {
-    bearer_token: Arc<str>,
+    bearer_token: GcsBearerToken,
     expires_at: DateTime<Utc>,
 }
 
@@ -28,7 +26,7 @@ impl CacheableToken {
     }
 
     /// The token in the HTTP Bearer-header format, header value only.
-    pub fn bearer_token(&self) -> &Arc<str> {
+    pub fn bearer_token(&self) -> &GcsBearerToken {
         &self.bearer_token
     }
 }
@@ -109,7 +107,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Jw
         issued_at: Utc::now().timestamp(),
     };
 
-    let key = key_from_string(&source_key.private_key)?;
+    let key = key_from_string(&source_key.private_key.0)?;
 
     jsonwebtoken::encode(&header, &jwt_claims, &key)
 }
@@ -140,7 +138,7 @@ pub async fn request_new_token(
         .map_err(GcsError::Auth)?;
 
     Ok(CacheableToken {
-        bearer_token: token.access_token.into(),
+        bearer_token: GcsBearerToken(token.access_token.into()),
         expires_at,
     })
 }
@@ -153,7 +151,7 @@ mod tests {
     fn test_key_from_string() {
         let creds = symbolicator_test::gcs_source_key!();
 
-        let key = key_from_string(&creds.private_key);
+        let key = key_from_string(&creds.private_key.0);
         assert!(key.is_ok());
 
         let json_key = serde_json::to_string(&creds.private_key).unwrap();

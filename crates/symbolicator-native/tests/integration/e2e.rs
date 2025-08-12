@@ -9,7 +9,7 @@ use symbolicator_service::objects::ObjectDownloadInfo;
 use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
-    HttpSourceConfig, RemoteFileUri, SentrySourceConfig, SourceConfig, SourceId,
+    HttpSourceConfig, RemoteFileUri, SentrySourceConfig, SentryToken, SourceConfig, SourceId,
 };
 use symbolicator_test::read_fixture;
 use tempfile::NamedTempFile;
@@ -404,7 +404,7 @@ async fn test_unreachable_bucket() {
                 SourceConfig::Sentry(Arc::new(SentrySourceConfig {
                     id: SourceId::new(format!("broken-{ty}-{code}")),
                     url: hitcounter.url(&format!("respond_statuscode/{code}")),
-                    token: "123abc".into(),
+                    token: SentryToken("123abc".to_owned()),
                 }))
             };
 

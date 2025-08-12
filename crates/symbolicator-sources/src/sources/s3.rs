@@ -132,9 +132,8 @@ where
 ///
 /// For details on the AWS side, see:
 /// <https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html>.
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Default, Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-#[derive(Default)]
 pub enum AwsCredentialsProvider {
     /// Static Credentials
     #[default]
@@ -144,7 +143,7 @@ pub enum AwsCredentialsProvider {
 }
 
 /// Amazon S3 authorization information.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct S3SourceKey {
     /// The region of the S3 bucket.
     #[serde(
@@ -163,7 +162,7 @@ pub struct S3SourceKey {
 
     /// S3 secret key.
     #[serde(default)]
-    pub secret_key: String,
+    pub secret_key: S3SecretKey,
 }
 
 /// A wrapper around an S3 region that allows using custom regions.
@@ -203,6 +202,17 @@ impl std::hash::Hash for S3SourceKey {
     }
 }
 
+/// A S3 secret key.
+#[derive(Default, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct S3SecretKey(pub Arc<str>);
+
+impl fmt::Debug for S3SecretKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<s3 secret key>")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,7 +239,7 @@ mod tests {
                 assert_eq!(cfg.bucket, "my-supermarket-bucket");
                 assert_eq!(cfg.source_key.region, S3Region::from("us-east-1"));
                 assert_eq!(cfg.source_key.access_key, "the-access-key");
-                assert_eq!(cfg.source_key.secret_key, "the-secret-key");
+                assert_eq!(cfg.source_key.secret_key.0.as_ref(), "the-secret-key");
             }
             _ => unreachable!(),
         }

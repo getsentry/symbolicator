@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -17,7 +18,7 @@ pub struct HttpSourceConfig {
 
     /// Additional headers to be sent to the symbol server with every request.
     #[serde(default)]
-    pub headers: BTreeMap<String, String>,
+    pub headers: HttpHeaders,
 
     /// Configuration common to all sources.
     #[serde(flatten)]
@@ -31,6 +32,21 @@ pub struct HttpSourceConfig {
     pub accept_invalid_certs: bool,
 }
 
+/// A list of http headers passed to a [`HttpSourceConfig`].
+#[derive(Clone, Default, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct HttpHeaders(pub BTreeMap<String, String>);
+
+impl fmt::Debug for HttpHeaders {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut map = f.debug_map();
+        for key in self.0.keys() {
+            map.entry(key, &"<header value>");
+        }
+        map.finish()
+    }
+}
+
 /// The HTTP-specific [`RemoteFile`].
 #[derive(Debug, Clone)]
 pub struct HttpRemoteFile {
@@ -38,7 +54,7 @@ pub struct HttpRemoteFile {
     pub source: Arc<HttpSourceConfig>,
     pub(crate) location: SourceLocation,
     /// Additional HTTP headers to send with a symbol request.
-    pub headers: BTreeMap<String, String>,
+    pub headers: HttpHeaders,
 }
 
 impl From<HttpRemoteFile> for RemoteFile {

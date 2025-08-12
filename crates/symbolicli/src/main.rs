@@ -16,7 +16,7 @@ use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
-    SentrySourceConfig, SourceConfig, SourceId,
+    SentrySourceConfig, SentryToken, SourceConfig, SourceId,
 };
 
 use anyhow::{Context, Result};
@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
 
             let source = Arc::new(SentrySourceConfig {
                 id: SourceId::new("sentry:project"),
-                token: auth_token.clone(),
+                token: SentryToken(auth_token.clone()),
                 url: base_url
                     .join(&format!("projects/{org}/{project}/artifact-lookup/"))
                     .unwrap(),
@@ -195,7 +195,7 @@ fn prepare_dsym_sources(
     {
         let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
             id: SourceId::new("sentry:project"),
-            token: auth_token.clone(),
+            token: SentryToken(auth_token.clone()),
             url: base_url
                 .join(&format!("projects/{org}/{project}/files/dsyms/"))
                 .unwrap(),

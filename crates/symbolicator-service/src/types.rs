@@ -4,12 +4,11 @@
 //! HTTP API.  Its messy and things probably need a better place and different way to signal
 //! they are part of the public API.
 
-use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use symbolicator_sources::ObjectType;
+use symbolicator_sources::{HttpHeaders, ObjectType};
 
 use crate::utils::hex::HexValue;
 
@@ -68,7 +67,7 @@ pub struct ScrapingConfig {
     /// - `*:port`: Wildcard on hostname, but explicit match on port.
     pub allowed_origins: Vec<String>,
     /// A map of headers to send with every HTTP request while scraping.
-    pub headers: BTreeMap<String, String>,
+    pub headers: HttpHeaders,
 }
 
 impl Default for ScrapingConfig {
