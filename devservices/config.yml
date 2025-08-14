@@ -9,7 +9,7 @@ x-sentry-service-config:
 
 services:
   symbolicator:
-    image: us-central1-docker.pkg.dev/sentryio/symbolicator/image:nightly
+    image: ghcr.io/getsentry/symbolicator:nightly
     volumes:
       - symbolicator-data:/data
       - type: bind
