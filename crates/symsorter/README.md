@@ -1,13 +1,14 @@
 # SymSorter
 
 A small utility that takes a folder structure of debug information files
-(currently mostly useful for apple and linux) and writes them into a folder
-structure that symbolicator can work with as a symbol source.  The structure
-used is the `unified` format that the symbolicator also supports.
+(mostly useful for Apple, Linux and Nintendo Switch and PlayStation)
+and writes them into a folder structure that symbolicator can work with as a symbol source.
+The structure used is the `unified` format that the symbolicator also supports.
 
 ## Compiling
 
-SymSorter is not distributed precompiled so you need to compile it yourself:
+SymSorter is distributed via [GitHub Releases](https://github.com/getsentry/symbolicator/edit/66e8ee418ae8e0074fb5b92d65e3ea873d98f97d/crates/symsorter/README.md),
+but you can build it from source with:
 
 ```
 cargo build --release
