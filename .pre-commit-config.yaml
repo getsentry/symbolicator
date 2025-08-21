@@ -1,4 +1,12 @@
 repos:
+- repo: local
+  hooks:
+    - id: rustfmt
+      name: rustfmt
+      language: system
+      types: [rust]
+      entry: rustfmt
+
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v5.0.0
   hooks:
