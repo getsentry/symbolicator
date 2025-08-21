@@ -9,8 +9,9 @@ dev = [
     "devservices>=1.2.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.17",
-    "pre-commit>=4.3.0",
+    "pre-commit>=4.2.0",
     "pygments>=2.19.2",
+    "sentry-devenv>=1.22.2",
 ]
 
 [tool.uv]
