@@ -1,5 +1,4 @@
 SHELL = /bin/bash
-export SYMBOLICATOR_PYTHON_VERSION := python3
 
 all: check test
 .PHONY: all
@@ -33,16 +32,18 @@ test:
 
 # Documentation
 
-docs: .venv/bin/python
-	.venv/bin/pip install -U mkdocs mkdocs-material pygments
+docs: venv
 	.venv/bin/mkdocs build
 	touch site/.nojekyll
 .PHONY: docs
 
-docserver: .venv/bin/python
-	.venv/bin/pip install -U mkdocs mkdocs-material pygments
+docserver: venv
 	.venv/bin/mkdocs serve
 .PHONY: doc
+
+venv:
+	devenv sync
+.PHONY: venv
 
 # Style checking
 
@@ -64,12 +65,6 @@ format:
 	@rustup component add rustfmt --toolchain stable 2> /dev/null
 	cargo +stable fmt
 .PHONY: format-rust
-
-# Dependencies (currently needed for docs)
-
-.venv/bin/python: Makefile
-	rm -rf .venv
-	$$SYMBOLICATOR_PYTHON_VERSION -m venv .venv
 
 # Build GoCD pipelines
 
