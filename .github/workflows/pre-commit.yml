@@ -52,9 +52,7 @@ jobs:
           key: cache-epoch-1|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}
 
       - name: Install pre-commit
-        run: |
-          # todo: rustfmt
-          pre-commit install-hooks
+        run: pre-commit install-hooks
 
       - name: Run pre-commit
         run: |
