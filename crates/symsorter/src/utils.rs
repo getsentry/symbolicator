@@ -10,7 +10,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::sourcebundle::{SourceBundleWriter, SourceFileDescriptor};
 use symbolic::debuginfo::{Archive, FileEntry, FileFormat, Object, ObjectKind};
 
-static BAD_CHARS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap());
+static BAD_CHARS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-zA-Z0-9.,+-]+").unwrap());
 
 /// Console logging for the symsorter app.
 #[macro_export]
