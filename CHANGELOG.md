@@ -9,7 +9,7 @@
   - [diff](https://github.com/getsentry/sentry-native/compare/0.9.1...0.10.0)
 
 ### Various fixes & improvements
-- Added support for + in SymSorter Bundle ID's
+- Added support for + in SymSorter Bundle ID's. ([#1772](https://github.com/getsentry/symbolicator/pull/1772))
 
 ## 25.8.0
 
