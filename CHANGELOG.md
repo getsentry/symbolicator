@@ -8,6 +8,9 @@
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0100)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.9.1...0.10.0)
 
+### Various fixes & improvements
+- Added support for + in SymSorter Bundle ID's. ([#1772](https://github.com/getsentry/symbolicator/pull/1772))
+
 ## 25.8.0
 
 ### Dependencies
@@ -93,7 +96,7 @@
 ### Various fixes & improvements
 
 - Speed up large file downloads, by using multiple concurrent http range requests. ([#1670](https://github.com/getsentry/symbolicator/pull/1670))
-- Validate stack scanned candidate frames against available CFI unwind information. 
+- Validate stack scanned candidate frames against available CFI unwind information.
   This reduces hallucinated frames when relying on stack scanning. ([#1651](https://github.com/getsentry/symbolicator/pull/1651))
 - Logic for setting the in-app property on frames has been removed from JavaScript symbolication. ([#1656](https://github.com/getsentry/symbolicator/pull/1656))
 - Added support for indexes for symbol sources.
