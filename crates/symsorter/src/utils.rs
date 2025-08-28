@@ -128,12 +128,12 @@ mod tests {
     #[test]
     fn is_bundle_id_checks() {
         let good_input_id = "10.3_ABCD";
-        assert_eq!(is_bundle_id(good_input_id), true);
+        assert!(is_bundle_id(good_input_id));
 
         let bad_input_id = "10.3.*";
-        assert_eq!(is_bundle_id(bad_input_id), false);
+        assert!(!is_bundle_id(bad_input_id));
 
         let unreal_bundle_id = "++lyra+main-CL-12345";
-        assert_eq!(is_bundle_id(unreal_bundle_id), true);
+        assert!(is_bundle_id(unreal_bundle_id));
     }
 }
