@@ -120,3 +120,20 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
     }
     Ok(None)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_bundle_id_checks() {
+        let good_input_id = "10.3_ABCD";
+        assert_eq!(is_bundle_id(good_input_id), true);
+
+        let bad_input_id = "10.3.*";
+        assert_eq!(is_bundle_id(bad_input_id), false);
+
+        let unreal_bundle_id = "++lyra+main-CL-12345";
+        assert_eq!(is_bundle_id(unreal_bundle_id), true);
+    }
+}
