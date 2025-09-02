@@ -142,7 +142,7 @@ jobs:
           service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           version: ">= 390.0.0"
 
@@ -210,7 +210,7 @@ jobs:
           service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
         with:
           # https://github.com/google-github-actions/auth#authenticating-via-workload-identity-federation
           # You must use the Cloud SDK version 390.0.0 or later to authenticate the bq and gsutil tools.
