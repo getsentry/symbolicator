@@ -25,7 +25,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
@@ -49,7 +49,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
@@ -79,11 +79,11 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout Symbolicator
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Checkout Sentry and run integration tests against latest Symbolicator
       - name: Checkout sentry
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: getsentry/sentry
           path: sentry
@@ -132,7 +132,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component rust-docs --no-self-update
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -171,7 +171,7 @@ jobs:
           sudo apt update
           sudo apt-get install -y libcurl4-openssl-dev
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
