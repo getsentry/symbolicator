@@ -625,7 +625,7 @@ impl Default for Config {
             deny_list_time_window: Duration::from_secs(60),
             deny_list_bucket_size: Duration::from_secs(5),
             deny_list_threshold: 60,
-            deny_list_block_time: Duration::from_secs(1 * 60 * 60),
+            deny_list_block_time: Duration::from_secs(60 * 60),
             deny_list_never_block_hosts: Vec::new(),
             timeouts: DownloadTimeouts::default(),
             // This value is tuned according to Symbolicator's observed real-world performance.
