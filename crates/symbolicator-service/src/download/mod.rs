@@ -135,6 +135,8 @@ impl HostDenyList {
             block_time: config.deny_list_block_time,
             never_block: config.deny_list_never_block_hosts.clone(),
             failures: moka::sync::Cache::builder()
+                // If a host hasn't had download failures for an entire `deny_list_time_window`
+                // we can remove it from the `failures` cache.
                 .time_to_idle(config.deny_list_time_window)
                 .build(),
             blocked_hosts: moka::sync::Cache::builder()
@@ -161,12 +163,19 @@ impl HostDenyList {
     ///
     /// If that puts the host over the threshold, it is added
     /// to the blocked servers.
-    fn register_failure(&self, source_name: &str, host: String) {
+    fn register_failure(&self, source_name: &str, host: String, error: &CacheError) {
         let current_ts = SystemTime::now();
+
+        // Sanity check: we don't need to count failures for hosts which are currently blocked.
+        // This can happen if multiple download requests fail around the same time.
+        if self.is_blocked(&host) {
+            return;
+        }
 
         tracing::trace!(
             host = %host,
             time = %humantime::format_rfc3339(current_ts),
+            %error,
             "Registering download failure"
         );
 
@@ -205,6 +214,7 @@ impl HostDenyList {
             tracing::info!(
                 %host,
                 block_time = %humantime::format_duration(self.block_time),
+                %error,
                 "Blocking host due to too many download failures"
             );
 
@@ -386,7 +396,7 @@ impl DownloadService {
             if let Some(ref deny_list) = self.host_deny_list
                 && source_can_be_blocked
             {
-                deny_list.register_failure(&source_metric_key, host);
+                deny_list.register_failure(&source_metric_key, host, e);
             }
         }
 
@@ -1211,12 +1221,20 @@ mod tests {
         let deny_list = HostDenyList::from_config(&config);
         let host = String::from("test");
 
-        deny_list.register_failure("test", host.clone());
+        deny_list.register_failure(
+            "test",
+            host.clone(),
+            &CacheError::DownloadError("Test error".to_owned()),
+        );
 
         // shouldn't be blocked after one failure
         assert!(!deny_list.is_blocked(&host));
 
-        deny_list.register_failure("test", host.clone());
+        deny_list.register_failure(
+            "test",
+            host.clone(),
+            &CacheError::DownloadError("Test error".to_owned()),
+        );
 
         // should be blocked after two failures
         assert!(deny_list.is_blocked(&host));
@@ -1240,8 +1258,16 @@ mod tests {
         let deny_list = HostDenyList::from_config(&config);
         let host = String::from("test");
 
-        deny_list.register_failure("test", host.clone());
-        deny_list.register_failure("test", host.clone());
+        deny_list.register_failure(
+            "test",
+            host.clone(),
+            &CacheError::DownloadError("Test error".to_owned()),
+        );
+        deny_list.register_failure(
+            "test",
+            host.clone(),
+            &CacheError::DownloadError("Test error".to_owned()),
+        );
 
         assert!(!deny_list.is_blocked(&host));
     }

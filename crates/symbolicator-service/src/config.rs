@@ -498,18 +498,26 @@ pub struct Config {
     ///
     /// Hosts will be put on the deny list if a certain number of downloads
     /// fail within this time window.
+    ///
+    /// Defaults to 60s.
     #[serde(with = "humantime_serde")]
     pub deny_list_time_window: Duration,
 
     /// The granularity at which download failures are tracked in the host deny list.
+    ///
+    /// Defaults to 5s.
     #[serde(with = "humantime_serde")]
     pub deny_list_bucket_size: Duration,
 
     /// The number of failures that must occur in the configured time window for a
     /// server to be put on the deny list.
+    ///
+    /// Defaults to 60.
     pub deny_list_threshold: usize,
 
     /// The duration for which a host will remain on the deny list.
+    ///
+    /// Defaults to 1h.
     #[serde(with = "humantime_serde")]
     pub deny_list_block_time: Duration,
 
@@ -616,8 +624,8 @@ impl Default for Config {
             deny_list_enabled: true,
             deny_list_time_window: Duration::from_secs(60),
             deny_list_bucket_size: Duration::from_secs(5),
-            deny_list_threshold: 20,
-            deny_list_block_time: Duration::from_secs(24 * 60 * 60),
+            deny_list_threshold: 60,
+            deny_list_block_time: Duration::from_secs(1 * 60 * 60),
             deny_list_never_block_hosts: Vec::new(),
             timeouts: DownloadTimeouts::default(),
             // This value is tuned according to Symbolicator's observed real-world performance.
