@@ -58,7 +58,7 @@ jobs:
       BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -256,7 +256,7 @@ jobs:
     needs:
       - assemble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Push built docker image
         shell: bash
         run: |
