@@ -183,7 +183,7 @@ async fn test_deny_list() {
             ObjectFileStatus::FetchingFailed,
             ObjectUseInfo::None,
             ObjectDownloadInfo::Error {
-                details: "download failed: Server is temporarily blocked".into()
+                details: "download failed: Host localhost is temporarily blocked because there were too many download failures. It will remain blocked for a maximum of 500ms. The error that triggered the block was: `download failed: 500 Internal Server Error`.".into()
             }
         )
     );

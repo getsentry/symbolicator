@@ -145,7 +145,7 @@ impl HostDenyList {
     /// Creates a `CacheError` for the given `host` and `reason`.
     pub(crate) fn format_error(&self, host: &str, reason: &CacheError) -> CacheError {
         CacheError::DownloadError(format!(
-            "Host {host} is temporarily blocked because there were too many download failures. It will remain blocked for a maximum of {}. The error that triggered the block was: `{reason}``",
+            "Host {host} is temporarily blocked because there were too many download failures. It will remain blocked for a maximum of {}. The error that triggered the block was: `{reason}`.",
             humantime::format_duration(self.block_time),
         ))
     }
