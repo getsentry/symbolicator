@@ -4,9 +4,9 @@
 
 ### Dependencies
 
-- Bump Native SDK from v0.9.1 to v0.10.0 ([#1769](https://github.com/getsentry/symbolicator/pull/1769))
-  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0100)
-  - [diff](https://github.com/getsentry/sentry-native/compare/0.9.1...0.10.0)
+- Bump Native SDK from v0.9.1 to v0.10.1 ([#1769](https://github.com/getsentry/symbolicator/pull/1769), [#1776](https://github.com/getsentry/symbolicator/pull/1776))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0101)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.9.1...0.10.1)
 
 ### Various fixes & improvements
 - Added support for + in SymSorter Bundle ID's. ([#1772](https://github.com/getsentry/symbolicator/pull/1772))
