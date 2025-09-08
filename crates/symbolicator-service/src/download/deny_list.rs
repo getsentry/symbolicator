@@ -178,7 +178,7 @@ mod tests {
         );
 
         // shouldn't be blocked after one failure
-        assert!(!deny_list.is_blocked(&host).is_some());
+        assert!(deny_list.is_blocked(&host).is_none());
 
         deny_list.register_failure(
             "test",
@@ -192,7 +192,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
 
         // should be unblocked after 100ms have passed
-        assert!(!deny_list.is_blocked(&host).is_some());
+        assert!(deny_list.is_blocked(&host).is_none());
     }
 
     #[test]
@@ -219,6 +219,6 @@ mod tests {
             &CacheError::DownloadError("Test error".to_owned()),
         );
 
-        assert!(!deny_list.is_blocked(&host).is_some());
+        assert!(deny_list.is_blocked(&host).is_none());
     }
 }
