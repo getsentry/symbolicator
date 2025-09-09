@@ -180,6 +180,8 @@ struct RequestServiceInner {
     jvm: ProguardService,
     objects: ObjectsActor,
 
+    attachments_store: objectstore_client::ClientBuilder,
+
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
     max_concurrent_requests: Option<usize>,
@@ -220,8 +222,13 @@ impl RequestService {
             });
         }
 
-        let max_concurrent_requests = config.max_concurrent_requests;
+        let attachments_store = objectstore_client::ClientBuilder::new(
+            &config.storage.service_url,
+            &config.storage.jwt_secret,
+            "attachments",
+        )?;
 
+        let max_concurrent_requests = config.max_concurrent_requests;
         let inner = RequestServiceInner {
             config,
 
@@ -229,6 +236,8 @@ impl RequestService {
             js,
             jvm,
             objects,
+
+            attachments_store,
 
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
@@ -240,6 +249,11 @@ impl RequestService {
         Ok(Self {
             inner: Arc::new(inner),
         })
+    }
+
+    /// Gives acess to the attachment storage client.
+    pub fn attachments_store(&self) -> &objectstore_client::ClientBuilder {
+        &self.inner.attachments_store
     }
 
     /// Gives access to the [`Config`].
