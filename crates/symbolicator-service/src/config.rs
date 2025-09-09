@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 use std::env;
 use std::fmt;
 use std::fs;
@@ -522,7 +523,7 @@ pub struct Config {
     pub deny_list_block_time: Duration,
 
     /// A list of hosts to never block regardless of download failures.
-    pub deny_list_never_block_hosts: Vec<String>,
+    pub deny_list_never_block_hosts: HashSet<String>,
 
     #[serde(flatten)]
     pub timeouts: DownloadTimeouts,
@@ -626,7 +627,7 @@ impl Default for Config {
             deny_list_bucket_size: Duration::from_secs(5),
             deny_list_threshold: 60,
             deny_list_block_time: Duration::from_secs(60 * 60),
-            deny_list_never_block_hosts: Vec::new(),
+            deny_list_never_block_hosts: HashSet::new(),
             timeouts: DownloadTimeouts::default(),
             // This value is tuned according to Symbolicator's observed real-world performance.
             max_concurrent_requests: Some(200),
