@@ -51,6 +51,7 @@ impl SymstoreIndex {
     /// A line of the form
     /// ```text
     /// "<name>\<ID>","<other data>"
+    /// ```
     /// is transformed into
     /// ```text
     /// <name>/<ID>/<name>
