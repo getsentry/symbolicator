@@ -58,22 +58,11 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 anyhow = "1.0.66"
 apple-crash-report-parser = "0.5.1"
 async-trait = "0.1.53"
-# Manually disable the `"default-https-client" feature`
-aws-config = { version = "1.8.6", default-features = false, features = [
-    "behavior-version-latest",
-    "rt-tokio",
-    "credentials-process",
-    "sso",
-] }
+aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.0.1", features = [
     "hardcoded-credentials",
 ] }
-# Manually disable the `"default-https-client" feature`
-aws-sdk-s3 = { version = "1.105.0", default-features = false, default = [
-    "sigv4a",
-    "rustls",
-    "rt-tokio",
-] }
+aws-sdk-s3 = "1.4.0"
 aws-types = "1.0.1"
 axum = { version = "0.8.4" }
 axum-server = "0.6.0"
