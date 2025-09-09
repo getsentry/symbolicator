@@ -1226,6 +1226,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -3341,6 +3343,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "objectstore-client"
+version = "0.1.0"
+source = "git+https://github.com/getsentry/objectstore.git#962a2f4f9dcf31625156ce2cc122ede87c940bcf"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "bytes",
+ "futures-util",
+ "jsonwebtoken",
+ "objectstore-types",
+ "reqwest",
+ "serde",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "objectstore-types"
+version = "0.1.0"
+source = "git+https://github.com/getsentry/objectstore.git#962a2f4f9dcf31625156ce2cc122ede87c940bcf"
+dependencies = [
+ "anyhow",
+ "http 1.3.1",
+ "humantime",
+ "serde",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5152,6 +5182,7 @@ dependencies = [
  "humantime",
  "insta",
  "jemallocator",
+ "objectstore-client",
  "reqwest",
  "rustls 0.23.31",
  "sentry",

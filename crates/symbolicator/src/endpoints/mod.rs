@@ -7,6 +7,7 @@ use tower::ServiceBuilder;
 use crate::service::RequestService;
 
 mod applecrashreport;
+mod attachments;
 mod error;
 mod metrics;
 mod minidump;

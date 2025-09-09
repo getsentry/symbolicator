@@ -3,15 +3,18 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use symbolic::common::ByteView;
 use symbolicator_native::interface::ProcessMinidump;
+use symbolicator_service::config::Config;
+use tempfile::NamedTempFile;
 use tokio::fs::File;
 
-use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::metric;
 use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
+use super::attachments::{StoredAttachment, fetch_attachment_into_file};
 use super::multipart::{read_multipart_data, stream_multipart_file};
+use super::symbolicate::SymbolicationRequestQueryParams;
 
 pub async fn handle_minidump_request(
     extract::State(service): extract::State<RequestService>,
@@ -32,16 +35,21 @@ pub async fn handle_minidump_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("upload_file_minidump") => {
-                let mut minidump_file = tempfile::Builder::new();
-                minidump_file.prefix("minidump").suffix(".dmp");
-                let minidump_file = if let Some(tmp_dir) = service.config().cache_dir("tmp") {
-                    minidump_file.tempfile_in(tmp_dir)
-                } else {
-                    minidump_file.tempfile()
-                }?;
+                let minidump_file = make_minidump_file(service.config())?;
                 let (file, temp_path) = minidump_file.into_parts();
                 let mut file = File::from_std(file);
                 stream_multipart_file(field, &mut file).await?;
+                minidump = Some(temp_path)
+            }
+            Some("stored_minidump") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                let stored_attachment: StoredAttachment = serde_json::from_slice(&data)?;
+
+                let minidump_file = make_minidump_file(service.config())?;
+                let (file, temp_path) = minidump_file.into_parts();
+                fetch_attachment_into_file(service.attachments_store(), stored_attachment, file)
+                    .await?;
+
                 minidump = Some(temp_path)
             }
             Some("sources") => {
@@ -97,6 +105,16 @@ pub async fn handle_minidump_request(
     match service.get_response(request_id, params.timeout).await {
         Some(response) => Ok(Json(response)),
         None => Err("symbolication request did not start".into()),
+    }
+}
+
+fn make_minidump_file(config: &Config) -> std::io::Result<NamedTempFile> {
+    let mut minidump_file = tempfile::Builder::new();
+    minidump_file.prefix("minidump").suffix(".dmp");
+    if let Some(tmp_dir) = config.cache_dir("tmp") {
+        minidump_file.tempfile_in(tmp_dir)
+    } else {
+        minidump_file.tempfile()
     }
 }
 

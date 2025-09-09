@@ -3,12 +3,13 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use tokio::fs::File;
 
-use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
+use super::attachments::{StoredAttachment, fetch_attachment_into_file};
 use super::multipart::{read_multipart_data, stream_multipart_file};
+use super::symbolicate::SymbolicationRequestQueryParams;
 
 pub async fn handle_apple_crash_report_request(
     extract::State(service): extract::State<RequestService>,
@@ -31,6 +32,19 @@ pub async fn handle_apple_crash_report_request(
                 let mut report_file = File::from_std(tempfile::tempfile()?);
                 stream_multipart_file(field, &mut report_file).await?;
                 report = Some(report_file.into_std().await)
+            }
+            Some("stored_apple_crash_report") => {
+                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
+                let stored_attachment: StoredAttachment = serde_json::from_slice(&data)?;
+
+                let report_file = tempfile::tempfile()?;
+                let report_file = fetch_attachment_into_file(
+                    service.attachments_store(),
+                    stored_attachment,
+                    report_file,
+                )
+                .await?;
+                report = Some(report_file)
             }
             Some("sources") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb

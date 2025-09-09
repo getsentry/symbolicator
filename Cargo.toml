@@ -96,6 +96,7 @@ minidump = "0.26.0"
 minidump-processor = "0.26.0"
 minidump-unwind = "0.26.0"
 moka = { version = "0.12.8", features = ["future", "sync"] }
+objectstore-client = { git = "https://github.com/getsentry/objectstore.git" }
 prettytable-rs = "0.10.0"
 proguard = "5.6.2"
 rand = "0.9.0"
