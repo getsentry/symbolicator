@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
@@ -30,7 +30,7 @@ pub(crate) struct HostDenyList {
     bucket_size_millis: u64,
     failure_threshold: usize,
     block_time: Duration,
-    never_block: Vec<String>,
+    never_block: HashSet<String>,
     failures: moka::sync::Cache<String, CountedFailures>,
     blocked_hosts: moka::sync::Cache<String, CacheError>,
 }
@@ -202,7 +202,7 @@ mod tests {
             deny_list_block_time: Duration::from_millis(100),
             deny_list_bucket_size: Duration::from_secs(1),
             deny_list_threshold: 2,
-            deny_list_never_block_hosts: vec!["test".to_string()],
+            deny_list_never_block_hosts: HashSet::from(["test".to_string()]),
             ..Default::default()
         };
         let deny_list = HostDenyList::from_config(&config);
