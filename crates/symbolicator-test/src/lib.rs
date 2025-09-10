@@ -27,7 +27,6 @@ use axum::routing::{get, get_service};
 use axum::{Json, extract};
 use axum::{Router, middleware};
 use reqwest::Url;
-use rustls::crypto::CryptoProvider;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use tower_http::services::ServeDir;
