@@ -27,6 +27,7 @@ use axum::routing::{get, get_service};
 use axum::{Json, extract};
 use axum::{Router, middleware};
 use reqwest::Url;
+use rustls::crypto::CryptoProvider;
 use serde::{Deserialize, Serialize};
 use tokio::sync::OnceCell;
 use tower_http::services::ServeDir;
@@ -51,9 +52,11 @@ pub fn setup() {
     // We depend on `rustls` with both the `aws-lc-rs` and
     // `ring` features enabled. This means that `rustls` can't automatically
     // decide which provider to use and we have to initialize it manually.
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .unwrap();
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .unwrap();
+    }
 
     fmt()
         .with_env_filter(EnvFilter::new("symbolicator=trace,tower_http=trace"))
