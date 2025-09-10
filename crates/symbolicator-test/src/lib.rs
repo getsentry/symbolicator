@@ -51,11 +51,7 @@ pub fn setup() {
     // We depend on `rustls` with both the `aws-lc-rs` and
     // `ring` features enabled. This means that `rustls` can't automatically
     // decide which provider to use and we have to initialize it manually.
-    if rustls::crypto::CryptoProvider::get_default().is_none() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
-    }
+    let _ = rustls::crypto::ring::default_provider().install_default();
 
     fmt()
         .with_env_filter(EnvFilter::new("symbolicator=trace,tower_http=trace"))
