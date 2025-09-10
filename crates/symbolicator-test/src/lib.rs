@@ -46,7 +46,13 @@ pub use tempfile::TempDir;
 ///
 ///  - Initializes logs: The logger only captures logs from the `symbolicator` crate
 ///    and test server, and mutes all other logs.
+///  - Initializes the default crypto provider.
 pub fn setup() {
+    // We depend on `rustls` with both the `aws-lc-rs` and
+    // `ring` features enabled. This means that `rustls` can't automatically
+    // decide which provider to use and we have to initialize it manually.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     fmt()
         .with_env_filter(EnvFilter::new("symbolicator=trace,tower_http=trace"))
         .with_target(false)
@@ -222,13 +228,13 @@ impl Server {
 
         Router::new()
             .route(
-                "/redirect/*path",
+                "/redirect/{*path}",
                 get(|extract::Path(path): extract::Path<String>| async move {
                     (StatusCode::FOUND, [("Location", format!("/{path}"))])
                 }),
             )
             .route(
-                "/delay/:time/*path",
+                "/delay/{time}/{*path}",
                 get(
                     |extract::Path((time, path)): extract::Path<(String, String)>| async move {
                         let duration = humantime::parse_duration(&time).unwrap();
@@ -239,14 +245,14 @@ impl Server {
                 ),
             )
             .route(
-                "/msdl/*path",
+                "/msdl/{*path}",
                 get(|extract::Path(path): extract::Path<String>| async move {
                     let url = format!("https://msdl.microsoft.com/download/symbols/{path}");
                     (StatusCode::FOUND, [("Location", url)])
                 }),
             )
             .route(
-                "/respond_statuscode/:num/*tail",
+                "/respond_statuscode/{num}/{*tail}",
                 get(
                     |extract::Path((num, _)): extract::Path<(u16, String)>| async move {
                         StatusCode::from_u16(num).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
@@ -254,7 +260,7 @@ impl Server {
                 ),
             )
             .route(
-                "/garbage_data/*tail",
+                "/garbage_data/{*tail}",
                 get(|extract::Path(tail): extract::Path<String>| async move { tail }),
             )
             .nest_service("/symbols", serve_dir)
@@ -357,7 +363,7 @@ pub fn sourcemap_server<L>(
     lookup: L,
 ) -> (Server, SentrySourceConfig)
 where
-    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + 'static,
+    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + Sync + 'static,
 {
     let files_url = Arc::new(OnceCell::<Url>::new());
 
@@ -401,7 +407,7 @@ where
 
 pub fn sentry_server<L>(fixtures_dir: impl AsRef<Path>, lookup: L) -> (Server, SentrySourceConfig)
 where
-    L: Fn(&str, &HashMap<String, String>) -> serde_json::Value + Clone + Send + 'static,
+    L: Fn(&str, &HashMap<String, String>) -> serde_json::Value + Clone + Send + Sync + 'static,
 {
     let files_url = Arc::new(OnceCell::<Url>::new());
 

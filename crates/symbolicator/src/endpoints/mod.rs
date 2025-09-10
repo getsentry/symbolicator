@@ -43,8 +43,8 @@ pub fn create_app(service: RequestService) -> Router {
     // We have a global 100M body limit, but a 5M symbolicate body limit
     let symbolicate_route = post(symbolicate).layer(DefaultBodyLimit::max(5 * 1024 * 1024));
     Router::new()
-        .route("/proxy/*path", get(proxy).head(proxy))
-        .route("/requests/:request_id", get(requests))
+        .route("/proxy/{*path}", get(proxy).head(proxy))
+        .route("/requests/{request_id}", get(requests))
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
         .route("/symbolicate-js", post(symbolicate_js))

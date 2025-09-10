@@ -57,7 +57,7 @@ fn sourcemap_server<L>(
     lookup: L,
 ) -> (symbolicator_test::Server, SentrySourceConfig)
 where
-    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + 'static,
+    L: Fn(&str, &str) -> serde_json::Value + Clone + Send + Sync + 'static,
 {
     let fixtures_dir = symbolicator_test::fixture(format!("sourcemaps/{fixtures_dir}"));
     symbolicator_test::sourcemap_server(fixtures_dir, lookup)

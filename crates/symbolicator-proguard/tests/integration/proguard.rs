@@ -43,7 +43,7 @@ fn proguard_server<L>(
     lookup: L,
 ) -> (symbolicator_test::Server, SentrySourceConfig)
 where
-    L: Fn(&str, &HashMap<String, String>) -> serde_json::Value + Clone + Send + 'static,
+    L: Fn(&str, &HashMap<String, String>) -> serde_json::Value + Clone + Send + Sync + 'static,
 {
     let fixtures_dir = symbolicator_test::fixture(format!("proguard/{fixtures_dir}"));
     symbolicator_test::sentry_server(fixtures_dir, lookup)

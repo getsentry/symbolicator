@@ -64,15 +64,15 @@ aws-credential-types = { version = "1.0.1", features = [
 ] }
 aws-sdk-s3 = "1.4.0"
 aws-types = "1.0.1"
-axum = { version = "0.7.2" }
+axum = { version = "0.8.4" }
 axum-server = "0.6.0"
-bindgen = "0.69.1"
+bindgen = "0.72.1"
 bytes = "1.6.0"
 cadence = "1.0.0"
 chrono = { version = "0.4.19", features = ["serde"] }
 clap = { version = "4.3.2", features = ["derive"] }
 cmake = "0.1.46"
-console = "0.15.0"
+console = "0.16.0"
 crossbeam-utils = "0.8.19"
 data-url = "0.3.0"
 dirs = "5.0.0"
@@ -103,6 +103,7 @@ rayon = "1.10.0"
 regex = "1.5.5"
 reqwest = "0.12.15"
 rustc-hash = "2.0.0"
+rustls = { version = "0.23.31", features = ["ring"] }
 sentry = { version = "0.41.0", default-features = false, features = [
     # default features, except `release-health` is disabled
     "backtrace",
@@ -136,7 +137,7 @@ thread_local = "1.1.7"
 tokio = "1.44.2"
 tokio-metrics = "0.3.1"
 tokio-util = "0.7.10"
-toml = "0.8.0"
+toml = "0.9.5"
 tower = "0.4"
 tower-http = { version = "0.5.0", features = ["fs", "trace"] }
 tower-layer = "0.3"
