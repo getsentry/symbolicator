@@ -18,6 +18,7 @@ console = { workspace = true}
 futures = { workspace = true}
 hostname = { workspace = true}
 humantime =  { workspace = true }
+rustls = { workspace = true }
 sentry = { workspace = true, features = ["release-health", "tower", "tower-http"] }
 serde = { workspace = true }
 serde_json = { workspace = true}

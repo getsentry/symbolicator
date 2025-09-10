@@ -41,6 +41,13 @@ async fn main() -> Result<()> {
         symbols,
     } = settings::Settings::get()?;
 
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
+        anyhow::bail!("Failed to initialize crypto provider");
+    }
+
     let filter = filter::Targets::new().with_targets(vec![
         ("symbolicator_service", log_level),
         ("symbolicli", log_level),

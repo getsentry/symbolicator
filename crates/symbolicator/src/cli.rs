@@ -117,6 +117,13 @@ pub fn execute() -> Result<()> {
     // is safe to call.
     unsafe { logging::init_logging(&config) };
 
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
+        anyhow::bail!("Failed to initialize crypto provider");
+    }
+
     if let Some(ref statsd) = config.metrics.statsd {
         let addrs = statsd
             .to_socket_addrs()
