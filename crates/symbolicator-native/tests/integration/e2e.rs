@@ -235,9 +235,7 @@ async fn test_no_permission() {
     );
     assert_eq!(
         candidates[5].download,
-        ObjectDownloadInfo::Error {
-            details: "download failed: unhandled error".to_owned()
-        }
+        ObjectDownloadInfo::NoPerm { details: "The authorization header is malformed; a non-empty Access Key (AKID) must be provided in the credential.".into() }
     );
 }
 
