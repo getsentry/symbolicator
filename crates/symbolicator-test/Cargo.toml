@@ -11,6 +11,7 @@ humantime = { workspace = true }
 insta = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true, features = ["gzip", "json", "stream", "hickory-dns", "multipart"] }
+rustls = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 symbolicator-sources = { workspace = true }
