@@ -1,32 +1,20 @@
-use std::pin::pin;
-
-use anyhow::Context;
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
-use serde::Deserialize;
 use symbolic::common::ByteView;
 use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_service::config::Config;
 use tempfile::NamedTempFile;
 use tokio::fs::File;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio_util::io::StreamReader;
 
-use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
 use crate::metric;
 use crate::service::{RequestOptions, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
+use super::attachments::{StoredAttachment, fetch_attachment_into_file};
 use super::multipart::{read_multipart_data, stream_multipart_file};
-
-#[derive(Deserialize)]
-struct StoredMinidump {
-    organization_id: u64,
-    project_id: u64,
-    stored_id: String,
-}
+use super::symbolicate::SymbolicationRequestQueryParams;
 
 pub async fn handle_minidump_request(
     extract::State(service): extract::State<RequestService>,
@@ -55,26 +43,12 @@ pub async fn handle_minidump_request(
             }
             Some("stored_minidump") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
-                let stored_minidump: StoredMinidump = serde_json::from_slice(&data)?;
+                let stored_attachment: StoredAttachment = serde_json::from_slice(&data)?;
 
                 let minidump_file = make_minidump_file(service.config())?;
                 let (file, temp_path) = minidump_file.into_parts();
-
-                let attachments_store = service
-                    .attachments_store()
-                    .for_project(stored_minidump.organization_id, stored_minidump.project_id);
-                let attachment = attachments_store
-                    .get(&stored_minidump.stored_id)
-                    .send()
-                    .await?
-                    .context("expected attachment")?;
-
-                let mut reader = pin!(StreamReader::new(attachment.stream));
-                let mut writer = BufWriter::new(File::from_std(file));
-                tokio::io::copy(&mut reader, &mut writer).await?;
-                writer.flush().await?;
-                let file = writer.into_inner();
-                file.sync_data().await?;
+                fetch_attachment_into_file(service.attachments_store(), stored_attachment, file)
+                    .await?;
 
                 minidump = Some(temp_path)
             }
