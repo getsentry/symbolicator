@@ -2,8 +2,8 @@ name: Release build
 
 on:
   push:
-    # branches:
-    #   - release/**
+    branches:
+      - release/**
 
 jobs:
   linux:
@@ -148,14 +148,14 @@ jobs:
           # since this artifact will be merged, compression is not necessary
           compression-level: "0"
 
-  # merge:
-  #   name: Create Release Artifact
-  #   runs-on: ubuntu-latest
-  #   needs: [linux, mac, windows]
-  #   steps:
-  #     - uses: actions/upload-artifact/merge@v4
-  #       with:
-  #         # Craft expects release assets from github to be a single artifact named after the sha.
-  #         name: ${{ github.sha }}
-  #         pattern: artifact-*
-  #         delete-merged: true
+  merge:
+    name: Create Release Artifact
+    runs-on: ubuntu-latest
+    needs: [linux, mac, windows]
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          # Craft expects release assets from github to be a single artifact named after the sha.
+          name: ${{ github.sha }}
+          pattern: artifact-*
+          delete-merged: true
