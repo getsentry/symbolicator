@@ -6,9 +6,16 @@ on:
       - release/**
 
 jobs:
-  linux-x86_64:
-    name: Build Binary on Linux x86_64
-    runs-on: ubuntu-22.04
+  linux:
+    name: Build Binary on Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
 
     steps:
       - name: Checkout sources
@@ -28,7 +35,7 @@ jobs:
           objcopy --only-keep-debug target/release/symbolicator{,.debug}
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
+          zip -j build/symbolicator-Linux-${{ matrix.arch }}-debug.zip target/release/symbolicator.debug
 
           # Strip debug info for tools
           objcopy --strip-debug --strip-unneeded target/release/wasm-split
@@ -36,61 +43,18 @@ jobs:
           objcopy --strip-debug --strip-unneeded target/release/symbolicli
 
           # Move all binaries
-          mv target/release/symbolicator build/symbolicator-Linux-x86_64
-          mv target/release/wasm-split build/wasm-split-Linux-x86_64
-          mv target/release/symsorter build/symsorter-Linux-x86_64
-          mv target/release/symbolicli build/symbolicli-Linux-x86_64
+          mv target/release/symbolicator build/symbolicator-Linux-${{ matrix.arch }}
+          mv target/release/wasm-split build/wasm-split-Linux-${{ matrix.arch }}
+          mv target/release/symsorter build/symsorter-Linux-${{ matrix.arch }}
+          mv target/release/symbolicli build/symbolicli-Linux-${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: artifact-linux-x86_64-${{ github.sha }}
+          name: artifact-linux-${{ matrix.arch }}-${{ github.sha }}
           path: build/*
-          if-no-files-found: 'error'
+          if-no-files-found: "error"
           # since this artifact will be merged, compression is not necessary
-          compression-level: '0'
-
-  linux-aarch64:
-    name: Build Binary on Linux aarch64
-    runs-on: ubuntu-22.04-arm
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v5
-
-      - name: Install rust stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update
-
-      - name: Run cargo build
-        run: cargo build --bins --release --locked
-
-      - name: Split and archive debug info
-        run: |
-          mkdir -p build
-
-          # Split only symbolicator's debug information
-          objcopy --only-keep-debug target/release/symbolicator{,.debug}
-          objcopy --strip-debug --strip-unneeded target/release/symbolicator
-          objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip -j build/symbolicator-Linux-aarch64-debug.zip target/release/symbolicator.debug
-
-          # Strip debug info for tools
-          objcopy --strip-debug --strip-unneeded target/release/wasm-split
-          objcopy --strip-debug --strip-unneeded target/release/symsorter
-          objcopy --strip-debug --strip-unneeded target/release/symbolicli
-
-          # Move all binaries
-          mv target/release/symbolicator build/symbolicator-Linux-aarch64
-          mv target/release/wasm-split build/wasm-split-Linux-aarch64
-          mv target/release/symsorter build/symsorter-Linux-aarch64
-          mv target/release/symbolicli build/symbolicli-Linux-aarch64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: artifact-linux-aarch64-${{ github.sha }}
-          path: build/*
-          if-no-files-found: 'error'
-          # since this artifact will be merged, compression is not necessary
-          compression-level: '0'
+          compression-level: "0"
 
   mac:
     # Note: This doesn't use a build matrix, as it requires a last step to merge the x86
@@ -149,9 +113,9 @@ jobs:
         with:
           name: artifact-mac-${{ github.sha }}
           path: build/*
-          if-no-files-found: 'error'
+          if-no-files-found: "error"
           # since this artifact will be merged, compression is not necessary
-          compression-level: '0'
+          compression-level: "0"
 
   windows:
     name: Build Tools on Windows
@@ -180,14 +144,14 @@ jobs:
         with:
           name: artifact-windows-${{ github.sha }}
           path: target/release/*-Windows-x86_64.exe
-          if-no-files-found: 'error'
+          if-no-files-found: "error"
           # since this artifact will be merged, compression is not necessary
-          compression-level: '0'
+          compression-level: "0"
 
   merge:
     name: Create Release Artifact
     runs-on: ubuntu-latest
-    needs: [linux-x86_64, linux-aarch64, mac, windows]
+    needs: [linux, mac, windows]
     steps:
       - uses: actions/upload-artifact/merge@v4
         with:
