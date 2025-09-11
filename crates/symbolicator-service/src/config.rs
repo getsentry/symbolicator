@@ -554,6 +554,9 @@ pub struct Config {
 
     /// Whether to inherit traces from incoming requests and propagate them to outgoing requests.
     pub propagate_traces: bool,
+
+    /// Configuration needed to access our `objectstore`.
+    pub storage: StorageConfig,
 }
 
 impl Config {
@@ -644,6 +647,10 @@ impl Default for Config {
             // just spawns these computations.
             traces_sample_rate: 0.05,
             propagate_traces: true,
+            storage: StorageConfig {
+                service_url: "TODO".into(),
+                jwt_secret: "TODO".into(),
+            },
         }
     }
 }
@@ -673,6 +680,16 @@ impl Config {
         serde_vars::deserialize(serde_yaml::Deserializer::from_str(&config), &mut source)
             .context("failed to parse config YAML")
     }
+}
+
+/// Objectstore configuration.
+#[derive(Clone, Debug, Deserialize)]
+pub struct StorageConfig {
+    /// The fully qualified URL to our `objectstore` service.
+    pub service_url: String,
+
+    /// The shared secret used for authentication of the `objectstore` service.
+    pub jwt_secret: String,
 }
 
 /// Download timeout configuration.

@@ -14,14 +14,19 @@ anyhow = { workspace = true }
 axum = { workspace = true, features = ["multipart"] }
 axum-server = { workspace = true }
 clap = { workspace = true }
-console = { workspace = true}
-futures = { workspace = true}
-hostname = { workspace = true}
-humantime =  { workspace = true }
+console = { workspace = true }
+futures = { workspace = true }
+hostname = { workspace = true }
+humantime = { workspace = true }
+objectstore-client = { workspace = true }
 rustls = { workspace = true }
-sentry = { workspace = true, features = ["release-health", "tower", "tower-http"] }
+sentry = { workspace = true, features = [
+    "release-health",
+    "tower",
+    "tower-http",
+] }
 serde = { workspace = true }
-serde_json = { workspace = true}
+serde_json = { workspace = true }
 symbolic = { workspace = true }
 symbolicator-crash = { workspace = true, optional = true }
 symbolicator-js = { workspace = true }
@@ -30,14 +35,14 @@ symbolicator-proguard = { workspace = true }
 symbolicator-service = { workspace = true }
 symbolicator-sources = { workspace = true }
 tempfile = { workspace = true }
-thiserror = { workspace = true}
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 tokio-metrics = { workspace = true }
 tokio-util = { workspace = true, features = ["io"] }
-tower = { workspace = true}
-tower-layer = { workspace = true}
-tower-service = { workspace = true}
-tracing = { workspace = true}
+tower = { workspace = true }
+tower-layer = { workspace = true }
+tower-service = { workspace = true }
+tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
