@@ -52,9 +52,9 @@ jobs:
         with:
           name: artifact-linux-${{ matrix.arch }}-${{ github.sha }}
           path: build/*
-          if-no-files-found: "error"
+          if-no-files-found: 'error'
           # since this artifact will be merged, compression is not necessary
-          compression-level: "0"
+          compression-level: '0'
 
   mac:
     # Note: This doesn't use a build matrix, as it requires a last step to merge the x86
@@ -113,9 +113,9 @@ jobs:
         with:
           name: artifact-mac-${{ github.sha }}
           path: build/*
-          if-no-files-found: "error"
+          if-no-files-found: 'error'
           # since this artifact will be merged, compression is not necessary
-          compression-level: "0"
+          compression-level: '0'
 
   windows:
     name: Build Tools on Windows
@@ -144,9 +144,9 @@ jobs:
         with:
           name: artifact-windows-${{ github.sha }}
           path: target/release/*-Windows-x86_64.exe
-          if-no-files-found: "error"
+          if-no-files-found: 'error'
           # since this artifact will be merged, compression is not necessary
-          compression-level: "0"
+          compression-level: '0'
 
   merge:
     name: Create Release Artifact
