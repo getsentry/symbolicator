@@ -7,8 +7,15 @@ on:
 
 jobs:
   linux:
-    name: Build Binary on Linux
-    runs-on: ubuntu-22.04
+    name: Build Binary on Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
 
     steps:
       - name: Checkout sources
@@ -28,7 +35,7 @@ jobs:
           objcopy --only-keep-debug target/release/symbolicator{,.debug}
           objcopy --strip-debug --strip-unneeded target/release/symbolicator
           objcopy --add-gnu-debuglink target/release/symbolicator{.debug,}
-          zip -j build/symbolicator-Linux-x86_64-debug.zip target/release/symbolicator.debug
+          zip -j build/symbolicator-Linux-${{ matrix.arch }}-debug.zip target/release/symbolicator.debug
 
           # Strip debug info for tools
           objcopy --strip-debug --strip-unneeded target/release/wasm-split
@@ -36,14 +43,14 @@ jobs:
           objcopy --strip-debug --strip-unneeded target/release/symbolicli
 
           # Move all binaries
-          mv target/release/symbolicator build/symbolicator-Linux-x86_64
-          mv target/release/wasm-split build/wasm-split-Linux-x86_64
-          mv target/release/symsorter build/symsorter-Linux-x86_64
-          mv target/release/symbolicli build/symbolicli-Linux-x86_64
+          mv target/release/symbolicator build/symbolicator-Linux-${{ matrix.arch }}
+          mv target/release/wasm-split build/wasm-split-Linux-${{ matrix.arch }}
+          mv target/release/symsorter build/symsorter-Linux-${{ matrix.arch }}
+          mv target/release/symbolicli build/symbolicli-Linux-${{ matrix.arch }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: artifact-linux-${{ github.sha }}
+          name: artifact-linux-${{ matrix.arch }}-${{ github.sha }}
           path: build/*
           if-no-files-found: 'error'
           # since this artifact will be merged, compression is not necessary
