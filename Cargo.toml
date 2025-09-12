@@ -1,5 +1,5 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = ["crates/*"]
 default-members = [
     "crates/symbolicator",
@@ -38,7 +38,7 @@ codegen-units = 256
 
 [patch.crates-io]
 # This patch adds an `ip_filter` able to filter out internal IP addresses in DNS resolution
-reqwest = { git = "https://github.com/getsentry/reqwest", branch = "restricted-connector" }
+reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/update-restricted-connector" }
 
 # This patch adds limited "templated lambdas" demangling support
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches" }
@@ -65,7 +65,7 @@ aws-credential-types = { version = "1.0.1", features = [
 aws-sdk-s3 = "1.4.0"
 aws-types = "1.0.1"
 axum = { version = "0.8.4" }
-axum-server = "0.6.0"
+axum-server = "0.7.2"
 bindgen = "0.72.1"
 bytes = "1.6.0"
 cadence = "1.0.0"
@@ -75,7 +75,7 @@ cmake = "0.1.46"
 console = "0.16.0"
 crossbeam-utils = "0.8.19"
 data-url = "0.3.0"
-dirs = "5.0.0"
+dirs = "6.0.0"
 filetime = "0.2.16"
 flate2 = "1.0.23"
 futures = "0.3.12"
@@ -87,7 +87,7 @@ humantime = "2.1.0"
 humantime-serde = "1.1.1"
 idna = "1.0.2"
 insta = { version = "1.18.0", features = ["redactions", "yaml"] }
-ipnetwork = "0.20.0"
+ipnetwork = "0.21.1"
 jemallocator = { version = "0.5", features = [
     "unprefixed_malloc_on_supported_platforms",
 ] }
@@ -104,7 +104,7 @@ regex = "1.5.5"
 reqwest = "0.12.15"
 rustc-hash = "2.0.0"
 rustls = { version = "0.23.31", features = ["ring"] }
-sentry = { version = "0.41.0", default-features = false, features = [
+sentry = { version = "0.42.0", default-features = false, features = [
     # default features, except `release-health` is disabled
     "backtrace",
     "contexts",
@@ -114,7 +114,7 @@ sentry = { version = "0.41.0", default-features = false, features = [
     # additional features
     "anyhow",
     "tracing",
-]}
+] }
 serde = { version = "1.0.137", features = ["derive", "rc"] }
 serde_json = "1.0.120"
 serde-vars = "0.2.0"
@@ -132,14 +132,14 @@ symbolicator-sources = { path = "crates/symbolicator-sources" }
 symbolicator-test = { path = "crates/symbolicator-test" }
 tempfile = "3.10.0"
 test-assembler = "0.1.5"
-thiserror = "1.0.31"
+thiserror = "2.0.16"
 thread_local = "1.1.7"
 tokio = "1.44.2"
-tokio-metrics = "0.3.1"
+tokio-metrics = "0.4.5"
 tokio-util = "0.7.10"
 toml = "0.9.5"
-tower = "0.4"
-tower-http = { version = "0.5.0", features = ["fs", "trace"] }
+tower = "0.5.2"
+tower-http = { version = "0.6.6", features = ["fs", "trace"] }
 tower-layer = "0.3"
 tower-service = "0.3"
 tracing = "0.1.34"
@@ -148,5 +148,5 @@ url = { version = "2.2.0", features = ["serde"] }
 uuid = { version = "1.0.0", features = ["v4", "serde"] }
 walkdir = "2.3.1"
 wasmbin = { version = "0.8.1", features = ["exception-handling"] }
-zip = { version = "2.3.0", default-features = false, features = ["deflate"] }
+zip = { version = "5.1.0", default-features = false, features = ["deflate"] }
 zstd = "0.13.0"
