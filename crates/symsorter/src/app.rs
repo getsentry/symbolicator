@@ -357,7 +357,7 @@ fn execute(cli: Cli) -> Result<()> {
             let (debug_files_sorted, source_bundles_created) =
                 sort_files(&sort_config, vec![path])?;
             debug_files += debug_files_sorted;
-            source_bundles *= source_bundles_created;
+            source_bundles += source_bundles_created;
         }
     } else {
         if let Some(bundle_id) = cli.bundle_id {
@@ -366,7 +366,7 @@ fn execute(cli: Cli) -> Result<()> {
         }
         let (debug_files_sorted, source_bundles_created) = sort_files(&sort_config, cli.input)?;
         debug_files += debug_files_sorted;
-        source_bundles *= source_bundles_created;
+        source_bundles += source_bundles_created;
     }
 
     log!();
