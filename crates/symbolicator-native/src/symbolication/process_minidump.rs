@@ -129,7 +129,7 @@ struct LookupKey {
 
 impl LookupKey {
     /// Creates a new lookup key for the given [`Module`].
-    fn new(module: &(dyn Module)) -> Self {
+    fn new(module: &dyn Module) -> Self {
         Self {
             base_addr: module.base_address(),
             size: module.size(),
