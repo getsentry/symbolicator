@@ -10,7 +10,7 @@ use symbolic::common::ByteView;
 use symbolic::debuginfo::sourcebundle::{SourceBundleWriter, SourceFileDescriptor};
 use symbolic::debuginfo::{Archive, FileEntry, FileFormat, Object, ObjectKind};
 
-static BAD_CHARS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-zA-Z0-9.,-]+").unwrap());
+static BAD_CHARS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-zA-Z0-9.,+-]+").unwrap());
 
 /// Console logging for the symsorter app.
 #[macro_export]
@@ -119,4 +119,21 @@ pub fn create_source_bundle(path: &Path, unified_id: &str) -> Result<Option<Byte
         }
     }
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn is_bundle_id_checks() {
+        let good_input_id = "10.3_ABCD";
+        assert!(is_bundle_id(good_input_id));
+
+        let bad_input_id = "10.3.*";
+        assert!(!is_bundle_id(bad_input_id));
+
+        let unreal_bundle_id = "++lyra+main-CL-12345";
+        assert!(is_bundle_id(unreal_bundle_id));
+    }
 }

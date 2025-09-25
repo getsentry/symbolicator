@@ -29,15 +29,20 @@ targets:
 requireNames:
   - /^symbolicator-Darwin-universal$/
   - /^symbolicator-Linux-x86_64$/
+  - /^symbolicator-Linux-aarch64$/
   - /^symbolicator-Linux-x86_64-debug.zip$/
+  - /^symbolicator-Linux-aarch64-debug.zip$/
   - /^symbolicator-aarch64-apple-darwin-debug.zip$/
   - /^symbolicator-x86_64-apple-darwin-debug.zip$/
   - /^symbolicli-Darwin-universal$/
   - /^symbolicli-Linux-x86_64$/
+  - /^symbolicli-Linux-aarch64$/
   - /^symbolicli-Windows-x86_64\.exe$/
   - /^symsorter-Darwin-universal$/
   - /^symsorter-Linux-x86_64$/
+  - /^symsorter-Linux-aarch64$/
   - /^symsorter-Windows-x86_64\.exe$/
   - /^wasm-split-Darwin-universal$/
   - /^wasm-split-Linux-x86_64$/
+  - /^wasm-split-Linux-aarch64$/
   - /^wasm-split-Windows-x86_64\.exe$/

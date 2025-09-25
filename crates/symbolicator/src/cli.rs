@@ -117,6 +117,16 @@ pub fn execute() -> Result<()> {
     // is safe to call.
     unsafe { logging::init_logging(&config) };
 
+    // We depend on `rustls` with both the `aws-lc-rs` and
+    // `ring` features enabled. This means that `rustls` can't automatically
+    // decide which provider to use and we have to initialize it manually.
+    if rustls::crypto::ring::default_provider()
+        .install_default()
+        .is_err()
+    {
+        anyhow::bail!("Failed to initialize crypto provider");
+    }
+
     if let Some(ref statsd) = config.metrics.statsd {
         let addrs = statsd
             .to_socket_addrs()

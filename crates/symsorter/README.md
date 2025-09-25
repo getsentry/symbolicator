@@ -7,7 +7,7 @@ The structure used is the `unified` format that the symbolicator also supports.
 
 ## Compiling
 
-SymSorter is distributed via [GitHub Releases](https://github.com/getsentry/symbolicator/edit/66e8ee418ae8e0074fb5b92d65e3ea873d98f97d/crates/symsorter/README.md),
+SymSorter is distributed via [GitHub Releases](https://github.com/getsentry/symbolicator/releases),
 but you can build it from source with:
 
 ```
