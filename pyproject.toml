@@ -17,7 +17,6 @@ dev = [
 [tool.uv]
 environments = ["sys_platform == 'darwin' or sys_platform == 'linux'"]
 
-# TODO pypi deps
-#[[tool.uv.index]]
-#url = "https://pypi.devinfra.sentry.io/simple"
-#default = true
+[[tool.uv.index]]
+url = "https://pypi.devinfra.sentry.io/simple"
+default = true
