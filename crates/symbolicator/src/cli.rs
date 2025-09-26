@@ -91,6 +91,7 @@ pub fn execute() -> Result<()> {
         });
         if let (Some(dsn), Some(db)) = (dsn, db) {
             symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
+                .transport(capture_native_envelope)
                 .release(release.as_deref())
                 .install();
         }
@@ -193,4 +194,20 @@ pub fn execute() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Captures an envelope from the native crash reporter using the main Sentry SDK.
+#[cfg(feature = "symbolicator-crash")]
+fn capture_native_envelope(data: &[u8]) {
+    if let Some(client) = sentry::Hub::main().client() {
+        match sentry::Envelope::from_bytes_raw(data.to_owned()) {
+            Ok(envelope) => client.send_envelope(envelope),
+            Err(error) => {
+                let error = &error as &dyn std::error::Error;
+                tracing::error!(error, "failed to capture crash")
+            }
+        }
+    } else {
+        tracing::error!("failed to capture crash: no sentry client registered");
+    }
 }
