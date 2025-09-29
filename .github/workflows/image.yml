@@ -53,71 +53,172 @@ jobs:
       }')[matrix.arch] }}
 
     env:
-      IMG_VERSIONED: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-${{ github.sha }}
-      NIGHTLY_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-nightly
-      BUILDER_IMG_CACHE: ghcr.io/getsentry/symbolicator:${{ matrix.arch }}-builder
+      FEATURES: "symbolicator-crash"
+      RUST_TARGET: |-
+        ${{fromJson('{
+          "amd64": "x86_64-unknown-linux-gnu",
+          "arm64": "aarch64-unknown-linux-gnu",
+        }')[matrix.arch] }}
 
     steps:
       - uses: actions/checkout@v5
         with:
           submodules: recursive
 
-      - name: Docker Login
-        run: docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-
-      - name: build builder img
+      - name: Install dependencies
         run: |
-          set -euxo pipefail
-          args=()
-          if docker pull -q "$BUILDER_IMG_CACHE"; then
-            args+=(--cache-from "$BUILDER_IMG_CACHE")
-          fi
-          docker buildx build \
-              "${args[@]}" \
-              --build-arg BUILDKIT_INLINE_CACHE=1 \
-              --platform linux/${{ matrix.arch }} \
-              --tag "$BUILDER_IMG_CACHE" \
-              --target symbolicator-build \
-              .
+          sudo apt-get update
+          sudo apt-get install -y llvm curl
 
-      - name: build nightly img
+      - name: Install Rust Toolchain
         run: |
-          set -euxo pipefail
-          args=()
-          if docker pull -q "$NIGHTLY_IMG_CACHE"; then
-            args+=(--cache-from "$NIGHTLY_IMG_CACHE")
-          fi
-          docker buildx build \
-              "${args[@]}" \
-              --build-arg BUILDKIT_INLINE_CACHE=1 \
-              --platform linux/${{ matrix.arch }} \
-              --tag "$NIGHTLY_IMG_CACHE" \
-              --tag "$IMG_VERSIONED" \
-              --cache-from "${BUILDER_IMG_CACHE}" \
-              --cache-from "${NIGHTLY_IMG_CACHE}" \
-              .
+          rustup toolchain install stable --profile minimal --target "${RUST_TARGET}" --no-self-update
 
-      - name: Prepare Artifacts
-        if: "needs.build-setup.outputs.full_ci == 'true'"
+      - name: Install sentry-cli
+        run: curl -sL https://sentry.io/get-cli/ | bash
+
+      - uses: swatinem/rust-cache@v2
+        if: ${{ !startsWith(github.ref_name, 'release/') }}
+        with:
+          key: ${{ github.job }}
+          save-if: ${{ github.ref_name == 'master' }}
+
+      - name: Build Binary
         run: |
-          mkdir -p "artifacts/${{ matrix.arch }}"
+          cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
+          mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
-          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator-debug.zip > artifacts/symbolicator-${{ matrix.arch }}-debug.zip
-          docker run --rm --entrypoint cat "${BUILDER_IMG_CACHE}" /opt/symbolicator.src.zip > artifacts/symbolicator-${{ matrix.arch }}.src.zip
+      - name: Split debug info
+        run: |
+          mkdir -p "/tmp/debug-info/"
 
-      - name: Upload Artifacts
+          llvm-objcopy --only-keep-debug symbolicator{,.debug}
+          llvm-objcopy --strip-debug --strip-unneeded symbolicator
+          llvm-objcopy --add-gnu-debuglink symbolicator{.debug,}
+
+          SOURCE_BUNDLE="$(sentry-cli difutil bundle-sources symbolicator.debug)"
+
+          zip /tmp/debug-info/symbolicator-${{ matrix.arch }}-debug.zip symbolicator.debug
+          mv "${SOURCE_BUNDLE}" /tmp/debug-info/symbolicator-${{ matrix.arch }}.src.zip
+
+      - name: Upload Debug Info
         uses: actions/upload-artifact@v4
         with:
-          retention-days: 1
-          name: image-${{ matrix.arch }}
-          path: "./artifacts/*"
+          name: symbolicator-debug@${{ matrix.arch }}
+          path: /tmp/debug-info/*
 
-      - name: push all images
-        if: "needs.build-setup.outputs.full_ci == 'true'"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare Docker Context
         run: |
-          docker push "$BUILDER_IMG_CACHE"
-          docker push "$NIGHTLY_IMG_CACHE"
-          docker push "$IMG_VERSIONED"
+          mkdir docker-ctx
+          cp Dockerfile docker-ctx/
+          mv symbolicator docker-ctx/
+
+      - name: Build Image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker-ctx/
+          platforms: linux/${{ matrix.arch }}
+          tags: symbolicator-${{ matrix.arch }}
+          outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
+          push: false
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbolicator-image@${{ matrix.arch }}
+          path: /tmp/symbolicator-${{ matrix.arch }}.tar
+
+  assemble-ghcr:
+    needs: [build-setup, build-image]
+    if: "needs.build-setup.outputs.full_ci == 'true'"
+
+    name: Assemble for Github Container Registry
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    env:
+      IMAGE: "ghcr.io/getsentry/symbolicator"
+
+    steps:
+      - name: Docker Login
+        run: docker login --username '${{ github.actor }}' --password-stdin ghcr.io <<< "$GHCR_TOKEN"
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Images
+        uses: actions/download-artifact@v5
+        with:
+          pattern: symbolicator-image@*
+          path: /tmp
+          merge-multiple: true
+
+      - &assemble
+        name: Assemble and Push Images
+        run: |
+          set -x
+
+          IMAGES=()
+          for image in /tmp/symbolicator-*.tar; do
+            NAME="$(basename $image .tar)"
+            ARCH="${NAME#*-}"
+            TARGET="${IMAGE}:${{ github.sha }}-${ARCH}"
+
+            docker load --input "${image}"
+            docker tag "${NAME}" "${TARGET}"
+            docker push "${TARGET}"
+
+            IMAGES+=("${TARGET}")
+          done
+
+          docker buildx imagetools create -t "${IMAGE}:${{ github.sha }}" "${IMAGES[@]}"
+
+          if [[ "${{ github.ref_name }}" == "master" ]]; then
+            docker buildx imagetools create -t "${IMAGE}:nightly" "${IMAGE}:${{ github.sha }}"
+          fi
+
+  assemble-ar:
+    needs: [build-setup, build-image]
+    if: "needs.build-setup.outputs.full_ci == 'true'"
+
+    name: Assemble for Google Artifact Registry
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      IMAGE: "us-central1-docker.pkg.dev/sentryio/symbolicator/image"
+
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          version: ">= 390.0.0"
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Download Images
+        uses: actions/download-artifact@v5
+        with:
+          pattern: symbolicator-image@*
+          path: /tmp
+          merge-multiple: true
+
+      - *assemble
 
   gocd-artifacts:
     needs: [build-setup, build-image]
@@ -129,9 +230,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-
-    env:
-      GHCR_IMAGE: ghcr.io/getsentry/symbolicator:amd64-${{ github.sha }}
 
     steps:
       - name: Google Auth
@@ -148,128 +246,32 @@ jobs:
 
       - uses: actions/download-artifact@v5
         with:
-          pattern: "image-*"
+          pattern: "symbolicator-debug@*"
+          path: /tmp/debug-info/
           merge-multiple: true
 
       - name: Upload gocd deployment assets
-        run: gsutil -m cp ./symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
-
-  assemble:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Github Container Registry
-    runs-on: ubuntu-latest
-
-    env:
-      TARGET_IMAGE: ghcr.io/getsentry/symbolicator
-
-    steps:
-      - name: Docker Login
-        run: docker login --username '${{ github.actor }}' --password '${{ secrets.GITHUB_TOKEN }}' ghcr.io
-
-      - name: Assemble Sha Image
         run: |
-          docker buildx imagetools create -t "${TARGET_IMAGE}:${{ github.sha }}" \
-            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
-            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-
-      - name: Assemble Latest Image
-        if: github.ref_name == 'master'
-        run: |
-          docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
-            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
-            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-
-          docker buildx imagetools create -t "${TARGET_IMAGE}:nightly" \
-            "${TARGET_IMAGE}:arm64-${{ github.sha }}" \
-            "${TARGET_IMAGE}:amd64-${{ github.sha }}"
-
-  assemble-ar:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Google Artifact Registry
-    runs-on: ubuntu-latest
-
-    # required for google auth
-    permissions:
-      contents: read
-      id-token: write
-
-    env:
-      GHCR_IMAGE: ghcr.io/getsentry/symbolicator
-      TARGET_IMAGE: us-central1-docker.pkg.dev/sentryio/symbolicator/image
-
-    steps:
-      - name: Google Auth
-        id: auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          # https://github.com/google-github-actions/auth#authenticating-via-workload-identity-federation
-          # You must use the Cloud SDK version 390.0.0 or later to authenticate the bq and gsutil tools.
-          version: ">= 390.0.0"
-
-      - name: Configure Docker
-        run: |
-          gcloud auth configure-docker us-central1-docker.pkg.dev
-
-      - name: Assemble Sha Image
-        run: |
-          docker buildx imagetools create -t "${TARGET_IMAGE}:${{ github.sha }}" \
-            "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
-            "${GHCR_IMAGE}:amd64-${{ github.sha }}"
-
-      - name: Assemble Latest Image
-        if: github.ref_name == 'master'
-        run: |
-          docker buildx imagetools create -t "${TARGET_IMAGE}:latest" \
-            "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
-            "${GHCR_IMAGE}:amd64-${{ github.sha }}"
-
-          docker buildx imagetools create -t "${TARGET_IMAGE}:nightly" \
-            "${GHCR_IMAGE}:arm64-${{ github.sha }}" \
-            "${GHCR_IMAGE}:amd64-${{ github.sha }}"
+          gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   self-hosted-end-to-end:
-    needs: [assemble]
+    needs: [build-image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
+      - name: Download Docker Image
+        uses: actions/download-artifact@v5
+        with:
+          pattern: symbolicator-image@amd64
+          path: /tmp
+
+      - name: Load Docker Image
+        run: docker load --input /tmp/symbolicator-amd64.tar
+
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
         with:
           project_name: symbolicator
-          image_url: ghcr.io/getsentry/symbolicator:${{ github.sha }}
+          image_url: symbolicator-amd64
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  publish-to-dockerhub:
-    name: Publish Symbolicator to DockerHub
-    runs-on: ubuntu-latest
-    if: ${{ (github.ref_name == 'master' && github.event_name == 'push') }}
-    needs:
-      - assemble
-    steps:
-      - uses: actions/checkout@v5
-      - name: Push built docker image
-        shell: bash
-        run: |
-          IMAGE_URL="ghcr.io/getsentry/symbolicator:${{ github.sha }}"
-          docker login --username=sentrybuilder --password-stdin <<< "${{ secrets.DOCKER_HUB_RW_TOKEN }}"
-
-          # We push 3 tags to Dockerhub:
-          # first, the full sha of the commit
-          docker buildx imagetools create --tag getsentry/symbolicator:${GITHUB_SHA} ghcr.io/getsentry/symbolicator:${{ github.sha }}
-
-          # second, the short sha of the commit
-          SHORT_SHA=$(git rev-parse --short "$GITHUB_SHA")
-          docker buildx imagetools create --tag getsentry/symbolicator:${SHORT_SHA} ghcr.io/getsentry/symbolicator:${{ github.sha }}
-
-          # finally, nightly
-          docker buildx imagetools create --tag getsentry/symbolicator:nightly ghcr.io/getsentry/symbolicator:${{ github.sha }}
