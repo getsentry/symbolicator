@@ -1,3 +1,4 @@
+use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,7 +22,6 @@ use symbolicator_sources::{
 
 use anyhow::{Context, Result};
 use reqwest::header;
-use tempfile::{NamedTempFile, TempPath};
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
@@ -152,14 +152,14 @@ async fn main() -> Result<()> {
             let res = native.symbolicate(request).await?;
             CompletedResponse::NativeSymbolication(res)
         }
-        Payload::Minidump(minidump_path) => {
+        Payload::Minidump(minidump_file) => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating minidump");
             let res = native
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope,
-                    minidump_file: minidump_path,
+                    minidump_file,
                     sources: dsym_sources,
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
@@ -237,23 +237,19 @@ fn prepare_dsym_sources(
 #[derive(Debug)]
 enum Payload {
     Event(event::Event),
-    Minidump(TempPath),
+    Minidump(File),
 }
 
 impl Payload {
     fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> Result<Option<Self>> {
-        match std::fs::File::open(path) {
+        match File::open(path) {
             Ok(mut file) => {
                 let mut magic = [0; 4];
                 file.read_exact(&mut magic)?;
                 file.rewind()?;
 
                 if &magic == b"MDMP" || &magic == b"PMDM" {
-                    let mut temp_file = NamedTempFile::new().unwrap();
-                    std::io::copy(&mut file, &mut temp_file)
-                        .context("Failed to write minidump to disk")?;
-
-                    Ok(Some(Payload::Minidump(temp_file.into_temp_path())))
+                    Ok(Some(Payload::Minidump(file)))
                 } else {
                     let event =
                         serde_json::from_reader(file).context("failed to parse event json file")?;
@@ -288,12 +284,12 @@ impl Payload {
 }
 
 mod remote {
+    use std::fs::File;
     use std::io::Write;
 
     use anyhow::{Context, Result, bail};
     use reqwest::{StatusCode, Url};
     use serde::Deserialize;
-    use tempfile::{NamedTempFile, TempPath};
 
     use crate::event::Event;
 
@@ -364,10 +360,7 @@ mod remote {
         Ok(Some(download_url))
     }
 
-    pub async fn download_minidump(
-        client: &reqwest::Client,
-        download_url: Url,
-    ) -> Result<TempPath> {
+    pub async fn download_minidump(client: &reqwest::Client, download_url: Url) -> Result<File> {
         tracing::info!(url = %download_url, "downloading minidump file");
 
         let response = client
@@ -391,12 +384,12 @@ mod remote {
             ));
         };
 
-        let mut temp_file = NamedTempFile::new().unwrap();
+        let mut temp_file = tempfile::tempfile().unwrap();
         temp_file
             .write_all(&minidump)
             .context("Failed to write minidump to disk")?;
 
-        Ok(temp_file.into_temp_path())
+        Ok(temp_file)
     }
 
     pub async fn download_event(client: &reqwest::Client, key: EventKey<'_>) -> Result<Event> {
