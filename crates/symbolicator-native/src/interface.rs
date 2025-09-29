@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt;
+use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -16,7 +17,6 @@ use symbolicator_service::types::{
 };
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
-use tempfile::TempPath;
 use thiserror::Error;
 
 pub use crate::metrics::StacktraceOrigin;
@@ -76,7 +76,7 @@ pub struct ProcessMinidump {
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
     /// The local temp path where the minidump file has been saved.
-    pub minidump_file: TempPath,
+    pub minidump_file: File,
     /// A list of external sources to load debug files.
     pub sources: Arc<[SourceConfig]>,
     /// Scraping configuration controling authenticated requests.

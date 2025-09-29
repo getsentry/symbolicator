@@ -196,6 +196,7 @@ pub struct Caches {
     /// Source files.
     pub sourcefiles: Cache,
     /// Store for minidump data symbolicator failed to process, for diagnostics purposes
+    // TODO: remove this completely, once all the files belonging to it have been cleaned up.
     pub diagnostics: Cache,
     /// Proguard mapping files.
     pub proguard: Cache,
