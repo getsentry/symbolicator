@@ -3,7 +3,7 @@ use std::sync::Arc;
 use symbolic::common::Name;
 use symbolic::demangle::Demangle;
 use symbolicator_service::caches::SourceFilesCache;
-use symbolicator_service::caching::{Cache, CacheError};
+use symbolicator_service::caching::CacheError;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 
@@ -33,7 +33,6 @@ pub struct SymbolicationActor {
     symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    pub(crate) diagnostics_cache: Cache,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
 }
 
@@ -88,7 +87,6 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             ppdb_caches,
-            diagnostics_cache: caches.diagnostics.clone(),
             sourcefiles_cache,
         }
     }

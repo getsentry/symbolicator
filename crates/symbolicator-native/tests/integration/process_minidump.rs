@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use tempfile::NamedTempFile;
+use tempfile::tempfile;
 
 use symbolicator_native::interface::ProcessMinidump;
 use symbolicator_service::types::Scope;
@@ -15,13 +15,13 @@ macro_rules! stackwalk_minidump {
             let (_symsrv, source) = symbol_server();
 
             let minidump = read_fixture($path);
-            let mut minidump_file = NamedTempFile::new().unwrap();
+            let mut minidump_file = tempfile().unwrap();
             minidump_file.write_all(&minidump).unwrap();
             let response = symbolication
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope: Scope::Global,
-                    minidump_file: minidump_file.into_temp_path(),
+                    minidump_file,
                     sources: Arc::new([source]),
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),

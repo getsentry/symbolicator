@@ -12,7 +12,7 @@ use symbolicator_sources::{
     HttpSourceConfig, RemoteFileUri, SentrySourceConfig, SentryToken, SourceConfig, SourceId,
 };
 use symbolicator_test::read_fixture;
-use tempfile::NamedTempFile;
+use tempfile::tempfile;
 
 use crate::{
     Server, assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
@@ -146,13 +146,13 @@ async fn test_minidump_symstore_index() {
     }));
 
     let minidump = read_fixture("windows.dmp");
-    let mut minidump_file = NamedTempFile::new().unwrap();
+    let mut minidump_file = tempfile().unwrap();
     minidump_file.write_all(&minidump).unwrap();
     let mut response = symbolication
         .process_minidump(ProcessMinidump {
             platform: None,
             scope: Scope::Global,
-            minidump_file: minidump_file.into_temp_path(),
+            minidump_file,
             sources: Arc::new([source]),
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
