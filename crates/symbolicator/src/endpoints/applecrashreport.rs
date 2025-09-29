@@ -1,6 +1,7 @@
 use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
+use symbolicator_native::interface::AttachmentFile;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -57,7 +58,7 @@ pub async fn handle_apple_crash_report_request(
     let request_id = service.process_apple_crash_report(
         platform,
         params.scope,
-        report,
+        AttachmentFile::Local(report),
         sources,
         scraping,
         options,

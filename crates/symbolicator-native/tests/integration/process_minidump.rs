@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tempfile::tempfile;
 
-use symbolicator_native::interface::ProcessMinidump;
+use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
 use symbolicator_service::types::Scope;
 
 use crate::{assert_snapshot, read_fixture, setup_service, symbol_server};
@@ -21,7 +21,7 @@ macro_rules! stackwalk_minidump {
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope: Scope::Global,
-                    minidump_file,
+                    minidump_file: AttachmentFile::Local(minidump_file),
                     sources: Arc::new([source]),
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),

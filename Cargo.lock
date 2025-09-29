@@ -5244,6 +5244,7 @@ dependencies = [
  "test-assembler",
  "thiserror 2.0.16",
  "tokio",
+ "tokio-util",
  "tracing",
  "url",
 ]

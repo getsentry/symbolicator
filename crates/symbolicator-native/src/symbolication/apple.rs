@@ -11,11 +11,12 @@ use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
 use crate::interface::{
-    CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawStacktrace,
+    AttachmentFile, CompleteObjectInfo, CompletedSymbolicationResponse, RawFrame, RawStacktrace,
     SymbolicateStacktraces, SystemInfo,
 };
 use crate::metrics::StacktraceOrigin;
 
+use super::attachments::download_attachment;
 use super::symbolicate::SymbolicationActor;
 
 impl SymbolicationActor {
@@ -128,10 +129,11 @@ impl SymbolicationActor {
         &self,
         platform: Option<Platform>,
         scope: Scope,
-        report: File,
+        report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
+        let report = download_attachment(&self.download_svc, report).await?;
         let (request, state) =
             self.parse_apple_crash_report(platform, scope, report, sources, scraping)?;
         let mut response = self.symbolicate(request).await?;

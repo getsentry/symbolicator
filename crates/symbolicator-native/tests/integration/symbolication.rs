@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use symbolicator_native::interface::AttachmentFile;
 use symbolicator_service::types::Scope;
 
 use crate::{
@@ -56,7 +57,7 @@ async fn test_apple_crash_report() {
         .process_apple_crash_report(
             None,
             Scope::Global,
-            report_file,
+            AttachmentFile::Local(report_file),
             Arc::new([source]),
             Default::default(),
         )
