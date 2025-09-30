@@ -1,6 +1,6 @@
 ---
 source: crates/symbolicator-native/tests/integration/process_minidump.rs
-expression: res
+expression: response.unwrap()
 ---
 timestamp: 1521713273
 system_info:

@@ -1,6 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/symbolication.rs
-assertion_line: 158
+source: crates/symbolicator-native/tests/integration/symbolication.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -53,4 +52,3 @@ modules:
         location: "http://localhost:<port>/symbols/demo.wasm/BDA18FD85D4A4EB893022D6BFAD846B10/demo.wasm"
         download:
           status: notfound
-

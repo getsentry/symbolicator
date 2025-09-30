@@ -1226,6 +1226,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
+ "zstd",
+ "zstd-safe",
 ]
 
 [[package]]
@@ -5225,6 +5227,7 @@ dependencies = [
  "anyhow",
  "apple-crash-report-parser",
  "async-trait",
+ "axum",
  "chrono",
  "futures",
  "insta",
@@ -5247,6 +5250,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+ "zstd",
 ]
 
 [[package]]
