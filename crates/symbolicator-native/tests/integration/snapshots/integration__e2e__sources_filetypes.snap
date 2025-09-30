@@ -1,5 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/e2e.rs
+source: crates/symbolicator-native/tests/integration/e2e.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -29,4 +29,3 @@ modules:
         location: No object files listed on this source
         download:
           status: notfound
-
