@@ -49,14 +49,20 @@ enum Command {
         #[arg(long, value_name = "INTERVAL")]
         repeat: Option<Option<Duration>>,
     },
+
+    /// Checks the health of the symbolicator server.
     #[command(name = "healthcheck")]
     Healthcheck {
-        #[arg(long, default_value_t = 30)]
+        /// Timeout for the healthcheck request.
+        /// Defaults to 30 seconds.
+        #[arg(long)]
         timeout: Option<Duration>,
 
+        /// Host to check. Defaults to `localhost`.
         #[arg(long, default_value_t = String::from("localhost"))]
         host: String,
 
+        /// Port to check. Defaults to `3021`.
         #[arg(long, default_value_t = String::from("3021"))]
         port: String,
     },
@@ -220,7 +226,7 @@ pub fn execute() -> Result<()> {
                         println!("OK");
                     } else {
                         println!("ERROR");
-                        Err(anyhow!(
+                        Err(anyhow::anyhow!(
                             "Symbolicator is unhealthy. Status: {}",
                             response.status()
                         ))
@@ -228,7 +234,9 @@ pub fn execute() -> Result<()> {
                 }
                 Err(error) => {
                     println!("ERROR");
-                    Err(anyhow!("Failed to check Symbolicator health: {error}"))
+                    Err(anyhow::anyhow!(
+                        "Failed to check Symbolicator health: {error}"
+                    ))
                 }
             }
         }
