@@ -214,7 +214,7 @@ pub fn execute() -> Result<()> {
             port,
         } => {
             let client = reqwest::blocking::Client::builder()
-                .timeout(timeout)
+                .timeout(timeout.into())
                 .build()
                 .unwrap_or_default();
             let url = format!("http://{host}:{port}/healthcheck");
@@ -226,17 +226,17 @@ pub fn execute() -> Result<()> {
                         println!("OK");
                     } else {
                         println!("ERROR");
-                        Err(anyhow::anyhow!(
+                        return Err(anyhow::anyhow!(
                             "Symbolicator is unhealthy. Status: {}",
                             response.status()
-                        ))
+                        ));
                     }
                 }
                 Err(error) => {
                     println!("ERROR");
-                    Err(anyhow::anyhow!(
+                    return Err(anyhow::anyhow!(
                         "Failed to check Symbolicator health: {error}"
-                    ))
+                    ));
                 }
             }
         }
