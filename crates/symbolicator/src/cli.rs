@@ -55,8 +55,8 @@ enum Command {
     Healthcheck {
         /// Timeout for the healthcheck request.
         /// Defaults to 30 seconds.
-        #[arg(long)]
-        timeout: Option<Duration>,
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
 
         /// Host to check. Defaults to `localhost`.
         #[arg(long, default_value_t = String::from("localhost"))]
@@ -214,7 +214,7 @@ pub fn execute() -> Result<()> {
             port,
         } => {
             let client = reqwest::blocking::Client::builder()
-                .timeout(timeout.into())
+                .timeout(std::time::Duration::from_secs(timeout))
                 .build()
                 .unwrap_or_default();
             let url = format!("http://{host}:{port}/healthcheck");
