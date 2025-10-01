@@ -1,5 +1,5 @@
 //! Exposes the command line application.
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,6 +11,7 @@ use symbolicator_service::caching;
 use symbolicator_service::metrics;
 
 use crate::config::Config;
+use crate::healthcheck;
 use crate::logging;
 use crate::server;
 
@@ -48,6 +49,23 @@ enum Command {
         /// config option is used.
         #[arg(long, value_name = "INTERVAL")]
         repeat: Option<Option<Duration>>,
+    },
+
+    /// Checks the health of the Symbolicator server.
+    #[command(name = "healthcheck")]
+    Healthcheck {
+        /// Address to check.
+        ///
+        /// For example: `127.0.0.1:5555`.
+        /// Defaults to the address configured in `config.bind`.
+        #[arg(long)]
+        addr: Option<SocketAddr>,
+
+        /// Timeout for the healthcheck request.
+        ///
+        /// Defaults to 30 seconds.
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
     },
 }
 
@@ -191,6 +209,9 @@ pub fn execute() -> Result<()> {
             repeat.map(|inner| inner.map(|time| time.into())),
         )
         .context("failed to clean up caches")?,
+        Command::Healthcheck { addr, timeout } => {
+            healthcheck::healthcheck(config, addr, timeout).context("healthcheck failed")?
+        }
     }
 
     Ok(())
