@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- Symbolicator logs to stderr instead of stdout by default. ([#1799](https://github.com/getsentry/symbolicator/pull/1799))
+
 ## 25.9.0
 
 ### Dependencies
