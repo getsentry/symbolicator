@@ -211,7 +211,7 @@ pub fn execute() -> Result<()> {
                 .timeout(timeout)
                 .build()
                 .unwrap_or_default();
-            let url = format!("http://{host}:{port}/healthcheck", host, port);
+            let url = format!("http://{host}:{port}/healthcheck");
             let response = client.get(url).send();
 
             match response {
