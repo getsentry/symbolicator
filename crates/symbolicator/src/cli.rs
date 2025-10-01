@@ -1,5 +1,5 @@
 //! Exposes the command line application.
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,6 +11,7 @@ use symbolicator_service::caching;
 use symbolicator_service::metrics;
 
 use crate::config::Config;
+use crate::healthcheck;
 use crate::logging;
 use crate::server;
 
@@ -50,21 +51,21 @@ enum Command {
         repeat: Option<Option<Duration>>,
     },
 
-    /// Checks the health of the symbolicator server.
+    /// Checks the health of the Symbolicator server.
     #[command(name = "healthcheck")]
     Healthcheck {
+        /// Address to check.
+        ///
+        /// For example: `127.0.0.1:5555`.
+        /// Defaults to the address configured in `config.bind`.
+        #[arg(long)]
+        addr: Option<SocketAddr>,
+
         /// Timeout for the healthcheck request.
+        ///
         /// Defaults to 30 seconds.
         #[arg(long, default_value_t = 30)]
         timeout: u64,
-
-        /// Host to check. Defaults to `localhost`.
-        #[arg(long, default_value_t = String::from("localhost"))]
-        host: String,
-
-        /// Port to check. Defaults to `3021`.
-        #[arg(long, default_value_t = String::from("3021"))]
-        port: String,
     },
 }
 
@@ -208,37 +209,8 @@ pub fn execute() -> Result<()> {
             repeat.map(|inner| inner.map(|time| time.into())),
         )
         .context("failed to clean up caches")?,
-        Command::Healthcheck {
-            timeout,
-            host,
-            port,
-        } => {
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(timeout))
-                .build()
-                .unwrap_or_default();
-            let url = format!("http://{host}:{port}/healthcheck");
-            let response = client.get(url).send();
-
-            match response {
-                Ok(response) => {
-                    if response.status().is_success() {
-                        println!("OK");
-                    } else {
-                        println!("ERROR");
-                        return Err(anyhow::anyhow!(
-                            "Symbolicator is unhealthy. Status: {}",
-                            response.status()
-                        ));
-                    }
-                }
-                Err(error) => {
-                    println!("ERROR");
-                    return Err(anyhow::anyhow!(
-                        "Failed to check Symbolicator health: {error}"
-                    ));
-                }
-            }
+        Command::Healthcheck { addr, timeout } => {
+            healthcheck::healthcheck(config, addr, timeout).context("healthcheck failed")?
         }
     }
 

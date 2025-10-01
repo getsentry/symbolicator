@@ -23,6 +23,7 @@ pub use symbolicator_service::{config, metric, utils};
 
 mod cli;
 mod endpoints;
+mod healthcheck;
 mod logging;
 mod server;
 mod service;
