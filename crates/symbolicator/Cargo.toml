@@ -40,10 +40,10 @@ tower-service = { workspace = true}
 tracing = { workspace = true}
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+reqwest = { workspace = true, features = ["multipart", "gzip", "native-tls-vendored"] }
 
 [dev-dependencies]
 insta = { workspace = true }
-reqwest = { workspace = true, features = ["multipart"] }
 symbolicator-test = { workspace = true }
 
 [target.'cfg(not(target_env = "msvc"))'.dependencies]

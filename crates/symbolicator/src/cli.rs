@@ -49,6 +49,17 @@ enum Command {
         #[arg(long, value_name = "INTERVAL")]
         repeat: Option<Option<Duration>>,
     },
+    #[command(name = "healthcheck")]
+    Healthcheck {
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
+
+        #[arg(long, default_value_t = String::from("localhost"))]
+        host: String,
+
+        #[arg(long, default_value_t = String::from("3021"))]
+        port: String,
+    },
 }
 
 /// Command line interface parser.
@@ -191,6 +202,37 @@ pub fn execute() -> Result<()> {
             repeat.map(|inner| inner.map(|time| time.into())),
         )
         .context("failed to clean up caches")?,
+        Command::Healthcheck {
+            timeout,
+            host,
+            port,
+        } => {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(timeout))
+                .build()
+                .unwrap_or_default();
+            let url = format!("http://{host}:{port}/healthcheck", host, port);
+            let response = client.get(url).send();
+
+            match response {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        println!("OK");
+                        Ok(())
+                    } else {
+                        println!("ERROR");
+                        Err(format_err!(
+                            "Symbolicator is unhealthy. Status code: {}",
+                            response.status()
+                        ))
+                    }
+                }
+                Err(error) => {
+                    println!("ERROR");
+                    Err(format_err!("Symbolicator is unhealthy. Error: {}", error))
+                }
+            }
+        }
     }
 
     Ok(())
