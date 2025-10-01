@@ -52,7 +52,7 @@ enum Command {
     #[command(name = "healthcheck")]
     Healthcheck {
         #[arg(long, default_value_t = 30)]
-        timeout: u64,
+        timeout: Option<Duration>,
 
         #[arg(long, default_value_t = String::from("localhost"))]
         host: String,
@@ -208,7 +208,7 @@ pub fn execute() -> Result<()> {
             port,
         } => {
             let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(timeout))
+                .timeout(timeout)
                 .build()
                 .unwrap_or_default();
             let url = format!("http://{host}:{port}/healthcheck", host, port);
@@ -218,18 +218,17 @@ pub fn execute() -> Result<()> {
                 Ok(response) => {
                     if response.status().is_success() {
                         println!("OK");
-                        Ok(())
                     } else {
                         println!("ERROR");
-                        Err(format_err!(
-                            "Symbolicator is unhealthy. Status code: {}",
+                        Err(anyhow!(
+                            "Symbolicator is unhealthy. Status: {}",
                             response.status()
                         ))
                     }
                 }
                 Err(error) => {
                     println!("ERROR");
-                    Err(format_err!("Symbolicator is unhealthy. Error: {}", error))
+                    Err(anyhow!("Failed to check Symbolicator health: {error}"))
                 }
             }
         }
