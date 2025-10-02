@@ -109,6 +109,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
 ///
+/// - `11`: Fixes symcache generations for DWARF files with unusual tombstone addresses (<https://github.com/getsentry/symbolic/pull/937>)
+///
 /// - `10`: Fixes symcache generation for functions with no lines (<https://github.com/getsentry/symbolic/pull/930>)
 ///
 /// - `9`: Fixes symcache generation from symbol tables (<https://github.com/getsentry/symbolic/pull/915>)
@@ -139,8 +141,9 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(10, CachePathFormat::V2),
+    current: CacheVersion::new(11, CachePathFormat::V2),
     fallbacks: &[
+        CacheVersion::new(10, CachePathFormat::V2),
         CacheVersion::new(9, CachePathFormat::V2),
         CacheVersion::new(8, CachePathFormat::V2),
         CacheVersion::new(7, CachePathFormat::V1),
@@ -156,6 +159,7 @@ pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(7, CachePathFormat::V1),
         CacheVersion::new(8, CachePathFormat::V2),
         CacheVersion::new(9, CachePathFormat::V2),
+        CacheVersion::new(10, CachePathFormat::V2),
     ],
 };
 static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
