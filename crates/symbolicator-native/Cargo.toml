@@ -34,11 +34,14 @@ symbolicator-sources = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["io"] }
 tracing = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
 insta = { workspace = true }
 symbolicator-test = { workspace = true }
 test-assembler = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
+zstd = { workspace = true }

@@ -4,6 +4,7 @@ use symbolic::common::Name;
 use symbolic::demangle::Demangle;
 use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::CacheError;
+use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 
@@ -34,6 +35,7 @@ pub struct SymbolicationActor {
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
+    pub(crate) download_svc: Arc<DownloadService>,
 }
 
 impl SymbolicationActor {
@@ -55,7 +57,7 @@ impl SymbolicationActor {
         let il2cpp = Il2cppService::new(
             caches.il2cpp.clone(),
             shared_cache.clone(),
-            download_svc,
+            download_svc.clone(),
             source_index_svc,
         );
 
@@ -88,6 +90,7 @@ impl SymbolicationActor {
             cficaches,
             ppdb_caches,
             sourcefiles_cache,
+            download_svc,
         }
     }
 
