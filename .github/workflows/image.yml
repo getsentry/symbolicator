@@ -126,6 +126,8 @@ jobs:
           dockerfile_path: './Dockerfile'
           build_context: './docker-ctx'
           ghcr: true
+          # we need to publish on prs for self hosted e2e tests
+          publish_on_pr: true
           tag_nightly: false  # todo true
           tag_latest: false
 
