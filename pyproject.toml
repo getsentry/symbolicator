@@ -1,0 +1,22 @@
+[project]
+name = "symbolicator"
+# we only have this here to make uv happy
+# we use uv for dependency management, not packaging
+version = "0.0.0"
+
+[dependency-groups]
+dev = [
+    "devservices>=1.2.1",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.17",
+    "pre-commit>=4.2.0",
+    "pygments>=2.19.2",
+    "sentry-devenv>=1.22.2",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'darwin' or sys_platform == 'linux'"]
+
+[[tool.uv.index]]
+url = "https://pypi.devinfra.sentry.io/simple"
+default = true
