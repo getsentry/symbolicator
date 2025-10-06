@@ -112,15 +112,16 @@ jobs:
           name: symbolicator-debug@${{ matrix.arch }}
           path: /tmp/debug-info/*
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Prepare Docker Context
-        if: "needs.build-setup.outputs.full_ci == 'true'"
         run: |
           mkdir docker-ctx
           cp Dockerfile docker-ctx/
           mv symbolicator docker-ctx/
 
       - name: Build and push ghcr image
-        if: "needs.build-setup.outputs.full_ci == 'true'"
         uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
         with:
           image_name: 'symbolicator'
@@ -185,7 +186,6 @@ jobs:
     needs: [build-image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: "needs.build-setup.outputs.full_ci == 'true'"
 
     steps:
       - name: Run Sentry self-hosted e2e CI
