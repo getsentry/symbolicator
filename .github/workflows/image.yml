@@ -112,9 +112,6 @@ jobs:
           name: symbolicator-debug@${{ matrix.arch }}
           path: /tmp/debug-info/*
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Prepare Docker Context
         run: |
           mkdir docker-ctx
