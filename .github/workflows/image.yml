@@ -42,6 +42,11 @@ jobs:
   build-image:
     needs: build-setup
 
+    permissions:
+      contents: read
+      packages: write  # Required for GHCR
+      id-token: write  # Required for Google Artifact Registry (GAR)
+
     strategy:
       matrix:
         arch: ${{ fromJson(needs.build-setup.outputs.archs) }}
@@ -116,109 +121,32 @@ jobs:
           cp Dockerfile docker-ctx/
           mv symbolicator docker-ctx/
 
-      - name: Build Image
-        uses: docker/build-push-action@v6
+      - name: Build and push ghcr image
+        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
         with:
-          context: docker-ctx/
+          image_name: 'symbolicator'
           platforms: linux/${{ matrix.arch }}
-          tags: symbolicator-${{ matrix.arch }}
-          outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
-          push: false
+          dockerfile_path: './Dockerfile'
+          build_context: './docker-ctx'
+          ghcr: true
+          tag_nightly: false  # todo true
+          tag_latest: false
 
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
+      - name: Build and push production image
+        if: github.ref_name == github.event.repository.default_branch
+        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
         with:
-          name: symbolicator-image@${{ matrix.arch }}
-          path: /tmp/symbolicator-${{ matrix.arch }}.tar
-
-  assemble-ghcr:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Github Container Registry
-    runs-on: ubuntu-latest
-
-    permissions:
-      packages: write
-
-    env:
-      IMAGE: "ghcr.io/getsentry/symbolicator"
-
-    steps:
-      - name: Docker Login
-        run: docker login --username '${{ github.actor }}' --password-stdin ghcr.io <<< "$GHCR_TOKEN"
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Images
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@*
-          path: /tmp
-          merge-multiple: true
-
-      - &assemble
-        name: Assemble and Push Images
-        run: |
-          set -x
-
-          IMAGES=()
-          for image in /tmp/symbolicator-*.tar; do
-            NAME="$(basename $image .tar)"
-            ARCH="${NAME#*-}"
-            TARGET="${IMAGE}:${{ github.sha }}-${ARCH}"
-
-            docker load --input "${image}"
-            docker tag "${NAME}" "${TARGET}"
-            docker push "${TARGET}"
-
-            IMAGES+=("${TARGET}")
-          done
-
-          docker buildx imagetools create -t "${IMAGE}:${{ github.sha }}" "${IMAGES[@]}"
-
-          if [[ "${{ github.ref_name }}" == "master" ]]; then
-            docker buildx imagetools create -t "${IMAGE}:nightly" "${IMAGE}:${{ github.sha }}"
-          fi
-
-  assemble-ar:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Google Artifact Registry
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      id-token: write
-
-    env:
-      IMAGE: "us-central1-docker.pkg.dev/sentryio/symbolicator/image"
-
-    steps:
-      - name: Google Auth
-        id: auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          version: ">= 390.0.0"
-
-      - name: Configure Docker
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev
-
-      - name: Download Images
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@*
-          path: /tmp
-          merge-multiple: true
-
-      - *assemble
+          image_name: 'symbolicator'
+          platforms: linux/${{ matrix.arch }}
+          dockerfile_path: './Dockerfile'
+          build_context: './docker-ctx'
+          ghcr: false
+          google_ar: true
+          tag_nightly: false
+          tag_latest: false
+          google_ar_image_name: us-central1-docker.pkg.dev/sentryio/symbolicator/image
+          google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
   gocd-artifacts:
     needs: [build-setup, build-image]
@@ -260,18 +188,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - name: Download Docker Image
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@amd64
-          path: /tmp
-
-      - name: Load Docker Image
-        run: docker load --input /tmp/symbolicator-amd64.tar
-
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
         with:
           project_name: symbolicator
-          image_url: symbolicator-amd64
+          image_url: ghcr.io/getsentry/symbolicator:${{ github.sha }}
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
