@@ -128,7 +128,20 @@ jobs:
           ghcr: true
           # we need to publish on prs for self hosted e2e tests
           publish_on_pr: true
-          tag_nightly: false  # todo true
+          tag_nightly: false
+          tag_latest: false
+
+      - name: Build and push nightly ghcr image
+        # "nightly" has actually been "latest" for a while now, shrug
+        if: github.ref_name == github.event.repository.default_branch
+        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
+        with:
+          image_name: 'symbolicator'
+          platforms: linux/${{ matrix.arch }}
+          dockerfile_path: './Dockerfile'
+          build_context: './docker-ctx'
+          ghcr: true
+          tag_nightly: true
           tag_latest: false
 
       - name: Build and push production image
