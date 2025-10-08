@@ -132,8 +132,9 @@ jobs:
           tag_latest: false
 
       - name: Build and push nightly ghcr image
-        # "nightly" has actually been "latest" for a while now, shrug
         if: github.ref_name == github.event.repository.default_branch
+        # the composite action's not flexible enough yet to be like "only tag nightly if on default branch"
+        # so for now we have to rebuild it - thankfully in this case building is pretty much just copying
         uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
         with:
           image_name: 'symbolicator'
@@ -145,7 +146,7 @@ jobs:
           tag_latest: false
 
       - name: Build and push production image
-        if: github.ref_name == github.event.repository.default_branch
+        if: "needs.build-setup.outputs.full_ci == 'true'"
         uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
         with:
           image_name: 'symbolicator'
@@ -162,7 +163,7 @@ jobs:
 
   gocd-artifacts:
     needs: [build-setup, build-image]
-    if: github.ref_name == github.event.repository.default_branch
+    if: "needs.build-setup.outputs.full_ci == 'true'"
 
     name: Upload gocd artifacts
     runs-on: ubuntu-latest
