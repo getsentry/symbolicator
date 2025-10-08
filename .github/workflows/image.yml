@@ -119,7 +119,7 @@ jobs:
           mv symbolicator docker-ctx/
 
       - name: Build and push ghcr image
-        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
           platforms: linux/${{ matrix.arch }}
@@ -131,23 +131,9 @@ jobs:
           tag_nightly: false
           tag_latest: false
 
-      - name: Build and push nightly ghcr image
-        if: github.ref_name == github.event.repository.default_branch
-        # the composite action's not flexible enough yet to be like "only tag nightly if on default branch"
-        # so for now we have to rebuild it - thankfully in this case building is pretty much just copying
-        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
-        with:
-          image_name: 'symbolicator'
-          platforms: linux/${{ matrix.arch }}
-          dockerfile_path: './Dockerfile'
-          build_context: './docker-ctx'
-          ghcr: true
-          tag_nightly: true
-          tag_latest: false
-
       - name: Build and push production image
         if: "needs.build-setup.outputs.full_ci == 'true'"
-        uses: getsentry/action-build-and-push-images@a53f146fc1ea3cb404f2dcf7378f5b60dd98d3ca
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
           platforms: linux/${{ matrix.arch }}
@@ -155,7 +141,8 @@ jobs:
           build_context: './docker-ctx'
           ghcr: false
           google_ar: true
-          tag_nightly: false
+          # note: nightly will only be tagged if on default branch
+          tag_nightly: true
           tag_latest: false
           google_ar_image_name: us-central1-docker.pkg.dev/sentryio/symbolicator/image
           google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
