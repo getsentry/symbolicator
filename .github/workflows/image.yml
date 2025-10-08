@@ -122,7 +122,7 @@ jobs:
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/amd64,linux/arm64
           dockerfile_path: './Dockerfile'
           build_context: './docker-ctx'
           ghcr: true
