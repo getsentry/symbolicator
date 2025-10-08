@@ -119,6 +119,7 @@ jobs:
           mv symbolicator docker-ctx/
 
       - name: Build and push ghcr image
+        if: "!github.event.pull_request.head.repo.fork && github.actor != 'dependabot[bot]'"
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
