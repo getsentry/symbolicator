@@ -30,24 +30,3 @@ jobs:
           docker buildx imagetools create \
             --tag ghcr.io/getsentry/symbolicator:latest \
             ghcr.io/getsentry/symbolicator:${{ github.sha }}
-
-  release-dockerhub:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: sentrybuilder
-          password: ${{ secrets.DOCKER_HUB_RW_TOKEN }}
-
-      - name: Tag release version
-        run: |
-          docker buildx imagetools create \
-            --tag getsentry/symbolicator:${{ github.ref_name }} \
-            ghcr.io/getsentry/symbolicator:${{ github.sha }}
-
-      - name: Tag latest version
-        run: |
-          docker buildx imagetools create \
-            --tag getsentry/symbolicator:latest \
-            ghcr.io/getsentry/symbolicator:${{ github.sha }}
