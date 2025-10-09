@@ -66,6 +66,15 @@ pub struct SymbolicateStacktraces {
     pub rewrite_first_module: RewriteRules,
 }
 
+/// Location of an attachment file, such as a minidump.
+#[derive(Debug)]
+pub enum AttachmentFile {
+    /// The attachment has been stored on the local system already.
+    Local(File),
+    /// The attachment needs to be fetched from the remote url.
+    Remote(String),
+}
+
 /// A request to process (stackwalk + symbolicate) a minidump.
 #[derive(Debug)]
 pub struct ProcessMinidump {
@@ -75,8 +84,8 @@ pub struct ProcessMinidump {
     pub platform: Option<Platform>,
     /// The scope of this request which determines access to cached files.
     pub scope: Scope,
-    /// The local temp path where the minidump file has been saved.
-    pub minidump_file: File,
+    /// The reference to the minidump file.
+    pub minidump_file: AttachmentFile,
     /// A list of external sources to load debug files.
     pub sources: Arc<[SourceConfig]>,
     /// Scraping configuration controling authenticated requests.
