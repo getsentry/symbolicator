@@ -160,12 +160,12 @@ jobs:
         with:
           pattern: symbolicator-binary@*
           path: /tmp/docker-ctx
-          merge-multiple: true
 
       - name: Prepare Docker Context
         run: |
           cp Dockerfile /tmp/docker-ctx
           ls -lah /tmp/docker-ctx
+          tree /tmp/docker-ctx || true
           mv /tmp/docker-ctx/tmp/linux /tmp/docker-ctx/linux
 
       # If action-build-and-push-images supports passing in a docker tar,
