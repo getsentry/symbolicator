@@ -124,13 +124,14 @@ jobs:
           mv symbolicator docker-ctx/binaries/linux/${{ matrix.arch }}
 
       - name: Build Image
-        uses: docker/build-push-action@v6
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
-          context: docker-ctx/
+          image_name: 'symbolicator'
           platforms: linux/${{ matrix.arch }}
-          tags: symbolicator-${{ matrix.arch }}
+          build_context: 'docker-ctx'
+          ghcr: false
+          google_ar: false
           outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
-          push: false
 
       - name: Upload Image
         uses: actions/upload-artifact@v4
