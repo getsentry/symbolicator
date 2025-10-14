@@ -153,6 +153,8 @@ jobs:
       id-token: write  # required for GAR
 
     steps:
+      - uses: actions/checkout@v5
+
       - name: Download Binaries
         uses: actions/download-artifact@v5
         with:
