@@ -88,6 +88,12 @@ jobs:
           cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
           mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: symbolicator-binary@${{ matrix.arch }}
+          path: ./binaries/linux/${{ matrix.arch }}/symbolicator
+
       - name: Split debug info
         run: |
           mkdir -p "/tmp/debug-info/"
@@ -112,9 +118,9 @@ jobs:
 
       - name: Prepare Docker Context
         run: |
-          mkdir docker-ctx
+          mkdir -p docker-ctx/binaries/linux/${{ matrix.arch }}
           cp Dockerfile docker-ctx/
-          mv symbolicator docker-ctx/
+          mv symbolicator docker-ctx/binaries/linux/${{ matrix.arch }}
 
       - name: Build Image
         uses: docker/build-push-action@v6
@@ -131,94 +137,52 @@ jobs:
           name: symbolicator-image@${{ matrix.arch }}
           path: /tmp/symbolicator-${{ matrix.arch }}.tar
 
-  assemble-ghcr:
+  assemble:
     needs: [build-setup, build-image]
     if: "needs.build-setup.outputs.full_ci == 'true'"
 
-    name: Assemble for Github Container Registry
+    name: Assemble
     runs-on: ubuntu-latest
 
     permissions:
-      packages: write
-
-    env:
-      IMAGE: "ghcr.io/getsentry/symbolicator"
-
-    steps:
-      - name: Docker Login
-        run: docker login --username '${{ github.actor }}' --password-stdin ghcr.io <<< "$GHCR_TOKEN"
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Images
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@*
-          path: /tmp
-          merge-multiple: true
-
-      - &assemble
-        name: Assemble and Push Images
-        run: |
-          set -x
-
-          IMAGES=()
-          for image in /tmp/symbolicator-*.tar; do
-            NAME="$(basename $image .tar)"
-            ARCH="${NAME#*-}"
-            TARGET="${IMAGE}:${{ github.sha }}-${ARCH}"
-
-            docker load --input "${image}"
-            docker tag "${NAME}" "${TARGET}"
-            docker push "${TARGET}"
-
-            IMAGES+=("${TARGET}")
-          done
-
-          docker buildx imagetools create -t "${IMAGE}:${{ github.sha }}" "${IMAGES[@]}"
-
-          if [[ "${{ github.ref_name }}" == "master" ]]; then
-            docker buildx imagetools create -t "${IMAGE}:nightly" "${IMAGE}:${{ github.sha }}"
-          fi
-
-  assemble-ar:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Google Artifact Registry
-    runs-on: ubuntu-latest
-
-    permissions:
+      packages: write  # required for GHCR
       contents: read
-      id-token: write
-
-    env:
-      IMAGE: "us-central1-docker.pkg.dev/sentryio/symbolicator/image"
+      id-token: write  # required for GAR
 
     steps:
-      - name: Google Auth
-        id: auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          version: ">= 390.0.0"
-
-      - name: Configure Docker
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev
-
-      - name: Download Images
+      - name: Download Binaries
         uses: actions/download-artifact@v5
         with:
-          pattern: symbolicator-image@*
-          path: /tmp
+          pattern: symbolicator-binary@*
+          path: /tmp/docker-ctx
           merge-multiple: true
 
-      - *assemble
+      - name: Prepare Docker Context
+        run: |
+          cp Dockerfile /tmp/docker-ctx
+
+      # If action-build-and-push-images supports passing in a docker tar,
+      # then we can reuse the image artifact rather than this workaround
+      # (thankfully the build amounts to just a cp, wouldn't be doing this
+      # if the build was more complicated as we're building twice)
+
+      - name: Build and push images
+        if: "needs.build-setup.outputs.full_ci == 'true'"
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
+        with:
+          image_name: 'symbolicator'
+          platforms: linux/amd64,linux/arm64
+          build_context: '/tmp/docker-ctx'
+          publish_on_pr: true  # TEMPORARY FOR TESTING
+          ghcr: true
+          google_ar: true
+          # note: nightly will only be tagged if on default branch
+          tag_nightly: true
+          # on GAR we expect latest tags, nightly is canonically only a GHCR thing for us
+          tag_latest: true
+          google_ar_image_name: us-central1-docker.pkg.dev/sentryio/symbolicator/image
+          google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
   gocd-artifacts:
     needs: [build-setup, build-image]
