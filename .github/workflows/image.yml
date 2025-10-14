@@ -86,16 +86,19 @@ jobs:
       - name: Build Binary
         run: |
           cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
-          mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
+          mkdir -p /tmp/linux/${{ matrix.arch }}
+          mv "target/${RUST_TARGET}/release/symbolicator" /tmp/linux/${{ matrix.arch }}/symbolicator
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
           name: symbolicator-binary@${{ matrix.arch }}
-          path: ./binaries/linux/${{ matrix.arch }}/symbolicator
+          path: /tmp/linux/${{ matrix.arch }}/symbolicator
 
       - name: Split debug info
         run: |
+          mv /tmp/linux/${{ matrix.arch }}/symbolicator symbolicator
+
           mkdir -p "/tmp/debug-info/"
 
           llvm-objcopy --only-keep-debug symbolicator{,.debug}
@@ -160,6 +163,7 @@ jobs:
       - name: Prepare Docker Context
         run: |
           cp Dockerfile /tmp/docker-ctx
+          mv /tmp/linux /tmp/docker-ctx
 
       # If action-build-and-push-images supports passing in a docker tar,
       # then we can reuse the image artifact rather than this workaround
