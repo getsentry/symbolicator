@@ -165,7 +165,8 @@ jobs:
       - name: Prepare Docker Context
         run: |
           cp Dockerfile /tmp/docker-ctx
-          mv /tmp/linux /tmp/docker-ctx
+          ls -lah /tmp/docker-ctx
+          mv /tmp/docker-ctx/tmp/linux /tmp/docker-ctx/linux
 
       # If action-build-and-push-images supports passing in a docker tar,
       # then we can reuse the image artifact rather than this workaround
