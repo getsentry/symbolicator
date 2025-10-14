@@ -86,7 +86,6 @@ jobs:
       - name: Build Binary
         run: |
           cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
-          mkdir -p /tmp/linux/${{ matrix.arch }}
           mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
       - name: Upload Binary
