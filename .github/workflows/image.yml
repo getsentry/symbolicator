@@ -87,18 +87,16 @@ jobs:
         run: |
           cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
           mkdir -p /tmp/linux/${{ matrix.arch }}
-          mv "target/${RUST_TARGET}/release/symbolicator" /tmp/linux/${{ matrix.arch }}/symbolicator
+          mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
-          name: symbolicator-binary@${{ matrix.arch }}
-          path: /tmp/linux/${{ matrix.arch }}/symbolicator
+          name: symbolicator-binary-${{ matrix.arch }}
+          path: ./symbolicator
 
       - name: Split debug info
         run: |
-          mv /tmp/linux/${{ matrix.arch }}/symbolicator symbolicator
-
           mkdir -p "/tmp/debug-info/"
 
           llvm-objcopy --only-keep-debug symbolicator{,.debug}
@@ -158,15 +156,15 @@ jobs:
       - name: Download Binaries
         uses: actions/download-artifact@v5
         with:
-          pattern: symbolicator-binary@*
+          pattern: symbolicator-binary-*
           path: /tmp/docker-ctx
 
       - name: Prepare Docker Context
         run: |
           cp Dockerfile /tmp/docker-ctx
-          ls -lah /tmp/docker-ctx
-          tree /tmp/docker-ctx || true
-          mv /tmp/docker-ctx/tmp/linux /tmp/docker-ctx/linux
+          mkdir -p /tmp/docker-ctx/binaries/linux/amd64 /tmp/docker-ctx/binaries/linux/arm64
+          mv /tmp/docker-ctx/symbolicator-binary-amd64/symbolicator /tmp/docker-ctx/binaries/linux/amd64
+          mv /tmp/docker-ctx/symbolicator-binary-arm64/symbolicator /tmp/docker-ctx/binaries/linux/arm64
 
       # If action-build-and-push-images supports passing in a docker tar,
       # then we can reuse the image artifact rather than this workaround
