@@ -1,5 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/e2e.rs
+source: crates/symbolicator-native/tests/integration/e2e.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -24,4 +24,3 @@ modules:
     debug_file: "C:\\Windows\\System32\\wkernel32.pdb"
     image_addr: "0x749d0000"
     image_size: 851968
-

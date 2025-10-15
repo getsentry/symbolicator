@@ -9,7 +9,7 @@ use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
 use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{
-    ProcessMinidump, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
+    AttachmentFile, ProcessMinidump, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
 };
 use symbolicator_service::download::SourceConfig;
 use symbolicator_service::types::{RawObjectInfo, Scope};
@@ -163,7 +163,7 @@ pub async fn process_payload(
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope: scope.clone(),
-                    minidump_file,
+                    minidump_file: AttachmentFile::Local(minidump_file),
                     sources: Arc::clone(sources),
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
