@@ -61,7 +61,7 @@ jobs:
         }')[matrix.arch] }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
         with:
           submodules: recursive
 
@@ -77,7 +77,7 @@ jobs:
       - name: Install sentry-cli
         run: curl -sL https://sentry.io/get-cli/ | bash
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@7939da402645ba29a2df566723491a2c856e8f8a # v2
         if: ${{ !startsWith(github.ref_name, 'release/') }}
         with:
           key: ${{ github.job }}
@@ -89,7 +89,7 @@ jobs:
           mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
       - name: Upload Binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbolicator-binary-${{ matrix.arch }}
           path: ./symbolicator
@@ -108,13 +108,13 @@ jobs:
           mv "${SOURCE_BUNDLE}" /tmp/debug-info/symbolicator-${{ matrix.arch }}.src.zip
 
       - name: Upload Debug Info
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbolicator-debug@${{ matrix.arch }}
           path: /tmp/debug-info/*
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3
 
       - name: Prepare Docker Context
         run: |
@@ -133,7 +133,7 @@ jobs:
           outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
 
       - name: Upload Image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbolicator-image@${{ matrix.arch }}
           tags: symbolicator-${{ matrix.arch }}
@@ -152,10 +152,10 @@ jobs:
       id-token: write  # required for GAR
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Download Binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: symbolicator-binary-*
           path: /tmp/docker-ctx
@@ -205,17 +205,17 @@ jobs:
     steps:
       - name: Google Auth
         id: auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
           service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           version: ">= 390.0.0"
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: "symbolicator-debug@*"
           path: /tmp/debug-info/
@@ -232,7 +232,7 @@ jobs:
 
     steps:
       - name: Download Docker Image
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: symbolicator-image@amd64
           path: /tmp
@@ -241,7 +241,7 @@ jobs:
         run: docker load --input /tmp/symbolicator-amd64.tar
 
       - name: Run Sentry self-hosted e2e CI
-        uses: getsentry/self-hosted@master
+        uses: getsentry/self-hosted@6ae40d837a78c2968a28acf952b1beb9911237f8 # master
         with:
           project_name: symbolicator
           image_url: symbolicator-amd64
