@@ -136,6 +136,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: symbolicator-image@${{ matrix.arch }}
+          tags: symbolicator-${{ matrix.arch }}
           path: /tmp/symbolicator-${{ matrix.arch }}.tar
 
   assemble:
@@ -170,12 +171,13 @@ jobs:
       # then we can reuse the image artifact rather than this workaround
       # (thankfully the build amounts to just a cp, wouldn't be doing this
       # if the build was more complicated as we're building twice)
-
       - name: Build and push images
         if: "needs.build-setup.outputs.full_ci == 'true'"
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
+          # Please note that multiplatform builds like this are only feasible in this case
+          # because the docker build essentially amounts to copying files, not compiling.
           platforms: linux/amd64,linux/arm64
           build_context: '/tmp/docker-ctx'
           publish_on_pr: true  # TEMPORARY FOR TESTING
