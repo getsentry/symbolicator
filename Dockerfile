@@ -12,6 +12,6 @@ ARG BINARY=./binaries/$TARGETPLATFORM/symbolicator
 COPY --chmod=0755 ${BINARY} /bin/symbolicator
 
 # sanity check
-RUN /bin/symbolicator
+RUN ["/bin/symbolicator", "help"]
 
 ENTRYPOINT ["/bin/symbolicator"]
