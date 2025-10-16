@@ -126,6 +126,7 @@ jobs:
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
+          tags: 'symbolicator-self-hosted'
           platforms: linux/${{ matrix.arch }}
           build_context: 'docker-ctx'
           ghcr: false
@@ -245,5 +246,5 @@ jobs:
         uses: getsentry/self-hosted@6ae40d837a78c2968a28acf952b1beb9911237f8 # master
         with:
           project_name: symbolicator
-          image_url: symbolicator
+          image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
