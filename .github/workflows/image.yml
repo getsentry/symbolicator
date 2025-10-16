@@ -136,7 +136,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbolicator-image@${{ matrix.arch }}
-          tags: symbolicator-${{ matrix.arch }}
           path: /tmp/symbolicator-${{ matrix.arch }}.tar
 
   assemble:
@@ -238,11 +237,13 @@ jobs:
           path: /tmp
 
       - name: Load Docker Image
-        run: docker load --input /tmp/symbolicator-amd64.tar
+        run: |
+          docker load --input /tmp/symbolicator-amd64.tar
+          docker image ls
 
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@6ae40d837a78c2968a28acf952b1beb9911237f8 # master
         with:
           project_name: symbolicator
-          image_url: symbolicator-amd64
+          image_url: symbolicator
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
