@@ -6,7 +6,12 @@ COPY --from=gcr.io/distroless/cc-debian12:nonroot --chown=nonroot:nonroot /home/
 VOLUME ["/etc/symbolicator", "/data"]
 EXPOSE 3021
 
-ARG BINARY=./symbolicator
-COPY ${BINARY} /bin/symbolicator
+ARG TARGETPLATFORM
+
+ARG BINARY=./binaries/$TARGETPLATFORM/symbolicator
+COPY --chmod=0755 ${BINARY} /bin/symbolicator
+
+# sanity check
+RUN ["/bin/symbolicator", "help"]
 
 ENTRYPOINT ["/bin/symbolicator"]
