@@ -9,6 +9,6 @@ EXPOSE 3021
 ARG TARGETPLATFORM
 
 ARG BINARY=./binaries/$TARGETPLATFORM/symbolicator
-COPY ${BINARY} /bin/symbolicator
+COPY --chmod=0755 ${BINARY} /bin/symbolicator
 
 ENTRYPOINT ["/bin/symbolicator"]
