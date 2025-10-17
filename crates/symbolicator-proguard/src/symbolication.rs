@@ -378,12 +378,6 @@ impl ProguardService {
                     ..original_frame.clone()
                 };
 
-                // clear the filename for all *foreign* classes
-                if mapped_frame.module != bottom_class {
-                    mapped_frame.filename = None;
-                    mapped_frame.abs_path = None;
-                }
-
                 mapped_frame
             })
             .collect();
@@ -1032,6 +1026,112 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
                 "View.java",
                 "View.java",
                 "Unknown Source"
+            ]
+        );
+    }
+
+    #[test]
+    fn remap_filename_inlined() {
+        let proguard_source = br#"# compiler: R8
+# compiler: R8
+# compiler_version: 8.11.18
+# min_api: 24
+# common_typos_disable
+# {"id":"com.android.tools.r8.mapping","version":"2.2"}
+# pg_map_id: 7e6e8e1
+# pg_map_hash: SHA-256 7e6e8e1cad51270880af7ead018948d8156402b211c30e81ba8b310f002689dd
+com.mycompany.android.StuffKt$$ExternalSyntheticOutline0 -> ev.h:
+# {"id":"sourceFile","fileName":"R8$$SyntheticClass"}
+# {"id":"com.android.tools.r8.synthesized"}
+    1:1:void ev.StuffKt$$ExternalSyntheticOutline0.m(android.media.MediaMetadataRetriever):0:0 -> a
+      # {"id":"com.android.tools.r8.synthesized"}
+    1:2:void ev.StuffKt$$ExternalSyntheticOutline0.m(java.lang.String,me.company.android.logging.L):0:0 -> b
+      # {"id":"com.android.tools.r8.synthesized"}
+      # {"id":"com.android.tools.r8.outline"}
+    3:5:void ev.StuffKt$$ExternalSyntheticOutline0.m(java.lang.String,me.company.android.logging.L):1:1 -> b
+    6:9:void ev.StuffKt$$ExternalSyntheticOutline0.m(java.lang.String,me.company.android.logging.L):2:2 -> b
+com.mycompany.android.MapAnnotations -> uu0.k:
+# {"id":"sourceFile","fileName":"MapAnnotations.kt"}
+    43:46:com.mycompany.android.IProjectionMarker createProjectionMarker(com.mycompany.android.IProjectionMarkerOptions):0:0 -> l
+    43:46:lv0.IProjectionMarker uu0.MapAnnotations.createProjectionMarker(lv0.IProjectionMarkerOptions):0 -> l
+      # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":50,"3":52,"6":55},"outline":"Lev/h;b(Ljava/lang/String;Lme/company/android/logging/L;)V"}
+com.mycompany.android.Renderer -> b80.f:
+# {"id":"sourceFile","fileName":"Renderer.kt"}
+    33:40:com.mycompany.android.ViewProjectionMarker com.mycompany.android.Delegate.createProjectionMarker():101:101 -> a
+    33:40:void com.mycompany.android.Delegate.render():34 -> a
+    33:40:void render():39 -> a
+com.mycompany.android.Delegate -> b80.h:
+# {"id":"sourceFile","fileName":"Delegate.kt"}
+    com.mycompany.android.IMapAnnotations mapAnnotations -> a
+      # {"id":"com.android.tools.r8.residualsignature","signature":"Lbv0/b;"}"#;
+
+        let mapping = ProguardMapping::new(proguard_source);
+        assert!(mapping.is_valid());
+        assert!(mapping.has_line_info());
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
+
+        let frames: Vec<JvmFrame> = serde_json::from_str(
+            r#"[
+            {
+              "function": "a",
+              "module": "b80.f",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 33,
+              "index": 0
+            },
+            {
+              "function": "l",
+              "module": "uu0.k",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 43,
+              "index": 1
+            },
+            {
+              "function": "b",
+              "module": "ev.h",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 3,
+              "index": 2
+            }]"#,
+        )
+        .unwrap();
+
+        let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
+            .iter()
+            .flat_map(|frame| {
+                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
+                    .into_iter()
+            })
+            .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
+            .unzip();
+
+        assert_eq!(
+            remapped_filenames,
+            [
+                "Renderer.kt",
+                "Delegate.kt",
+                "Delegate.kt",
+                "SourceFile",
+                "MapAnnotations.kt",
+                "SourceFile"
+            ]
+        );
+
+        assert_eq!(
+            remapped_abs_paths,
+            [
+                "Renderer.kt",
+                "Delegate.kt",
+                "Delegate.kt",
+                "SourceFile",
+                "MapAnnotations.kt",
+                "SourceFile"
             ]
         );
     }
