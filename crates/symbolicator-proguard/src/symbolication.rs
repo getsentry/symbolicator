@@ -355,8 +355,6 @@ impl ProguardService {
             return None;
         }
 
-        let bottom_class = buf[buf.len() - 1].class();
-
         // sentry expects stack traces in reverse order
         let res = buf
             .iter()
