@@ -1,5 +1,5 @@
 //! Exposes the command line application.
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -11,6 +11,7 @@ use symbolicator_service::caching;
 use symbolicator_service::metrics;
 
 use crate::config::Config;
+use crate::healthcheck;
 use crate::logging;
 use crate::server;
 
@@ -48,6 +49,23 @@ enum Command {
         /// config option is used.
         #[arg(long, value_name = "INTERVAL")]
         repeat: Option<Option<Duration>>,
+    },
+
+    /// Checks the health of the Symbolicator server.
+    #[command(name = "healthcheck")]
+    Healthcheck {
+        /// Address to check.
+        ///
+        /// For example: `127.0.0.1:5555`.
+        /// Defaults to the address configured in `config.bind`.
+        #[arg(long)]
+        addr: Option<SocketAddr>,
+
+        /// Timeout for the healthcheck request.
+        ///
+        /// Defaults to 30 seconds.
+        #[arg(long, default_value_t = 30)]
+        timeout: u64,
     },
 }
 
@@ -91,6 +109,7 @@ pub fn execute() -> Result<()> {
         });
         if let (Some(dsn), Some(db)) = (dsn, db) {
             symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
+                .transport(capture_native_envelope)
                 .release(release.as_deref())
                 .install();
         }
@@ -190,7 +209,26 @@ pub fn execute() -> Result<()> {
             repeat.map(|inner| inner.map(|time| time.into())),
         )
         .context("failed to clean up caches")?,
+        Command::Healthcheck { addr, timeout } => {
+            healthcheck::healthcheck(config, addr, timeout).context("healthcheck failed")?
+        }
     }
 
     Ok(())
+}
+
+/// Captures an envelope from the native crash reporter using the main Sentry SDK.
+#[cfg(feature = "symbolicator-crash")]
+fn capture_native_envelope(data: &[u8]) {
+    if let Some(client) = sentry::Hub::main().client() {
+        match sentry::Envelope::from_bytes_raw(data.to_owned()) {
+            Ok(envelope) => client.send_envelope(envelope),
+            Err(error) => {
+                let error = &error as &dyn std::error::Error;
+                tracing::error!(error, "failed to capture crash")
+            }
+        }
+    } else {
+        tracing::error!("failed to capture crash: no sentry client registered");
+    }
 }

@@ -151,26 +151,19 @@ pub async fn process_payload(
                 sources,
             } = payload;
 
-            // processing a minidump requires a tempfile that can be persisted -_-
-            // so that means we have to make a copy of our minidump
-            let mut temp_file = tempfile::Builder::new();
-            temp_file.prefix("minidump").suffix(".dmp");
-            let temp_file = temp_file.tempfile().unwrap();
-            let (temp_file, temp_path) = temp_file.into_parts();
-            let mut temp_file = tokio::fs::File::from_std(temp_file);
-
+            let mut temp_file = tokio::fs::File::from_std(tempfile::tempfile().unwrap());
             let mut minidump_file = tokio::fs::File::open(minidump_file).await.unwrap();
-
             tokio::io::copy(&mut minidump_file, &mut temp_file)
                 .await
                 .unwrap();
+            let minidump_file = temp_file.into_std().await;
 
             symbolication
                 .0
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope: scope.clone(),
-                    minidump_file: temp_path,
+                    minidump_file,
                     sources: Arc::clone(sources),
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),

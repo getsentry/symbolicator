@@ -160,7 +160,7 @@ version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfbe277e56a376000877090da837660b4427aad530e3028d44e0bffe4f89a1c1"
 dependencies = [
- "gimli",
+ "gimli 0.31.1",
 ]
 
 [[package]]
@@ -2109,6 +2109,12 @@ name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07e28edb80900c19c28f1072f2e8aeca7fa06b23cd4169cefe1af5aa3260783f"
+
+[[package]]
+name = "gimli"
+version = "0.32.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 dependencies = [
  "fallible-iterator 0.3.0",
  "stable_deref_trait",
@@ -3738,7 +3744,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4997,9 +5003,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "748dba8d41f02e83657cee9004092a4bd6996da413a546f4f493dc7e673c8f21"
+checksum = "39491f196401cfa42c44c12d18b6c2e4dc27f404b3adedc0b461dae049711886"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -5013,9 +5019,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b60eb792b2b0258f9688f82f7e655741c495e914ee7b4da3873ddfb1ed6dea15"
+checksum = "344fe602a7a0866ca8f44d3851292f7bec7a9c60a9aa9b96105b860bbfab32a4"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -5024,9 +5030,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9da12f8fecbbeaa1ee62c1d50dc656407e007c3ee7b2a41afce4b5089eaef15e"
+checksum = "d03f433c9befeea460a01d750e698aa86caf86dcfbd77d552885cd6c89d52f50"
 dependencies = [
  "debugid",
  "memmap2",
@@ -5037,16 +5043,16 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c97320c0523b58a45a2f08ab0cff84a95cf7d46f02ce732319f3592e7313b74f"
+checksum = "503aacdde371090f23ba8c57a8f8d8cb2ba99370e8259d76f134a7d3e18b4458"
 dependencies = [
  "debugid",
  "elementtree",
  "elsa",
  "fallible-iterator 0.3.0",
  "flate2",
- "gimli",
+ "gimli 0.32.3",
  "goblin",
  "lazy_static",
  "nom",
@@ -5069,9 +5075,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fd35afe0ef9d35d3dcd41c67ddf882fc832a387221338153b7cd685a105495c"
+checksum = "13d359ef6192db1760a34321ec4f089245ede4342c27e59be99642f12a859de8"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -5082,9 +5088,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "568e495caddca2b9966d7b4aa15d75dfaae0c100c8e38a49e4ce7fd373217b23"
+checksum = "9a5b93b594f1b7085d1b60d0f013cca52bcb7cc2aaf72f7ca0a05153989b2d9d"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -5094,9 +5100,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97e47ff1832c5d82d6ee3193fcb288d28e328dee8e7c689e8f3553f28d43ccb4"
+checksum = "dde25496951966c75ca9ee9213bcdd853fe0db6a4cbcc8d0d097104a899c10df"
 dependencies = [
  "flate2",
  "indexmap",
@@ -5110,9 +5116,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9d9e46b75642ca870692c67a69d041de1231ead81e72bc9754a4a33f76243d5"
+checksum = "4267b841e74f5900777e33441728fb9921ab9650fede8ae38b322e7094eec5c0"
 dependencies = [
  "itertools 0.13.0",
  "js-source-scopes",
@@ -5125,9 +5131,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "12.16.2"
+version = "12.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f50ca7f2bbff10d18644d32432862eb66c2a08f83946b52a253e1d3752496a9b"
+checksum = "9884c1e755776d65646d5300736373fe20739432a673d648a68b7464a9bb2e9b"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -5140,7 +5146,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5180,7 +5186,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "bindgen",
  "cmake",
@@ -5188,7 +5194,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "data-url",
  "futures",
@@ -5214,7 +5220,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -5244,7 +5250,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "futures",
  "insta",
@@ -5262,7 +5268,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -5313,7 +5319,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -5329,7 +5335,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5352,7 +5358,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "axum",
  "humantime",
@@ -5371,7 +5377,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -5395,7 +5401,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6200,7 +6206,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-split"
-version = "25.9.0"
+version = "25.10.0"
 dependencies = [
  "anyhow",
  "clap",

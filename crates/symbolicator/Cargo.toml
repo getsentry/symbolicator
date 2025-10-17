@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator"
-version = "25.9.0"
+version = "25.10.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license = "MIT"
@@ -40,6 +40,7 @@ tower-service = { workspace = true}
 tracing = { workspace = true}
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

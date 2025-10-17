@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -21,7 +21,6 @@ use symbolicator_service::metric;
 use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
-use tempfile::TempPath;
 use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
@@ -129,7 +128,7 @@ struct LookupKey {
 
 impl LookupKey {
     /// Creates a new lookup key for the given [`Module`].
-    fn new(module: &(dyn Module)) -> Self {
+    fn new(module: &dyn Module) -> Self {
         Self {
             base_addr: module.base_address(),
             size: module.size(),
@@ -500,28 +499,6 @@ fn maybe_backfill_debugid(info: &mut RawObjectInfo, cfi_module: &CfiModuleInfo) 
 }
 
 impl SymbolicationActor {
-    /// Saves the given `minidump_file` in the diagnostics cache if configured to do so.
-    fn maybe_persist_minidump(&self, minidump_file: TempPath) {
-        if let Some(dir) = self.diagnostics_cache.cache_dir() {
-            if let Some(file_name) = minidump_file.file_name() {
-                let path = dir.join(file_name);
-                match minidump_file.persist(&path) {
-                    Ok(_) => {
-                        sentry::configure_scope(|scope| {
-                            scope.set_extra(
-                                "crashed_minidump",
-                                sentry::protocol::Value::String(path.to_string_lossy().to_string()),
-                            );
-                        });
-                    }
-                    Err(e) => tracing::error!("Failed to save minidump {:?}", &e),
-                };
-            }
-        } else {
-            tracing::debug!("No diagnostics retention configured, not saving minidump");
-        }
-    }
-
     pub async fn process_minidump(
         &self,
         request: ProcessMinidump,
@@ -551,38 +528,22 @@ impl SymbolicationActor {
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);
 
-        let minidump_path = minidump_file.to_path_buf();
-
-        let minidump = match read_minidump(&minidump_path) {
-            Ok(md) => md,
-            Err(err) => {
-                self.maybe_persist_minidump(minidump_file);
-                return Err(err);
-            }
-        };
-
-        let stackwalk_future = stackwalk(
-            self.cficaches.clone(),
-            &minidump,
-            scope.clone(),
-            sources.clone(),
-            rewrite_first_module.clone(),
-        );
-
-        let result = match stackwalk_future.await {
-            Ok(result) => result,
-            Err(err) => {
-                self.maybe_persist_minidump(minidump_file);
-                return Err(err);
-            }
-        };
+        let bv = ByteView::map_file(minidump_file)?;
+        let minidump = Minidump::read(bv)?;
 
         let StackWalkMinidumpResult {
             modules,
             mut stacktraces,
             minidump_state,
             duration,
-        } = result;
+        } = stackwalk(
+            self.cficaches.clone(),
+            &minidump,
+            scope.clone(),
+            sources.clone(),
+            rewrite_first_module.clone(),
+        )
+        .await?;
 
         metric!(timer("minidump.stackwalk.duration") = duration);
 
@@ -661,12 +622,6 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
         Os::NaCl => "NaCl",
         Os::Unknown(_) => "",
     }
-}
-
-fn read_minidump(path: &Path) -> Result<Minidump> {
-    let bv = ByteView::open(path)?;
-    let md = Minidump::read(bv)?;
-    Ok(md)
 }
 
 /// Returns an owned version of `file_name`, or `None` if it is empty.

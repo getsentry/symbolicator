@@ -32,17 +32,9 @@ pub async fn handle_minidump_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("upload_file_minidump") => {
-                let mut minidump_file = tempfile::Builder::new();
-                minidump_file.prefix("minidump").suffix(".dmp");
-                let minidump_file = if let Some(tmp_dir) = service.config().cache_dir("tmp") {
-                    minidump_file.tempfile_in(tmp_dir)
-                } else {
-                    minidump_file.tempfile()
-                }?;
-                let (file, temp_path) = minidump_file.into_parts();
-                let mut file = File::from_std(file);
-                stream_multipart_file(field, &mut file).await?;
-                minidump = Some(temp_path)
+                let mut minidump_file = File::from_std(tempfile::tempfile()?);
+                stream_multipart_file(field, &mut minidump_file).await?;
+                minidump = Some(minidump_file.into_std().await)
             }
             Some("sources") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
@@ -71,8 +63,8 @@ pub async fn handle_minidump_request(
     let minidump_file = minidump.ok_or((StatusCode::BAD_REQUEST, "missing minidump"))?;
 
     // check if the minidump starts with multipart form data and discard it if so
-    let minidump_path = minidump_file.to_path_buf();
-    let minidump = ByteView::open(minidump_path).unwrap_or_else(|_| ByteView::from_slice(b""));
+    let minidump =
+        ByteView::map_file_ref(&minidump_file).unwrap_or_else(|_| ByteView::from_slice(b""));
     if minidump.starts_with(b"--") {
         metric!(counter("symbolication.minidump.multipart_form_data") += 1);
         return Err((

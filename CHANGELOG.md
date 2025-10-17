@@ -1,5 +1,17 @@
 # Changelog
 
+## 25.10.0
+
+### Breaking Changes
+
+- Symbolicator logs to stderr instead of stdout by default. ([#1799](https://github.com/getsentry/symbolicator/pull/1799))
+
+### Dependencies
+
+- Bump Native SDK from v0.10.1 to v0.11.2 ([#1801](https://github.com/getsentry/symbolicator/pull/1801))
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0112)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.10.1...0.11.2)
+
 ## 25.9.0
 
 ### Dependencies

@@ -62,7 +62,8 @@ pub unsafe fn init_logging(config: &Config) {
     let fmt_layer = {
         let layer = tracing_subscriber::fmt::layer()
             .with_timer(UtcTime::rfc_3339())
-            .with_target(true);
+            .with_target(true)
+            .with_writer(std::io::stderr);
 
         match (config.logging.format, console::user_attended()) {
             (LogFormat::Auto, true) | (LogFormat::Pretty, _) => layer.pretty().boxed(),
