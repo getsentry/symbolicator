@@ -359,24 +359,20 @@ impl ProguardService {
         let res = buf
             .iter()
             .rev()
-            .map(|new_frame| {
-                let mapped_frame = JvmFrame {
-                    module: new_frame.class().to_owned(),
-                    function: new_frame.method().to_owned(),
-                    lineno: Some(new_frame.line() as u32),
-                    abs_path: new_frame
-                        .file()
-                        .map(String::from)
-                        .or_else(|| original_frame.abs_path.clone()),
-                    filename: new_frame
-                        .file()
-                        .map(String::from)
-                        .or_else(|| original_frame.filename.clone()),
-                    method_synthesized: new_frame.method_synthesized(),
-                    ..original_frame.clone()
-                };
-
-                mapped_frame
+            .map(|new_frame| JvmFrame {
+                module: new_frame.class().to_owned(),
+                function: new_frame.method().to_owned(),
+                lineno: Some(new_frame.line() as u32),
+                abs_path: new_frame
+                    .file()
+                    .map(String::from)
+                    .or_else(|| original_frame.abs_path.clone()),
+                filename: new_frame
+                    .file()
+                    .map(String::from)
+                    .or_else(|| original_frame.filename.clone()),
+                method_synthesized: new_frame.method_synthesized(),
+                ..original_frame.clone()
             })
             .collect();
         Some(res)
