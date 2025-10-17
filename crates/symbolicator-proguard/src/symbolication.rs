@@ -360,7 +360,7 @@ impl ProguardService {
             .iter()
             .rev()
             .map(|new_frame| {
-                let mut mapped_frame = JvmFrame {
+                let mapped_frame = JvmFrame {
                     module: new_frame.class().to_owned(),
                     function: new_frame.method().to_owned(),
                     lineno: Some(new_frame.line() as u32),
