@@ -29,6 +29,7 @@ use crate::interface::{
     Registers, RewriteRules, SymbolicateStacktraces, SystemInfo,
 };
 use crate::metrics::StacktraceOrigin;
+use crate::symbolication::attachments::download_attachment;
 
 use super::minidump_stacktraces::parse_stacktraces_from_minidump;
 use super::module_lookup::object_file_status_from_cache_contents;
@@ -524,6 +525,7 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
         } = request;
+        let minidump_file = download_attachment(&self.download_svc, minidump_file).await?;
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(time_raw("minidump.upload.size") = len);

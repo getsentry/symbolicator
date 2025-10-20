@@ -11,7 +11,7 @@ use remote::EventKey;
 use settings::Mode;
 use symbolicator_js::SourceMapService;
 use symbolicator_native::SymbolicationActor;
-use symbolicator_native::interface::ProcessMinidump;
+use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
 use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
                 .process_minidump(ProcessMinidump {
                     platform: None,
                     scope,
-                    minidump_file,
+                    minidump_file: AttachmentFile::Local(minidump_file),
                     sources: dsym_sources,
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),

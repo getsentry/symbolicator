@@ -3,7 +3,9 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 
-use symbolicator_native::interface::{FrameStatus, ProcessMinidump, SymbolicateStacktraces};
+use symbolicator_native::interface::{
+    AttachmentFile, FrameStatus, ProcessMinidump, SymbolicateStacktraces,
+};
 use symbolicator_service::caching::Metadata;
 use symbolicator_service::objects::ObjectDownloadInfo;
 use symbolicator_service::types::{ObjectFileStatus, Scope};
@@ -152,7 +154,7 @@ async fn test_minidump_symstore_index() {
         .process_minidump(ProcessMinidump {
             platform: None,
             scope: Scope::Global,
-            minidump_file,
+            minidump_file: AttachmentFile::Local(minidump_file),
             sources: Arc::new([source]),
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
