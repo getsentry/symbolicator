@@ -40,7 +40,7 @@ jobs:
           # we just cache the venv-dir directly in action-setup-venv
           enable-cache: false
 
-      - uses: getsentry/action-setup-venv@3a832a9604b3e1a4202ae559248f26867b467cc7 # v2.1.1
+      - uses: getsentry/action-setup-venv@b3fb2c6402d963e90c2c8e6a6536946c7fe4ebde # v2.2.0
         with:
           python-version: 3.13.5
           cache-dependency-path: uv.lock
