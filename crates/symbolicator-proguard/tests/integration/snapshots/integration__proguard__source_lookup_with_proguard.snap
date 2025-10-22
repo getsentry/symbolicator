@@ -104,7 +104,9 @@ stacktraces:
         index: 18
         method_synthesized: true
       - function: onCreate$lambda-1
+        filename: EditActivity.kt
         module: io.sentry.samples.instrumentation.ui.EditActivity
+        abs_path: EditActivity.kt
         lineno: 37
         pre_context:
           - "        }"
@@ -122,6 +124,7 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloThere
+        filename: R8$$SyntheticClass
         module: io.sentry.samples.instrumentation.ui.SomeService
         lineno: 5
         pre_context:
@@ -139,6 +142,7 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloInner
+        filename: R8$$SyntheticClass
         module: io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService
         lineno: 10
         pre_context:
@@ -157,16 +161,19 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloOther
+        filename: R8$$SyntheticClass
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
         lineno: 17
         in_app: true
         index: 18
       - function: otherFun
+        filename: R8$$SyntheticClass
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
         lineno: 21
         in_app: true
         index: 18
       - function: helloOtherInner
+        filename: R8$$SyntheticClass
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass
         lineno: 26
         in_app: true
