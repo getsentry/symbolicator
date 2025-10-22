@@ -227,7 +227,7 @@ jobs:
           build_context: '/tmp/docker-ctx'
           ghcr: false
           google_ar: false
-          outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
+          outputs: type=docker,dest=/tmp/symbolicator-amd64.tar
 
       - name: Load Image
         run: |
