@@ -217,7 +217,8 @@ jobs:
         run: |
           cp Dockerfile /tmp/docker-ctx
           mkdir -p /tmp/docker-ctx/binaries/linux/amd64
-          mv /tmp/docker-ctx/symbolicator-binary-amd64/symbolicator /tmp/docker-ctx/binaries/linux/amd64
+          tree /tmp/docker-ctx
+          mv /tmp/docker-ctx/symbolicator /tmp/docker-ctx/binaries/linux/amd64
 
       - name: Build amd64 Image
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
