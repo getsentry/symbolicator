@@ -154,7 +154,6 @@ jobs:
           # because the docker build essentially amounts to copying files, not compiling.
           platforms: linux/amd64,linux/arm64
           build_context: '/tmp/docker-ctx'
-          publish_on_pr: true  # TEMPORARY FOR TESTING
           ghcr: true
           google_ar: true
           # note: nightly will only be tagged if on default branch
@@ -217,7 +216,6 @@ jobs:
         run: |
           cp Dockerfile /tmp/docker-ctx
           mkdir -p /tmp/docker-ctx/binaries/linux/amd64
-          tree /tmp/docker-ctx
           mv /tmp/docker-ctx/symbolicator /tmp/docker-ctx/binaries/linux/amd64
 
       - name: Build amd64 Image
@@ -229,11 +227,11 @@ jobs:
           build_context: '/tmp/docker-ctx'
           ghcr: false
           google_ar: false
-          # outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
+          outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
 
       - name: Load Image
         run: |
-          # docker load --input /tmp/symbolicator-amd64.tar
+          docker load --input /tmp/symbolicator-amd64.tar
           docker image ls
 
       - name: Run Sentry self-hosted e2e CI
