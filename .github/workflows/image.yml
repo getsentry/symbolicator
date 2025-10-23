@@ -206,9 +206,6 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Download amd64 binary
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
@@ -238,8 +235,10 @@ jobs:
           docker image ls
 
       - name: Run Sentry self-hosted e2e CI
-        uses: getsentry/self-hosted@6ae40d837a78c2968a28acf952b1beb9911237f8 # master
+        uses: getsentry/self-hosted@master
         with:
           project_name: symbolicator
           image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          env:
+            DOCKER_BUILDKIT: 0
