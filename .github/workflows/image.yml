@@ -240,5 +240,7 @@ jobs:
           project_name: symbolicator
           image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-          env:
-            DOCKER_BUILDKIT: 0
+        env:
+          # XXX: this action doesn't work if buildx is available (it's installed by action-build-and-push-images)
+          #      because docker compose will build with type=docker and not type=image
+          DOCKER_BUILDKIT: 0
