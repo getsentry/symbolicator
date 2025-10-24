@@ -39,7 +39,7 @@ jobs:
       full_ci: "${{ steps.set-outputs.outputs.full_ci }}"
 
 
-  build-image:
+  build-binaries:
     needs: build-setup
 
     strategy:
@@ -61,7 +61,7 @@ jobs:
         }')[matrix.arch] }}
 
     steps:
-      - uses: actions/checkout@v5.0.0
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
         with:
           submodules: recursive
 
@@ -77,7 +77,7 @@ jobs:
       - name: Install sentry-cli
         run: curl -sL https://sentry.io/get-cli/ | bash
 
-      - uses: swatinem/rust-cache@v2
+      - uses: swatinem/rust-cache@7939da402645ba29a2df566723491a2c856e8f8a # v2
         if: ${{ !startsWith(github.ref_name, 'release/') }}
         with:
           key: ${{ github.job }}
@@ -87,6 +87,12 @@ jobs:
         run: |
           cargo build --release --locked --target="${RUST_TARGET}" --features="${FEATURES}"
           mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
+
+      - name: Upload Binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: symbolicator-binary-${{ matrix.arch }}
+          path: ./symbolicator
 
       - name: Split debug info
         run: |
@@ -102,126 +108,64 @@ jobs:
           mv "${SOURCE_BUNDLE}" /tmp/debug-info/symbolicator-${{ matrix.arch }}.src.zip
 
       - name: Upload Debug Info
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: symbolicator-debug@${{ matrix.arch }}
           path: /tmp/debug-info/*
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  assemble:
+    needs: [build-setup, build-binaries]
+    if: "needs.build-setup.outputs.full_ci == 'true'"
+
+    name: Assemble
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write  # required for GHCR
+      contents: read
+      id-token: write  # required for GAR
+
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Download Binaries
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: symbolicator-binary-*
+          path: /tmp/docker-ctx
 
       - name: Prepare Docker Context
         run: |
-          mkdir docker-ctx
-          cp Dockerfile docker-ctx/
-          mv symbolicator docker-ctx/
+          cp Dockerfile /tmp/docker-ctx
+          mkdir -p /tmp/docker-ctx/binaries/linux/amd64 /tmp/docker-ctx/binaries/linux/arm64
+          mv /tmp/docker-ctx/symbolicator-binary-amd64/symbolicator /tmp/docker-ctx/binaries/linux/amd64
+          mv /tmp/docker-ctx/symbolicator-binary-arm64/symbolicator /tmp/docker-ctx/binaries/linux/arm64
 
-      - name: Build Image
-        uses: docker/build-push-action@v6
+      # If action-build-and-push-images supports passing in a docker tar,
+      # then we can reuse the image artifact rather than this workaround
+      # (thankfully the build amounts to just a cp, wouldn't be doing this
+      # if the build was more complicated as we're building twice)
+      - name: Build and push images
+        if: "needs.build-setup.outputs.full_ci == 'true'"
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
-          context: docker-ctx/
-          platforms: linux/${{ matrix.arch }}
-          tags: symbolicator-${{ matrix.arch }}
-          outputs: type=docker,dest=/tmp/symbolicator-${{ matrix.arch }}.tar
-          push: false
-
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: symbolicator-image@${{ matrix.arch }}
-          path: /tmp/symbolicator-${{ matrix.arch }}.tar
-
-  assemble-ghcr:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Github Container Registry
-    runs-on: ubuntu-latest
-
-    permissions:
-      packages: write
-
-    env:
-      IMAGE: "ghcr.io/getsentry/symbolicator"
-
-    steps:
-      - name: Docker Login
-        run: docker login --username '${{ github.actor }}' --password-stdin ghcr.io <<< "$GHCR_TOKEN"
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download Images
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@*
-          path: /tmp
-          merge-multiple: true
-
-      - &assemble
-        name: Assemble and Push Images
-        run: |
-          set -x
-
-          IMAGES=()
-          for image in /tmp/symbolicator-*.tar; do
-            NAME="$(basename $image .tar)"
-            ARCH="${NAME#*-}"
-            TARGET="${IMAGE}:${{ github.sha }}-${ARCH}"
-
-            docker load --input "${image}"
-            docker tag "${NAME}" "${TARGET}"
-            docker push "${TARGET}"
-
-            IMAGES+=("${TARGET}")
-          done
-
-          docker buildx imagetools create -t "${IMAGE}:${{ github.sha }}" "${IMAGES[@]}"
-
-          if [[ "${{ github.ref_name }}" == "master" ]]; then
-            docker buildx imagetools create -t "${IMAGE}:nightly" "${IMAGE}:${{ github.sha }}"
-          fi
-
-  assemble-ar:
-    needs: [build-setup, build-image]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
-
-    name: Assemble for Google Artifact Registry
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      id-token: write
-
-    env:
-      IMAGE: "us-central1-docker.pkg.dev/sentryio/symbolicator/image"
-
-    steps:
-      - name: Google Auth
-        id: auth
-        uses: google-github-actions/auth@v3
-        with:
-          workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
-        with:
-          version: ">= 390.0.0"
-
-      - name: Configure Docker
-        run: gcloud auth configure-docker us-central1-docker.pkg.dev
-
-      - name: Download Images
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@*
-          path: /tmp
-          merge-multiple: true
-
-      - *assemble
+          image_name: 'symbolicator'
+          # Please note that multiplatform builds like this are only feasible in this case
+          # because the docker build essentially amounts to copying files, not compiling.
+          platforms: linux/amd64,linux/arm64
+          build_context: '/tmp/docker-ctx'
+          ghcr: true
+          google_ar: true
+          # note: nightly will only be tagged if on default branch
+          tag_nightly: true
+          # on GAR we expect latest tags, nightly is canonically only a GHCR thing for us
+          tag_latest: true
+          google_ar_image_name: us-central1-docker.pkg.dev/sentryio/symbolicator/image
+          google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
+          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
   gocd-artifacts:
-    needs: [build-setup, build-image]
+    needs: [build-setup, build-binaries]
     if: "needs.build-setup.outputs.full_ci == 'true'"
 
     name: Upload gocd artifacts
@@ -234,17 +178,17 @@ jobs:
     steps:
       - name: Google Auth
         id: auth
-        uses: google-github-actions/auth@v3
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
           service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v3
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           version: ">= 390.0.0"
 
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           pattern: "symbolicator-debug@*"
           path: /tmp/debug-info/
@@ -255,23 +199,48 @@ jobs:
           gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   self-hosted-end-to-end:
-    needs: [build-image]
+    needs: [build-binaries]
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Download Docker Image
-        uses: actions/download-artifact@v5
-        with:
-          pattern: symbolicator-image@amd64
-          path: /tmp
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
-      - name: Load Docker Image
-        run: docker load --input /tmp/symbolicator-amd64.tar
+      - name: Download amd64 binary
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: symbolicator-binary-amd64
+          path: /tmp/docker-ctx
+
+      - name: Prepare Docker Context
+        run: |
+          cp Dockerfile /tmp/docker-ctx
+          mkdir -p /tmp/docker-ctx/binaries/linux/amd64
+          mv /tmp/docker-ctx/symbolicator /tmp/docker-ctx/binaries/linux/amd64
+
+      - name: Build amd64 Image
+        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
+        with:
+          image_name: 'symbolicator'
+          tags: 'symbolicator-self-hosted'
+          platforms: linux/amd64
+          build_context: '/tmp/docker-ctx'
+          ghcr: false
+          google_ar: false
+          outputs: type=docker,dest=/tmp/symbolicator-amd64.tar
+
+      - name: Load Image
+        run: |
+          docker load --input /tmp/symbolicator-amd64.tar
+          docker image ls
 
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
         with:
           project_name: symbolicator
-          image_url: symbolicator-amd64
+          image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        env:
+          # XXX: this action doesn't work if buildx is available (it's installed by action-build-and-push-images)
+          #      because docker compose will build with type=docker and not type=image
+          DOCKER_BUILDKIT: 0
