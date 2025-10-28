@@ -12,8 +12,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::fs::File;
-use std::future::Future;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -28,7 +26,7 @@ use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{
-    CompletedSymbolicationResponse, ProcessMinidump, SymbolicateStacktraces,
+    AttachmentFile, CompletedSymbolicationResponse, ProcessMinidump, SymbolicateStacktraces,
 };
 use symbolicator_proguard::ProguardService;
 use symbolicator_proguard::interface::{
@@ -42,6 +40,7 @@ use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Platform;
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
+use symbolicator_service::utils::sentry::ConfigureScope;
 use symbolicator_sources::SourceConfig;
 use uuid::Uuid;
 
@@ -148,6 +147,26 @@ impl Default for RequestOptions {
         Self {
             dif_candidates: false,
             apply_source_context: true,
+        }
+    }
+}
+
+/// Query parameters of the symbolication request.
+#[derive(Deserialize)]
+pub struct RequestQueryParams {
+    #[serde(default)]
+    pub timeout: Option<u64>,
+    #[serde(default)]
+    pub scope: Scope,
+}
+
+impl ConfigureScope for RequestQueryParams {
+    fn to_scope(&self, scope: &mut sentry::Scope) {
+        scope.set_tag("request.scope", &self.scope);
+        if let Some(timeout) = self.timeout {
+            scope.set_tag("request.timeout", timeout);
+        } else {
+            scope.set_tag("request.timeout", "none");
         }
     }
 }
@@ -330,7 +349,7 @@ impl RequestService {
         &self,
         platform: Option<Platform>,
         scope: Scope,
-        apple_crash_report: File,
+        apple_crash_report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
         options: RequestOptions,

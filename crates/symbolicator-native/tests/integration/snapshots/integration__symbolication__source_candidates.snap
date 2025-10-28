@@ -1,5 +1,5 @@
 ---
-source: crates/symbolicator-service/tests/integration/symbolication.rs
+source: crates/symbolicator-native/tests/integration/symbolication.rs
 expression: response.unwrap()
 ---
 stacktraces:
@@ -65,4 +65,3 @@ modules:
             has_unwind_info: false
             has_symbols: false
             has_sources: true
-

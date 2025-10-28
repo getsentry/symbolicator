@@ -2,7 +2,7 @@ use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
 use symbolic::common::ByteView;
-use symbolicator_native::interface::ProcessMinidump;
+use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -78,7 +78,7 @@ pub async fn handle_minidump_request(
         ProcessMinidump {
             platform,
             scope: params.scope,
-            minidump_file,
+            minidump_file: AttachmentFile::Local(minidump_file),
             sources,
             scraping,
             rewrite_first_module,

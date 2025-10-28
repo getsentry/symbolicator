@@ -34,6 +34,7 @@ reqwest = { workspace = true, features = [
     "gzip",
     "brotli",
     "deflate",
+    "zstd",
     "json",
     "stream",
     "hickory-dns",

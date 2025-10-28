@@ -1,7 +1,6 @@
 ---
-source: crates/symbolicator-service/tests/integration/process_minidump.rs
-assertion_line: 56
-expression: response.unwrap()
+source: crates/symbolicator-native/tests/integration/process_minidump.rs
+expression: res
 ---
 timestamp: 1522061032
 system_info:
@@ -318,4 +317,3 @@ modules:
     debug_file: linux-gate.so
     image_addr: "0x7fff5aef1000"
     image_size: 8192
-
