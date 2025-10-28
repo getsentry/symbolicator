@@ -19,7 +19,7 @@ use super::ResponseError;
 ///
 /// This includes a bunch of common request options across the various symbolication requests.
 #[derive(Deserialize)]
-pub struct SymbolicationV2RequestBody {
+pub struct SymbolicateAnyRequestBody {
     pub platform: Option<Platform>,
     #[serde(default)]
     pub options: RequestOptions,
@@ -48,10 +48,10 @@ pub enum SymbolicationRequest {
     // TODO: it should be possible to also support native, js and jvm requests here as well
 }
 
-pub async fn symbolicate_v2(
+pub async fn symbolicate_any(
     extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<RequestQueryParams>,
-    extract::Json(body): extract::Json<SymbolicationV2RequestBody>,
+    extract::Json(body): extract::Json<SymbolicateAnyRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     sentry::start_session();
 
@@ -106,7 +106,7 @@ mod tests {
         *buf.last_mut().unwrap() = b'"';
 
         let response = Client::new()
-            .post(server.url("/symbolicate-v2"))
+            .post(server.url("/symbolicate-any"))
             .header("Content-Type", "application/json")
             .body(buf)
             .send()
@@ -121,7 +121,7 @@ mod tests {
         *buf.last_mut().unwrap() = b'"';
 
         let response = Client::new()
-            .post(server.url("/symbolicate-v2"))
+            .post(server.url("/symbolicate-any"))
             .header("Content-Type", "application/json")
             .body(buf)
             .send()
