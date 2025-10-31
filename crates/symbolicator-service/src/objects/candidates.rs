@@ -113,7 +113,7 @@ pub enum ObjectDownloadInfo {
 /// This information is applicable to both "unwind" and "debug" use cases, in each case the
 /// object needs to be processed a little more than just the downloaded artifact and we may
 /// need to report some status on this.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum ObjectUseInfo {
     /// The DIF object was successfully used to provide the required information.
@@ -133,13 +133,8 @@ pub enum ObjectUseInfo {
     /// Internal state, this is not serialised.
     ///
     /// This enum is not serialised into its parent object when it is set to this value.
+    #[default]
     None,
-}
-
-impl Default for ObjectUseInfo {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl ObjectUseInfo {
