@@ -89,9 +89,9 @@ jemallocator = { version = "0.5", features = [
     "unprefixed_malloc_on_supported_platforms",
 ] }
 jsonwebtoken = "9.1.0"
-minidump = "0.26.0"
-minidump-processor = "0.26.0"
-minidump-unwind = "0.26.0"
+minidump = "0.26.1"
+minidump-processor = "0.26.1"
+minidump-unwind = "0.26.1"
 moka = { version = "0.12.8", features = ["future", "sync"] }
 prettytable-rs = "0.10.0"
 proguard = "5.6.2"
