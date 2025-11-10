@@ -273,6 +273,9 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Proguard Cache, with the following versions:
 ///
+/// - `5`: Information about whether a method is an outline/outlineCallsite is now part
+///   of the cache format.
+///
 /// - `4`: Information about classes/methods being synthesized is now part
 ///   of the cache format.
 ///
@@ -282,15 +285,16 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(4, CachePathFormat::V2),
+    current: CacheVersion::new(5, CachePathFormat::V2),
     fallbacks: &[],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
         CacheVersion::new(3, CachePathFormat::V2),
+        CacheVersion::new(4, CachePathFormat::V2),
     ],
 };
-static_assert!(proguard::PRGCACHE_VERSION == 2);
+static_assert!(proguard::PRGCACHE_VERSION == 3);
 
 /// Symstore index cache, with the following versions:
 ///
