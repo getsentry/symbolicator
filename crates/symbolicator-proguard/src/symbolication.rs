@@ -145,23 +145,19 @@ impl ProguardService {
         let mut remapped_stacktraces: Vec<_> = stacktraces
             .into_iter()
             .map(|raw_stacktrace| {
-                let mut remapped_frames: Vec<_> = raw_stacktrace
-                    .frames
-                    .iter()
-                    .flat_map(|frame| {
-                        Self::map_frame(&mappers, frame, release_package.as_deref(), &mut stats)
-                            .into_iter()
-                    })
-                    .collect();
+                let mut st = Self::map_stacktrace(
+                    &mappers,
+                    raw_stacktrace,
+                    release_package.as_deref(),
+                    &mut stats,
+                );
 
                 if frame_order == FrameOrder::CallerFirst {
                     // The symbolicated frames are expected in "caller first" order.
-                    remapped_frames.reverse();
+                    st.frames.reverse();
                 }
 
-                JvmStacktrace {
-                    frames: remapped_frames,
-                }
+                st
             })
             .collect();
 
@@ -202,6 +198,148 @@ impl ProguardService {
         }
     }
 
+    fn map_stacktrace(
+        mappers: &[&proguard::ProguardCache],
+        stacktrace: JvmStacktrace,
+        release_package: Option<&str>,
+        stats: &mut SymbolicationStats,
+    ) -> JvmStacktrace {
+        let mut carried_outline_pos = vec![None; mappers.len()];
+        let mut remapped_frames = Vec::new();
+
+        for frame in stacktrace.frames.into_iter() {
+            let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
+                mappers
+                    .iter()
+                    .find_map(|mapper| mapper.deobfuscate_signature(signature))
+            });
+
+            let params = deobfuscated_signature
+                .as_ref()
+                .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
+
+            // We create the proguard frame according to these priorities:
+            // * Use the frame's line number if it exists
+            // * Use the frame's parameters if they exist
+            // * Use line number 0
+            let proguard_frame = frame
+                .lineno
+                .map(|lineno| {
+                    proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
+                })
+                .or_else(|| {
+                    params.as_ref().map(|p| {
+                        proguard::StackFrame::with_parameters(
+                            &frame.module,
+                            &frame.function,
+                            p.as_str(),
+                        )
+                    })
+                })
+                // This is for parity with the Python implementation. It's unclear why remapping a frame with line 0
+                // would produce useful information, and I have no conclusive evidence that it does.
+                // See the `line_0_1` and `line_0_2` unit tests in this file for examples of the results this produces.
+                //
+                // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
+                // The PR that introduced this was https://github.com/getsentry/symbolicator/pull/1434.
+                //
+                // UPDATE(@loewenheim): The retrace implementation at https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+                // returns the same value whether you give it line 0 or no line at all, and it is the same result that our implementation
+                // gives with line 0. This indicates that the _behavior_ is correct, but we should be able to get there without
+                // backfilling the line number with 0.
+                .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
+
+            let mut skip_frame = false;
+            let mut mapped_result = None;
+
+            let mut remap_buffer = Vec::new();
+            for (mapper_idx, mapper) in mappers.iter().enumerate() {
+                if mapper.is_outline_frame(
+                    proguard_frame.class(),
+                    proguard_frame.method(),
+                    proguard_frame.line(),
+                    proguard_frame.parameters(),
+                ) {
+                    carried_outline_pos[mapper_idx] = Some(proguard_frame.line());
+                    skip_frame = true;
+                    break;
+                }
+
+                let effective = mapper.prepare_frame_for_mapping(
+                    &proguard_frame,
+                    &mut carried_outline_pos[mapper_idx],
+                );
+
+                // First, try to remap the whole frame.
+                if let Some(frames_out) =
+                    Self::map_full_frame(mapper, &frame, &effective, &mut remap_buffer)
+                {
+                    mapped_result = Some(frames_out);
+                    break;
+                }
+
+                // Second, try to remap the frame's method.
+                if let Some(frames_out) = Self::map_class_method(mapper, &frame) {
+                    mapped_result = Some(frames_out);
+                    break;
+                }
+
+                // Third, try to remap just the frame's class.
+                if let Some(frames_out) = Self::map_class(mapper, &frame) {
+                    mapped_result = Some(frames_out);
+                    break;
+                }
+            }
+
+            if skip_frame {
+                continue;
+            }
+
+            // Fix up the frames' in-app fields only if they were actually mapped
+            if let Some(frames) = mapped_result.as_mut() {
+                for mapped_frame in frames.iter_mut() {
+                    // mark the frame as in_app after deobfuscation based on the release package name
+                    // only if it's not present
+                    if let Some(package) = release_package
+                        && mapped_frame.module.starts_with(package)
+                        && mapped_frame.in_app.is_none()
+                    {
+                        mapped_frame.in_app = Some(true);
+                    }
+
+                    // Also count the frames as symbolicated at this point
+                    *stats
+                        .symbolicated_frames
+                        .entry(mapped_frame.platform.clone())
+                        .or_default() += 1;
+                }
+            }
+
+            // If all else fails, just return the original frame.
+            let mut frames = mapped_result.unwrap_or_else(|| {
+                *stats
+                    .unsymbolicated_frames
+                    .entry(frame.platform.clone())
+                    .or_default() += 1;
+                vec![frame.clone()]
+            });
+
+            for mapped_frame in &mut frames {
+                // add the signature if we received one and we were
+                // able to translate/deobfuscate it
+                if let Some(signature) = &deobfuscated_signature {
+                    mapped_frame.signature = Some(signature.format_signature());
+                }
+            }
+
+            remapped_frames.extend(frames);
+        }
+
+        JvmStacktrace {
+            frames: remapped_frames,
+        }
+    }
+
     /// Remaps an exception using the provided mappers.
     ///
     /// This returns a new exception with the deobfuscated module and class names.
@@ -234,122 +372,6 @@ impl ProguardService {
             ty: new_ty.into(),
             module: new_module.into(),
         })
-    }
-
-    /// Remaps a frame using the provided mappers.
-    ///
-    /// This returns a list of frames because remapping may
-    /// expand a frame into a list of inlined frames. The returned list is always
-    /// nonempty; if none of the mappers can remap the frame, the original
-    /// frame is returned. The returned list is sorted so that inlinees come before their callers.
-    #[tracing::instrument(skip_all)]
-    fn map_frame(
-        mappers: &[&proguard::ProguardCache],
-        frame: &JvmFrame,
-        release_package: Option<&str>,
-        stats: &mut SymbolicationStats,
-    ) -> Vec<JvmFrame> {
-        let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
-            mappers
-                .iter()
-                .find_map(|mapper| mapper.deobfuscate_signature(signature))
-        });
-
-        let params = deobfuscated_signature
-            .as_ref()
-            .map(|sig| sig.parameters_types().collect::<Vec<_>>().join(","));
-
-        // We create the proguard frame according to these priorities:
-        // * Use the frame's line number if it exists
-        // * Use the frame's parameters if they exist
-        // * Use line number 0
-        let proguard_frame = frame
-            .lineno
-            .map(|lineno| {
-                proguard::StackFrame::new(&frame.module, &frame.function, lineno as usize)
-            })
-            .or_else(|| {
-                params.as_ref().map(|p| {
-                    proguard::StackFrame::with_parameters(
-                        &frame.module,
-                        &frame.function,
-                        p.as_str(),
-                    )
-                })
-            })
-            // This is for parity with the Python implementation. It's unclear why remapping a frame with line 0
-            // would produce useful information, and I have no conclusive evidence that it does.
-            // See the `line_0_1` and `line_0_2` unit tests in this file for examples of the results this produces.
-            //
-            // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
-            // The PR that introduced this was https://github.com/getsentry/symbolicator/pull/1434.
-            //
-            // UPDATE(@loewenheim): The retrace implementation at https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
-            // returns the same value whether you give it line 0 or no line at all, and it is the same result that our implementation
-            // gives with line 0. This indicates that the _behavior_ is correct, but we should be able to get there without
-            // backfilling the line number with 0.
-            .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
-
-        // First, try to remap the whole frame.
-        let mut mapped_frames = Vec::new();
-        let mut frames = mappers
-            .iter()
-            .find_map(|mapper| {
-                Self::map_full_frame(mapper, frame, &proguard_frame, &mut mapped_frames)
-            })
-            // Second, try to remap the frame's method.
-            .or_else(|| {
-                mappers
-                    .iter()
-                    .find_map(|mapper| Self::map_class_method(mapper, frame))
-            })
-            // Third, try to remap just the frame's class.
-            .or_else(|| {
-                mappers
-                    .iter()
-                    .find_map(|mapper| Self::map_class(mapper, frame))
-            });
-
-        // Fix up the frames' in-app fields only if they were actually mapped
-        if let Some(frames) = frames.as_mut() {
-            for frame in frames.iter_mut() {
-                // mark the frame as in_app after deobfuscation based on the release package name
-                // only if it's not present
-                if let Some(package) = release_package
-                    && frame.module.starts_with(package)
-                    && frame.in_app.is_none()
-                {
-                    frame.in_app = Some(true);
-                }
-            }
-
-            // Also count the frames as symbolicated at this point
-            for frame in frames {
-                *stats
-                    .symbolicated_frames
-                    .entry(frame.platform.clone())
-                    .or_default() += 1;
-            }
-        }
-
-        // If all else fails, just return the original frame.
-        let mut frames = frames.unwrap_or_else(|| {
-            *stats
-                .unsymbolicated_frames
-                .entry(frame.platform.clone())
-                .or_default() += 1;
-            vec![frame.clone()]
-        });
-
-        for frame in &mut frames {
-            // add the signature if we received one and we were
-            // able to translate/deobfuscate it
-            if let Some(signature) = &deobfuscated_signature {
-                frame.signature = Some(signature.format_signature());
-            }
-        }
-
-        frames
     }
 
     /// Tries to remap a `JvmFrame` using a `proguard::StackFrame`
@@ -496,31 +518,37 @@ mod tests {
     use super::*;
     use proguard::{ProguardCache, ProguardMapping};
 
-    fn remap_stacktrace_caller_first(
+    static MAPPING_OUTLINE_COMPLEX: &[u8] = include_bytes!("res/mapping-outline-complex.txt");
+
+    fn map_frames_via_stacktrace(
         proguard_source: &[u8],
+        mut frames: Vec<JvmFrame>,
         release_package: Option<&str>,
-        frames: &[JvmFrame],
+        frame_order: FrameOrder,
     ) -> Vec<JvmFrame> {
+        if frame_order == FrameOrder::CallerFirst {
+            frames.reverse();
+        }
+
         let mapping = ProguardMapping::new(proguard_source);
         let mut cache = Vec::new();
         ProguardCache::write(&mapping, &mut cache).unwrap();
         let cache = ProguardCache::parse(&cache).unwrap();
         cache.test();
 
-        frames
-            .iter()
-            .rev()
-            .flat_map(|frame| {
-                ProguardService::map_frame(
-                    &[&cache],
-                    frame,
-                    release_package,
-                    &mut Default::default(),
-                )
-                .into_iter()
-            })
-            .rev()
-            .collect()
+        let mut remapped_frames = ProguardService::map_stacktrace(
+            &[&cache],
+            JvmStacktrace { frames },
+            release_package,
+            &mut SymbolicationStats::default(),
+        )
+        .frames;
+
+        if frame_order == FrameOrder::CallerFirst {
+            remapped_frames.reverse();
+        }
+
+        remapped_frames
     }
 
     #[test]
@@ -623,7 +651,12 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            frames.to_vec(),
+            None,
+            FrameOrder::CallerFirst,
+        );
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
@@ -709,8 +742,12 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             },
         ];
 
-        let mapped_frames =
-            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &frames);
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            frames.to_vec(),
+            Some("org.slf4j"),
+            FrameOrder::CallerFirst,
+        );
 
         assert_eq!(mapped_frames[0].in_app, Some(true));
         assert_eq!(mapped_frames[1].in_app, Some(false));
@@ -732,8 +769,12 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped =
-            ProguardService::map_frame(&[], &frame, Some("android"), &mut Default::default());
+        let remapped = map_frames_via_stacktrace(
+            b"",
+            vec![frame.clone()],
+            Some("android"),
+            FrameOrder::CallerFirst,
+        );
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -765,12 +806,6 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     21:24:void onCreate():43:43 -> onCreate
 "#;
 
-        let mapping = ProguardMapping::new(proguard_source);
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
-
         let frame = JvmFrame {
             function: "onCreate".into(),
             module: "com.example.App".into(),
@@ -780,8 +815,12 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames =
-            ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            vec![frame.clone()],
+            None,
+            FrameOrder::CallerFirst,
+        );
 
         // Without the "line 0" change, the second frame doesn't exist.
         // The `retrace` implementation at
@@ -823,12 +862,6 @@ y.b -> y.b:
     5:8:void a(com.google.common.util.concurrent.ListenableFuture,com.drivit.core.DrivitCloud$OperationListener):2:2 -> a
 "#;
 
-        let mapping = ProguardMapping::new(proguard_source);
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
-
         let frame = JvmFrame {
             function: "run".into(),
             module: "com.google.firebase.concurrent.a".into(),
@@ -838,8 +871,12 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames =
-            ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            vec![frame.clone()],
+            None,
+            FrameOrder::CallerFirst,
+        );
 
         // Without the "line 0" change, the module is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
         // The `retrace` implementation at
@@ -963,7 +1000,12 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            frames.clone(),
+            None,
+            FrameOrder::CallerFirst,
+        );
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: foo
@@ -1077,7 +1119,12 @@ com.mycompany.android.Delegate -> b80.h:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = map_frames_via_stacktrace(
+            proguard_source,
+            frames.clone(),
+            None,
+            FrameOrder::CallerFirst,
+        );
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: render
@@ -1118,5 +1165,218 @@ com.mycompany.android.Delegate -> b80.h:
           index: 2
           method_synthesized: true
         "###);
+    }
+
+    #[test]
+    fn remap_outline() {
+        let proguard_source = br#"# compiler: R8
+# compiler_version: 2.0
+# min_api: 15
+outline.Class -> a:
+    1:2:int outline() -> a
+# {"id":"com.android.tools.r8.outline"}
+some.Class -> b:
+    4:4:int outlineCaller(int):98:98 -> s
+    5:5:int outlineCaller(int):100:100 -> s
+    27:27:int outlineCaller(int):0:0 -> s
+# {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":4,"2":5},"outline":"La;a()I"}
+"#;
+
+        let frames = vec![
+            JvmFrame {
+                function: "a".to_owned(),
+                module: "a".to_owned(),
+                lineno: Some(1),
+                index: 0,
+                ..Default::default()
+            },
+            JvmFrame {
+                function: "s".to_owned(),
+                module: "b".to_owned(),
+                lineno: Some(27),
+                index: 1,
+                ..Default::default()
+            },
+        ];
+
+        let remapped =
+            map_frames_via_stacktrace(proguard_source, frames, None, FrameOrder::CalleeFirst);
+
+        assert_eq!(remapped.len(), 1);
+        assert_eq!(remapped[0].module, "some.Class");
+        assert_eq!(remapped[0].function, "outlineCaller");
+        assert_eq!(remapped[0].lineno, Some(98));
+        assert_eq!(remapped[0].index, 1);
+    }
+
+    #[test]
+    fn remap_outline_complex() {
+        let frames: Vec<JvmFrame> = serde_json::from_str(
+            r#"[
+            {
+              "function": "b",
+              "module": "ev.h",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 3,
+              "index": 0
+            },
+            {
+              "function": "l",
+              "module": "uu0.k",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 43,
+              "index": 1
+            },
+            {
+              "function": "a",
+              "module": "b80.f",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 33,
+              "index": 2
+            },
+            {
+              "function": "invoke",
+              "module": "er3.f",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 3,
+              "index": 3
+            },
+            {
+              "function": "d",
+              "module": "yv0.g",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 17,
+              "index": 4
+            },
+            {
+              "function": "invoke",
+              "module": "er3.g$a",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 36,
+              "index": 5
+            },
+            {
+              "function": "d",
+              "module": "h1.p0",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 5,
+              "index": 6
+            },
+            {
+              "function": "c",
+              "module": "p1.k",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 135,
+              "index": 7
+            },
+            {
+              "function": "A",
+              "module": "h1.y",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 111,
+              "index": 8
+            },
+            {
+              "function": "m",
+              "module": "h1.y",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 6,
+              "index": 9
+            },
+            {
+              "function": "invoke",
+              "module": "h1.e3",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 231,
+              "index": 10
+            },
+            {
+              "function": "doFrame",
+              "module": "w2.r0$c",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 7,
+              "index": 11
+            },
+            {
+              "function": "doFrame",
+              "module": "w2.q0$c",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 48,
+              "index": 12
+            },
+            {
+              "function": "run",
+              "module": "android.view.Choreographer$CallbackRecord",
+              "filename": "Choreographer.java",
+              "lineno": 1899,
+              "index": 13
+            }]"#,
+        )
+        .unwrap();
+
+        let remapped_frames = map_frames_via_stacktrace(
+            MAPPING_OUTLINE_COMPLEX,
+            frames,
+            None,
+            FrameOrder::CalleeFirst,
+        );
+
+        let actual = {
+            let mut out = String::from("java.lang.IllegalStateException: Oops!");
+            // sentry expects stack traces in reverse order, but to verify expected output, we need to reverse them back
+            for frame in remapped_frames {
+                let filename = frame.filename.as_deref().unwrap_or("<unknown>");
+                let lineno = frame
+                    .lineno
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "<unknown>".to_owned());
+                out.push_str(&format!(
+                    "\n    at {}.{}({}:{})",
+                    frame.module, frame.function, filename, lineno
+                ));
+            }
+            out
+        };
+
+        let expected = r#"
+java.lang.IllegalStateException: Oops!
+    at com.example.projection.MapProjectionViewController.onProjectionView(MapProjectionViewController.kt:160)
+    at com.example.projection.MapProjectionViewController.createProjectionMarkerInternal(MapProjectionViewController.kt:133)
+    at com.example.projection.MapProjectionViewController.createProjectionMarker(MapProjectionViewController.kt:79)
+    at com.example.MapAnnotations.createProjectionMarker(MapAnnotations.kt:63)
+    at com.example.mapcomponents.marker.currentlocation.DotRendererDelegate.createCurrentLocationProjectionMarker(DotRendererDelegate.kt:101)
+    at com.example.mapcomponents.marker.currentlocation.DotRendererDelegate.render(DotRendererDelegate.kt:34)
+    at com.example.mapcomponents.marker.currentlocation.CurrentLocationRenderer.render(CurrentLocationRenderer.kt:39)
+    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1.invoke(CurrentLocationMarkerMapCollection.kt:36)
+    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1.invoke(CurrentLocationMarkerMapCollection.kt:36)
+    at com.example.mapbox.MapboxMapView.addMapReadyCallback(MapboxMapView.kt:368)
+    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1.invoke(CurrentLocationMarkerMapCollection.kt:40)
+    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1.invoke(CurrentLocationMarkerMapCollection.kt:35)
+    at androidx.compose.runtime.DisposableEffectImpl.onRemembered(Effects.kt:85)
+    at androidx.compose.runtime.internal.RememberEventDispatcher.dispatchRememberList(RememberEventDispatcher.kt:253)
+    at androidx.compose.runtime.internal.RememberEventDispatcher.dispatchRememberObservers(RememberEventDispatcher.kt:225)
+    at androidx.compose.runtime.CompositionImpl.applyChangesInLocked(Composition.kt:1122)
+    at androidx.compose.runtime.CompositionImpl.applyChanges(Composition.kt:1149)
+    at androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2.invokeSuspend$lambda$22(Recomposer.kt:705)
+    at androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1.doFrame(AndroidUiFrameClock.android.kt:39)
+    at androidx.compose.ui.platform.AndroidUiDispatcher.performFrameDispatch(AndroidUiDispatcher.android.kt:108)
+    at androidx.compose.ui.platform.AndroidUiDispatcher.access$performFrameDispatch(AndroidUiDispatcher.android.kt:41)
+    at androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1.doFrame(AndroidUiDispatcher.android.kt:69)
+    at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1899)"#;
+
+        assert_eq!(actual.trim(), expected.trim());
     }
 }
