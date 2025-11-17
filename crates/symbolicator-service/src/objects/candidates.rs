@@ -4,6 +4,41 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
 
+/// The VCS type extracted from PDB SRCSRV streams.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SrcSrvVcs {
+    /// Git version control system.
+    Git,
+    /// Perforce version control system.
+    Perforce,
+    /// Other or unknown VCS.
+    Other,
+}
+
+impl SrcSrvVcs {
+    /// Parse a VCS name string into a SrcSrvVcs enum.
+    pub fn from_vcs_name(vcs_name: &str) -> Self {
+        let vcs_lower = vcs_name.to_lowercase();
+        if vcs_lower.contains("git") {
+            Self::Git
+        } else if vcs_lower.contains("perforce") {
+            Self::Perforce
+        } else {
+            Self::Other
+        }
+    }
+
+    /// Get the string representation for metrics.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Git => "git",
+            Self::Perforce => "perforce",
+            Self::Other => "other",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObjectFeatures {
     /// The object file contains full debug info.
@@ -19,10 +54,10 @@ pub struct ObjectFeatures {
     #[serde(default)]
     pub has_sources: bool,
 
-    /// The SRCSRV VCS integration name, if available (e.g., "perforce", "tfs", "git").
+    /// The SRCSRV VCS type, if available.
     /// This is extracted from PDB files that contain SRCSRV streams.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub srcsrv_vcs: Option<String>,
+    pub srcsrv_vcs: Option<SrcSrvVcs>,
 }
 
 impl ObjectFeatures {

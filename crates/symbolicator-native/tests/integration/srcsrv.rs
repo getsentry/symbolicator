@@ -1,5 +1,6 @@
 use crate::{assert_snapshot, make_symbolication_request, setup_service, symbol_server};
 use symbolicator_native::interface::CompletedSymbolicationResponse;
+use symbolicator_service::objects::SrcSrvVcs;
 
 async fn symbolicate_with_pdb(pdb_file: &str) -> CompletedSymbolicationResponse {
     let (symbolication, _cache_dir) = setup_service(|_| ());
@@ -38,9 +39,9 @@ async fn test_pdb_with_srcsrv() {
 
     let module = &response.modules[0];
     assert_eq!(
-        module.features.srcsrv_vcs.as_deref(),
-        Some("Perforce"),
-        "Should extract Perforce VCS name from SRCSRV stream"
+        module.features.srcsrv_vcs,
+        Some(SrcSrvVcs::Perforce),
+        "Should extract Perforce VCS type from SRCSRV stream"
     );
 
     assert_snapshot!(response);

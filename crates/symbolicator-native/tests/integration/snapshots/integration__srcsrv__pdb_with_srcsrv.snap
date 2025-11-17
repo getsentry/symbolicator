@@ -19,7 +19,7 @@ modules:
       has_unwind_info: true
       has_symbols: true
       has_sources: false
-      srcsrv_vcs: Perforce
+      srcsrv_vcs: perforce
     arch: x86
     type: pe
     code_file: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
@@ -45,7 +45,7 @@ modules:
             has_unwind_info: true
             has_symbols: true
             has_sources: false
-            srcsrv_vcs: Perforce
+            srcsrv_vcs: perforce
         debug:
           status: ok
       - source: local

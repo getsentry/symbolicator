@@ -125,8 +125,7 @@ pub fn record_symbolication_metrics(
         if let Some(ref vcs) = m.features.srcsrv_vcs {
             metric!(
                 counter("symbolication.srcsrv_vcs") += 1,
-                "vcs" => vcs,
-                "platform" => &object_platform
+                "vcs" => vcs.as_str()
             );
         }
 

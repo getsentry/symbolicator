@@ -22,7 +22,7 @@ use crate::download::DownloadService;
 use crate::types::Scope;
 
 use super::FetchFileDataRequest;
-use super::candidates::ObjectFeatures;
+use super::candidates::{ObjectFeatures, SrcSrvVcs};
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
@@ -111,9 +111,10 @@ impl FetchFileMetaRequest {
 
         let object = object_handle.object();
 
-        // Extract SRCSRV VCS name for PDB files
+        // Extract SRCSRV VCS name for PDB files and convert to enum
         let srcsrv_vcs = if let symbolic::debuginfo::Object::Pdb(pdb) = object {
             pdb.srcsrv_vcs_name()
+                .map(|vcs_name| SrcSrvVcs::from_vcs_name(&vcs_name))
         } else {
             None
         };
