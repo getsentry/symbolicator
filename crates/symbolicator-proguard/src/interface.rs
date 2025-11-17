@@ -24,6 +24,9 @@ pub struct SymbolicateJvmStacktraces {
     /// The exceptions to symbolicate/remap.
     pub exceptions: Vec<JvmException>,
     /// The list of stacktraces to symbolicate/remap.
+    ///
+    /// Stacktraces are expected in "Symbolicator order", i.e. with the
+    /// innermost frame being at the start of the trace.
     pub stacktraces: Vec<JvmStacktrace>,
     /// A list of proguard files to use for remapping.
     pub modules: Vec<JvmModule>,

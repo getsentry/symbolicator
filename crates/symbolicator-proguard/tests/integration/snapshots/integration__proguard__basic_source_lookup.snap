@@ -7,34 +7,59 @@ exceptions:
     module: io.sentry.samples
 stacktraces:
   - frames:
-      - function: otherMethod
-        filename: OtherActivity.java
-        module: OtherActivity
-        abs_path: OtherActivity.java
-        lineno: 100
-        index: 0
-      - function: differentMethod
-        filename: DifferentActivity
-        module: DifferentActivity
-        abs_path: DifferentActivity
-        lineno: 200
-        index: 1
-      - function: onCreate
-        module: io.sentry.samples.MainActivity
-        lineno: 11
+      - function: whoops4
+        filename: SourceFile
+        module: io.sentry.samples.MainActivity$OneMoreInnerClass
+        abs_path: SourceFile
+        lineno: 38
         pre_context:
-          - ""
-          - "class MainActivity : ComponentActivity() {"
-          - "    override fun onCreate(savedInstanceState: Bundle?) {"
-          - "        super.onCreate(savedInstanceState)"
-          - "        setContentView(R.layout.activity_main)"
-        context_line: "        InnerClass().whoops()"
-        post_context:
-          - ""
-          - "        val list = findViewById<RecyclerView>(R.id.list)"
-          - "        list.layoutManager = LinearLayoutManager(this)"
-          - "        list.adapter = TrackAdapter()"
+          - "        }"
           - "    }"
+          - ""
+          - "    class OneMoreInnerClass {"
+          - "        fun whoops4() {"
+        context_line: "            throw RuntimeException(\"whoops\")"
+        post_context:
+          - "        }"
+          - "    }"
+          - "}"
+          - ""
+        index: 0
+      - function: whoops3
+        filename: MainActivity.kt
+        module: io.sentry.samples.MainActivity$AdditionalInnerClass
+        abs_path: MainActivity.kt
+        lineno: 32
+        pre_context:
+          - "        }"
+          - "    }"
+          - ""
+          - "    class AdditionalInnerClass {"
+          - "        fun whoops3() {"
+        context_line: "            OneMoreInnerClass().whoops4()"
+        post_context:
+          - "        }"
+          - "    }"
+          - ""
+          - "    class OneMoreInnerClass {"
+          - "        fun whoops4() {"
+        index: 1
+      - function: whoops2
+        module: io.sentry.samples.MainActivity$AnotherInnerClass
+        lineno: 26
+        pre_context:
+          - "        }"
+          - "    }"
+          - ""
+          - "    class AnotherInnerClass {"
+          - "        fun whoops2() {"
+        context_line: "            AdditionalInnerClass().whoops3()"
+        post_context:
+          - "        }"
+          - "    }"
+          - ""
+          - "    class AdditionalInnerClass {"
+          - "        fun whoops3() {"
         index: 2
       - function: whoops
         filename: MainActivity.kt
@@ -55,59 +80,34 @@ stacktraces:
           - "    class AnotherInnerClass {"
           - "        fun whoops2() {"
         index: 3
-      - function: whoops2
-        module: io.sentry.samples.MainActivity$AnotherInnerClass
-        lineno: 26
+      - function: onCreate
+        module: io.sentry.samples.MainActivity
+        lineno: 11
         pre_context:
-          - "        }"
-          - "    }"
           - ""
-          - "    class AnotherInnerClass {"
-          - "        fun whoops2() {"
-        context_line: "            AdditionalInnerClass().whoops3()"
+          - "class MainActivity : ComponentActivity() {"
+          - "    override fun onCreate(savedInstanceState: Bundle?) {"
+          - "        super.onCreate(savedInstanceState)"
+          - "        setContentView(R.layout.activity_main)"
+        context_line: "        InnerClass().whoops()"
         post_context:
-          - "        }"
-          - "    }"
           - ""
-          - "    class AdditionalInnerClass {"
-          - "        fun whoops3() {"
+          - "        val list = findViewById<RecyclerView>(R.id.list)"
+          - "        list.layoutManager = LinearLayoutManager(this)"
+          - "        list.adapter = TrackAdapter()"
+          - "    }"
         index: 4
-      - function: whoops3
-        filename: MainActivity.kt
-        module: io.sentry.samples.MainActivity$AdditionalInnerClass
-        abs_path: MainActivity.kt
-        lineno: 32
-        pre_context:
-          - "        }"
-          - "    }"
-          - ""
-          - "    class AdditionalInnerClass {"
-          - "        fun whoops3() {"
-        context_line: "            OneMoreInnerClass().whoops4()"
-        post_context:
-          - "        }"
-          - "    }"
-          - ""
-          - "    class OneMoreInnerClass {"
-          - "        fun whoops4() {"
+      - function: differentMethod
+        filename: DifferentActivity
+        module: DifferentActivity
+        abs_path: DifferentActivity
+        lineno: 200
         index: 5
-      - function: whoops4
-        filename: SourceFile
-        module: io.sentry.samples.MainActivity$OneMoreInnerClass
-        abs_path: SourceFile
-        lineno: 38
-        pre_context:
-          - "        }"
-          - "    }"
-          - ""
-          - "    class OneMoreInnerClass {"
-          - "        fun whoops4() {"
-        context_line: "            throw RuntimeException(\"whoops\")"
-        post_context:
-          - "        }"
-          - "    }"
-          - "}"
-          - ""
+      - function: otherMethod
+        filename: OtherActivity.java
+        module: OtherActivity
+        abs_path: OtherActivity.java
+        lineno: 100
         index: 6
 classes: {}
 errors: []

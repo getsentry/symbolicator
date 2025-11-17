@@ -143,6 +143,7 @@ impl ProguardService {
                             .into_iter()
                     })
                     .collect();
+
                 JvmStacktrace {
                     frames: remapped_frames,
                 }
@@ -223,9 +224,9 @@ impl ProguardService {
     /// Remaps a frame using the provided mappers.
     ///
     /// This returns a list of frames because remapping may
-    /// expand a frame into several. The returned list is always
+    /// expand a frame into a list of inlined frames. The returned list is always
     /// nonempty; if none of the mappers can remap the frame, the original
-    /// frame is returned.
+    /// frame is returned. The returned list is sorted so that inlinees come before their callers.
     #[tracing::instrument(skip_all)]
     fn map_frame(
         mappers: &[&proguard::ProguardCache],
@@ -341,6 +342,9 @@ impl ProguardService {
     ///
     /// The `buf` parameter is used as a buffer for the frames returned
     /// by `remap_frame`.
+    ///
+    /// This function returns a list of frames because one frame may be expanded into
+    /// a series of inlined frames. The returned list is sorted so that inlinees come before their callers.
     #[tracing::instrument(skip_all)]
     fn map_full_frame<'a>(
         mapper: &'a proguard::ProguardCache<'a>,
@@ -355,10 +359,8 @@ impl ProguardService {
             return None;
         }
 
-        // sentry expects stack traces in reverse order
         let res = buf
             .iter()
-            .rev()
             .map(|new_frame| JvmFrame {
                 module: new_frame.class().to_owned(),
                 function: new_frame.method().to_owned(),
@@ -593,54 +595,40 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             })
             .collect();
 
-        assert_eq!(mapped_frames.len(), 7);
-
-        assert_eq!(mapped_frames[0].function, "onClick");
-        assert_eq!(
-            mapped_frames[0].module,
-            "io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4"
-        );
-        assert_eq!(mapped_frames[0].index, 0);
-
-        assert_eq!(
-            mapped_frames[1].filename,
-            Some("MainActivity.java".to_owned())
-        );
-        assert_eq!(mapped_frames[1].module, "io.sentry.sample.MainActivity");
-        assert_eq!(mapped_frames[1].function, "onClickHandler");
-        assert_eq!(mapped_frames[1].lineno, Some(40));
-        assert_eq!(mapped_frames[1].index, 1);
-
-        assert_eq!(mapped_frames[2].function, "foo");
-        assert_eq!(mapped_frames[2].lineno, Some(44));
-        assert_eq!(mapped_frames[2].index, 1);
-
-        assert_eq!(mapped_frames[3].function, "bar");
-        assert_eq!(mapped_frames[3].lineno, Some(54));
-        assert_eq!(
-            mapped_frames[3].filename,
-            Some("MainActivity.java".to_owned())
-        );
-        assert_eq!(mapped_frames[3].module, "io.sentry.sample.MainActivity");
-        assert_eq!(mapped_frames[3].index, 1);
-
-        assert_eq!(mapped_frames[4].function, "onClickHandler");
-        assert_eq!(
-            mapped_frames[4].signature.as_ref().unwrap(),
-            "(android.view.View)"
-        );
-
-        assert_eq!(mapped_frames[5].function, "onClickHandler");
-        assert_eq!(
-            mapped_frames[5].signature.as_ref().unwrap(),
-            "(android.view.View)"
-        );
-
-        assert_eq!(mapped_frames[6].function, "onClickHandler");
-        assert_eq!(
-            mapped_frames[6].signature.as_ref().unwrap(),
-            "(android.view.View)"
-        );
+        insta::assert_yaml_snapshot!(mapped_frames, @r###"
+        - function: onClick
+          module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
+          lineno: 2
+          index: 0
+        - function: bar
+          filename: MainActivity.java
+          module: io.sentry.sample.MainActivity
+          lineno: 54
+          index: 1
+        - function: foo
+          filename: MainActivity.java
+          module: io.sentry.sample.MainActivity
+          lineno: 44
+          index: 1
+        - function: onClickHandler
+          filename: MainActivity.java
+          module: io.sentry.sample.MainActivity
+          lineno: 40
+          index: 1
+        - function: onClickHandler
+          module: io.sentry.sample.MainActivity
+          lineno: 0
+          index: 2
+          signature: (android.view.View)
+        - function: onClickHandler
+          module: io.sentry.sample.MainActivity
+          index: 3
+          signature: (android.view.View)
+        - function: onClickHandler
+          module: io.sentry.sample.ClassDoesNotExist
+          index: 4
+          signature: (android.view.View)
+        "###);
     }
 
     // based on the Python test `test_sets_inapp_after_resolving`.
@@ -781,37 +769,24 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         let mapped_frames =
             ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
 
-        assert_eq!(mapped_frames.len(), 2);
-
-        assert_eq!(
-            mapped_frames[0],
-            JvmFrame {
-                function: "onCreate".into(),
-                module: "com.example.App".into(),
-                lineno: Some(0),
-                abs_path: Some("App.java".into()),
-                filename: Some("App.java".into()),
-                index: 0,
-                ..Default::default()
-            }
-        );
-
-        // Without the "line 0" change, this frame doesn't exist.
+        // Without the "line 0" change, the second frame doesn't exist.
         // The `retrace` implementation at
         // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
         // also returns this, no matter whether you give it line 0 or no line at all.
-        assert_eq!(
-            mapped_frames[1],
-            JvmFrame {
-                function: "barInternalInject".into(),
-                module: "com.example.App".into(),
-                lineno: Some(0),
-                abs_path: Some("App.java".into()),
-                filename: Some("App.java".into()),
-                index: 0,
-                ..Default::default()
-            }
-        );
+        insta::assert_yaml_snapshot!(mapped_frames, @r###"
+        - function: barInternalInject
+          filename: App.java
+          module: com.example.App
+          abs_path: App.java
+          lineno: 0
+          index: 0
+        - function: onCreate
+          filename: App.java
+          module: com.example.App
+          abs_path: App.java
+          lineno: 0
+          index: 0
+        "###);
     }
 
     #[test]
@@ -852,25 +827,19 @@ y.b -> y.b:
         let mapped_frames =
             ProguardService::map_frame(&[&cache], &frame, None, &mut Default::default());
 
-        assert_eq!(mapped_frames.len(), 1);
-
-        assert_eq!(
-            mapped_frames[0],
-            JvmFrame {
-                function: "run$bridge".into(),
-                // Without the "line 0" change, this is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
-                // The `retrace` implementation at
-                // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
-                // also returns this, no matter whether you give it line 0 or no line at all.
-                module: "com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0".into(),
-                lineno: Some(0),
-                abs_path: Some("CustomThreadFactory".into()),
-                filename: Some("CustomThreadFactory".into()),
-                index: 0,
-                method_synthesized: true,
-                ..Default::default()
-            }
-        );
+        // Without the "line 0" change, the module is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
+        // The `retrace` implementation at
+        // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
+        // also returns this, no matter whether you give it line 0 or no line at all.
+        insta::assert_yaml_snapshot!(mapped_frames, @r###"
+        - function: run$bridge
+          filename: CustomThreadFactory
+          module: com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0
+          abs_path: CustomThreadFactory
+          lineno: 0
+          index: 0
+          method_synthesized: true
+        "###);
     }
 
     #[test]
@@ -936,25 +905,25 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
 
         let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[{
-            "function": "a",
-            "abs_path": "SourceFile",
-            "module": "a.a",
-            "filename": "SourceFile",
-            "lineno": 12,
+            "function": "performClickInternal",
+            "abs_path": "Unknown Source",
+            "module": "android.view.View.-$$Nest$m",
+            "filename": "Unknown Source",
+            "lineno": 0,
             "index": 0
         }, {
-            "function": "b",
-            "abs_path": "SourceFile",
-            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
-            "filename": "SourceFile",
-            "lineno": 6,
+            "function": "performClickInternal",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7636,
             "index": 1
         }, {
-            "function": "a",
-            "abs_path": "SourceFile",
-            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
-            "filename": "SourceFile",
-            "lineno": 1,
+            "function": "performClick",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7659,
             "index": 2
         }, {
             "function": "onClick",
@@ -964,64 +933,83 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
             "lineno": 1,
             "index": 3
         }, {
-            "function": "performClick",
-            "abs_path": "View.java",
-            "module": "android.view.View",
-            "filename": "View.java",
-            "lineno": 7659,
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 1,
             "index": 4
         }, {
-            "function": "performClickInternal",
-            "abs_path": "View.java",
-            "module": "android.view.View",
-            "filename": "View.java",
-            "lineno": 7636,
+            "function": "b",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 6,
             "index": 5
         }, {
-            "function": "performClickInternal",
-            "abs_path": "Unknown Source",
-            "module": "android.view.View.-$$Nest$m",
-            "filename": "Unknown Source",
-            "lineno": 0,
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "a.a",
+            "filename": "SourceFile",
+            "lineno": 12,
             "index": 6
         }]"#,
         )
         .unwrap();
 
-        let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
+        let mapped_frames = frames
             .iter()
             .flat_map(|frame| {
                 ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
                     .into_iter()
             })
-            .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
-            .unzip();
-
-        assert_eq!(
-            remapped_filenames,
-            [
-                "Foobar.kt",
-                "MainActivity.kt",
-                "MainActivity.kt",
-                "MainActivity",
-                "View.java",
-                "View.java",
-                "Unknown Source"
-            ]
-        );
-
-        assert_eq!(
-            remapped_abs_paths,
-            [
-                "Foobar.kt",
-                "MainActivity.kt",
-                "MainActivity.kt",
-                "MainActivity",
-                "View.java",
-                "View.java",
-                "Unknown Source"
-            ]
-        );
+            .collect::<Vec<_>>();
+        insta::assert_yaml_snapshot!(mapped_frames, @r###"
+        - function: performClickInternal
+          filename: Unknown Source
+          module: android.view.View.-$$Nest$m
+          abs_path: Unknown Source
+          lineno: 0
+          index: 0
+        - function: performClickInternal
+          filename: View.java
+          module: android.view.View
+          abs_path: View.java
+          lineno: 7636
+          index: 1
+        - function: performClick
+          filename: View.java
+          module: android.view.View
+          abs_path: View.java
+          lineno: 7659
+          index: 2
+        - function: onClick
+          filename: MainActivity
+          module: io.wzieba.r8fullmoderenamessources.MainActivity$$ExternalSyntheticLambda0
+          abs_path: MainActivity
+          lineno: 0
+          index: 3
+          method_synthesized: true
+        - function: $r8$lambda$pOQDVg57r6gG0-DzwbGf17BfNbs
+          filename: MainActivity.kt
+          module: io.wzieba.r8fullmoderenamessources.MainActivity
+          abs_path: MainActivity.kt
+          lineno: 0
+          index: 4
+          method_synthesized: true
+        - function: onCreate$lambda$1$lambda$0
+          filename: MainActivity.kt
+          module: io.wzieba.r8fullmoderenamessources.MainActivity
+          abs_path: MainActivity.kt
+          lineno: 14
+          index: 5
+        - function: foo
+          filename: Foobar.kt
+          module: io.wzieba.r8fullmoderenamessources.Foobar
+          abs_path: Foobar.kt
+          lineno: 10
+          index: 6
+        "###);
     }
 
     #[test]
@@ -1068,65 +1056,76 @@ com.mycompany.android.Delegate -> b80.h:
         cache.test();
 
         let frames: Vec<JvmFrame> = serde_json::from_str(
-            r#"[
-            {
-              "function": "a",
-              "module": "b80.f",
+            r#"[{
+              "function": "b",
+              "module": "ev.h",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 33,
+              "lineno": 3,
               "index": 0
-            },
-            {
+            }, {
               "function": "l",
               "module": "uu0.k",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
               "lineno": 43,
               "index": 1
-            },
-            {
-              "function": "b",
-              "module": "ev.h",
+            }, {
+              "function": "a",
+              "module": "b80.f",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 3,
+              "lineno": 33,
               "index": 2
             }]"#,
         )
         .unwrap();
 
-        let (remapped_filenames, remapped_abs_paths): (Vec<_>, Vec<_>) = frames
+        let mapped_frames = frames
             .iter()
             .flat_map(|frame| {
                 ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
                     .into_iter()
             })
-            .map(|frame| (frame.filename.unwrap(), frame.abs_path.unwrap()))
-            .unzip();
-
-        assert_eq!(
-            remapped_filenames,
-            [
-                "Renderer.kt",
-                "Delegate.kt",
-                "Delegate.kt",
-                "SourceFile",
-                "MapAnnotations.kt",
-                "SourceFile"
-            ]
-        );
-
-        assert_eq!(
-            remapped_abs_paths,
-            [
-                "Renderer.kt",
-                "Delegate.kt",
-                "Delegate.kt",
-                "SourceFile",
-                "MapAnnotations.kt",
-                "SourceFile"
-            ]
-        );
+            .collect::<Vec<_>>();
+        insta::assert_yaml_snapshot!(mapped_frames, @r###"
+        - function: m
+          filename: SourceFile
+          module: ev.StuffKt$$ExternalSyntheticOutline0
+          abs_path: SourceFile
+          lineno: 1
+          index: 0
+          method_synthesized: true
+        - function: createProjectionMarker
+          filename: MapAnnotations.kt
+          module: com.mycompany.android.MapAnnotations
+          abs_path: MapAnnotations.kt
+          lineno: 0
+          index: 1
+        - function: createProjectionMarker
+          filename: SourceFile
+          module: uu0.MapAnnotations
+          abs_path: SourceFile
+          lineno: 0
+          index: 1
+        - function: createProjectionMarker
+          filename: Delegate.kt
+          module: com.mycompany.android.Delegate
+          abs_path: Delegate.kt
+          lineno: 101
+          index: 2
+        - function: render
+          filename: Delegate.kt
+          module: com.mycompany.android.Delegate
+          abs_path: Delegate.kt
+          lineno: 34
+          index: 2
+        - function: render
+          filename: Renderer.kt
+          module: com.mycompany.android.Renderer
+          abs_path: Renderer.kt
+          lineno: 39
+          index: 2
+        "###);
     }
 }

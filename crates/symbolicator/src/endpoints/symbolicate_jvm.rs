@@ -64,12 +64,16 @@ pub async fn handle_symbolication_request(
         platform,
         sources,
         exceptions,
-        stacktraces,
+        mut stacktraces,
         modules,
         release_package,
         classes,
         options,
     } = body;
+
+    // Sentry sends stacktraces in "Sentry order" (innermost frame at the end). We want them
+    // in "Symbolicator order" (innermost frame at the front).
+    stacktraces.iter_mut().for_each(|st| st.frames.reverse());
 
     let request_id = service.symbolicate_jvm_stacktraces(SymbolicateJvmStacktraces {
         platform,
