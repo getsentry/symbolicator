@@ -75,7 +75,7 @@ impl ObjectMetaHandle {
     }
 
     pub fn features(&self) -> ObjectFeatures {
-        self.features.clone()
+        self.features
     }
 
     pub fn scope(&self) -> &Scope {

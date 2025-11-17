@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use symbolicator_sources::{RemoteFileUri, SourceId};
 
 /// The VCS type extracted from PDB SRCSRV streams.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SrcSrvVcs {
     /// Git version control system.
@@ -39,7 +39,7 @@ impl SrcSrvVcs {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObjectFeatures {
     /// The object file contains full debug info.
     pub has_debug_info: bool,
