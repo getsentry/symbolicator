@@ -75,7 +75,7 @@ impl ObjectMetaHandle {
     }
 
     pub fn features(&self) -> ObjectFeatures {
-        self.features
+        self.features.clone()
     }
 
     pub fn scope(&self) -> &Scope {
@@ -111,11 +111,19 @@ impl FetchFileMetaRequest {
 
         let object = object_handle.object();
 
+        // Extract SRCSRV VCS name for PDB files
+        let srcsrv_vcs = if let symbolic::debuginfo::Object::Pdb(pdb) = object {
+            pdb.srcsrv_vcs_name()
+        } else {
+            None
+        };
+
         let meta = ObjectFeatures {
             has_debug_info: object.has_debug_info(),
             has_unwind_info: object.has_unwind_info(),
             has_symbols: object.has_symbols(),
             has_sources: object.has_sources(),
+            srcsrv_vcs,
         };
 
         tracing::trace!("Persisting object meta for {}: {:?}", cache_key, meta);

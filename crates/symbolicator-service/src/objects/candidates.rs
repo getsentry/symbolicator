@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ObjectFeatures {
     /// The object file contains full debug info.
     pub has_debug_info: bool,
@@ -18,6 +18,11 @@ pub struct ObjectFeatures {
     /// The object file had sources available.
     #[serde(default)]
     pub has_sources: bool,
+
+    /// The SRCSRV VCS integration name, if available (e.g., "perforce", "tfs", "git").
+    /// This is extracted from PDB files that contain SRCSRV streams.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub srcsrv_vcs: Option<String>,
 }
 
 impl ObjectFeatures {
@@ -26,6 +31,10 @@ impl ObjectFeatures {
         self.has_unwind_info |= other.has_unwind_info;
         self.has_symbols |= other.has_symbols;
         self.has_sources |= other.has_sources;
+        // Keep the first non-None srcsrv_vcs value
+        if self.srcsrv_vcs.is_none() {
+            self.srcsrv_vcs = other.srcsrv_vcs;
+        }
     }
 }
 
