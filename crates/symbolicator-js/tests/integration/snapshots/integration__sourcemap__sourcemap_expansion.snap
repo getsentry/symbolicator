@@ -124,10 +124,10 @@ errors:
   - abs_path: "http://example.com/index.html"
     type: scraping_disabled
 scraping_attempts:
+  - url: "http://example.com/index.html"
+    status: failure
+    reason: disabled
   - url: "http://example.com/test.min.js"
     status: not_attempted
   - url: "http://example.com/test.min.js.map"
     status: not_attempted
-  - url: "http://example.com/index.html"
-    status: failure
-    reason: disabled

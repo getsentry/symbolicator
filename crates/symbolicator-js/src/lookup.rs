@@ -265,7 +265,11 @@ impl SourceMapLookup {
 
     /// Consumes `self` and returns the artifact bundles that were used and
     /// the scraping attempts that were made.
-    pub fn into_records(self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+    pub fn into_records(mut self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+        self.fetcher
+            .scraping_attempts
+            .sort_by(|l, r| l.url.cmp(&r.url));
+
         (
             self.fetcher.used_artifact_bundles,
             self.fetcher.scraping_attempts,
