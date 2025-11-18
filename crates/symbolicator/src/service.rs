@@ -321,12 +321,7 @@ impl RequestService {
             "symbolicate_jvm",
             RequestOptions::default(),
             async move {
-                let mut response = slf.jvm.symbolicate_jvm(request).await;
-
-                // Sentry expects stacktraces in "Sentry order" (innermost frame at the end).
-                for st in &mut response.stacktraces {
-                    st.frames.reverse();
-                }
+                let response = slf.jvm.symbolicate_jvm(request).await;
 
                 Ok(CompletedResponse::Jvm(response))
             },
