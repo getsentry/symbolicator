@@ -237,6 +237,11 @@ jobs:
       - name: Clean up Docker tar file
         run: rm -rf /tmp/symbolicator-amd64.tar /tmp/docker-ctx
 
+      - name: Clean up Docker build artifacts
+        run: |
+          docker image prune -f
+          docker builder prune -f --all
+
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
         with:
