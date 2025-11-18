@@ -496,7 +496,11 @@ mod tests {
     use super::*;
     use proguard::{ProguardCache, ProguardMapping};
 
-    fn remap_stacktrace_caller_first(proguard_source: &[u8], frames: &[JvmFrame]) -> Vec<JvmFrame> {
+    fn remap_stacktrace_caller_first(
+        proguard_source: &[u8],
+        release_package: Option<&str>,
+        frames: &[JvmFrame],
+    ) -> Vec<JvmFrame> {
         let mapping = ProguardMapping::new(proguard_source);
         let mut cache = Vec::new();
         ProguardCache::write(&mapping, &mut cache).unwrap();
@@ -507,8 +511,13 @@ mod tests {
             .iter()
             .rev()
             .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
-                    .into_iter()
+                ProguardService::map_frame(
+                    &[&cache],
+                    frame,
+                    release_package,
+                    &mut Default::default(),
+                )
+                .into_iter()
             })
             .rev()
             .collect()
@@ -614,7 +623,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
@@ -700,7 +709,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             },
         ];
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+        let mapped_frames =
+            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &frames);
 
         assert_eq!(mapped_frames[0].in_app, Some(true));
         assert_eq!(mapped_frames[1].in_app, Some(false));
@@ -953,7 +963,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: foo
@@ -1067,7 +1077,7 @@ com.mycompany.android.Delegate -> b80.h:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: render
