@@ -38,6 +38,8 @@ pub struct SymbolicateJvmStacktraces {
     pub release_package: Option<String>,
     /// An list of additional class names that should be remapped.
     pub classes: Vec<Arc<str>>,
+    /// The order of frames within stacktraces (innermost frame first or last).
+    pub stacktrace_order: StacktraceOrder,
 }
 
 /// A stack frame in a JVM stacktrace.
@@ -124,6 +126,18 @@ pub struct JvmException {
     pub ty: String,
     /// The module in which the exception is defined.
     pub module: String,
+}
+
+/// The order in which stacktraces are received by Symbolicator and returned
+/// to the caller.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StacktraceOrder {
+    /// The innermost frame is at the beginning of the stacktrace.
+    Symbolicator,
+    /// The innermost frame is at the end of the stacktrace.
+    #[default]
+    Sentry,
 }
 
 /// A JVM stacktrace.

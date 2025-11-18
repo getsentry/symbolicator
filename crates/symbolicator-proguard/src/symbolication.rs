@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::ProguardService;
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
-    ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
+    ProguardError, ProguardErrorKind, StacktraceOrder, SymbolicateJvmStacktraces,
 };
 use crate::metrics::{SymbolicationStats, record_symbolication_metrics};
 
@@ -33,11 +33,12 @@ impl ProguardService {
             scope,
             sources,
             exceptions,
-            stacktraces,
+            mut stacktraces,
             modules,
             release_package,
             apply_source_context,
             classes,
+            stacktrace_order,
         } = request;
 
         let mut stats = SymbolicationStats::default();
@@ -132,10 +133,18 @@ impl ProguardService {
             )
             .collect();
 
+        if stacktrace_order == StacktraceOrder::Sentry {
+            // Sentry sent the stacktraces in "Sentry order" (innermost frame at the end). We want them
+            // in "Symbolicator order" (innermost frame at the front).
+            for st in &mut stacktraces {
+                st.frames.reverse();
+            }
+        }
+
         let mut remapped_stacktraces: Vec<_> = stacktraces
             .into_iter()
             .map(|raw_stacktrace| {
-                let remapped_frames = raw_stacktrace
+                let mut remapped_frames: Vec<_> = raw_stacktrace
                     .frames
                     .iter()
                     .flat_map(|frame| {
@@ -143,6 +152,11 @@ impl ProguardService {
                             .into_iter()
                     })
                     .collect();
+
+                if stacktrace_order == StacktraceOrder::Sentry {
+                    // Sentry expects the stacktraces back in "Sentry order" (innermost frame at the end).
+                    remapped_frames.reverse();
+                }
 
                 JvmStacktrace {
                     frames: remapped_frames,

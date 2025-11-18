@@ -4,7 +4,7 @@ use std::{collections::HashMap, str::FromStr};
 use serde_json::json;
 use symbolic::common::{DebugId, Uuid};
 use symbolicator_proguard::interface::{
-    JvmFrame, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
+    JvmFrame, JvmModule, JvmStacktrace, StacktraceOrder, SymbolicateJvmStacktraces,
 };
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{SentrySourceConfig, SourceConfig};
@@ -35,6 +35,7 @@ fn make_jvm_request(
         stacktraces,
         modules,
         classes: Vec::new(),
+        stacktrace_order: StacktraceOrder::Symbolicator,
     }
 }
 

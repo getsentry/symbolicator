@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::{Json, extract};
 use serde::{Deserialize, Serialize};
 use symbolicator_proguard::interface::{
-    JvmException, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
+    JvmException, JvmModule, JvmStacktrace, StacktraceOrder, SymbolicateJvmStacktraces,
 };
 use symbolicator_service::types::Platform;
 use symbolicator_sources::SourceConfig;
@@ -37,6 +37,8 @@ pub struct JvmRequestOptions {
     /// Whether to apply source context for the stack frames.
     #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
+    #[serde(default)]
+    pub stacktrace_order: StacktraceOrder,
 }
 
 fn default_apply_source_context() -> bool {
@@ -47,6 +49,7 @@ impl Default for JvmRequestOptions {
     fn default() -> Self {
         Self {
             apply_source_context: true,
+            stacktrace_order: Default::default(),
         }
     }
 }
@@ -64,18 +67,12 @@ pub async fn handle_symbolication_request(
         platform,
         sources,
         exceptions,
-        mut stacktraces,
+        stacktraces,
         modules,
         release_package,
         classes,
         options,
     } = body;
-
-    // Sentry sends stacktraces in "Sentry order" (innermost frame at the end). We want them
-    // in "Symbolicator order" (innermost frame at the front).
-    for st in &mut stacktraces {
-        st.frames.reverse();
-    }
 
     let request_id = service.symbolicate_jvm_stacktraces(SymbolicateJvmStacktraces {
         platform,
@@ -87,6 +84,7 @@ pub async fn handle_symbolication_request(
         release_package,
         classes,
         apply_source_context: options.apply_source_context,
+        stacktrace_order: options.stacktrace_order,
     })?;
 
     match service.get_response(request_id, params.timeout).await {
