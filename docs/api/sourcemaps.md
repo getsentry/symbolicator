@@ -43,6 +43,10 @@ Content-Type: application/json
     "enabled": true,
     "allowed_origins": ["*.domain.com"]
   }
+  "options": {
+    "apply_source_context": true, 
+    "frame_order": "callee_first"
+  }
 }
 ```
 
@@ -65,7 +69,7 @@ as well as configuration for scraping sources from external servers:
   were loaded during JS code execution. The list is handled by the Sentry source.
 - `stacktrace`: A list of stacktraces to symbolicate.
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
-    and other optional fields like `colno` or minified `function` name.
+    and other optional fields like `colno` or minified `function` name. This list is assumed to be ordered according to the `frame_order` option (see below).
 - `release`: Name of Sentry `release` for the processed request.
 - `dist`: Name of Sentry `dist` for the processed request.
 - `scraping`: Configuration for scraping of JS sources and sourcemaps from the web.
@@ -80,6 +84,7 @@ as well as configuration for scraping sources from external servers:
   - `headers`: A map of headers to send with every HTTP request while scraping.
 - `options`: Symbolication-specific options which control the endpoint's behavior.
   - `apply_source_context`: Whether to apply source context for the stack frames.
+  - `frame_order`: How stack frames are ordered. The possible values are `"callee_first"` and `"caller_first"`. The default is `"caller_first"`. Frames in the response will be ordered the same way.
 
 ## Response
 
