@@ -11,20 +11,20 @@ stacktraces:
         module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
         lineno: 2
         index: 0
-      - function: bar
+      - function: onClickHandler
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
-        lineno: 54
+        lineno: 40
         index: 1
       - function: foo
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
         lineno: 44
         index: 1
-      - function: onClickHandler
+      - function: bar
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
-        lineno: 40
+        lineno: 54
         index: 1
 classes: {}
 errors: []

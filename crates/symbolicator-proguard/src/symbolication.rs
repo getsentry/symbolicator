@@ -496,6 +496,24 @@ mod tests {
     use super::*;
     use proguard::{ProguardCache, ProguardMapping};
 
+    fn remap_stacktrace_caller_first(proguard_source: &[u8], frames: &[JvmFrame]) -> Vec<JvmFrame> {
+        let mapping = ProguardMapping::new(proguard_source);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
+
+        frames
+            .iter()
+            .rev()
+            .flat_map(|frame| {
+                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
+                    .into_iter()
+            })
+            .rev()
+            .collect()
+    }
+
     #[test]
     fn remap_exception_simple() {
         let proguard_source = b"org.slf4j.helpers.Util$ClassContextSecurityManager -> org.a.b.g$a:
@@ -596,39 +614,27 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapping = ProguardMapping::new(proguard_source);
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
-
-        let mapped_frames: Vec<_> = frames
-            .iter()
-            .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
-                    .into_iter()
-            })
-            .collect();
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
           module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
           lineno: 2
           index: 0
-        - function: bar
+        - function: onClickHandler
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
-          lineno: 54
+          lineno: 40
           index: 1
         - function: foo
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
           lineno: 44
           index: 1
-        - function: onClickHandler
+        - function: bar
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
-          lineno: 40
+          lineno: 54
           index: 1
         - function: onClickHandler
           module: io.sentry.sample.MainActivity
@@ -658,12 +664,6 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     65:65:void <init>() -> <init>
 ";
-
-        let mapping = ProguardMapping::new(proguard_source);
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
 
         let frames = [
             JvmFrame {
@@ -700,18 +700,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             },
         ];
 
-        let mapped_frames: Vec<_> = frames
-            .iter()
-            .flat_map(|frame| {
-                ProguardService::map_frame(
-                    &[&cache],
-                    frame,
-                    Some("org.slf4j"),
-                    &mut Default::default(),
-                )
-                .into_iter()
-            })
-            .collect();
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
 
         assert_eq!(mapped_frames[0].in_app, Some(true));
         assert_eq!(mapped_frames[1].in_app, Some(false));
@@ -910,35 +899,27 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
     void <init>() -> <init>
       # {"id":"com.android.tools.r8.synthesized"}"#;
 
-        let mapping = ProguardMapping::new(proguard_source);
-        assert!(mapping.is_valid());
-        assert!(mapping.has_line_info());
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
-
         let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[{
-            "function": "performClickInternal",
-            "abs_path": "Unknown Source",
-            "module": "android.view.View.-$$Nest$m",
-            "filename": "Unknown Source",
-            "lineno": 0,
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "a.a",
+            "filename": "SourceFile",
+            "lineno": 12,
             "index": 0
         }, {
-            "function": "performClickInternal",
-            "abs_path": "View.java",
-            "module": "android.view.View",
-            "filename": "View.java",
-            "lineno": 7636,
+            "function": "b",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 6,
             "index": 1
         }, {
-            "function": "performClick",
-            "abs_path": "View.java",
-            "module": "android.view.View",
-            "filename": "View.java",
-            "lineno": 7659,
+            "function": "a",
+            "abs_path": "SourceFile",
+            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
+            "filename": "SourceFile",
+            "lineno": 1,
             "index": 2
         }, {
             "function": "onClick",
@@ -948,56 +929,52 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
             "lineno": 1,
             "index": 3
         }, {
-            "function": "a",
-            "abs_path": "SourceFile",
-            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
-            "filename": "SourceFile",
-            "lineno": 1,
+            "function": "performClick",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7659,
             "index": 4
         }, {
-            "function": "b",
-            "abs_path": "SourceFile",
-            "module": "io.wzieba.r8fullmoderenamessources.MainActivity",
-            "filename": "SourceFile",
-            "lineno": 6,
+            "function": "performClickInternal",
+            "abs_path": "View.java",
+            "module": "android.view.View",
+            "filename": "View.java",
+            "lineno": 7636,
             "index": 5
         }, {
-            "function": "a",
-            "abs_path": "SourceFile",
-            "module": "a.a",
-            "filename": "SourceFile",
-            "lineno": 12,
+            "function": "performClickInternal",
+            "abs_path": "Unknown Source",
+            "module": "android.view.View.-$$Nest$m",
+            "filename": "Unknown Source",
+            "lineno": 0,
             "index": 6
         }]"#,
         )
         .unwrap();
 
-        let mapped_frames = frames
-            .iter()
-            .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
-                    .into_iter()
-            })
-            .collect::<Vec<_>>();
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
-        - function: performClickInternal
-          filename: Unknown Source
-          module: android.view.View.-$$Nest$m
-          abs_path: Unknown Source
-          lineno: 0
+        - function: foo
+          filename: Foobar.kt
+          module: io.wzieba.r8fullmoderenamessources.Foobar
+          abs_path: Foobar.kt
+          lineno: 10
           index: 0
-        - function: performClickInternal
-          filename: View.java
-          module: android.view.View
-          abs_path: View.java
-          lineno: 7636
+        - function: onCreate$lambda$1$lambda$0
+          filename: MainActivity.kt
+          module: io.wzieba.r8fullmoderenamessources.MainActivity
+          abs_path: MainActivity.kt
+          lineno: 14
           index: 1
-        - function: performClick
-          filename: View.java
-          module: android.view.View
-          abs_path: View.java
-          lineno: 7659
+        - function: $r8$lambda$pOQDVg57r6gG0-DzwbGf17BfNbs
+          filename: MainActivity.kt
+          module: io.wzieba.r8fullmoderenamessources.MainActivity
+          abs_path: MainActivity.kt
+          lineno: 0
           index: 2
+          method_synthesized: true
         - function: onClick
           filename: MainActivity
           module: io.wzieba.r8fullmoderenamessources.MainActivity$$ExternalSyntheticLambda0
@@ -1005,24 +982,23 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
           lineno: 0
           index: 3
           method_synthesized: true
-        - function: $r8$lambda$pOQDVg57r6gG0-DzwbGf17BfNbs
-          filename: MainActivity.kt
-          module: io.wzieba.r8fullmoderenamessources.MainActivity
-          abs_path: MainActivity.kt
-          lineno: 0
+        - function: performClick
+          filename: View.java
+          module: android.view.View
+          abs_path: View.java
+          lineno: 7659
           index: 4
-          method_synthesized: true
-        - function: onCreate$lambda$1$lambda$0
-          filename: MainActivity.kt
-          module: io.wzieba.r8fullmoderenamessources.MainActivity
-          abs_path: MainActivity.kt
-          lineno: 14
+        - function: performClickInternal
+          filename: View.java
+          module: android.view.View
+          abs_path: View.java
+          lineno: 7636
           index: 5
-        - function: foo
-          filename: Foobar.kt
-          module: io.wzieba.r8fullmoderenamessources.Foobar
-          abs_path: Foobar.kt
-          lineno: 10
+        - function: performClickInternal
+          filename: Unknown Source
+          module: android.view.View.-$$Nest$m
+          abs_path: Unknown Source
+          lineno: 0
           index: 6
         "###);
     }
@@ -1062,61 +1038,56 @@ com.mycompany.android.Delegate -> b80.h:
     com.mycompany.android.IMapAnnotations mapAnnotations -> a
       # {"id":"com.android.tools.r8.residualsignature","signature":"Lbv0/b;"}"#;
 
-        let mapping = ProguardMapping::new(proguard_source);
-        assert!(mapping.is_valid());
-        assert!(mapping.has_line_info());
-        let mut cache = Vec::new();
-        ProguardCache::write(&mapping, &mut cache).unwrap();
-        let cache = ProguardCache::parse(&cache).unwrap();
-        cache.test();
-
         let frames: Vec<JvmFrame> = serde_json::from_str(
-            r#"[{
-              "function": "b",
-              "module": "ev.h",
+            r#"[
+            {
+              "function": "a",
+              "module": "b80.f",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 3,
+              "lineno": 33,
               "index": 0
-            }, {
+            },
+            {
               "function": "l",
               "module": "uu0.k",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
               "lineno": 43,
               "index": 1
-            }, {
-              "function": "a",
-              "module": "b80.f",
+            },
+            {
+              "function": "b",
+              "module": "ev.h",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 33,
+              "lineno": 3,
               "index": 2
             }]"#,
         )
         .unwrap();
 
-        let mapped_frames = frames
-            .iter()
-            .flat_map(|frame| {
-                ProguardService::map_frame(&[&cache], frame, None, &mut Default::default())
-                    .into_iter()
-            })
-            .collect::<Vec<_>>();
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &frames);
+
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
-        - function: m
-          filename: SourceFile
-          module: ev.StuffKt$$ExternalSyntheticOutline0
-          abs_path: SourceFile
-          lineno: 1
+        - function: render
+          filename: Renderer.kt
+          module: com.mycompany.android.Renderer
+          abs_path: Renderer.kt
+          lineno: 39
           index: 0
-          method_synthesized: true
+        - function: render
+          filename: Delegate.kt
+          module: com.mycompany.android.Delegate
+          abs_path: Delegate.kt
+          lineno: 34
+          index: 0
         - function: createProjectionMarker
-          filename: MapAnnotations.kt
-          module: com.mycompany.android.MapAnnotations
-          abs_path: MapAnnotations.kt
-          lineno: 0
-          index: 1
+          filename: Delegate.kt
+          module: com.mycompany.android.Delegate
+          abs_path: Delegate.kt
+          lineno: 101
+          index: 0
         - function: createProjectionMarker
           filename: SourceFile
           module: uu0.MapAnnotations
@@ -1124,23 +1095,18 @@ com.mycompany.android.Delegate -> b80.h:
           lineno: 0
           index: 1
         - function: createProjectionMarker
-          filename: Delegate.kt
-          module: com.mycompany.android.Delegate
-          abs_path: Delegate.kt
-          lineno: 101
+          filename: MapAnnotations.kt
+          module: com.mycompany.android.MapAnnotations
+          abs_path: MapAnnotations.kt
+          lineno: 0
+          index: 1
+        - function: m
+          filename: SourceFile
+          module: ev.StuffKt$$ExternalSyntheticOutline0
+          abs_path: SourceFile
+          lineno: 1
           index: 2
-        - function: render
-          filename: Delegate.kt
-          module: com.mycompany.android.Delegate
-          abs_path: Delegate.kt
-          lineno: 34
-          index: 2
-        - function: render
-          filename: Renderer.kt
-          module: com.mycompany.android.Renderer
-          abs_path: Renderer.kt
-          lineno: 39
-          index: 2
+          method_synthesized: true
         "###);
     }
 }

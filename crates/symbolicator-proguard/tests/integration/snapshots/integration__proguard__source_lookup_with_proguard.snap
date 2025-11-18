@@ -7,61 +7,102 @@ exceptions:
     module: java.lang
 stacktraces:
   - frames:
-      - function: helloOtherInner
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass
-        lineno: 26
-        in_app: true
+      - function: main
+        filename: ZygoteInit.java
+        module: com.android.internal.os.ZygoteInit
+        lineno: 698
         index: 0
-      - function: otherFun
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
-        lineno: 21
-        in_app: true
-        index: 0
-      - function: helloOther
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
-        lineno: 17
-        in_app: true
-        index: 0
-      - function: helloInner
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService
-        lineno: 10
-        pre_context:
-          - "        InnerClassOfSomeService().helloInner()"
-          - "    }"
-          - ""
-          - "    class InnerClassOfSomeService {"
-          - "        fun helloInner() {"
-        context_line: "            AnotherClassInSameFile().helloOther()"
-        post_context:
-          - "        }"
-          - "    }"
-          - "}"
-          - ""
-          - "class AnotherClassInSameFile {"
-        in_app: true
-        index: 0
-      - function: helloThere
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.SomeService
+      - function: run
+        filename: ZygoteInit.java
+        module: com.android.internal.os.ZygoteInit$MethodAndArgsCaller
+        lineno: 903
+        index: 1
+      - function: invoke
+        filename: Method.java
+        module: java.lang.reflect.Method
+        lineno: 372
+        index: 2
+      - function: invoke
+        filename: Method.java
+        module: java.lang.reflect.Method
+        index: 3
+      - function: main
+        filename: ActivityThread.java
+        module: android.app.ActivityThread
+        lineno: 5254
+        index: 4
+      - function: loop
+        filename: Looper.java
+        module: android.os.Looper
+        lineno: 135
+        index: 5
+      - function: dispatchMessage
+        filename: Handler.java
+        module: android.os.Handler
+        lineno: 95
+        index: 6
+      - function: handleCallback
+        filename: Handler.java
+        module: android.os.Handler
+        lineno: 739
+        index: 7
+      - function: run
+        filename: View.java
+        module: android.view.View$PerformClick
+        lineno: 19866
+        index: 8
+      - function: performClick
+        filename: View.java
+        module: android.view.View
+        lineno: 4780
+        index: 9
+      - function: onClick
+        filename: ActionMenuItemView.java
+        module: androidx.appcompat.view.menu.ActionMenuItemView
+        lineno: 7
+        index: 10
+      - function: invokeItem
+        filename: ActionMenuView.java
+        module: androidx.appcompat.widget.ActionMenuView
+        lineno: 4
+        index: 11
+      - function: performItemAction
+        filename: MenuBuilder.java
+        module: androidx.appcompat.view.menu.MenuBuilder
+        lineno: 1
+        index: 12
+      - function: performItemAction
+        filename: MenuBuilder.java
+        module: androidx.appcompat.view.menu.MenuBuilder
+        lineno: 4
+        index: 13
+      - function: invoke
+        filename: MenuItemImpl.java
+        module: androidx.appcompat.view.menu.MenuItemImpl
+        lineno: 15
+        index: 14
+      - function: dispatchMenuItemSelected
+        filename: MenuBuilder.java
+        module: androidx.appcompat.view.menu.MenuBuilder
         lineno: 5
-        pre_context:
-          - package io.sentry.samples.instrumentation.ui
-          - ""
-          - "class SomeService {"
-          - "    fun helloThere() {"
-        context_line: "        InnerClassOfSomeService().helloInner()"
-        post_context:
-          - "    }"
-          - ""
-          - "    class InnerClassOfSomeService {"
-          - "        fun helloInner() {"
-          - "            AnotherClassInSameFile().helloOther()"
+        index: 15
+      - function: onMenuItemSelected
+        filename: ActionMenuView.java
+        module: androidx.appcompat.widget.ActionMenuView$MenuBuilderCallback
+        lineno: 7
+        index: 16
+      - function: onMenuItemClick
+        filename: Toolbar.java
+        module: androidx.appcompat.widget.Toolbar$1
+        lineno: 7
+        index: 17
+      - function: onMenuItemClick
+        filename: R8$$SyntheticClass
+        module: io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0
+        lineno: 0
         in_app: true
-        index: 0
+        index: 18
+        method_synthesized: true
       - function: onCreate$lambda-1
         filename: EditActivity.kt
         module: io.sentry.samples.instrumentation.ui.EditActivity
@@ -81,102 +122,61 @@ stacktraces:
           - ""
           - "                val transaction = Sentry.startTransaction("
         in_app: true
-        index: 0
-      - function: onMenuItemClick
+        index: 18
+      - function: helloThere
         filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0
-        lineno: 0
-        in_app: true
-        index: 0
-        method_synthesized: true
-      - function: onMenuItemClick
-        filename: Toolbar.java
-        module: androidx.appcompat.widget.Toolbar$1
-        lineno: 7
-        index: 1
-      - function: onMenuItemSelected
-        filename: ActionMenuView.java
-        module: androidx.appcompat.widget.ActionMenuView$MenuBuilderCallback
-        lineno: 7
-        index: 2
-      - function: dispatchMenuItemSelected
-        filename: MenuBuilder.java
-        module: androidx.appcompat.view.menu.MenuBuilder
+        module: io.sentry.samples.instrumentation.ui.SomeService
         lineno: 5
-        index: 3
-      - function: invoke
-        filename: MenuItemImpl.java
-        module: androidx.appcompat.view.menu.MenuItemImpl
-        lineno: 15
-        index: 4
-      - function: performItemAction
-        filename: MenuBuilder.java
-        module: androidx.appcompat.view.menu.MenuBuilder
-        lineno: 4
-        index: 5
-      - function: performItemAction
-        filename: MenuBuilder.java
-        module: androidx.appcompat.view.menu.MenuBuilder
-        lineno: 1
-        index: 6
-      - function: invokeItem
-        filename: ActionMenuView.java
-        module: androidx.appcompat.widget.ActionMenuView
-        lineno: 4
-        index: 7
-      - function: onClick
-        filename: ActionMenuItemView.java
-        module: androidx.appcompat.view.menu.ActionMenuItemView
-        lineno: 7
-        index: 8
-      - function: performClick
-        filename: View.java
-        module: android.view.View
-        lineno: 4780
-        index: 9
-      - function: run
-        filename: View.java
-        module: android.view.View$PerformClick
-        lineno: 19866
-        index: 10
-      - function: handleCallback
-        filename: Handler.java
-        module: android.os.Handler
-        lineno: 739
-        index: 11
-      - function: dispatchMessage
-        filename: Handler.java
-        module: android.os.Handler
-        lineno: 95
-        index: 12
-      - function: loop
-        filename: Looper.java
-        module: android.os.Looper
-        lineno: 135
-        index: 13
-      - function: main
-        filename: ActivityThread.java
-        module: android.app.ActivityThread
-        lineno: 5254
-        index: 14
-      - function: invoke
-        filename: Method.java
-        module: java.lang.reflect.Method
-        index: 15
-      - function: invoke
-        filename: Method.java
-        module: java.lang.reflect.Method
-        lineno: 372
-        index: 16
-      - function: run
-        filename: ZygoteInit.java
-        module: com.android.internal.os.ZygoteInit$MethodAndArgsCaller
-        lineno: 903
-        index: 17
-      - function: main
-        filename: ZygoteInit.java
-        module: com.android.internal.os.ZygoteInit
-        lineno: 698
+        pre_context:
+          - package io.sentry.samples.instrumentation.ui
+          - ""
+          - "class SomeService {"
+          - "    fun helloThere() {"
+        context_line: "        InnerClassOfSomeService().helloInner()"
+        post_context:
+          - "    }"
+          - ""
+          - "    class InnerClassOfSomeService {"
+          - "        fun helloInner() {"
+          - "            AnotherClassInSameFile().helloOther()"
+        in_app: true
+        index: 18
+      - function: helloInner
+        filename: R8$$SyntheticClass
+        module: io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService
+        lineno: 10
+        pre_context:
+          - "        InnerClassOfSomeService().helloInner()"
+          - "    }"
+          - ""
+          - "    class InnerClassOfSomeService {"
+          - "        fun helloInner() {"
+        context_line: "            AnotherClassInSameFile().helloOther()"
+        post_context:
+          - "        }"
+          - "    }"
+          - "}"
+          - ""
+          - "class AnotherClassInSameFile {"
+        in_app: true
+        index: 18
+      - function: helloOther
+        filename: R8$$SyntheticClass
+        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
+        lineno: 17
+        in_app: true
+        index: 18
+      - function: otherFun
+        filename: R8$$SyntheticClass
+        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
+        lineno: 21
+        in_app: true
+        index: 18
+      - function: helloOtherInner
+        filename: R8$$SyntheticClass
+        module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass
+        lineno: 26
+        in_app: true
         index: 18
 classes: {}
 errors:

@@ -35,7 +35,7 @@ fn make_jvm_request(
         stacktraces,
         modules,
         classes: Vec::new(),
-        frame_order: FrameOrder::CalleeFirst,
+        frame_order: FrameOrder::CallerFirst,
     }
 }
 
@@ -203,23 +203,23 @@ async fn test_basic_source_lookup() {
     let source = SourceConfig::Sentry(Arc::new(source));
 
     let frames = r#"[{
-        "function": "whoops4",
-        "abs_path": "SourceFile",
-        "module": "io.sentry.samples.MainActivity$OneMoreInnerClass",
-        "filename": "SourceFile",
-        "lineno": 38,
+        "function": "otherMethod",
+        "abs_path": "OtherActivity.java",
+        "module": "OtherActivity",
+        "filename": "OtherActivity.java",
+        "lineno": 100,
         "index": 0
     }, {
-        "function": "whoops3",
-        "abs_path": "MainActivity.kt",
-        "module": "io.sentry.samples.MainActivity$AdditionalInnerClass",
-        "filename": "MainActivity.kt",
-        "lineno": 32,
+        "function": "differentMethod",
+        "abs_path": "DifferentActivity",
+        "module": "DifferentActivity",
+        "filename": "DifferentActivity",
+        "lineno": 200,
         "index": 1
     }, {
-        "function": "whoops2",
-        "module": "io.sentry.samples.MainActivity$AnotherInnerClass",
-        "lineno": 26,
+        "function": "onCreate",
+        "module": "io.sentry.samples.MainActivity",
+        "lineno": 11,
         "index": 2
     }, {
         "function": "whoops",
@@ -229,23 +229,23 @@ async fn test_basic_source_lookup() {
         "lineno": 20,
         "index": 3
     }, {
-        "function": "onCreate",
-        "module": "io.sentry.samples.MainActivity",
-        "lineno": 11,
+        "function": "whoops2",
+        "module": "io.sentry.samples.MainActivity$AnotherInnerClass",
+        "lineno": 26,
         "index": 4
     }, {
-        "function": "differentMethod",
-        "abs_path": "DifferentActivity",
-        "module": "DifferentActivity",
-        "filename": "DifferentActivity",
-        "lineno": 200,
+        "function": "whoops3",
+        "abs_path": "MainActivity.kt",
+        "module": "io.sentry.samples.MainActivity$AdditionalInnerClass",
+        "filename": "MainActivity.kt",
+        "lineno": 32,
         "index": 5
     }, {
-        "function": "otherMethod",
-        "abs_path": "OtherActivity.java",
-        "module": "OtherActivity",
-        "filename": "OtherActivity.java",
-        "lineno": 100,
+        "function": "whoops4",
+        "abs_path": "SourceFile",
+        "module": "io.sentry.samples.MainActivity$OneMoreInnerClass",
+        "filename": "SourceFile",
+        "lineno": 38,
         "index": 6
     }]"#;
 
@@ -335,120 +335,120 @@ async fn test_source_lookup_with_proguard() {
     let source = SourceConfig::Sentry(Arc::new(source));
 
     let frames = r#"[{
-        "filename": "R8$$SyntheticClass",
-        "function": "onMenuItemClick",
-        "module": "io.sentry.samples.instrumentation.ui.g",
-        "lineno": 40,
-        "in_app": true,
+        "filename": "ZygoteInit.java",
+        "function": "main",
+        "module": "com.android.internal.os.ZygoteInit",
+        "lineno": 698,
         "index": 0
-      }, {
-        "filename": "Toolbar.java",
-        "function": "onMenuItemClick",
-        "module": "androidx.appcompat.widget.Toolbar$1",
-        "lineno": 7,
+    }, {
+        "filename": "ZygoteInit.java",
+        "function": "run",
+        "module": "com.android.internal.os.ZygoteInit$MethodAndArgsCaller",
+        "lineno": 903,
         "index": 1
-      }, {
-        "filename": "ActionMenuView.java",
-        "function": "onMenuItemSelected",
-        "module": "androidx.appcompat.widget.ActionMenuView$MenuBuilderCallback",
-        "lineno": 7,
-        "index": 2
-      }, {
-        "filename": "MenuBuilder.java",
-        "function": "dispatchMenuItemSelected",
-        "module": "androidx.appcompat.view.menu.MenuBuilder",
-        "lineno": 5,
-        "index": 3
-      }, {
-        "filename": "MenuItemImpl.java",
+    }, {
+        "filename": "Method.java",
         "function": "invoke",
-        "module": "androidx.appcompat.view.menu.MenuItemImpl",
-        "lineno": 15,
+        "module": "java.lang.reflect.Method",
+        "lineno": 372,
+        "index": 2
+    }, {
+        "filename": "Method.java",
+        "function": "invoke",
+        "module": "java.lang.reflect.Method",
+        "index": 3
+    }, {
+        "filename": "ActivityThread.java",
+        "function": "main",
+        "module": "android.app.ActivityThread",
+        "lineno": 5254,
         "index": 4
-      }, {
-        "filename": "MenuBuilder.java",
-        "function": "performItemAction",
-        "module": "androidx.appcompat.view.menu.MenuBuilder",
-        "lineno": 4,
+    }, {
+        "filename": "Looper.java",
+        "function": "loop",
+        "module": "android.os.Looper",
+        "lineno": 135,
         "index": 5
-      }, {
-        "filename": "MenuBuilder.java",
-        "function": "performItemAction",
-        "module": "androidx.appcompat.view.menu.MenuBuilder",
-        "lineno": 1,
+    }, {
+        "filename": "Handler.java",
+        "function": "dispatchMessage",
+        "module": "android.os.Handler",
+        "lineno": 95,
         "index": 6
-      }, {
-        "filename": "ActionMenuView.java",
-        "function": "invokeItem",
-        "module": "androidx.appcompat.widget.ActionMenuView",
-        "lineno": 4,
+    }, {
+        "filename": "Handler.java",
+        "function": "handleCallback",
+        "module": "android.os.Handler",
+        "lineno": 739,
         "index": 7
-      }, {
-        "filename": "ActionMenuItemView.java",
-        "function": "onClick",
-        "module": "androidx.appcompat.view.menu.ActionMenuItemView",
-        "lineno": 7,
+    }, {
+        "filename": "View.java",
+        "function": "run",
+        "module": "android.view.View$PerformClick",
+        "lineno": 19866,
         "index": 8
-      }, {
+    }, {
         "filename": "View.java",
         "function": "performClick",
         "module": "android.view.View",
         "lineno": 4780,
         "index": 9
-      }, {
-        "filename": "View.java",
-        "function": "run",
-        "module": "android.view.View$PerformClick",
-        "lineno": 19866,
+    }, {
+        "filename": "ActionMenuItemView.java",
+        "function": "onClick",
+        "module": "androidx.appcompat.view.menu.ActionMenuItemView",
+        "lineno": 7,
         "index": 10
-      }, {
-        "filename": "Handler.java",
-        "function": "handleCallback",
-        "module": "android.os.Handler",
-        "lineno": 739,
+    }, {
+        "filename": "ActionMenuView.java",
+        "function": "invokeItem",
+        "module": "androidx.appcompat.widget.ActionMenuView",
+        "lineno": 4,
         "index": 11
-      }, {
-        "filename": "Handler.java",
-        "function": "dispatchMessage",
-        "module": "android.os.Handler",
-        "lineno": 95,
+    }, {
+        "filename": "MenuBuilder.java",
+        "function": "performItemAction",
+        "module": "androidx.appcompat.view.menu.MenuBuilder",
+        "lineno": 1,
         "index": 12
-      }, {
-        "filename": "Looper.java",
-        "function": "loop",
-        "module": "android.os.Looper",
-        "lineno": 135,
+    }, {
+        "filename": "MenuBuilder.java",
+        "function": "performItemAction",
+        "module": "androidx.appcompat.view.menu.MenuBuilder",
+        "lineno": 4,
         "index": 13
-      }, {
-        "filename": "ActivityThread.java",
-        "function": "main",
-        "module": "android.app.ActivityThread",
-        "lineno": 5254,
+    }, {
+        "filename": "MenuItemImpl.java",
+        "function": "invoke",
+        "module": "androidx.appcompat.view.menu.MenuItemImpl",
+        "lineno": 15,
         "index": 14
-      }, {
-        "filename": "Method.java",
-        "function": "invoke",
-        "module": "java.lang.reflect.Method",
+    }, {
+        "filename": "MenuBuilder.java",
+        "function": "dispatchMenuItemSelected",
+        "module": "androidx.appcompat.view.menu.MenuBuilder",
+        "lineno": 5,
         "index": 15
-      }, {
-        "filename": "Method.java",
-        "function": "invoke",
-        "module": "java.lang.reflect.Method",
-        "lineno": 372,
+    }, {
+        "filename": "ActionMenuView.java",
+        "function": "onMenuItemSelected",
+        "module": "androidx.appcompat.widget.ActionMenuView$MenuBuilderCallback",
+        "lineno": 7,
         "index": 16
-      }, {
-        "filename": "ZygoteInit.java",
-        "function": "run",
-        "module": "com.android.internal.os.ZygoteInit$MethodAndArgsCaller",
-        "lineno": 903,
+    }, {
+        "filename": "Toolbar.java",
+        "function": "onMenuItemClick",
+        "module": "androidx.appcompat.widget.Toolbar$1",
+        "lineno": 7,
         "index": 17
-      }, {
-        "filename": "ZygoteInit.java",
-        "function": "main",
-        "module": "com.android.internal.os.ZygoteInit",
-        "lineno": 698,
+    }, {
+        "filename": "R8$$SyntheticClass",
+        "function": "onMenuItemClick",
+        "module": "io.sentry.samples.instrumentation.ui.g",
+        "lineno": 40,
+        "in_app": true,
         "index": 18
-      }]"#;
+    }]"#;
 
     let modules = format!(
         r#"[{{
