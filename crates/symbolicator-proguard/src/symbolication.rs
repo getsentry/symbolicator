@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::ProguardService;
 use crate::interface::{
     CompletedJvmSymbolicationResponse, JvmException, JvmFrame, JvmModuleType, JvmStacktrace,
-    ProguardError, ProguardErrorKind, StacktraceOrder, SymbolicateJvmStacktraces,
+    ProguardError, ProguardErrorKind, SymbolicateJvmStacktraces,
 };
 use crate::metrics::{SymbolicationStats, record_symbolication_metrics};
 
@@ -12,6 +12,7 @@ use symbolic::debuginfo::ObjectDebugSession;
 use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
+use symbolicator_service::types::FrameOrder;
 
 impl ProguardService {
     /// Symbolicates a JVM event.
@@ -38,7 +39,7 @@ impl ProguardService {
             release_package,
             apply_source_context,
             classes,
-            stacktrace_order,
+            frame_order,
         } = request;
 
         let mut stats = SymbolicationStats::default();
@@ -133,8 +134,8 @@ impl ProguardService {
             )
             .collect();
 
-        if stacktrace_order == StacktraceOrder::CallerFirst {
-            // Sentry sent the stacktraces in "caller first" order. We want them
+        if frame_order == FrameOrder::CallerFirst {
+            // Stacktraces were sent in "caller first" order. We want to process them
             // in "callee first" order.
             for st in &mut stacktraces {
                 st.frames.reverse();
@@ -153,7 +154,7 @@ impl ProguardService {
                     })
                     .collect();
 
-                if stacktrace_order == StacktraceOrder::CallerFirst {
+                if frame_order == FrameOrder::CallerFirst {
                     // Sentry expects the stacktraces back in "caller first" order.
                     remapped_frames.reverse();
                 }

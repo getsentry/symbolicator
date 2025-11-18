@@ -311,3 +311,20 @@ impl fmt::Display for Platform {
         self.as_ref().fmt(f)
     }
 }
+
+/// The order in which stack frames are received by Symbolicator and returned
+/// to the caller.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FrameOrder {
+    /// Callee frames come before caller frames.
+    ///
+    /// This means that the innermost frame is at the beginning of the stacktrace.
+    CalleeFirst,
+    /// Caller frames come before callee frames.
+    ///
+    /// This means that the innermost frame is at the end of the stacktrace. This is
+    /// how stacktraces are stored in Sentry events.
+    #[default]
+    CallerFirst,
+}

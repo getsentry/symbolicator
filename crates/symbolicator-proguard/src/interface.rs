@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use symbolic::common::DebugId;
-use symbolicator_service::types::{Platform, Scope};
+use symbolicator_service::types::{FrameOrder, Platform, Scope};
 use symbolicator_sources::SourceConfig;
 
 /// A request for symbolication/remapping of a JVM event.
@@ -36,7 +36,7 @@ pub struct SymbolicateJvmStacktraces {
     /// An list of additional class names that should be remapped.
     pub classes: Vec<Arc<str>>,
     /// The order of frames within stacktraces (innermost frame first or last).
-    pub stacktrace_order: StacktraceOrder,
+    pub frame_order: FrameOrder,
 }
 
 /// A stack frame in a JVM stacktrace.
@@ -123,23 +123,6 @@ pub struct JvmException {
     pub ty: String,
     /// The module in which the exception is defined.
     pub module: String,
-}
-
-/// The order in which stacktraces are received by Symbolicator and returned
-/// to the caller.
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum StacktraceOrder {
-    /// Callee frames come before caller frames.
-    ///
-    /// This means that the innermost frame is at the beginning of the stacktrace.
-    CalleeFirst,
-    /// Caller frames come before callee frames.
-    ///
-    /// This means that the innermost frame is at the end of the stacktrace. This is
-    /// how stacktraces are stored in Sentry events.
-    #[default]
-    CallerFirst,
 }
 
 /// A JVM stacktrace.
