@@ -439,7 +439,7 @@ mod event {
         AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal,
         StacktraceOrigin, SymbolicateStacktraces,
     };
-    use symbolicator_service::types::{Platform, RawObjectInfo, Scope, ScrapingConfig};
+    use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
     use symbolicator_service::utils::hex::HexValue;
     use symbolicator_sources::{SentrySourceConfig, SourceConfig};
 
@@ -574,6 +574,9 @@ mod event {
             apply_source_context: true,
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
+            // we manually reversed the frames when we created the stacktraces, so this is
+            // "callee first"
+            frame_order: FrameOrder::CalleeFirst,
         })
     }
 

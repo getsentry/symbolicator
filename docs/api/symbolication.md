@@ -45,6 +45,11 @@ Content-Type: application/json
     },
     ...
   ]
+  "options": {
+    "dif_candidates": true,
+    "apply_source_context": true, 
+    "frame_order": "callee_first"
+  }
 }
 ```
 
@@ -75,7 +80,8 @@ as well as external sources to pull symbols from:
     instruction address of the top frame.
   - `frames`: A list of frames with addresses. Arbitrary additional properties
     may be passed with frames, but are discarded. The `addr_mode` property
-    defines the beahvior of `instruction_addr`.
+    defines the behavior of `instruction_addr`. This list is assumed to be ordered
+    according to the `frame_order` option (see below).
 - `scraping`: Configuration for authenticating scraping requests via http headers.
   - `enabled`: Whether authentication should happen at all.
   - `allowed_origins`: A list of "allowed origin patterns" that control what
@@ -86,6 +92,13 @@ as well as external sources to pull symbols from:
     - `domain.com`: Matches domain.com on any port.
     - `*:port`: Wildcard on hostname, but explicit match on port.
   - `headers`: A map of headers to send with every HTTP request while scraping.
+- `options`: Symbolication-specific options which control the endpoint's behavior.
+  - `dif_candidates`: Whether to return detailed information on DIF object candidates.
+  - `apply_source_context`: Whether to apply source context for the stack frames.
+  - `frame_order`: How stack frames are ordered. The possible values are
+    `"callee_first"` and `"caller_first"`. The default is `"caller_first"`.
+    Frames in the response will be ordered the same way.
+
 
 ## Response
 
