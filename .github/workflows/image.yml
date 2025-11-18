@@ -18,9 +18,9 @@ jobs:
 
     env:
       FULL_CI: "${{
-        github.event_name != 'pull_request'
-        || contains(github.event.pull_request.labels.*.name, 'Trigger: Full-CI')
-      }}"
+          github.event_name != 'pull_request'
+          || contains(github.event.pull_request.labels.*.name, 'Trigger: Full-CI')
+        }}"
 
     steps:
       - id: set-outputs
@@ -61,7 +61,7 @@ jobs:
         }')[matrix.arch] }}
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
           submodules: recursive
 
@@ -77,7 +77,7 @@ jobs:
       - name: Install sentry-cli
         run: curl -sL https://sentry.io/get-cli/ | bash
 
-      - uses: swatinem/rust-cache@7939da402645ba29a2df566723491a2c856e8f8a # v2
+      - uses: swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
         if: ${{ !startsWith(github.ref_name, 'release/') }}
         with:
           key: ${{ github.job }}
@@ -89,7 +89,7 @@ jobs:
           mv "target/${RUST_TARGET}/release/symbolicator" ./symbolicator
 
       - name: Upload Binary
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: symbolicator-binary-${{ matrix.arch }}
           path: ./symbolicator
@@ -108,14 +108,14 @@ jobs:
           mv "${SOURCE_BUNDLE}" /tmp/debug-info/symbolicator-${{ matrix.arch }}.src.zip
 
       - name: Upload Debug Info
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: symbolicator-debug@${{ matrix.arch }}
           path: /tmp/debug-info/*
 
   assemble:
     needs: [build-setup, build-binaries]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
+    if: ${{ needs.build-setup.outputs.full_ci == 'true' }}
 
     name: Assemble
     runs-on: ubuntu-latest
@@ -126,7 +126,7 @@ jobs:
       id-token: write  # required for GAR
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Download Binaries
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v5
@@ -146,7 +146,7 @@ jobs:
       # (thankfully the build amounts to just a cp, wouldn't be doing this
       # if the build was more complicated as we're building twice)
       - name: Build and push images
-        if: "needs.build-setup.outputs.full_ci == 'true'"
+        if: ${{ needs.build-setup.outputs.full_ci == 'true' }}
         uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
         with:
           image_name: 'symbolicator'
@@ -166,7 +166,7 @@ jobs:
 
   gocd-artifacts:
     needs: [build-setup, build-binaries]
-    if: "needs.build-setup.outputs.full_ci == 'true'"
+    if: ${{ needs.build-setup.outputs.full_ci == 'true' }}
 
     name: Upload gocd artifacts
     runs-on: ubuntu-latest
@@ -198,13 +198,12 @@ jobs:
         run: |
           gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
-  self-hosted-end-to-end:
+  prepare-self-hosted-end-to-end:
     needs: [build-binaries]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
       - name: Download amd64 binary
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v5
@@ -229,13 +228,30 @@ jobs:
           google_ar: false
           outputs: type=docker,dest=/tmp/symbolicator-amd64.tar
 
+      - name: Upload amd64 Image to GitHub Artifacts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: symbolicator-self-hosted-amd64
+          path: /tmp/symbolicator-amd64.tar
+
+  self-hosted-end-to-end:
+    needs: [prepare-self-hosted-end-to-end]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download amd64 Image from GitHub Artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v5
+        with:
+          name: symbolicator-self-hosted-amd64
+          path: /tmp/symbolicator-amd64.tar
+
       - name: Load Image
         run: |
           docker load --input /tmp/symbolicator-amd64.tar
           docker image ls
 
       - name: Clean up Docker tar file
-        run: rm -rf /tmp/symbolicator-amd64.tar /tmp/docker-ctx
+        run: rm -rf /tmp/symbolicator-amd64.tar
 
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
@@ -243,7 +259,3 @@ jobs:
           project_name: symbolicator
           image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        env:
-          # XXX: this action doesn't work if buildx is available (it's installed by action-build-and-push-images)
-          #      because docker compose will build with type=docker and not type=image
-          DOCKER_BUILDKIT: 0
