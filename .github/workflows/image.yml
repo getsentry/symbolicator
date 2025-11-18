@@ -243,7 +243,7 @@ jobs:
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v5
         with:
           name: symbolicator-self-hosted-amd64
-          path: /tmp/symbolicator-amd64.tar
+          path: /tmp/
 
       - name: Load Image
         run: |
