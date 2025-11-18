@@ -198,7 +198,7 @@ jobs:
         run: |
           gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
-  self-hosted-end-to-end:
+  prepare-self-hosted-end-to-end:
     needs: [build-binaries]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -229,17 +229,30 @@ jobs:
           google_ar: false
           outputs: type=docker,dest=/tmp/symbolicator-amd64.tar
 
+      - name: Upload amd64 Image to GitHub Artifacts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: symbolicator-self-hosted-amd64
+          path: /tmp/symbolicator-amd64.tar
+
+  self-hosted-end-to-end:
+    needs: [prepare-self-hosted-end-to-end]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download amd64 Image from GitHub Artifacts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v5
+        with:
+          name: symbolicator-self-hosted-amd64
+          path: /tmp/
+
       - name: Load Image
         run: |
           docker load --input /tmp/symbolicator-amd64.tar
           docker image ls
 
       - name: Clean up Docker tar file
-        run: rm -rf /tmp/symbolicator-amd64.tar /tmp/docker-ctx
-
-      - name: Cleanup Docker Build Context
-        run: |
-            docker buildx prune -a -f
+        run: rm -rf /tmp/symbolicator-amd64.tar
 
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
@@ -247,7 +260,3 @@ jobs:
           project_name: symbolicator
           image_url: symbolicator-self-hosted
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-        env:
-          # XXX: this action doesn't work if buildx is available (it's installed by action-build-and-push-images)
-          #      because docker compose will build with type=docker and not type=image
-          DOCKER_BUILDKIT: 0
