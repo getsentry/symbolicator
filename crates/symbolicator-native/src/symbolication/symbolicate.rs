@@ -115,7 +115,7 @@ impl SymbolicationActor {
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
-            // Stacktraces were sent in "caller first" order. We want to process them
+            // Stack frames were sent in "caller first" order. We want to process them
             // in "callee first" order.
             for st in &mut stacktraces {
                 st.frames.reverse();
@@ -157,7 +157,7 @@ impl SymbolicationActor {
         record_symbolication_metrics(platform, origin, metrics, &modules, &stacktraces);
 
         if frame_order == FrameOrder::CallerFirst {
-            // The symbolicated stacktraces are expected in "caller first" order.
+            // The symbolicated frames are expected in "caller first" order.
             for st in &mut stacktraces {
                 st.frames.reverse();
             }

@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 343
 expression: response
 ---
 stacktraces:
@@ -71,7 +70,7 @@ scraping_attempts:
     status: not_attempted
   - url: "http://example.com/indexed.min.js.map"
     status: not_attempted
-  - url: "http://example.com/file1.js"
-    status: not_attempted
   - url: "http://example.com/file2.js"
+    status: not_attempted
+  - url: "http://example.com/file1.js"
     status: not_attempted

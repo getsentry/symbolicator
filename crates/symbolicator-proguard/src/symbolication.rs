@@ -135,7 +135,7 @@ impl ProguardService {
             .collect();
 
         if frame_order == FrameOrder::CallerFirst {
-            // Stacktraces were sent in "caller first" order. We want to process them
+            // Stack frames were sent in "caller first" order. We want to process them
             // in "callee first" order.
             for st in &mut stacktraces {
                 st.frames.reverse();
@@ -155,7 +155,7 @@ impl ProguardService {
                     .collect();
 
                 if frame_order == FrameOrder::CallerFirst {
-                    // Sentry expects the stacktraces back in "caller first" order.
+                    // The symbolicated frames are expected in "caller first" order.
                     remapped_frames.reverse();
                 }
 

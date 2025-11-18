@@ -505,6 +505,9 @@ mod event {
                 ..Default::default()
             },
             apply_source_context: true,
+            // we manually reversed the frames when we created the stacktraces, so this is
+            // "callee first"
+            frame_order: FrameOrder::CalleeFirst,
 
             stacktraces,
             modules,

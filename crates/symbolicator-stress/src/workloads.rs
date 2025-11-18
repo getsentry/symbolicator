@@ -128,6 +128,7 @@ pub fn prepare_payload(
                     apply_source_context: true,
                     stacktraces,
                     modules,
+                    frame_order: FrameOrder::CallerFirst,
                 },
             )
         }
