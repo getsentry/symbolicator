@@ -47,7 +47,7 @@ Content-Type: application/json
   ]
   "options": {
     "dif_candidates": true,
-    "apply_source_context": true, 
+    "apply_source_context": true,
     "frame_order": "callee_first"
   }
 }

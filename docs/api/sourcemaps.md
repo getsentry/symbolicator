@@ -44,7 +44,7 @@ Content-Type: application/json
     "allowed_origins": ["*.domain.com"]
   }
   "options": {
-    "apply_source_context": true, 
+    "apply_source_context": true,
     "frame_order": "callee_first"
   }
 }
