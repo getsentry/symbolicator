@@ -321,9 +321,9 @@ impl RequestService {
             "symbolicate_jvm",
             RequestOptions::default(),
             async move {
-                let response = slf.jvm.symbolicate_jvm(request).await;
-
-                Ok(CompletedResponse::Jvm(response))
+                Ok(CompletedResponse::Jvm(
+                    slf.jvm.symbolicate_jvm(request).await,
+                ))
             },
         )
     }

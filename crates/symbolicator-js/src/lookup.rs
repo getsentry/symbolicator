@@ -266,6 +266,8 @@ impl SourceMapLookup {
     /// Consumes `self` and returns the artifact bundles that were used and
     /// the scraping attempts that were made.
     pub fn into_records(mut self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+        // There is no guaranteed order on `scraping_attempts` in the response. We might
+        // as well sort them here for consistency.
         self.fetcher
             .scraping_attempts
             .sort_by(|l, r| l.url.cmp(&r.url));
