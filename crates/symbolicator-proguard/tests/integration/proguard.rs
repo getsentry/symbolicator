@@ -35,7 +35,7 @@ fn make_jvm_request(
         stacktraces,
         modules,
         classes: Vec::new(),
-        stacktrace_order: StacktraceOrder::Symbolicator,
+        stacktrace_order: StacktraceOrder::CalleeFirst,
     }
 }
 

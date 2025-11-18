@@ -24,9 +24,6 @@ pub struct SymbolicateJvmStacktraces {
     /// The exceptions to symbolicate/remap.
     pub exceptions: Vec<JvmException>,
     /// The list of stacktraces to symbolicate/remap.
-    ///
-    /// Stacktraces are expected in "Symbolicator order", i.e. with the
-    /// innermost frame being at the start of the trace.
     pub stacktraces: Vec<JvmStacktrace>,
     /// A list of proguard files to use for remapping.
     pub modules: Vec<JvmModule>,
@@ -133,11 +130,16 @@ pub struct JvmException {
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum StacktraceOrder {
-    /// The innermost frame is at the beginning of the stacktrace.
-    Symbolicator,
-    /// The innermost frame is at the end of the stacktrace.
+    /// Callee frames come before caller frames.
+    ///
+    /// This means that the innermost frame is at the beginning of the stacktrace.
+    CalleeFirst,
+    /// Caller frames come before callee frames.
+    ///
+    /// This means that the innermost frame is at the end of the stacktrace. This is
+    /// how stacktraces are stored in Sentry events.
     #[default]
-    Sentry,
+    CallerFirst,
 }
 
 /// A JVM stacktrace.

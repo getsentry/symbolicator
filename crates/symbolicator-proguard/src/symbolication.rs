@@ -133,9 +133,9 @@ impl ProguardService {
             )
             .collect();
 
-        if stacktrace_order == StacktraceOrder::Sentry {
-            // Sentry sent the stacktraces in "Sentry order" (innermost frame at the end). We want them
-            // in "Symbolicator order" (innermost frame at the front).
+        if stacktrace_order == StacktraceOrder::CallerFirst {
+            // Sentry sent the stacktraces in "caller first" order. We want them
+            // in "callee first" order.
             for st in &mut stacktraces {
                 st.frames.reverse();
             }
@@ -153,8 +153,8 @@ impl ProguardService {
                     })
                     .collect();
 
-                if stacktrace_order == StacktraceOrder::Sentry {
-                    // Sentry expects the stacktraces back in "Sentry order" (innermost frame at the end).
+                if stacktrace_order == StacktraceOrder::CallerFirst {
+                    // Sentry expects the stacktraces back in "caller first" order.
                     remapped_frames.reverse();
                 }
 
