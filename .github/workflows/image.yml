@@ -234,6 +234,9 @@ jobs:
           docker load --input /tmp/symbolicator-amd64.tar
           docker image ls
 
+      - name: Clean up Docker tar file
+        run: rm -rf /tmp/symbolicator-amd64.tar /tmp/docker-ctx
+
       - name: Run Sentry self-hosted e2e CI
         uses: getsentry/self-hosted@master
         with:
