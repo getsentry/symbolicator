@@ -1,5 +1,26 @@
 # Changelog
 
+## 25.11.0
+
+### Various fixes & improvements
+
+- chore(self-hosted): Also clean up docker build artifacts (#1824) by @hubertdeng123
+- chore(self-hosted): Clean up symbolicator tar after building image (#1821) by @hubertdeng123
+- feat(srcsrv): Emit metrics for detected SRCSRV/Integrations from PDB (#1819) by @mujacica
+- feat(proguard): Support outline and outlineCallsite annotations (#1816) by @romtsn
+- build(minidump): Bump minidump to 0.26.1 (#1815) by @Dav1dde
+- build: Fix 1.91.0 clippy lints (#1814) by @loewenheim
+- Add a unified `symbolicate-any` endpoint (#1795) by @Swatinem
+- build(deps): bump actions/download-artifact from 5.0.0 to 6.0.0 (#1812) by @dependabot
+- build(deps): bump getsentry/action-setup-venv from 2.2.0 to 3.0.0 (#1813) by @dependabot
+- cd: add github check to deployment (#1811) by @joshuarli
+- feat(build): replace assembly with action-build-push-images (#1805) by @joshuarli
+- build(deps): bump dorny/paths-filter from 3.0.0 to 3.0.2 (#1809) by @dependabot
+- build(deps): bump actions/checkout from 4.2.2 to 5.0.0 (#1807) by @dependabot
+- build(deps): bump actions/cache from 4.2.0 to 4.3.0 (#1810) by @dependabot
+- build(deps): bump getsentry/action-setup-venv from 2.1.1 to 2.2.0 (#1808) by @dependabot
+- fix(proguard): Keep filenames for inline frames (#1806) by @romtsn
+
 ## 25.10.0
 
 ### Breaking Changes

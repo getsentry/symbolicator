@@ -4,6 +4,7 @@ pub mod e2e;
 pub mod process_minidump;
 pub mod public_sources;
 pub mod source_errors;
+pub mod srcsrv;
 pub mod symbolication;
 pub mod utils;
 

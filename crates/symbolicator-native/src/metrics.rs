@@ -121,6 +121,14 @@ pub fn record_symbolication_metrics(
             "status" => m.debug_status.name()
         );
 
+        // Track SRCSRV VCS usage
+        if let Some(ref vcs) = m.features.srcsrv_vcs {
+            metric!(
+                counter("symbolication.srcsrv_vcs") += 1,
+                "vcs" => vcs.as_str()
+            );
+        }
+
         let usable_code_id = !matches!(m.raw.code_id.as_deref(), None | Some(""));
 
         // NOTE: this is a closure as a way to short-circuit the computation because
