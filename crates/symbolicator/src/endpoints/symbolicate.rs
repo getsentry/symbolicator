@@ -102,9 +102,11 @@ mod tests {
     async fn test_body_limit() {
         test::setup();
 
-        let server = test::server_with_default_service();
+        let server = test::server_with_config(|config| {
+            config.symbolicate_body_max_bytes = 5 * 1024;
+        });
 
-        let mut buf = vec![b'.'; 4 * 1024 * 1024];
+        let mut buf = vec![b'.'; 4 * 1024];
         buf[0] = b'"';
         *buf.last_mut().unwrap() = b'"';
 
@@ -119,7 +121,7 @@ mod tests {
         // the JSON does not fit our schema :-)
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
-        let mut buf = vec![b'.'; 8 * 1024 * 1024];
+        let mut buf = vec![b'.'; 8 * 1024];
         buf[0] = b'"';
         *buf.last_mut().unwrap() = b'"';
 
