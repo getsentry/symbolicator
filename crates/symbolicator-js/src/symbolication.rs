@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
+use symbolicator_service::types::FrameOrder;
 
 use crate::SourceMapService;
 use crate::interface::{
@@ -22,6 +23,8 @@ impl SourceMapService {
         mut request: SymbolicateJsStacktraces,
     ) -> CompletedJsSymbolicationResponse {
         let mut raw_stacktraces = std::mem::take(&mut request.stacktraces);
+        let frame_order = request.frame_order;
+
         let apply_source_context = request.apply_source_context;
         let platform = request.platform.clone();
         let mut lookup = SourceMapLookup::new(self.clone(), request).await;
@@ -34,6 +37,13 @@ impl SourceMapService {
 
         let mut errors = BTreeSet::new();
         for raw_stacktrace in &mut raw_stacktraces {
+            if frame_order == FrameOrder::CalleeFirst {
+                // Stack frames were sent in "callee first" order. We want to process them
+                // in "caller first" order. That way we can use callsite function name
+                // information to get a better function name in the callee.
+                raw_stacktrace.frames.reverse();
+            }
+
             let num_frames = raw_stacktrace.frames.len();
             let mut symbolicated_frames = Vec::with_capacity(num_frames);
             let mut callsite_fn_name = None;
@@ -69,6 +79,12 @@ impl SourceMapService {
                         symbolicated_frames.push(raw_frame.clone());
                     }
                 }
+            }
+
+            if frame_order == FrameOrder::CalleeFirst {
+                // The symbolicated frames are expected in "callee first" order.
+                symbolicated_frames.reverse();
+                raw_stacktrace.frames.reverse();
             }
 
             stacktraces.push(JsStacktrace {

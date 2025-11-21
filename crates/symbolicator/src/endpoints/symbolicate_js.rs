@@ -4,7 +4,7 @@ use axum::extract;
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use symbolicator_js::interface::{JsModule, JsStacktrace, SymbolicateJsStacktraces};
-use symbolicator_service::types::Platform;
+use symbolicator_service::types::{FrameOrder, Platform};
 use symbolicator_sources::SentrySourceConfig;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -44,6 +44,10 @@ pub struct JsRequestOptions {
     /// Whether to apply source context for the stack frames.
     #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
+
+    /// The order in which stack frames are received by Symbolicator and returned to the caller.
+    #[serde(default)]
+    pub frame_order: FrameOrder,
 }
 
 fn default_apply_source_context() -> bool {
@@ -54,6 +58,7 @@ impl Default for JsRequestOptions {
     fn default() -> Self {
         Self {
             apply_source_context: true,
+            frame_order: Default::default(),
         }
     }
 }
@@ -92,6 +97,7 @@ pub async fn handle_symbolication_request(
         dist,
         scraping,
         apply_source_context: options.apply_source_context,
+        frame_order: options.frame_order,
     })?;
 
     match service.get_response(request_id, params.timeout).await {

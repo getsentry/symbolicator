@@ -6,7 +6,7 @@ use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
-use symbolicator_service::types::{Platform, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
@@ -86,6 +86,7 @@ impl SymbolicationActor {
             apply_source_context: true,
             scraping,
             rewrite_first_module: Default::default(),
+            frame_order: FrameOrder::CalleeFirst,
         };
 
         let mut system_info = SystemInfo {

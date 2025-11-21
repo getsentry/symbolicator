@@ -18,7 +18,7 @@ use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
 use symbolicator_service::metric;
-use symbolicator_service::types::{ObjectFileStatus, RawObjectInfo, Scope};
+use symbolicator_service::types::{FrameOrder, ObjectFileStatus, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tokio::sync::Notify;
@@ -568,6 +568,7 @@ impl SymbolicationActor {
             apply_source_context: true,
             scraping,
             rewrite_first_module,
+            frame_order: FrameOrder::CalleeFirst,
         };
 
         Ok((request, minidump_state))

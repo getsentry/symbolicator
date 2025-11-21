@@ -4,7 +4,7 @@ use std::sync::Arc;
 use reqwest::Url;
 use serde_json::json;
 use symbolicator_js::interface::{JsFrame, JsModule, JsStacktrace, SymbolicateJsStacktraces};
-use symbolicator_service::types::{Scope, ScrapingConfig};
+use symbolicator_service::types::{FrameOrder, Scope, ScrapingConfig};
 use symbolicator_sources::{SentrySourceConfig, SentryToken, SourceId};
 
 use crate::{assert_snapshot, setup_service};
@@ -46,6 +46,8 @@ fn make_js_request(
             ..Default::default()
         },
         apply_source_context: true,
+        // according to the notes above, frames should be "callee-first"
+        frame_order: FrameOrder::CalleeFirst,
 
         stacktraces,
         modules,

@@ -52,10 +52,10 @@ Content-Type: application/json
     "release_package": "some_release",
     "classes": [],
     "options": {
-        "apply_source_context": true
+        "apply_source_context": true,
+        "frame_order": "callee_first"
     }
 }
-
 ```
 
 ## Query Parameters
@@ -76,11 +76,12 @@ Content-Type: application/json
   were loaded during JVM code execution. The list is handled by the Sentry source.
 - `stacktrace`: A list of stacktraces to symbolicate.
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
-    and other optional fields like `colno` or minified `function` name.
+    and other optional fields like `colno` or minified `function` name. This list is assumed to be ordered according to the `frame_order` option (see below).
 - `release_package`: Name of Sentry `release` for the processed request.
 - `classes`: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.
 - `options`: Symbolication-specific options which control the endpoint's behavior.
   - `apply_source_context`: Whether to apply source context for the stack frames.
+  - `frame_order`: How stack frames are ordered. The possible values are `"callee_first"` and `"caller_first"`. The default is `"caller_first"`. Frames in the response will be ordered the same way.
 
 ## Response
 

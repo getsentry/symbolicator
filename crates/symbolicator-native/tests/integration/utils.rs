@@ -4,7 +4,7 @@ use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{StacktraceOrigin, SymbolicateStacktraces};
 use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
-use symbolicator_service::types::RawObjectInfo;
+use symbolicator_service::types::{FrameOrder, RawObjectInfo};
 use symbolicator_sources::SourceConfig;
 use symbolicator_test as test;
 
@@ -62,6 +62,7 @@ pub fn make_symbolication_request(
         apply_source_context: true,
         scraping: Default::default(),
         rewrite_first_module: Default::default(),
+        frame_order: FrameOrder::CalleeFirst,
     }
 }
 

@@ -7,6 +7,7 @@ use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
+use symbolicator_service::types::FrameOrder;
 
 use crate::caches::bitcode::BitcodeService;
 use crate::caches::cficaches::CfiCacheActor;
@@ -101,7 +102,7 @@ impl SymbolicationActor {
     ) -> anyhow::Result<CompletedSymbolicationResponse> {
         let SymbolicateStacktraces {
             platform,
-            stacktraces,
+            mut stacktraces,
             sources,
             scope,
             signal,
@@ -110,8 +111,16 @@ impl SymbolicationActor {
             apply_source_context,
             scraping,
             rewrite_first_module,
-            ..
+            frame_order,
         } = request;
+
+        if frame_order == FrameOrder::CallerFirst {
+            // Stack frames were sent in "caller first" order. We want to process them
+            // in "callee first" order.
+            for st in &mut stacktraces {
+                st.frames.reverse();
+            }
+        }
 
         let mut module_lookup =
             ModuleLookup::new(scope.clone(), sources, rewrite_first_module, modules);
@@ -146,6 +155,13 @@ impl SymbolicationActor {
         // bring modules back into the original order
         let modules = module_lookup.into_inner();
         record_symbolication_metrics(platform, origin, metrics, &modules, &stacktraces);
+
+        if frame_order == FrameOrder::CallerFirst {
+            // The symbolicated frames are expected in "caller first" order.
+            for st in &mut stacktraces {
+                st.frames.reverse();
+            }
+        }
 
         Ok(CompletedSymbolicationResponse {
             signal,

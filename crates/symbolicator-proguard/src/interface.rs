@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use symbolic::common::DebugId;
-use symbolicator_service::types::{Platform, Scope};
+use symbolicator_service::types::{FrameOrder, Platform, Scope};
 use symbolicator_sources::SourceConfig;
 
 /// A request for symbolication/remapping of a JVM event.
@@ -35,6 +35,8 @@ pub struct SymbolicateJvmStacktraces {
     pub release_package: Option<String>,
     /// An list of additional class names that should be remapped.
     pub classes: Vec<Arc<str>>,
+    /// The order of frames within stacktraces (innermost frame first or last).
+    pub frame_order: FrameOrder,
 }
 
 /// A stack frame in a JVM stacktrace.

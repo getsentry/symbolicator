@@ -12,7 +12,7 @@ use symbolicator_native::interface::{
     AttachmentFile, ProcessMinidump, RawStacktrace, StacktraceOrigin, SymbolicateStacktraces,
 };
 use symbolicator_service::download::SourceConfig;
-use symbolicator_service::types::{RawObjectInfo, Scope};
+use symbolicator_service::types::{FrameOrder, RawObjectInfo, Scope};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct WorkloadsConfig {
@@ -89,6 +89,7 @@ pub fn prepare_payload(
                 stacktraces,
                 modules,
                 rewrite_first_module: Default::default(),
+                frame_order: FrameOrder::CallerFirst,
             })
         }
         Payload::Js { source, event } => {
@@ -127,6 +128,7 @@ pub fn prepare_payload(
                     apply_source_context: true,
                     stacktraces,
                     modules,
+                    frame_order: FrameOrder::CallerFirst,
                 },
             )
         }

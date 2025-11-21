@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
 use symbolicator_service::types::{
-    ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
+    FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
 };
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
@@ -64,6 +64,8 @@ pub struct SymbolicateStacktraces {
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
+    /// The order of frames within stacktraces (innermost frame first or last).
+    pub frame_order: FrameOrder,
 }
 
 /// Location of an attachment file, such as a minidump.
