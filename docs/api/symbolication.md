@@ -48,7 +48,7 @@ Content-Type: application/json
   "options": {
     "dif_candidates": true,
     "apply_source_context": true,
-    "frame_order": "callee_first"
+    "frame_order": "caller_first"
   }
 }
 ```
@@ -96,7 +96,7 @@ as well as external sources to pull symbols from:
   - `dif_candidates`: Whether to return detailed information on DIF object candidates.
   - `apply_source_context`: Whether to apply source context for the stack frames.
   - `frame_order`: How stack frames are ordered. The possible values are
-    `"callee_first"` and `"caller_first"`. The default is `"caller_first"`.
+    `"callee_first"` and `"caller_first"`. The default is `"callee_first"`.
     Frames in the response will be ordered the same way.
 
 

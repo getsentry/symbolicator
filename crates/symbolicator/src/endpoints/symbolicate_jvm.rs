@@ -33,24 +33,19 @@ pub struct JvmSymbolicationRequestBody {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct JvmRequestOptions {
     /// Whether to apply source context for the stack frames.
-    #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
     /// The order in which stack frames are received by Symbolicator and returned to the caller.
-    #[serde(default)]
     pub frame_order: FrameOrder,
-}
-
-fn default_apply_source_context() -> bool {
-    true
 }
 
 impl Default for JvmRequestOptions {
     fn default() -> Self {
         Self {
             apply_source_context: true,
-            frame_order: Default::default(),
+            frame_order: FrameOrder::CallerFirst,
         }
     }
 }
