@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v5.0.0
+        uses: actions/checkout@v6.0.0
 
       - uses: astral-sh/setup-uv@884ad927a57e558e7a70b92f2bccf9198a4be546 # v6
 
