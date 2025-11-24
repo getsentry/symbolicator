@@ -7,7 +7,7 @@ repository = "https://github.com/getsentry/symbolicator"
 version = "25.11.0"
 edition = "2024"
 build = "build.rs"
-license-file = "../LICENSE"
+license-file = "../../LICENSE.md"
 publish = false
 
 [dependencies]

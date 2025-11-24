@@ -4,7 +4,7 @@ publish = false
 version = "25.11.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
-license = "MIT"
+license-file = "../../LICENSE.md"
 
 [dependencies]
 anyhow = { workspace = true }

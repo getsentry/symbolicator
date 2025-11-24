@@ -554,6 +554,18 @@ pub struct Config {
 
     /// Whether to inherit traces from incoming requests and propagate them to outgoing requests.
     pub propagate_traces: bool,
+
+    /// Maximum allowed request body size for requests containing crash files
+    /// (minidumps and Apple crash reports).
+    ///
+    /// This applies to the `/minidump` and `/applecrashreport` endpoints.
+    pub crash_file_body_max_bytes: usize,
+
+    /// Maximum allowed request body size for symbolication requests.
+    ///
+    /// This applies to the `/symbolicate`, `/symbolicate-any`, `/symbolicate-js`,
+    /// and `/symbolicate-jvm` endpoints.
+    pub symbolicate_body_max_bytes: usize,
 }
 
 impl Config {
@@ -644,6 +656,10 @@ impl Default for Config {
             // just spawns these computations.
             traces_sample_rate: 0.05,
             propagate_traces: true,
+            // We currently accept 200MiB minidumps in Sentry. This allows for that size
+            // plus some extra for the rest of the request.
+            crash_file_body_max_bytes: 250 * 1024 * 1024,
+            symbolicate_body_max_bytes: 10 * 1024 * 1024,
         }
     }
 }

@@ -37,25 +37,42 @@ pub async fn healthcheck() -> &'static str {
 
 pub fn create_app(service: RequestService) -> Router {
     // The layers here go "top to bottom" according to the reading order here.
-    let layer = ServiceBuilder::new()
+    let middleware = ServiceBuilder::new()
         .layer(NewSentryLayer::new_from_top())
         .layer(SentryHttpLayer::new().enable_transaction())
-        .layer(MetricsLayer)
-        .layer(DefaultBodyLimit::max(100 * 1024 * 1024));
-    // We have a global 100M body limit, but a 5M symbolicate body limit
-    let symbolicate_route = post(symbolicate).layer(DefaultBodyLimit::max(5 * 1024 * 1024));
-    let symbolicate_any_route = post(symbolicate_any).layer(DefaultBodyLimit::max(5 * 1024 * 1024));
-    Router::new()
-        .route("/proxy/{*path}", get(proxy).head(proxy))
-        .route("/requests/{request_id}", get(requests))
+        .layer(MetricsLayer);
+
+    // Routes for symbolication requests that don't include large files. These can use a lower
+    // body size limit.
+    let symbolicate_router = Router::new()
+        .route("/symbolicate-any", post(symbolicate_any))
+        .route("/symbolicate-js", post(symbolicate_js))
+        .route("/symbolicate-jvm", post(symbolicate_jvm))
+        .route("/symbolicate", post(symbolicate))
+        .layer(DefaultBodyLimit::max(
+            service.config().symbolicate_body_max_bytes,
+        ));
+
+    // Routes for symbolication requests that may include large files. These need a higher
+    // body size limit.
+    let large_file_router = Router::new()
         .route("/applecrashreport", post(applecrashreport))
         .route("/minidump", post(minidump))
-        .route("/symbolicate-js", post(symbolicate_js))
-        .route("/symbolicate", symbolicate_route)
-        .route("/symbolicate-any", symbolicate_any_route)
-        .route("/symbolicate-jvm", post(symbolicate_jvm))
+        .layer(DefaultBodyLimit::max(
+            service.config().crash_file_body_max_bytes,
+        ));
+
+    // Miscellaneous routes that only accept `GET` requests. These can use `axum`'s default limit.
+    let misc_router = Router::new()
+        .route("/proxy/{*path}", get(proxy).head(proxy))
+        .route("/requests/{request_id}", get(requests));
+
+    Router::new()
+        .merge(symbolicate_router)
+        .merge(large_file_router)
+        .merge(misc_router)
         .with_state(service)
-        .layer(layer)
+        .layer(middleware)
         // the healthcheck is last, as it will bypass all the middlewares
         .route("/healthcheck", get(healthcheck))
 }

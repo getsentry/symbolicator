@@ -3,7 +3,7 @@ name = "symbolicli"
 version = "25.11.0"
 edition = "2024"
 authors = ["Sentry <hello@getsentry.com>"]
-license = "MIT"
+license-file = "../../LICENSE.md"
 
 [dependencies]
 anyhow = { workspace = true }
