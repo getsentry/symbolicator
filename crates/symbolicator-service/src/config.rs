@@ -659,7 +659,9 @@ impl Default for Config {
             // We currently accept 200MiB minidumps in Sentry. This allows for that size
             // plus some extra for the rest of the request.
             crash_file_body_max_bytes: 250 * 1024 * 1024,
-            symbolicate_body_max_bytes: 10 * 1024 * 1024,
+            // We allow profiles up to 50MiB in through Relay, This allows for that size
+            // plus some extra for the rest of the request.
+            symbolicate_body_max_bytes: 55 * 1024 * 1024,
         }
     }
 }
