@@ -104,6 +104,9 @@ jobs:
       - name: Do the localhost docker dance
         run: echo "$DJANGO_LIVE_TEST_SERVER_ADDRESS host.docker.internal" | sudo tee --append /etc/hosts
 
+      - name: Make Objectstore reachable
+        run: echo "127.0.0.1 host.docker.internal" | sudo tee --append /etc/hosts
+
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
 
