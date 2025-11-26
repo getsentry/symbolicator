@@ -114,7 +114,7 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
                     "cab file is empty",
                 ))?;
 
-            if !contained_files.count() == 0 {
+            if contained_files.count() != 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "cab file contains more than 1 symbol file",
