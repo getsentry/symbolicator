@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+
+- Added config options `crash_file_body_max_bytes` and `symbolicate_body_max_bytes` controlling  the maximum body size for requests to crash file and general symbolication endpoints,
+  respectively. The default values are:
+  - `crash_file_body_max_bytes`: 250 MiB
+  - `symbolicate_body_max_bytes`: 10 MiB
+  (#1827) by @loewenheim
+
 ## 25.11.0
 
 ### Various fixes & improvements

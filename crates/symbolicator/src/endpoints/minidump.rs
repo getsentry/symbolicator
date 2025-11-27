@@ -181,9 +181,11 @@ mod tests {
     async fn test_body_limit() {
         test::setup();
 
-        let server = test::server_with_default_service();
+        let server = test::server_with_config(|config| {
+            config.crash_file_body_max_bytes = 10 * 1024;
+        });
 
-        let len = 96 * 1024 * 1024;
+        let len = 9 * 1024;
         let mut buf = vec![b'.'; len];
         buf[0..4].copy_from_slice(b"MDMP");
 
@@ -210,7 +212,7 @@ mod tests {
             "{\"status\":\"failed\",\"message\":\"Minidump version mismatch\"}"
         );
 
-        let len = 112 * 1024 * 1024;
+        let len = 11 * 1024;
         let mut buf = vec![b'.'; len];
         buf[0..4].copy_from_slice(b"MDMP");
 

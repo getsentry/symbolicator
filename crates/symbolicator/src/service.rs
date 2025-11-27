@@ -121,6 +121,7 @@ pub enum CompletedResponse {
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
@@ -130,20 +131,13 @@ pub struct RequestOptions {
     /// considered, any problems with them and what they were used for.  See the
     /// [`ObjectCandidate`](symbolicator_service::objects::ObjectCandidate) struct
     /// for which extra information is returned for DIF objects.
-    #[serde(default)]
     pub dif_candidates: bool,
 
     /// Whether to apply source context for the stack frames.
-    #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
 
     /// The order in which stack frames are received by Symbolicator and returned to the caller.
-    #[serde(default)]
     pub frame_order: FrameOrder,
-}
-
-fn default_apply_source_context() -> bool {
-    true
 }
 
 impl Default for RequestOptions {
@@ -151,7 +145,7 @@ impl Default for RequestOptions {
         Self {
             dif_candidates: false,
             apply_source_context: true,
-            frame_order: Default::default(),
+            frame_order: FrameOrder::CalleeFirst,
         }
     }
 }
