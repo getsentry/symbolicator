@@ -510,22 +510,24 @@ mod tests {
     fn remap_stacktrace_caller_first(
         proguard_source: &[u8],
         release_package: Option<&str>,
-        frames: &[JvmFrame],
+        frames: &mut [JvmFrame],
     ) -> Vec<JvmFrame> {
+        frames.reverse();
         let mapping = ProguardMapping::new(proguard_source);
         let mut cache = Vec::new();
         ProguardCache::write(&mapping, &mut cache).unwrap();
         let cache = ProguardCache::parse(&cache).unwrap();
         cache.test();
 
-        let remapped_frames = ProguardService::map_stacktrace(
+        let mut remapped_frames = ProguardService::map_stacktrace(
             &[&cache],
             frames,
             release_package,
             &mut SymbolicationStats::default(),
         );
 
-        return remapped_frames;
+        remapped_frames.reverse();
+        remapped_frames
     }
 
     #[test]
@@ -628,7 +630,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
@@ -679,7 +681,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     65:65:void <init>() -> <init>
 ";
 
-        let frames = [
+        let mut frames = [
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$a".to_owned(),
@@ -715,7 +717,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         ];
 
         let mapped_frames =
-            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &frames);
+            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &mut frames);
 
         assert_eq!(mapped_frames[0].in_app, Some(true));
         assert_eq!(mapped_frames[1].in_app, Some(false));
@@ -737,7 +739,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped = remap_stacktrace_caller_first(b"", Some("android"), &[frame]);
+        let remapped = remap_stacktrace_caller_first(b"", Some("android"), &mut [frame]);
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -778,19 +780,19 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &[frame]);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
         // Without the "line 0" change, the second frame doesn't exist.
         // The `retrace` implementation at
         // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
         // also returns this, no matter whether you give it line 0 or no line at all.
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
-        - function: barInternalInject
+        - function: onCreate
           filename: App.java
           module: com.example.App
           abs_path: App.java
           lineno: 0
           index: 0
-        - function: onCreate
+        - function: barInternalInject
           filename: App.java
           module: com.example.App
           abs_path: App.java
@@ -828,7 +830,7 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &[frame]);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
 
         // Without the "line 0" change, the module is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
         // The `retrace` implementation at
@@ -898,7 +900,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
     void <init>() -> <init>
       # {"id":"com.android.tools.r8.synthesized"}"#;
 
-        let frames: Vec<JvmFrame> = serde_json::from_str(
+        let mut frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[{
             "function": "a",
             "abs_path": "SourceFile",
@@ -952,7 +954,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: foo
@@ -1037,7 +1039,7 @@ com.mycompany.android.Delegate -> b80.h:
     com.mycompany.android.IMapAnnotations mapAnnotations -> a
       # {"id":"com.android.tools.r8.residualsignature","signature":"Lbv0/b;"}"#;
 
-        let frames: Vec<JvmFrame> = serde_json::from_str(
+        let mut frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[
             {
               "function": "a",
@@ -1066,7 +1068,7 @@ com.mycompany.android.Delegate -> b80.h:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: render
@@ -1111,14 +1113,7 @@ some.Class -> b:
 # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":4,"2":5},"outline":"La;a()I"}
 "#;
 
-        let frames = [
-            JvmFrame {
-                function: "a".to_owned(),
-                module: "a".to_owned(),
-                lineno: Some(1),
-                index: 0,
-                ..Default::default()
-            },
+        let mut frames = [
             JvmFrame {
                 function: "s".to_owned(),
                 module: "b".to_owned(),
@@ -1126,9 +1121,16 @@ some.Class -> b:
                 index: 1,
                 ..Default::default()
             },
+            JvmFrame {
+                function: "a".to_owned(),
+                module: "a".to_owned(),
+                lineno: Some(1),
+                index: 0,
+                ..Default::default()
+            },
         ];
 
-        let remapped = remap_stacktrace_caller_first(proguard_source, None, &frames);
+        let remapped = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
 
         assert_eq!(remapped.len(), 1);
         assert_eq!(remapped[0].module, "some.Class");
@@ -1139,47 +1141,70 @@ some.Class -> b:
 
     #[test]
     fn remap_outline_complex() {
-        let frames: Vec<JvmFrame> = serde_json::from_str(
+        let mut frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[
             {
-              "function": "b",
-              "module": "ev.h",
-              "filename": "SourceFile",
-              "abs_path": "SourceFile",
-              "lineno": 3,
-              "index": 0
+              "function": "run",
+              "module": "android.view.Choreographer$CallbackRecord",
+              "filename": "Choreographer.java",
+              "lineno": 1899,
+              "index": 13
             },
             {
-              "function": "l",
-              "module": "uu0.k",
+              "function": "doFrame",
+              "module": "w2.q0$c",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 43,
-              "index": 1
+              "lineno": 48,
+              "index": 12
             },
             {
-              "function": "a",
-              "module": "b80.f",
+              "function": "doFrame",
+              "module": "w2.r0$c",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 33,
-              "index": 2
+              "lineno": 7,
+              "index": 11
             },
             {
               "function": "invoke",
-              "module": "er3.f",
+              "module": "h1.e3",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 3,
-              "index": 3
+              "lineno": 231,
+              "index": 10
+            },
+            {
+              "function": "m",
+              "module": "h1.y",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 6,
+              "index": 9
+            },
+            {
+              "function": "A",
+              "module": "h1.y",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 111,
+              "index": 8
+            },
+            {
+              "function": "c",
+              "module": "p1.k",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 135,
+              "index": 7
             },
             {
               "function": "d",
-              "module": "yv0.g",
+              "module": "h1.p0",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 17,
-              "index": 4
+              "lineno": 5,
+              "index": 6
             },
             {
               "function": "invoke",
@@ -1191,129 +1216,130 @@ some.Class -> b:
             },
             {
               "function": "d",
-              "module": "h1.p0",
+              "module": "yv0.g",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 5,
-              "index": 6
-            },
-            {
-              "function": "c",
-              "module": "p1.k",
-              "filename": "SourceFile",
-              "abs_path": "SourceFile",
-              "lineno": 135,
-              "index": 7
-            },
-            {
-              "function": "A",
-              "module": "h1.y",
-              "filename": "SourceFile",
-              "abs_path": "SourceFile",
-              "lineno": 111,
-              "index": 8
-            },
-            {
-              "function": "m",
-              "module": "h1.y",
-              "filename": "SourceFile",
-              "abs_path": "SourceFile",
-              "lineno": 6,
-              "index": 9
+              "lineno": 17,
+              "index": 4
             },
             {
               "function": "invoke",
-              "module": "h1.e3",
+              "module": "er3.f",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 231,
-              "index": 10
+              "lineno": 3,
+              "index": 3
             },
             {
-              "function": "doFrame",
-              "module": "w2.r0$c",
+              "function": "a",
+              "module": "b80.f",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 7,
-              "index": 11
+              "lineno": 33,
+              "index": 2
             },
             {
-              "function": "doFrame",
-              "module": "w2.q0$c",
+              "function": "l",
+              "module": "uu0.k",
               "filename": "SourceFile",
               "abs_path": "SourceFile",
-              "lineno": 48,
-              "index": 12
+              "lineno": 43,
+              "index": 1
             },
             {
-              "function": "run",
-              "module": "android.view.Choreographer$CallbackRecord",
-              "filename": "Choreographer.java",
-              "lineno": 1899,
-              "index": 13
+              "function": "b",
+              "module": "ev.h",
+              "filename": "SourceFile",
+              "abs_path": "SourceFile",
+              "lineno": 3,
+              "index": 0
             }]"#,
         )
         .unwrap();
 
-        let remapped_frames = remap_stacktrace_caller_first(MAPPING_OUTLINE_COMPLEX, None, &frames);
+        let remapped_frames =
+            remap_stacktrace_caller_first(MAPPING_OUTLINE_COMPLEX, None, &mut frames);
 
         insta::assert_yaml_snapshot!(
             remapped_frames,
             @r###"
-        - function: onProjectionView
-          filename: MapProjectionViewController.kt
-          module: com.example.projection.MapProjectionViewController
-          abs_path: MapProjectionViewController.kt
-          lineno: 160
-          index: 1
-        - function: createProjectionMarkerInternal
-          filename: MapProjectionViewController.kt
-          module: com.example.projection.MapProjectionViewController
-          abs_path: MapProjectionViewController.kt
-          lineno: 133
-          index: 1
-        - function: createProjectionMarker
-          filename: MapProjectionViewController.kt
-          module: com.example.projection.MapProjectionViewController
-          abs_path: MapProjectionViewController.kt
-          lineno: 79
-          index: 1
-        - function: createProjectionMarker
-          filename: MapAnnotations.kt
-          module: com.example.MapAnnotations
-          abs_path: MapAnnotations.kt
-          lineno: 63
-          index: 1
-        - function: createCurrentLocationProjectionMarker
-          filename: DotRendererDelegate.kt
-          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
-          abs_path: DotRendererDelegate.kt
-          lineno: 101
-          index: 2
-        - function: render
-          filename: DotRendererDelegate.kt
-          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
-          abs_path: DotRendererDelegate.kt
-          lineno: 34
-          index: 2
-        - function: render
-          filename: CurrentLocationRenderer.kt
-          module: com.example.mapcomponents.marker.currentlocation.CurrentLocationRenderer
-          abs_path: CurrentLocationRenderer.kt
+        - function: run
+          filename: Choreographer.java
+          module: android.view.Choreographer$CallbackRecord
+          lineno: 1899
+          index: 13
+        - function: doFrame
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 69
+          index: 12
+        - function: access$performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 41
+          index: 12
+        - function: performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 108
+          index: 12
+        - function: doFrame
+          filename: AndroidUiFrameClock.android.kt
+          module: androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1
+          abs_path: AndroidUiFrameClock.android.kt
           lineno: 39
-          index: 2
+          index: 11
+        - function: invokeSuspend$lambda$22
+          filename: Recomposer.kt
+          module: androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2
+          abs_path: Recomposer.kt
+          lineno: 705
+          index: 10
+        - function: applyChanges
+          filename: Composition.kt
+          module: androidx.compose.runtime.CompositionImpl
+          abs_path: Composition.kt
+          lineno: 1149
+          index: 9
+        - function: applyChangesInLocked
+          filename: Composition.kt
+          module: androidx.compose.runtime.CompositionImpl
+          abs_path: Composition.kt
+          lineno: 1122
+          index: 8
+        - function: dispatchRememberObservers
+          filename: RememberEventDispatcher.kt
+          module: androidx.compose.runtime.internal.RememberEventDispatcher
+          abs_path: RememberEventDispatcher.kt
+          lineno: 225
+          index: 7
+        - function: dispatchRememberList
+          filename: RememberEventDispatcher.kt
+          module: androidx.compose.runtime.internal.RememberEventDispatcher
+          abs_path: RememberEventDispatcher.kt
+          lineno: 253
+          index: 7
+        - function: onRemembered
+          filename: Effects.kt
+          module: androidx.compose.runtime.DisposableEffectImpl
+          abs_path: Effects.kt
+          lineno: 85
+          index: 6
         - function: invoke
           filename: CurrentLocationMarkerMapCollection.kt
-          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
           abs_path: CurrentLocationMarkerMapCollection.kt
-          lineno: 36
-          index: 3
+          lineno: 35
+          index: 5
         - function: invoke
           filename: CurrentLocationMarkerMapCollection.kt
-          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
           abs_path: CurrentLocationMarkerMapCollection.kt
-          lineno: 36
-          index: 3
+          lineno: 40
+          index: 5
         - function: addMapReadyCallback
           filename: MapboxMapView.kt
           module: com.example.mapbox.MapboxMapView
@@ -1322,81 +1348,58 @@ some.Class -> b:
           index: 4
         - function: invoke
           filename: CurrentLocationMarkerMapCollection.kt
-          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
           abs_path: CurrentLocationMarkerMapCollection.kt
-          lineno: 40
-          index: 5
+          lineno: 36
+          index: 3
         - function: invoke
           filename: CurrentLocationMarkerMapCollection.kt
-          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
           abs_path: CurrentLocationMarkerMapCollection.kt
-          lineno: 35
-          index: 5
-        - function: onRemembered
-          filename: Effects.kt
-          module: androidx.compose.runtime.DisposableEffectImpl
-          abs_path: Effects.kt
-          lineno: 85
-          index: 6
-        - function: dispatchRememberList
-          filename: RememberEventDispatcher.kt
-          module: androidx.compose.runtime.internal.RememberEventDispatcher
-          abs_path: RememberEventDispatcher.kt
-          lineno: 253
-          index: 7
-        - function: dispatchRememberObservers
-          filename: RememberEventDispatcher.kt
-          module: androidx.compose.runtime.internal.RememberEventDispatcher
-          abs_path: RememberEventDispatcher.kt
-          lineno: 225
-          index: 7
-        - function: applyChangesInLocked
-          filename: Composition.kt
-          module: androidx.compose.runtime.CompositionImpl
-          abs_path: Composition.kt
-          lineno: 1122
-          index: 8
-        - function: applyChanges
-          filename: Composition.kt
-          module: androidx.compose.runtime.CompositionImpl
-          abs_path: Composition.kt
-          lineno: 1149
-          index: 9
-        - function: invokeSuspend$lambda$22
-          filename: Recomposer.kt
-          module: androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2
-          abs_path: Recomposer.kt
-          lineno: 705
-          index: 10
-        - function: doFrame
-          filename: AndroidUiFrameClock.android.kt
-          module: androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1
-          abs_path: AndroidUiFrameClock.android.kt
+          lineno: 36
+          index: 3
+        - function: render
+          filename: CurrentLocationRenderer.kt
+          module: com.example.mapcomponents.marker.currentlocation.CurrentLocationRenderer
+          abs_path: CurrentLocationRenderer.kt
           lineno: 39
-          index: 11
-        - function: performFrameDispatch
-          filename: AndroidUiDispatcher.android.kt
-          module: androidx.compose.ui.platform.AndroidUiDispatcher
-          abs_path: AndroidUiDispatcher.android.kt
-          lineno: 108
-          index: 12
-        - function: access$performFrameDispatch
-          filename: AndroidUiDispatcher.android.kt
-          module: androidx.compose.ui.platform.AndroidUiDispatcher
-          abs_path: AndroidUiDispatcher.android.kt
-          lineno: 41
-          index: 12
-        - function: doFrame
-          filename: AndroidUiDispatcher.android.kt
-          module: androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1
-          abs_path: AndroidUiDispatcher.android.kt
-          lineno: 69
-          index: 12
-        - function: run
-          filename: Choreographer.java
-          module: android.view.Choreographer$CallbackRecord
-          lineno: 1899
-          index: 13
+          index: 2
+        - function: render
+          filename: DotRendererDelegate.kt
+          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
+          abs_path: DotRendererDelegate.kt
+          lineno: 34
+          index: 2
+        - function: createCurrentLocationProjectionMarker
+          filename: DotRendererDelegate.kt
+          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
+          abs_path: DotRendererDelegate.kt
+          lineno: 101
+          index: 2
+        - function: createProjectionMarker
+          filename: MapAnnotations.kt
+          module: com.example.MapAnnotations
+          abs_path: MapAnnotations.kt
+          lineno: 63
+          index: 1
+        - function: createProjectionMarker
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 79
+          index: 1
+        - function: createProjectionMarkerInternal
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 133
+          index: 1
+        - function: onProjectionView
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 160
+          index: 1
         "###);
     }
 }
