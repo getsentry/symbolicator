@@ -99,7 +99,7 @@ jobs:
         uses: ./.github/actions/setup-sentry
         with:
           workdir: sentry
-          mode: minimal
+          mode: symbolicator-tests
 
       - name: Do the localhost docker dance
         run: echo "$DJANGO_LIVE_TEST_SERVER_ADDRESS host.docker.internal" | sudo tee --append /etc/hosts
