@@ -253,12 +253,7 @@ impl ProguardService {
 
             let mut remap_buffer = Vec::new();
             for (mapper_idx, mapper) in mappers.iter().enumerate() {
-                if mapper.is_outline_frame(
-                    proguard_frame.class(),
-                    proguard_frame.method(),
-                    proguard_frame.line(),
-                    proguard_frame.parameters(),
-                ) {
+                if mapper.is_outline_frame(proguard_frame.class(), proguard_frame.method()) {
                     carried_outline_pos[mapper_idx] = Some(proguard_frame.line());
                     continue 'frames;
                 }
@@ -1288,49 +1283,146 @@ some.Class -> b:
             FrameOrder::CalleeFirst,
         );
 
-        let actual = {
-            let mut out = String::from("java.lang.IllegalStateException: Oops!");
-            // sentry expects stack traces in reverse order, but to verify expected output, we need to reverse them back
-            for frame in remapped_frames {
-                let filename = frame.filename.as_deref().unwrap_or("<unknown>");
-                let lineno = frame
-                    .lineno
-                    .map(|n| n.to_string())
-                    .unwrap_or_else(|| "<unknown>".to_owned());
-                out.push_str(&format!(
-                    "\n    at {}.{}({}:{})",
-                    frame.module, frame.function, filename, lineno
-                ));
-            }
-            out
-        };
-
-        let expected = r#"
-java.lang.IllegalStateException: Oops!
-    at com.example.projection.MapProjectionViewController.onProjectionView(MapProjectionViewController.kt:160)
-    at com.example.projection.MapProjectionViewController.createProjectionMarkerInternal(MapProjectionViewController.kt:133)
-    at com.example.projection.MapProjectionViewController.createProjectionMarker(MapProjectionViewController.kt:79)
-    at com.example.MapAnnotations.createProjectionMarker(MapAnnotations.kt:63)
-    at com.example.mapcomponents.marker.currentlocation.DotRendererDelegate.createCurrentLocationProjectionMarker(DotRendererDelegate.kt:101)
-    at com.example.mapcomponents.marker.currentlocation.DotRendererDelegate.render(DotRendererDelegate.kt:34)
-    at com.example.mapcomponents.marker.currentlocation.CurrentLocationRenderer.render(CurrentLocationRenderer.kt:39)
-    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1.invoke(CurrentLocationMarkerMapCollection.kt:36)
-    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1.invoke(CurrentLocationMarkerMapCollection.kt:36)
-    at com.example.mapbox.MapboxMapView.addMapReadyCallback(MapboxMapView.kt:368)
-    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1.invoke(CurrentLocationMarkerMapCollection.kt:40)
-    at com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1.invoke(CurrentLocationMarkerMapCollection.kt:35)
-    at androidx.compose.runtime.DisposableEffectImpl.onRemembered(Effects.kt:85)
-    at androidx.compose.runtime.internal.RememberEventDispatcher.dispatchRememberList(RememberEventDispatcher.kt:253)
-    at androidx.compose.runtime.internal.RememberEventDispatcher.dispatchRememberObservers(RememberEventDispatcher.kt:225)
-    at androidx.compose.runtime.CompositionImpl.applyChangesInLocked(Composition.kt:1122)
-    at androidx.compose.runtime.CompositionImpl.applyChanges(Composition.kt:1149)
-    at androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2.invokeSuspend$lambda$22(Recomposer.kt:705)
-    at androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1.doFrame(AndroidUiFrameClock.android.kt:39)
-    at androidx.compose.ui.platform.AndroidUiDispatcher.performFrameDispatch(AndroidUiDispatcher.android.kt:108)
-    at androidx.compose.ui.platform.AndroidUiDispatcher.access$performFrameDispatch(AndroidUiDispatcher.android.kt:41)
-    at androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1.doFrame(AndroidUiDispatcher.android.kt:69)
-    at android.view.Choreographer$CallbackRecord.run(Choreographer.java:1899)"#;
-
-        assert_eq!(actual.trim(), expected.trim());
+        insta::assert_yaml_snapshot!(
+            remapped_frames,
+            @r###"
+        - function: onProjectionView
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 160
+          index: 1
+        - function: createProjectionMarkerInternal
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 133
+          index: 1
+        - function: createProjectionMarker
+          filename: MapProjectionViewController.kt
+          module: com.example.projection.MapProjectionViewController
+          abs_path: MapProjectionViewController.kt
+          lineno: 79
+          index: 1
+        - function: createProjectionMarker
+          filename: MapAnnotations.kt
+          module: com.example.MapAnnotations
+          abs_path: MapAnnotations.kt
+          lineno: 63
+          index: 1
+        - function: createCurrentLocationProjectionMarker
+          filename: DotRendererDelegate.kt
+          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
+          abs_path: DotRendererDelegate.kt
+          lineno: 101
+          index: 2
+        - function: render
+          filename: DotRendererDelegate.kt
+          module: com.example.mapcomponents.marker.currentlocation.DotRendererDelegate
+          abs_path: DotRendererDelegate.kt
+          lineno: 34
+          index: 2
+        - function: render
+          filename: CurrentLocationRenderer.kt
+          module: com.example.mapcomponents.marker.currentlocation.CurrentLocationRenderer
+          abs_path: CurrentLocationRenderer.kt
+          lineno: 39
+          index: 2
+        - function: invoke
+          filename: CurrentLocationMarkerMapCollection.kt
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
+          abs_path: CurrentLocationMarkerMapCollection.kt
+          lineno: 36
+          index: 3
+        - function: invoke
+          filename: CurrentLocationMarkerMapCollection.kt
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1$mapReadyCallback$1
+          abs_path: CurrentLocationMarkerMapCollection.kt
+          lineno: 36
+          index: 3
+        - function: addMapReadyCallback
+          filename: MapboxMapView.kt
+          module: com.example.mapbox.MapboxMapView
+          abs_path: MapboxMapView.kt
+          lineno: 368
+          index: 4
+        - function: invoke
+          filename: CurrentLocationMarkerMapCollection.kt
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
+          abs_path: CurrentLocationMarkerMapCollection.kt
+          lineno: 40
+          index: 5
+        - function: invoke
+          filename: CurrentLocationMarkerMapCollection.kt
+          module: com.example.map.internal.CurrentLocationMarkerMapCollectionKt$CurrentLocationMarkerMapCollection$1$1
+          abs_path: CurrentLocationMarkerMapCollection.kt
+          lineno: 35
+          index: 5
+        - function: onRemembered
+          filename: Effects.kt
+          module: androidx.compose.runtime.DisposableEffectImpl
+          abs_path: Effects.kt
+          lineno: 85
+          index: 6
+        - function: dispatchRememberList
+          filename: RememberEventDispatcher.kt
+          module: androidx.compose.runtime.internal.RememberEventDispatcher
+          abs_path: RememberEventDispatcher.kt
+          lineno: 253
+          index: 7
+        - function: dispatchRememberObservers
+          filename: RememberEventDispatcher.kt
+          module: androidx.compose.runtime.internal.RememberEventDispatcher
+          abs_path: RememberEventDispatcher.kt
+          lineno: 225
+          index: 7
+        - function: applyChangesInLocked
+          filename: Composition.kt
+          module: androidx.compose.runtime.CompositionImpl
+          abs_path: Composition.kt
+          lineno: 1122
+          index: 8
+        - function: applyChanges
+          filename: Composition.kt
+          module: androidx.compose.runtime.CompositionImpl
+          abs_path: Composition.kt
+          lineno: 1149
+          index: 9
+        - function: invokeSuspend$lambda$22
+          filename: Recomposer.kt
+          module: androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2
+          abs_path: Recomposer.kt
+          lineno: 705
+          index: 10
+        - function: doFrame
+          filename: AndroidUiFrameClock.android.kt
+          module: androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1
+          abs_path: AndroidUiFrameClock.android.kt
+          lineno: 39
+          index: 11
+        - function: performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 108
+          index: 12
+        - function: access$performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 41
+          index: 12
+        - function: doFrame
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 69
+          index: 12
+        - function: run
+          filename: Choreographer.java
+          module: android.view.Choreographer$CallbackRecord
+          lineno: 1899
+          index: 13
+        "###);
     }
 }
