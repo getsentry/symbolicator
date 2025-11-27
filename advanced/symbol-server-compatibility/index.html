@@ -1230,10 +1230,9 @@ hard restriction, the case for lookups is explicitly defined for each source
 below. Please pay attention to the casing rules!</p>
 <h3 id="compression">Compression</h3>
 <p>Symbolicator supports a range of compression formats (zlib, gzip, zstd and cab).
-For cab compression, the <code>cabextract</code> binary needs to be installed. If the debug
-file is already compressed, it will be auto-detected and extracted. For PE/PDB
-files, Symbolicator also supports the Microsoft convention of replacing the last
-character in the filename with an underscore.</p>
+If the debug file is already compressed, it will be auto-detected and extracted.
+For PE/PDB files, Symbolicator also supports the Microsoft convention of
+replacing the last character in the filename with an underscore.</p>
 <h2 id="supported-servers">Supported Servers</h2>
 <h3 id="breakpad">Breakpad</h3>
 <p>Breakpad always computes a "Breakpad ID" for each symbol. This is a lossy
