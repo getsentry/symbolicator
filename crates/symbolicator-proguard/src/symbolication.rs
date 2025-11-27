@@ -507,34 +507,25 @@ mod tests {
 
     static MAPPING_OUTLINE_COMPLEX: &[u8] = include_bytes!("res/mapping-outline-complex.txt");
 
-    fn map_frames_via_stacktrace(
+    fn remap_stacktrace_caller_first(
         proguard_source: &[u8],
-        frames: &mut [JvmFrame],
         release_package: Option<&str>,
-        frame_order: FrameOrder,
+        frames: &[JvmFrame],
     ) -> Vec<JvmFrame> {
-        if frame_order == FrameOrder::CallerFirst {
-            frames.reverse();
-        }
-
         let mapping = ProguardMapping::new(proguard_source);
         let mut cache = Vec::new();
         ProguardCache::write(&mapping, &mut cache).unwrap();
         let cache = ProguardCache::parse(&cache).unwrap();
         cache.test();
 
-        let mut remapped_frames = ProguardService::map_stacktrace(
+        let remapped_frames = ProguardService::map_stacktrace(
             &[&cache],
             frames,
             release_package,
             &mut SymbolicationStats::default(),
         );
 
-        if frame_order == FrameOrder::CallerFirst {
-            remapped_frames.reverse();
-        }
-
-        remapped_frames
+        return remapped_frames;
     }
 
     #[test]
@@ -637,8 +628,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapped_frames =
-            map_frames_via_stacktrace(proguard_source, &mut frames, None, FrameOrder::CallerFirst);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
@@ -689,7 +679,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     65:65:void <init>() -> <init>
 ";
 
-        let mut frames = [
+        let frames = [
             JvmFrame {
                 function: "a".to_owned(),
                 module: "org.a.b.g$a".to_owned(),
@@ -724,12 +714,8 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             },
         ];
 
-        let mapped_frames = map_frames_via_stacktrace(
-            proguard_source,
-            &mut frames,
-            Some("org.slf4j"),
-            FrameOrder::CallerFirst,
-        );
+        let mapped_frames =
+            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &frames);
 
         assert_eq!(mapped_frames[0].in_app, Some(true));
         assert_eq!(mapped_frames[1].in_app, Some(false));
@@ -751,8 +737,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let remapped =
-            map_frames_via_stacktrace(b"", &mut [frame], Some("android"), FrameOrder::CalleeFirst);
+        let remapped = remap_stacktrace_caller_first(b"", Some("android"), &[frame]);
 
         assert_eq!(remapped.len(), 1);
         // The frame didn't get mapped, so we shouldn't set `in_app` even though
@@ -793,9 +778,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames =
-            map_frames_via_stacktrace(proguard_source, &mut [frame], None, FrameOrder::CalleeFirst);
-
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &[frame]);
         // Without the "line 0" change, the second frame doesn't exist.
         // The `retrace` implementation at
         // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
@@ -845,8 +828,7 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames =
-            map_frames_via_stacktrace(proguard_source, &mut [frame], None, FrameOrder::CalleeFirst);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &[frame]);
 
         // Without the "line 0" change, the module is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
         // The `retrace` implementation at
@@ -916,7 +898,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
     void <init>() -> <init>
       # {"id":"com.android.tools.r8.synthesized"}"#;
 
-        let mut frames: Vec<JvmFrame> = serde_json::from_str(
+        let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[{
             "function": "a",
             "abs_path": "SourceFile",
@@ -970,8 +952,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let mapped_frames =
-            map_frames_via_stacktrace(proguard_source, &mut frames, None, FrameOrder::CallerFirst);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: foo
@@ -1056,7 +1037,7 @@ com.mycompany.android.Delegate -> b80.h:
     com.mycompany.android.IMapAnnotations mapAnnotations -> a
       # {"id":"com.android.tools.r8.residualsignature","signature":"Lbv0/b;"}"#;
 
-        let mut frames: Vec<JvmFrame> = serde_json::from_str(
+        let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[
             {
               "function": "a",
@@ -1085,8 +1066,7 @@ com.mycompany.android.Delegate -> b80.h:
         )
         .unwrap();
 
-        let mapped_frames =
-            map_frames_via_stacktrace(proguard_source, &mut frames, None, FrameOrder::CallerFirst);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: render
@@ -1131,7 +1111,7 @@ some.Class -> b:
 # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":4,"2":5},"outline":"La;a()I"}
 "#;
 
-        let mut frames = [
+        let frames = [
             JvmFrame {
                 function: "a".to_owned(),
                 module: "a".to_owned(),
@@ -1148,8 +1128,7 @@ some.Class -> b:
             },
         ];
 
-        let remapped =
-            map_frames_via_stacktrace(proguard_source, &mut frames, None, FrameOrder::CalleeFirst);
+        let remapped = remap_stacktrace_caller_first(proguard_source, None, &frames);
 
         assert_eq!(remapped.len(), 1);
         assert_eq!(remapped[0].module, "some.Class");
@@ -1160,7 +1139,7 @@ some.Class -> b:
 
     #[test]
     fn remap_outline_complex() {
-        let mut frames: Vec<JvmFrame> = serde_json::from_str(
+        let frames: Vec<JvmFrame> = serde_json::from_str(
             r#"[
             {
               "function": "b",
@@ -1276,12 +1255,7 @@ some.Class -> b:
         )
         .unwrap();
 
-        let remapped_frames = map_frames_via_stacktrace(
-            MAPPING_OUTLINE_COMPLEX,
-            &mut frames,
-            None,
-            FrameOrder::CalleeFirst,
-        );
+        let remapped_frames = remap_stacktrace_caller_first(MAPPING_OUTLINE_COMPLEX, None, &frames);
 
         insta::assert_yaml_snapshot!(
             remapped_frames,
