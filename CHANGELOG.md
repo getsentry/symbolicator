@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- Removed the `streaming_timeout` config option. There is now only a constant timeout, controlled
+  by `max_download_timeout`. The default of `max_download_timeout` is increased to 10 minutes. (#1837) by @loewenheim
+
 ### Various fixes & improvements
 
 - Added config options `crash_file_body_max_bytes` and `symbolicate_body_max_bytes` controlling  the maximum body size for requests to crash file and general symbolication endpoints,
@@ -11,8 +16,6 @@
   (#1827) by @loewenheim
 - CAB files are now extracted in-process, removing the dependency on the external
   `cabextract` binary (#1834) by @loewenheim
-- Removed the `streaming_timeout` config option. There is now only a constant timeout, controlled
-  by `max_download_timeout`. The default of `max_download_timeout` is increased to 10 minutes. (#1837) by @loewenheim
 
 ## 25.11.0
 
