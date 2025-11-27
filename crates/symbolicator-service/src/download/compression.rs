@@ -1,13 +1,10 @@
 use std::io::{self, Read, Seek};
-use std::process::{Command, Stdio};
 
+use cab::Cabinet;
 use flate2::read::{MultiGzDecoder, ZlibDecoder};
 use tempfile::NamedTempFile;
 
 /// Decompresses a downloaded file.
-///
-/// Some compression methods are implemented by spawning an external tool and can only
-/// process from a named pathname, hence we need a [`NamedTempFile`] as source.
 ///
 /// The passed [`NamedTempFile`] might be swapped with a fresh one in case decompression happens.
 /// That new temp file will be created in the same directory as the original one.
@@ -102,21 +99,31 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
 
-            let mut dst = tempfile_in_parent(src)?;
-            let status = Command::new("cabextract")
-                .arg("-sfqp")
-                .arg(src.path())
-                .stdout(Stdio::from(dst.reopen()?))
-                .stderr(Stdio::null())
-                .status()?;
+            let mut cab_file = Cabinet::new(file)?;
 
-            if !status.success() {
+            let mut contained_files = cab_file
+                .folder_entries()
+                .flat_map(|folder| folder.file_entries())
+                .map(|file| file.name());
+
+            let first_file = contained_files
+                .next()
+                .map(String::from)
+                .ok_or(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "cab file is empty",
+                ))?;
+
+            if contained_files.next().is_some() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "failed to decompress cab file",
+                    "cab file contains more than 1 symbol file",
                 ));
             }
 
+            let mut dst = tempfile_in_parent(src)?;
+            let mut reader = cab_file.read_file(&first_file)?;
+            std::io::copy(&mut reader, &mut dst)?;
             std::mem::swap(src, &mut dst);
         }
         // Probably not compressed

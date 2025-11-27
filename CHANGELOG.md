@@ -9,6 +9,8 @@
   - `crash_file_body_max_bytes`: 250 MiB
   - `symbolicate_body_max_bytes`: 10 MiB
   (#1827) by @loewenheim
+- CAB files are now extracted in-process, removing the dependency on the external
+  `cabextract` binary (#1834) by @loewenheim
 
 ## 25.11.0
 
