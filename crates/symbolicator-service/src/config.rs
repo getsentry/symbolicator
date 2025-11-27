@@ -709,15 +709,6 @@ pub struct DownloadTimeouts {
     /// connection with a symbol source if retries take place.
     #[serde(rename = "head_timeout", with = "humantime_serde")]
     pub head: Duration,
-    /// The timeout per GB for streaming downloads.
-    ///
-    /// For downloads with a known size, this timeout applies per individual
-    /// download attempt. If the download size is not known, it is ignored and
-    /// only `max_download_timeout` applies. The default is set to 250s,
-    /// just above the amount of time it would take for a 4MB/s connection to
-    /// download 1GB.
-    #[serde(rename = "streaming_timeout", with = "humantime_serde")]
-    pub streaming: Duration,
     /// The maximum timeout for downloads.
     ///
     /// This is the upper limit the download service will take for downloading from a single
@@ -732,11 +723,9 @@ impl Default for DownloadTimeouts {
         Self {
             connect: Duration::from_secs(1),
             head: Duration::from_secs(5),
-            // Allow a 4MB/s connection to download 1GB without timing out.
-            streaming: Duration::from_secs(250),
-            // We want to have a hard download timeout of 5 minutes.
-            // This means a download connection needs to sustain ~6,7MB/s to download a 2GB file.
-            max_download: Duration::from_secs(300),
+            // We want to have a hard download timeout of 10 minutes.
+            // This means a download connection needs to sustain ~3.3MB/s to download a 2GB file.
+            max_download: Duration::from_mins(10),
         }
     }
 }
@@ -859,7 +848,6 @@ mod tests {
         let default_cfg = Config::default();
         assert_eq!(cfg.timeouts.max_download, default_cfg.timeouts.max_download);
         assert_eq!(cfg.timeouts.connect, default_cfg.timeouts.connect);
-        assert_eq!(cfg.timeouts.streaming, default_cfg.timeouts.streaming);
     }
 
     #[test]
@@ -868,12 +856,10 @@ mod tests {
         let yaml = r#"
             max_download_timeout: 0s
             connect_timeout: 0s
-            streaming_timeout: 0s
         "#;
         let cfg = Config::from_reader(yaml.as_bytes()).unwrap();
         assert_eq!(cfg.timeouts.max_download, Duration::from_secs(0));
         assert_eq!(cfg.timeouts.connect, Duration::from_secs(0));
-        assert_eq!(cfg.timeouts.streaming, Duration::from_secs(0));
     }
 
     #[test]

@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt as _;
 use crate::caching::{CacheContents, CacheError};
 use crate::config::DownloadTimeouts;
 
-use super::{Destination, content_length_timeout};
+use super::Destination;
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
@@ -182,24 +182,13 @@ impl S3Downloader {
             return Err(CacheError::NotFound);
         }
 
-        let timeout = response
-            .content_length
-            .and_then(|cl| u64::try_from(cl).ok())
-            .map(|cl| content_length_timeout(cl, self.timeouts.streaming))
-            .unwrap_or(self.timeouts.max_download);
-
         let mut body = std::pin::pin!(response.body);
         let stream = futures::stream::poll_fn(move |cx| body.as_mut().poll_next(cx))
             .map_err(|err| CacheError::download_error(&err));
 
         let mut destination = std::pin::pin!(destination.into_write());
 
-        tokio::time::timeout(
-            timeout,
-            super::download_stream(source_name, stream, destination.as_mut()),
-        )
-        .await
-        .map_err(|_| CacheError::Timeout(timeout))??;
+        super::download_stream(source_name, stream, destination.as_mut()).await?;
 
         destination.flush().await?;
 
