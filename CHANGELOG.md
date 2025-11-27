@@ -9,6 +9,8 @@
   - `crash_file_body_max_bytes`: 250 MiB
   - `symbolicate_body_max_bytes`: 10 MiB
   (#1827) by @loewenheim
+- CAB files are now extracted in-process, removing the dependency on the external
+  `cabextract` binary (#1834) by @loewenheim
 - Removed the `streaming_timeout` config option. There is now only a constant timeout, controlled
   by `max_download_timeout`. The default of `max_download_timeout` is increased to 10 minutes. (#1837) by @loewenheim
 

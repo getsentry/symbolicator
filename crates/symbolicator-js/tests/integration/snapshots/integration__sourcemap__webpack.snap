@@ -1,7 +1,6 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
 expression: response
-snapshot_kind: text
 ---
 stacktraces:
   - frames:
