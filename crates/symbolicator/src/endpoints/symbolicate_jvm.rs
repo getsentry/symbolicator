@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use symbolicator_proguard::interface::{
     JvmException, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
 };
-use symbolicator_service::types::Platform;
+use symbolicator_service::types::{FrameOrder, Platform};
 use symbolicator_sources::SourceConfig;
 
 use crate::service::{RequestService, SymbolicationResponse};
@@ -33,20 +33,19 @@ pub struct JvmSymbolicationRequestBody {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct JvmRequestOptions {
     /// Whether to apply source context for the stack frames.
-    #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
-}
-
-fn default_apply_source_context() -> bool {
-    true
+    /// The order in which stack frames are received by Symbolicator and returned to the caller.
+    pub frame_order: FrameOrder,
 }
 
 impl Default for JvmRequestOptions {
     fn default() -> Self {
         Self {
             apply_source_context: true,
+            frame_order: FrameOrder::CallerFirst,
         }
     }
 }
@@ -81,6 +80,7 @@ pub async fn handle_symbolication_request(
         release_package,
         classes,
         apply_source_context: options.apply_source_context,
+        frame_order: options.frame_order,
     })?;
 
     match service.get_response(request_id, params.timeout).await {
