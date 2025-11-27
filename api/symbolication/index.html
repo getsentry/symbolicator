@@ -833,6 +833,11 @@
 <span class="w">    </span><span class="p">},</span>
 <span class="w">    </span><span class="err">...</span>
 <span class="w">  </span><span class="p">]</span>
+<span class="w">  </span><span class="nt">&quot;options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;dif_candidates&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;frame_order&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;caller_first&quot;</span>
+<span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
 
@@ -862,7 +867,8 @@ as well as external sources to pull symbols from:</p>
     instruction address of the top frame.</li>
 <li><code>frames</code>: A list of frames with addresses. Arbitrary additional properties
     may be passed with frames, but are discarded. The <code>addr_mode</code> property
-    defines the beahvior of <code>instruction_addr</code>.</li>
+    defines the behavior of <code>instruction_addr</code>. This list is assumed to be ordered
+    according to the <code>frame_order</code> option (see below).</li>
 <li><code>scraping</code>: Configuration for authenticating scraping requests via http headers.</li>
 <li><code>enabled</code>: Whether authentication should happen at all.</li>
 <li><code>allowed_origins</code>: A list of "allowed origin patterns" that control what
@@ -875,6 +881,12 @@ as well as external sources to pull symbols from:</p>
 </ul>
 </li>
 <li><code>headers</code>: A map of headers to send with every HTTP request while scraping.</li>
+<li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
+<li><code>dif_candidates</code>: Whether to return detailed information on DIF object candidates.</li>
+<li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
+<li><code>frame_order</code>: How stack frames are ordered. The possible values are
+    <code>"callee_first"</code> and <code>"caller_first"</code>. The default is <code>"callee_first"</code>.
+    Frames in the response will be ordered the same way.</li>
 </ul>
 <h2 id="response">Response</h2>
 <p>See <a href="../response/">Symbolication Response</a>.</p>

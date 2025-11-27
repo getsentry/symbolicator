@@ -831,6 +831,10 @@
 <span class="w">    </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;allowed_origins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;*.domain.com&quot;</span><span class="p">]</span>
 <span class="w">  </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">&quot;options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;frame_order&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;callee_first&quot;</span>
+<span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
 
@@ -852,7 +856,7 @@ as well as configuration for scraping sources from external servers:</p>
   were loaded during JS code execution. The list is handled by the Sentry source.</li>
 <li><code>stacktrace</code>: A list of stacktraces to symbolicate.</li>
 <li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
-    and other optional fields like <code>colno</code> or minified <code>function</code> name.</li>
+    and other optional fields like <code>colno</code> or minified <code>function</code> name. This list is assumed to be ordered according to the <code>frame_order</code> option (see below).</li>
 <li><code>release</code>: Name of Sentry <code>release</code> for the processed request.</li>
 <li><code>dist</code>: Name of Sentry <code>dist</code> for the processed request.</li>
 <li><code>scraping</code>: Configuration for scraping of JS sources and sourcemaps from the web.</li>
@@ -869,6 +873,7 @@ as well as configuration for scraping sources from external servers:</p>
 <li><code>headers</code>: A map of headers to send with every HTTP request while scraping.</li>
 <li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
 <li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
+<li><code>frame_order</code>: How stack frames are ordered. The possible values are <code>"callee_first"</code> and <code>"caller_first"</code>. The default is <code>"caller_first"</code>. Frames in the response will be ordered the same way.</li>
 </ul>
 <h2 id="response">Response</h2>
 <p>See <a href="../response/">Symbolication Response</a>.</p>

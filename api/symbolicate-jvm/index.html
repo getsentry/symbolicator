@@ -764,7 +764,8 @@
 <span class="w">    </span><span class="nt">&quot;release_package&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some_release&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;classes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 <span class="w">    </span><span class="nt">&quot;options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="w">        </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;frame_order&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;callee_first&quot;</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </code></pre></div>
@@ -786,11 +787,12 @@
   were loaded during JVM code execution. The list is handled by the Sentry source.</li>
 <li><code>stacktrace</code>: A list of stacktraces to symbolicate.</li>
 <li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
-    and other optional fields like <code>colno</code> or minified <code>function</code> name.</li>
+    and other optional fields like <code>colno</code> or minified <code>function</code> name. This list is assumed to be ordered according to the <code>frame_order</code> option (see below).</li>
 <li><code>release_package</code>: Name of Sentry <code>release</code> for the processed request.</li>
 <li><code>classes</code>: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.</li>
 <li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
 <li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
+<li><code>frame_order</code>: How stack frames are ordered. The possible values are <code>"callee_first"</code> and <code>"caller_first"</code>. The default is <code>"caller_first"</code>. Frames in the response will be ordered the same way.</li>
 </ul>
 <h2 id="response">Response</h2>
 <p>See <a href="../response/">Symbolication Response</a>.</p>
