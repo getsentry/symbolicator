@@ -6,6 +6,12 @@
 
 - Removed the `streaming_timeout` config option. There is now only a constant timeout, controlled
   by `max_download_timeout`. The default of `max_download_timeout` is increased to 10 minutes. (#1837) by @loewenheim
+- Removed HTTPS support. If you want to use HTTPS with Symbolicator, please run it
+  behind a reverse proxy. This also removes:
+  - The `https` feature on the crates `symbolicator` and `symbolicator-service`
+  - The config options `bind_https`, `server_config.https.certificate_path`, and
+    `server_config.https.key_path`
+  (#1838) by @loewenheim
 
 ### Various fixes & improvements
 
