@@ -37,7 +37,7 @@ use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
-use symbolicator_service::types::Platform;
+use symbolicator_service::types::{FrameOrder, Platform};
 use symbolicator_service::utils::futures::CallOnDrop;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_service::utils::sentry::ConfigureScope;
@@ -121,6 +121,7 @@ pub enum CompletedResponse {
 /// These options control some features which control the symbolication and general request
 /// handling behaviour.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RequestOptions {
     /// Whether to return detailed information on DIF object candidates.
     ///
@@ -130,16 +131,13 @@ pub struct RequestOptions {
     /// considered, any problems with them and what they were used for.  See the
     /// [`ObjectCandidate`](symbolicator_service::objects::ObjectCandidate) struct
     /// for which extra information is returned for DIF objects.
-    #[serde(default)]
     pub dif_candidates: bool,
 
     /// Whether to apply source context for the stack frames.
-    #[serde(default = "default_apply_source_context")]
     pub apply_source_context: bool,
-}
 
-fn default_apply_source_context() -> bool {
-    true
+    /// The order in which stack frames are received by Symbolicator and returned to the caller.
+    pub frame_order: FrameOrder,
 }
 
 impl Default for RequestOptions {
@@ -147,6 +145,7 @@ impl Default for RequestOptions {
         Self {
             dif_candidates: false,
             apply_source_context: true,
+            frame_order: FrameOrder::CalleeFirst,
         }
     }
 }
@@ -594,7 +593,7 @@ mod tests {
     use symbolicator_native::interface::{
         CompleteObjectInfo, RawFrame, RawStacktrace, StacktraceOrigin,
     };
-    use symbolicator_service::types::RawObjectInfo;
+    use symbolicator_service::types::{FrameOrder, RawObjectInfo};
     use symbolicator_service::utils::hex::HexValue;
     use symbolicator_sources::ObjectType;
 
@@ -634,6 +633,7 @@ mod tests {
             apply_source_context: true,
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
+            frame_order: FrameOrder::CalleeFirst,
         };
 
         let request_id = service
@@ -677,6 +677,7 @@ mod tests {
             apply_source_context: true,
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
+            frame_order: FrameOrder::CalleeFirst,
         }
     }
 

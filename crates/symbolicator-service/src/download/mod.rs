@@ -12,7 +12,6 @@ use std::time::{Duration, Instant};
 use ::sentry::SentryFutureExt;
 use bytes::Bytes;
 use futures::{future::Either, prelude::*};
-use partial::BytesContentRange;
 use reqwest::StatusCode;
 
 use crate::caching::{CacheContents, CacheError};
@@ -723,7 +722,6 @@ impl<'a> SymRequest<'a> {
         });
 
         Ok(SymResponse {
-            timeouts: self.timeouts,
             measure: self.measure,
             response,
         })
@@ -732,7 +730,6 @@ impl<'a> SymRequest<'a> {
 
 /// A HTTP response Symbolicator received.
 struct SymResponse<'a> {
-    timeouts: &'a DownloadTimeouts,
     measure: &'a MeasureSourceDownloadGuard<'a>,
     response: reqwest::Response,
 }
@@ -752,27 +749,14 @@ impl SymResponse<'_> {
 
     /// Downloads the resource into `destination`, applying timeouts.
     async fn download(self, mut destination: impl WriteStream) -> CacheContents {
-        // Use the content range, if available for a timeout, we're really just interested in
-        // limiting the total time, not the time of individual requests.
-        let timeout = BytesContentRange::from_response(&self.response)
-            .and_then(|r| r.ok())
-            .map(|r| r.total_size)
-            .or_else(|| self.response.content_length())
-            .map(|cl| content_length_timeout(cl, self.timeouts.streaming))
-            .unwrap_or(self.timeouts.max_download);
-
         let mut stream = self.response.bytes_stream().map_err(CacheError::from);
         // Transfer the contents, into the destination and track progress.
-        tokio::time::timeout(timeout, async move {
-            while let Some(chunk) = stream.next().await.transpose()? {
-                self.measure.add_bytes_transferred(chunk.len() as u64);
-                destination.write_buf(chunk).await?;
-            }
+        while let Some(chunk) = stream.next().await.transpose()? {
+            self.measure.add_bytes_transferred(chunk.len() as u64);
+            destination.write_buf(chunk).await?;
+        }
 
-            Ok(())
-        })
-        .await
-        .map_err(|_| CacheError::Timeout(timeout))?
+        Ok(())
     }
 }
 
@@ -908,14 +892,6 @@ where
     }
 }
 
-/// Computes a download timeout based on a content length in bytes and a per-gigabyte timeout.
-///
-/// Returns `content_length / 2^30 * timeout_per_gb`, with a minimum value of 10s.
-fn content_length_timeout(content_length: u64, timeout_per_gb: Duration) -> Duration {
-    let gb = content_length as f64 / (1024.0 * 1024.0 * 1024.0);
-    timeout_per_gb.mul_f64(gb).max(Duration::from_secs(10))
-}
-
 #[cfg(test)]
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
@@ -1046,25 +1022,5 @@ mod tests {
         assert!(!file_list.is_empty());
         let item = &file_list[0];
         assert_eq!(item.source_id(), source.id());
-    }
-
-    #[test]
-    fn test_content_length_timeout() {
-        let timeout_per_gb = Duration::from_secs(30);
-        let one_gb = 1024 * 1024 * 1024;
-
-        let timeout = |content_length| content_length_timeout(content_length, timeout_per_gb);
-
-        // very short file
-        assert_eq!(timeout(100), Duration::from_secs(10));
-
-        // 0.5 GB
-        assert_eq!(timeout(one_gb / 2), timeout_per_gb / 2);
-
-        // 1 GB
-        assert_eq!(timeout(one_gb), timeout_per_gb);
-
-        // 1.5 GB
-        assert_eq!(timeout(one_gb * 3 / 2), timeout_per_gb.mul_f64(1.5));
     }
 }

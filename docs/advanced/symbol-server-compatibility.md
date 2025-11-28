@@ -116,10 +116,9 @@ below. Please pay attention to the casing rules!
 ### Compression
 
 Symbolicator supports a range of compression formats (zlib, gzip, zstd and cab).
-For cab compression, the `cabextract` binary needs to be installed. If the debug
-file is already compressed, it will be auto-detected and extracted. For PE/PDB
-files, Symbolicator also supports the Microsoft convention of replacing the last
-character in the filename with an underscore.
+If the debug file is already compressed, it will be auto-detected and extracted.
+For PE/PDB files, Symbolicator also supports the Microsoft convention of
+replacing the last character in the filename with an underscore.
 
 ## Supported Servers
 

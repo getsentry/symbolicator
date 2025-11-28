@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-js/tests/integration/sourcemap.rs
-assertion_line: 113
 expression: response
 ---
 stacktraces:
