@@ -5,7 +5,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::types::{Platform, Scope, ScrapingConfig};
+use symbolicator_service::types::{FrameOrder, Platform, Scope, ScrapingConfig};
 use symbolicator_sources::{SentryFileId, SentrySourceConfig};
 
 use crate::lookup::CachedFileUri;
@@ -30,6 +30,8 @@ pub struct SymbolicateJsStacktraces {
     pub scraping: ScrapingConfig,
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
+    /// The order of frames within stacktraces (innermost frame first or last).
+    pub frame_order: FrameOrder,
 }
 
 // Some of the renames are there only to make it synchronized

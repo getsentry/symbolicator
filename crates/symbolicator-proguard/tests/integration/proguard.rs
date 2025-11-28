@@ -6,7 +6,7 @@ use symbolic::common::{DebugId, Uuid};
 use symbolicator_proguard::interface::{
     JvmFrame, JvmModule, JvmStacktrace, SymbolicateJvmStacktraces,
 };
-use symbolicator_service::types::Scope;
+use symbolicator_service::types::{FrameOrder, Scope};
 use symbolicator_sources::{SentrySourceConfig, SourceConfig};
 use symbolicator_test::assert_snapshot;
 
@@ -35,6 +35,7 @@ fn make_jvm_request(
         stacktraces,
         modules,
         classes: Vec::new(),
+        frame_order: FrameOrder::CallerFirst,
     }
 }
 
