@@ -1,14 +1,8 @@
-#[cfg(feature = "https")]
-use std::fs::read;
 use std::net::SocketAddr;
 use std::net::TcpListener;
-#[cfg(feature = "https")]
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 
-#[cfg(feature = "https")]
-use axum_server::tls_rustls::RustlsConfig;
 use futures::future::BoxFuture;
 use futures::future::try_join_all;
 use symbolicator_service::caching::Caches;
@@ -17,11 +11,6 @@ use crate::config::Config;
 use crate::endpoints;
 use crate::metric;
 use crate::service::RequestService;
-
-#[cfg(feature = "https")]
-fn read_pem_file(path: &PathBuf) -> Result<Vec<u8>> {
-    read(path).context(format!("unable to read file: {}", path.display()))
-}
 
 /// Starts all actors and HTTP (and optionally HTTPS) server based on loaded config.
 pub fn run(config: Config) -> Result<()> {
@@ -64,25 +53,6 @@ pub fn run(config: Config) -> Result<()> {
     #[allow(clippy::redundant_clone)] // we need `svc` for the https case below
     let server_http = axum_server::from_tcp(socket_http).serve(svc.clone());
     servers.push(Box::pin(server_http));
-
-    #[cfg(feature = "https")]
-    if let Some(ref bind_str) = config.bind_https {
-        let https_conf = match config.server_config.https {
-            None => panic!("Need HTTPS config"),
-            Some(ref conf) => conf,
-        };
-        let socket_https = TcpListener::bind(bind_str.parse::<SocketAddr>()?)?;
-        let local_addr = socket_https.local_addr()?;
-        tracing::info!("Starting HTTPS server on {}", local_addr);
-
-        let certificate = read_pem_file(&https_conf.certificate_path)?;
-        let key = read_pem_file(&https_conf.key_path)?;
-        let tls_config =
-            web_pool.block_on(async { RustlsConfig::from_pem(certificate, key).await })?;
-
-        let server_https = axum_server::from_tcp_rustls(socket_https, tls_config).serve(svc);
-        servers.push(Box::pin(server_https));
-    }
 
     if config.enable_cache_cleanup {
         let caches =

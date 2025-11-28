@@ -6,9 +6,6 @@ edition = "2024"
 license-file = "../../LICENSE.md"
 default-run = "symbolicator"
 
-[features]
-https = ["axum-server/tls-rustls", "symbolicator-service/https"]
-
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true, features = ["multipart"] }
