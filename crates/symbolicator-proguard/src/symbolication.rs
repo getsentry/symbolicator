@@ -1132,11 +1132,12 @@ some.Class -> b:
 
         let remapped = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
 
-        assert_eq!(remapped.len(), 1);
-        assert_eq!(remapped[0].module, "some.Class");
-        assert_eq!(remapped[0].function, "outlineCaller");
-        assert_eq!(remapped[0].lineno, Some(98));
-        assert_eq!(remapped[0].index, 1);
+        insta::assert_yaml_snapshot!(remapped, @r###"
+        - function: outlineCaller
+          module: some.Class
+          lineno: 98
+          index: 1
+        "###);
     }
 
     #[test]
