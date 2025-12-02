@@ -361,34 +361,22 @@ impl LocalAggregator {
         *aggregation = value as i64;
     }
 
-    /// Emit a `timer` metric, for which every value is accumulated
-    pub fn emit_timer(&mut self, name: &'static str, value: f64, tags: &[(&'static str, &str)]) {
-        let tags = self.format_tags(tags);
-        self.emit_distribution_inner("|ms", name, value, tags)
-    }
-
-    /// Emit a `histogram` metric, for which every value is accumulated
-    pub fn emit_histogram(
+    pub fn emit_distribution(
         &mut self,
         name: &'static str,
         value: f64,
         tags: &[(&'static str, &str)],
     ) {
         let tags = self.format_tags(tags);
-        self.emit_distribution_inner("|h", name, value, tags)
-    }
 
-    /// Emit a distribution metric, which is aggregated by appending to a list of values.
-    fn emit_distribution_inner(
-        &mut self,
-        ty: &'static str,
-        name: &'static str,
-        value: f64,
-        tags: Option<Box<str>>,
-    ) {
-        let key = AggregationKey { ty, name, tags };
+        let this = &mut *self;
+        let key = AggregationKey {
+            ty: "|d",
+            name,
+            tags,
+        };
 
-        let aggregation = self.aggregated_distributions.entry(key).or_default();
+        let aggregation = this.aggregated_distributions.entry(key).or_default();
         aggregation.push(value);
     }
 }
@@ -459,11 +447,11 @@ macro_rules! metric {
 
     // sets
     (set($id:expr) = $value:expr $(, $k:ident = $v:expr)* $(,)?) => {
-        $crate::with_client(|local| {
+        $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
-            local.emit_set(&$crate::types::SetMetric::name(&$id), $value, tags);
+            local.emit_set(&$id, $value, tags);
         });
     };
 
@@ -484,29 +472,18 @@ macro_rules! metric {
                 $(($k, $v)),*
             ];
             use $crate::metrics::IntoDistributionValue;
-            local.emit_timer($id, ($value).into_value(), tags);
+            local.emit_distribution($id, ($value).into_value(), tags);
         });
     }};
 
-    // we use statsd timers to send things such as filesizes as well.
-    (time_raw($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
+    // distributions
+    (distribution($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
         $crate::metrics::with_client(|local| {
             let tags: &[(&'static str, &str)] = &[
                 $(($k, $v)),*
             ];
             use $crate::metrics::IntoDistributionValue;
-            local.emit_timer($id, ($value).into_value(), tags);
-        });
-    }};
-
-    // histograms
-    (histogram($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{
-        $crate::metrics::with_client(|local| {
-            let tags: &[(&'static str, &str)] = &[
-                $(($k, $v)),*
-            ];
-            use $crate::metrics::IntoDistributionValue;
-            local.emit_histogram($id, ($value).into_value(), tags);
+            local.emit_distribution($id, ($value).into_value(), tags);
         });
     }};
 }
