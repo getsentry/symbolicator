@@ -35,7 +35,7 @@ impl std::fmt::Display for StacktraceOrigin {
 /// in a symbolication request. See the individual members for more information.
 ///
 /// These numbers are being accumulated across one symbolication request, and are emitted
-/// as a histogram.
+/// as a distribution.
 #[derive(Default)]
 pub struct StacktraceMetrics {
     /// A truncated stack trace is one that does not end in a
@@ -148,32 +148,32 @@ pub fn record_symbolication_metrics(
     }
 
     metric!(
-        time_raw("symbolication.num_modules") = modules.len() as u64,
+        distribution("symbolication.num_modules") = modules.len() as u64,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unusable_modules") = unusable_modules,
+        distribution("symbolication.unusable_modules") = unusable_modules,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unparsable_modules") = unparsable_modules,
+        distribution("symbolication.unparsable_modules") = unparsable_modules,
         "platform" => &object_platform, "origin" => &origin
     );
 
     metric!(
-        time_raw("symbolication.num_stacktraces") = stacktraces.len() as u64,
+        distribution("symbolication.num_stacktraces") = stacktraces.len() as u64,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.short_stacktraces") = metrics.short_traces,
+        distribution("symbolication.short_stacktraces") = metrics.short_traces,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.truncated_stacktraces") = metrics.truncated_traces,
+        distribution("symbolication.truncated_stacktraces") = metrics.truncated_traces,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.bad_stacktraces") = metrics.bad_traces,
+        distribution("symbolication.bad_stacktraces") = metrics.bad_traces,
         "platform" => &object_platform, "origin" => &origin
     );
 
@@ -191,37 +191,37 @@ pub fn record_symbolication_metrics(
     for (p, count) in &frames_by_platform {
         let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none");
         metric!(
-            time_raw("symbolication.num_frames") =
+            distribution("symbolication.num_frames") =
                 count,
             "platform" => &object_platform, "origin" => &origin,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
     metric!(
-        time_raw("symbolication.scanned_frames") = metrics.scanned_frames,
+        distribution("symbolication.scanned_frames") = metrics.scanned_frames,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
+        distribution("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unsymbolicated_context_frames") =
+        distribution("symbolication.unsymbolicated_context_frames") =
             metrics.unsymbolicated_context_frames,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unsymbolicated_cfi_frames") =
+        distribution("symbolication.unsymbolicated_cfi_frames") =
             metrics.unsymbolicated_cfi_frames,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unsymbolicated_scanned_frames") =
+        distribution("symbolication.unsymbolicated_scanned_frames") =
             metrics.unsymbolicated_scanned_frames,
         "platform" => &object_platform, "origin" => &origin
     );
     metric!(
-        time_raw("symbolication.unmapped_frames") = metrics.unmapped_frames,
+        distribution("symbolication.unmapped_frames") = metrics.unmapped_frames,
         "platform" => &object_platform, "origin" => &origin
     );
 }

@@ -17,7 +17,7 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
     let metadata = file.metadata()?;
     // TODO(swatinem): we should rename this to a more descriptive metric, as we use this for *all*
     // kinds of downloaded files, not only "objects".
-    metric!(time_raw("objects.size") = metadata.len());
+    metric!(distribution("objects.size") = metadata.len());
 
     file.rewind()?;
     if metadata.len() < 4 {

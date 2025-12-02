@@ -1143,8 +1143,13 @@ impl ArtifactFetcher {
         }
 
         let artifact_bundle = self.fetch_artifact_bundle(remote_file).await;
-        self.artifact_bundles
-            .insert(uri, artifact_bundle.map(|bundle| (bundle, resolved_with)));
+        if self
+            .artifact_bundles
+            .insert(uri, artifact_bundle.map(|bundle| (bundle, resolved_with)))
+            .is_none()
+        {
+            self.metrics.record_bundle_fetched();
+        }
 
         true
     }
@@ -1240,8 +1245,7 @@ impl ArtifactFetcher {
     }
 
     fn record_metrics(&self) {
-        let artifact_bundles = self.artifact_bundles.len() as u64;
-        self.metrics.submit_metrics(artifact_bundles);
+        self.metrics.submit();
     }
 }
 

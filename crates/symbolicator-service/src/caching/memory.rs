@@ -359,7 +359,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             if let Ok(byte_view) = contents {
                 metric!(
-                    time_raw("caches.file.size") = byte_view.len() as u64,
+                    distribution("caches.file.size") = byte_view.len() as u64,
                     "hit" => "false",
                     "is_refresh" => &is_refresh.to_string(),
                     "cache" => name.as_ref(),
@@ -641,7 +641,7 @@ fn lookup_local_cache(
     metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
     if let Ok(byteview) = data.contents() {
         metric!(
-            time_raw("caches.file.size") = byteview.len() as u64,
+            distribution("caches.file.size") = byteview.len() as u64,
             "hit" => "true",
             "cache" => name.as_ref(),
         );

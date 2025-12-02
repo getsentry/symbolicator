@@ -42,7 +42,7 @@
 //! previous layers in case of lazy cache recomputation.
 //!
 //! Various other metrics are being collected as well, including:
-//! - `caches.file.size`: A histogram for the size (in bytes) of the successfully loaded / written cache files.
+//! - `caches.file.size`: A distribution for the size (in bytes) of the successfully loaded / written cache files.
 //! - `caches.file.write`: The number of caches being written to disk.
 //!   This should match `caches.computation` if the file-system layer is enabled.
 //! - TODO: list all the other metrics that are missing here :-)
