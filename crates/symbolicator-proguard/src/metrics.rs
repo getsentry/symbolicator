@@ -12,15 +12,15 @@ pub(crate) fn record_symbolication_metrics(
         .map(|p| p.as_ref())
         .unwrap_or("none");
 
-    metric!(time_raw("symbolication.num_exceptions") = stats.symbolicated_exceptions, "event_platform" => event_platform);
-    metric!(time_raw("symbolication.unsymbolicated_exceptions") = stats.unsymbolicated_exceptions, "event_platform" => event_platform);
+    metric!(distribution("symbolication.num_exceptions") = stats.symbolicated_exceptions, "event_platform" => event_platform);
+    metric!(distribution("symbolication.unsymbolicated_exceptions") = stats.unsymbolicated_exceptions, "event_platform" => event_platform);
 
-    metric!(time_raw("symbolication.num_stacktraces") = stats.num_stacktraces);
+    metric!(distribution("symbolication.num_stacktraces") = stats.num_stacktraces);
 
     for (p, count) in stats.symbolicated_frames {
         let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
-            time_raw("symbolication.num_frames") =
+            distribution("symbolication.num_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
@@ -29,14 +29,14 @@ pub(crate) fn record_symbolication_metrics(
     for (p, count) in stats.unsymbolicated_frames {
         let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
-            time_raw("symbolication.unsymbolicated_frames") =
+            distribution("symbolication.unsymbolicated_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
 
-    metric!(time_raw("symbolication.num_classes") = stats.symbolicated_classes, "event_platform" => event_platform);
-    metric!(time_raw("symbolication.unsymbolicated_classes") = stats.unsymbolicated_classes, "event_platform" => event_platform);
+    metric!(distribution("symbolication.num_classes") = stats.symbolicated_classes, "event_platform" => event_platform);
+    metric!(distribution("symbolication.unsymbolicated_classes") = stats.unsymbolicated_classes, "event_platform" => event_platform);
 }
 
 #[derive(Debug, Clone, Default)]

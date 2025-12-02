@@ -852,7 +852,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 .unwrap_or(bytes_transferred);
 
             metric!(
-                histogram("download_throughput") = throughput,
+                distribution("download_throughput") = throughput,
                 "task_name" => self.task_name,
                 "status" => status,
                 "source" => self.source_name,
@@ -860,7 +860,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
             );
 
             metric!(
-                histogram("download_size") = bytes_transferred,
+                distribution("download_size") = bytes_transferred,
                 "task_name" => self.task_name,
                 "status" => status,
                 "source" => self.source_name,
@@ -870,7 +870,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
     }
 }
 
-/// Measures the timing of a download-related future and reports metrics as a histogram.
+/// Measures the timing of a download-related future and reports metrics as a distribution.
 ///
 /// This function reports a single metric corresponding to the task name. This metric is reported
 /// regardless of the future's return value.
