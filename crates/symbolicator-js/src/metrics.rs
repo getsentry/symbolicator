@@ -29,7 +29,7 @@
 use std::collections::HashMap;
 
 use symbolic::debuginfo::sourcebundle::SourceFileType;
-use symbolicator_service::{metric, metrics, types::Platform};
+use symbolicator_service::{metric, types::Platform};
 
 use crate::interface::ResolvedWith;
 
@@ -42,6 +42,7 @@ pub struct JsMetrics {
     pub fetched_artifacts: u64,
     pub queried_bundles: u64,
     pub scraped_files: u64,
+    pub fetched_bundles: u64,
 
     // Product managers are interested in these metrics as a "funnel":
     found_source_via_debugid: i64,
@@ -84,6 +85,10 @@ impl JsMetrics {
             project_id,
             ..Self::default()
         }
+    }
+
+    pub fn record_bundle_fetched(&mut self) {
+        self.fetched_bundles += 1;
     }
 
     pub fn record_file_scraped(&mut self, file_ty: SourceFileType, had_debug_id: bool) {
@@ -182,190 +187,145 @@ impl JsMetrics {
         }
     }
 
-    pub fn submit_metrics(&self, artifact_bundles: u64) {
-        metrics::with_client(|aggregator| self.submit_local_metrics(aggregator, artifact_bundles))
-    }
-
-    fn submit_local_metrics(
-        &self,
-        aggregator: &mut metrics::LocalAggregator,
-        artifact_bundles: u64,
-    ) {
-        // per-event distribution, emitted as `time_raw`
-        use symbolicator_service::metrics::IntoDistributionValue;
-        aggregator.emit_timer("js.needed_files", self.needed_files.into_value(), &[]);
-        aggregator.emit_timer("js.api_requests", self.api_requests.into_value(), &[]);
-        aggregator.emit_timer("js.queried_bundles", self.queried_bundles.into_value(), &[]);
-        aggregator.emit_timer("js.fetched_bundles", artifact_bundles.into_value(), &[]);
-        aggregator.emit_timer(
-            "js.queried_artifacts",
-            self.queried_artifacts.into_value(),
-            &[],
-        );
-        aggregator.emit_timer(
-            "js.fetched_artifacts",
-            self.fetched_artifacts.into_value(),
-            &[],
-        );
-        aggregator.emit_timer("js.scraped_files", self.scraped_files.into_value(), &[]);
+    pub fn submit(&self) {
+        // per-event distribution, emitted as `distribution`
+        metric!(distribution("js.needed_files") = self.needed_files);
+        metric!(distribution("js.api_requests") = self.api_requests);
+        metric!(distribution("js.queried_bundles") = self.queried_bundles);
+        metric!(distribution("js.fetched_bundles") = self.fetched_bundles);
+        metric!(distribution("js.queried_artifacts") = self.queried_artifacts);
+        metric!(distribution("js.fetched_artifacts") = self.fetched_artifacts);
+        metric!(distribution("js.scraped_files") = self.scraped_files);
 
         // Sources:
-        aggregator.emit_count(
-            "js.found_via_bundle_debugid",
-            self.found_source_via_debugid,
-            &[("type", "source"), ("had_debugid", "true")],
+        metric!(
+            counter("js.found_via_bundle_debugid") += self.found_source_via_debugid,
+            "type" => "source",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_source_via_release_with_debugid,
-            &[
-                ("type", "source"),
-                ("lookup", "release"),
-                ("had_debugid", "true"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_source_via_release_with_debugid,
+            "type" => "source",
+            "lookup" => "release",
+            "had_debugid" => "true",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_source_via_release_without_debugid,
-            &[
-                ("type", "source"),
-                ("lookup", "release"),
-                ("had_debugid", "false"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_source_via_release_without_debugid,
+            "type" => "source",
+            "lookup" => "release",
+            "had_debugid" => "false",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_source_via_release_old_with_debugid,
-            &[
-                ("type", "source"),
-                ("lookup", "release-old"),
-                ("had_debugid", "true"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_source_via_release_old_with_debugid,
+            "type" => "source",
+            "lookup" => "release-old",
+            "had_debugid" => "true",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_source_via_release_old_without_debugid,
-            &[
-                ("type", "source"),
-                ("lookup", "release-old"),
-                ("had_debugid", "false"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_source_via_release_old_without_debugid,
+            "type" => "source",
+            "lookup" => "release-old",
+            "had_debugid" => "false",
         );
-        aggregator.emit_count(
-            "js.found_via_scraping",
-            self.found_source_via_scraping_with_debugid,
-            &[("type", "source"), ("had_debugid", "true")],
+        metric!(
+            counter("js.found_via_scraping") += self.found_source_via_scraping_with_debugid,
+            "type" => "source",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.found_via_scraping",
-            self.found_source_via_scraping_without_debugid,
-            &[("type", "source"), ("had_debugid", "false")],
+        metric!(
+            counter("js.found_via_scraping") += self.found_source_via_scraping_without_debugid,
+            "type" => "source",
+            "had_debugid" => "false"
         );
-        aggregator.emit_count(
-            "js.file_not_found",
-            self.source_not_found_with_debugid,
-            &[("type", "source"), ("had_debugid", "true")],
+        metric!(
+            counter("js.file_not_found") += self.source_not_found_with_debugid,
+            "type" => "source",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.file_not_found",
-            self.source_not_found_without_debugid,
-            &[("type", "source"), ("had_debugid", "false")],
+        metric!(
+            counter("js.file_not_found") += self.source_not_found_without_debugid,
+            "type" => "source",
+            "had_debugid" => "false"
         );
 
         // SourceMaps:
-        aggregator.emit_count(
-            "js.found_via_bundle_debugid",
-            self.found_sourcemap_via_debugid,
-            &[("type", "sourcemap"), ("had_debugid", "true")],
+        metric!(
+            counter("js.found_via_bundle_debugid") += self.found_sourcemap_via_debugid,
+            "type" => "sourcemap",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_sourcemap_via_release_with_debugid,
-            &[
-                ("type", "sourcemap"),
-                ("lookup", "release"),
-                ("had_debugid", "true"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release_with_debugid,
+                "type" => "sourcemap",
+                "lookup" => "release",
+                "had_debugid" => "true",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_sourcemap_via_release_without_debugid,
-            &[
-                ("type", "sourcemap"),
-                ("lookup", "release"),
-                ("had_debugid", "false"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release_without_debugid,
+                "type" => "sourcemap",
+                "lookup" => "release",
+                "had_debugid" => "false",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_sourcemap_via_release_old_with_debugid,
-            &[
-                ("type", "sourcemap"),
-                ("lookup", "release-old"),
-                ("had_debugid", "true"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release_old_with_debugid,
+                "type" => "sourcemap",
+                "lookup" => "release-old",
+                "had_debugid" => "true",
         );
-        aggregator.emit_count(
-            "js.found_via_bundle_url",
-            self.found_sourcemap_via_release_old_without_debugid,
-            &[
-                ("type", "sourcemap"),
-                ("lookup", "release-old"),
-                ("had_debugid", "false"),
-            ],
+        metric!(
+            counter("js.found_via_bundle_url") += self.found_sourcemap_via_release_old_without_debugid,
+                "type" => "sourcemap",
+                "lookup" => "release-old",
+                "had_debugid" => "false",
         );
-        aggregator.emit_count(
-            "js.found_via_scraping",
-            self.found_sourcemap_via_scraping_with_debugid,
-            &[("type", "sourcemap"), ("had_debugid", "true")],
+        metric!(
+            counter("js.found_via_scraping") += self.found_sourcemap_via_scraping_with_debugid,
+            "type" => "sourcemap",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.found_via_scraping",
-            self.found_sourcemap_via_scraping_without_debugid,
-            &[("type", "sourcemap"), ("had_debugid", "false")],
+        metric!(
+            counter("js.found_via_scraping") += self.found_sourcemap_via_scraping_without_debugid,
+            "type" => "sourcemap",
+            "had_debugid" => "false"
         );
-        aggregator.emit_count(
-            "js.file_not_found",
-            self.sourcemap_not_found_with_debugid,
-            &[("type", "sourcemap"), ("had_debugid", "true")],
+        metric!(
+            counter("js.file_not_found") += self.sourcemap_not_found_with_debugid,
+            "type" => "sourcemap",
+            "had_debugid" => "true"
         );
-        aggregator.emit_count(
-            "js.file_not_found",
-            self.sourcemap_not_found_without_debugid,
-            &[("type", "sourcemap"), ("had_debugid", "false")],
+        metric!(
+            counter("js.file_not_found") += self.sourcemap_not_found_without_debugid,
+            "type" => "sourcemap",
+            "had_debugid" => "false"
         );
-        aggregator.emit_count("js.sourcemap_not_needed", self.sourcemap_not_needed, &[]);
+        metric!(counter("js.sourcemap_not_needed") += self.sourcemap_not_needed);
 
         // Lookup Method:
-        aggregator.emit_count(
-            "js.bundle_lookup",
-            self.found_bundle_via_debugid,
-            &[("method", "debugid")],
+        metric!(
+            counter("js.bundle_lookup") += self.found_bundle_via_debugid,
+            "method" => "debugid"
         );
-        aggregator.emit_count(
-            "js.bundle_lookup",
-            self.found_bundle_via_index,
-            &[("method", "index")],
+        metric!(
+            counter("js.bundle_lookup") += self.found_bundle_via_index,
+            "method" => "index"
         );
-        aggregator.emit_count(
-            "js.bundle_lookup",
-            self.found_bundle_via_release,
-            &[("method", "release")],
+        metric!(
+            counter("js.bundle_lookup") += self.found_bundle_via_release,
+            "method" => "release"
         );
-        aggregator.emit_count(
-            "js.bundle_lookup",
-            self.found_bundle_via_release_old,
-            &[("method", "release-old")],
+        metric!(
+            counter("js.bundle_lookup") += self.found_bundle_via_release_old,
+            "method" => "release-old"
         );
 
         // Count this project if any of its source/sourcemap files had debug ids.
         // Also separately count it if such a file wasn't found.
         if let Some(project_id) = self.project_id {
             if self.had_debug_id {
-                aggregator.emit_set("js.debugid_projects", project_id, &[]);
+                metric!(set("js.debugid_projects") = project_id);
             }
             if self.source_not_found_with_debugid > 0 || self.sourcemap_not_found_with_debugid > 0 {
-                aggregator.emit_set("js.debugid_projects_notfound", project_id, &[]);
+                metric!(set("js.debugid_projects_notfound") = project_id);
             }
         }
     }
@@ -378,12 +338,12 @@ pub fn record_stacktrace_metrics(event_platform: Option<Platform>, stats: Symbol
         .map(|p| p.as_ref())
         .unwrap_or("none");
 
-    metric!(time_raw("symbolication.num_stacktraces") = stats.num_stacktraces);
+    metric!(distribution("symbolication.num_stacktraces") = stats.num_stacktraces);
 
     for (p, count) in stats.symbolicated_frames {
         let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
-            time_raw("symbolication.num_frames") =
+            distribution("symbolication.num_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
@@ -392,13 +352,13 @@ pub fn record_stacktrace_metrics(event_platform: Option<Platform>, stats: Symbol
     for (p, count) in stats.unsymbolicated_frames {
         let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
         metric!(
-            time_raw("symbolication.unsymbolicated_frames") =
+            distribution("symbolication.unsymbolicated_frames") =
                 count,
             "frame_platform" => frame_platform, "event_platform" => event_platform
         );
     }
 
-    metric!(time_raw("js.missing_sourcescontent") = stats.missing_sourcescontent);
+    metric!(distribution("js.missing_sourcescontent") = stats.missing_sourcescontent);
 }
 
 #[derive(Debug, Clone, Default)]
