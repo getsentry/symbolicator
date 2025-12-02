@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Various fixes & improvements
+- The default of `max_download_timeout` is reduced to 5 minutes. (#1839) by @loewenheim
+
 ## 25.11.1
 
 ### Breaking Changes
