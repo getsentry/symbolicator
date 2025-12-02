@@ -4,6 +4,7 @@
 
 ### Various fixes & improvements
 - The default of `max_download_timeout` is reduced to 5 minutes. (#1839) by @loewenheim
+- Histogram-like metrics are replaced with distributions. (#1840) by @loewenheim
 
 ## 25.11.1
 
