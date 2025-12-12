@@ -397,9 +397,22 @@ impl ProguardService {
         })
     }
 
-    /// Tries to fully remap a frame using the proguard cache, including rewrite rules.
+    /// Tries to remap a `JvmFrame` using a `proguard::StackFrame`
+    /// constructed from it.
     ///
-    /// Uses `buf` as scratch space for intermediate proguard frames.
+    /// The `buf` parameter is used as a buffer for the frames returned
+    /// by `remap_frame`.
+    ///
+    /// The `exception_descriptor` parameter is used to apply rewrite rules
+    /// to the frame.
+    ///
+    /// The `apply_rewrite` parameter is used to determine whether to apply rewrite rules.
+    ///
+    /// The `carried_outline_pos` parameter is used to track the position of the
+    /// next frame in the outline.
+    ///
+    /// This function returns a list of frames because one frame may be expanded into
+    /// a series of inlined frames. The returned list is sorted so that inlinees come before their callers.
     fn map_full_frame<'a>(
         mapper: &'a proguard::ProguardCache<'a>,
         proguard_frame: &proguard::StackFrame<'a>,
