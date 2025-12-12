@@ -294,7 +294,7 @@ pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(4, CachePathFormat::V2),
     ],
 };
-static_assert!(proguard::PRGCACHE_VERSION == 3);
+static_assert!(proguard::PRGCACHE_VERSION == 4);
 
 /// Symstore index cache, with the following versions:
 ///

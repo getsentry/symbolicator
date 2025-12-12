@@ -128,6 +128,8 @@ pub struct JvmException {
 /// A JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmStacktrace {
+    /// The exception that caused the stacktrace.
+    pub exception: Option<JvmException>,
     /// The stacktrace's frames.
     pub frames: Vec<JvmFrame>,
 }
