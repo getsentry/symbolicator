@@ -164,7 +164,7 @@ impl ProguardService {
                     &mappers,
                     &raw_stacktrace.frames,
                     release_package.as_deref(),
-                    exception,
+                    exception.as_ref(),
                     &mut stats,
                 );
 
