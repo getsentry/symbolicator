@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use clap::{Parser, arg};
+use clap::Parser;
 
 use humantime::Duration;
 use symbolicator_service::caching;
