@@ -139,12 +139,12 @@ impl S3Downloader {
                         // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
                         let response = service_err.raw();
                         let status = response.status();
-                        let code = service_err.err().code();
+                        let code = service_err.err().to_owned().code();
 
                         // Capturing signature mismatch errors for issue #1850/SYMBOLI-44
                         if code == Some("SignatureDoesNotMatch") {
                             tracing::error!(
-                                error = &service_err.err() as &dyn std::error::Error,
+                                error = &err as &dyn std::error::Error,
                                 "S3 signature mismatch",
                             )
                         }
