@@ -151,10 +151,7 @@ impl S3Downloader {
 
                         // Capturing signature mismatch errors for issue #1850/SYMBOLI-44
                         if code == Some("SignatureDoesNotMatch") {
-                            tracing::error!(
-                                error = &err as &dyn std::error::Error,
-                                "S3 signature mismatch",
-                            )
+                            tracing::error!("S3 signature mismatch")
                         }
 
                         // NOTE: leaving the credentials empty as our unit / integration tests do
