@@ -55,12 +55,12 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 anyhow = "1.0.66"
 apple-crash-report-parser = "0.5.1"
 async-trait = "0.1.53"
-aws-config = { version = "1.0.1", features = ["behavior-version-latest"] }
-aws-credential-types = { version = "1.0.1", features = [
+aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
+aws-credential-types = { version = "1.2.11", features = [
     "hardcoded-credentials",
 ] }
-aws-sdk-s3 = "1.4.0"
-aws-types = "1.0.1"
+aws-sdk-s3 = "1.118.0"
+aws-types = "1.3.11"
 axum = { version = "0.8.4" }
 axum-server = "0.7.2"
 bindgen = "0.72.1"

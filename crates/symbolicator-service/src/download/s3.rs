@@ -141,6 +141,14 @@ impl S3Downloader {
                         let status = response.status();
                         let code = service_err.err().code();
 
+                        // Capturing signature mismatch errors for issue #1850/SYMBOLI-44
+                        if code == Some("SignatureDoesNotMatch") {
+                            tracing::error!(
+                                error = &service_err.err() as &dyn std::error::Error,
+                                "S3 signature mismatch",
+                            )
+                        }
+
                         // NOTE: leaving the credentials empty as our unit / integration tests do
                         // leads to a `AuthorizationHeaderMalformed` error.
                         if matches!(status.as_u16(), 401 | 403)
