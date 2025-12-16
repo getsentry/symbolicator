@@ -147,7 +147,7 @@ impl S3Downloader {
                         // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
                         let response = service_err.raw();
                         let status = response.status();
-                        let code = service_err.err().to_owned().code();
+                        let code = service_err.err().code();
 
                         // Capturing signature mismatch errors for issue #1850/SYMBOLI-44
                         if code == Some("SignatureDoesNotMatch") {
