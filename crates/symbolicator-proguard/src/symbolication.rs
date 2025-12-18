@@ -401,7 +401,7 @@ impl ProguardService {
     /// constructed from it.
     ///
     /// The `buf` parameter is used as a buffer for the frames returned
-    /// by `remap_frame`.
+    /// by `remap_frame_with_context`.
     ///
     /// The `exception_descriptor` parameter is used to apply rewrite rules
     /// to the frame.
@@ -424,7 +424,7 @@ impl ProguardService {
     ) -> FullRemapResult {
         buf.clear();
 
-        let Some(iter) = mapper.remap_frame(
+        let Some(iter) = mapper.remap_frame_with_context(
             proguard_frame,
             exception_descriptor,
             apply_rewrite,
@@ -863,13 +863,13 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
           filename: App.java
           module: com.example.App
           abs_path: App.java
-          lineno: 0
+          lineno: 42
           index: 0
         - function: barInternalInject
           filename: App.java
           module: com.example.App
           abs_path: App.java
-          lineno: 0
+          lineno: 47
           index: 0
         "###);
     }
