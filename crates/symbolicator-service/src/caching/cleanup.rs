@@ -10,7 +10,6 @@ use rayon::prelude::*;
 
 use crate::caching::fs::{METADATA_EXTENSION, metadata_path};
 use crate::config::Config;
-use crate::metric;
 
 use super::fs::catch_not_found;
 use super::{Cache, Caches};
