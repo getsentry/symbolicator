@@ -22,7 +22,10 @@ fn make_jvm_request(
     let exceptions = vec![serde_json::from_str(exception).unwrap()];
     let frames: Vec<JvmFrame> = serde_json::from_str(frames).unwrap();
     let modules: Vec<JvmModule> = serde_json::from_str(modules).unwrap();
-    let stacktraces = vec![JvmStacktrace { frames }];
+    let stacktraces = vec![JvmStacktrace {
+        frames,
+        exception: serde_json::from_str(exception).unwrap(),
+    }];
 
     SymbolicateJvmStacktraces {
         platform: None,
