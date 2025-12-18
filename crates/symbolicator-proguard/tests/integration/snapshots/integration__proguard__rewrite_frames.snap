@@ -1,0 +1,31 @@
+---
+source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 546
+expression: response_npe
+---
+exceptions:
+  - type: NullPointerException
+    module: java.lang
+stacktraces:
+  - exception:
+      type: NullPointerException
+      module: java.lang
+    frames:
+      - function: render
+        module: com.example.flow.UiBridge
+        lineno: 200
+        index: 0
+      - function: dispatch
+        module: com.example.flow.StreamRouter
+        lineno: 12
+        index: 1
+      - function: internalDispatch
+        module: com.example.flow.StreamRouter$Inline
+        lineno: 30
+        index: 1
+      - function: start
+        module: com.example.flow.Initializer
+        lineno: 42
+        index: 2
+classes: {}
+errors: []
