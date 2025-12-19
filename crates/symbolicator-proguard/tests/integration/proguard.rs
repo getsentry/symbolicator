@@ -22,7 +22,10 @@ fn make_jvm_request(
     let exceptions = vec![serde_json::from_str(exception).unwrap()];
     let frames: Vec<JvmFrame> = serde_json::from_str(frames).unwrap();
     let modules: Vec<JvmModule> = serde_json::from_str(modules).unwrap();
-    let stacktraces = vec![JvmStacktrace { frames }];
+    let stacktraces = vec![JvmStacktrace {
+        frames,
+        exception: serde_json::from_str(exception).unwrap(),
+    }];
 
     SymbolicateJvmStacktraces {
         platform: None,
@@ -477,4 +480,68 @@ async fn test_source_lookup_with_proguard() {
     let response = symbolication.symbolicate_jvm(request).await;
 
     assert_snapshot!(response);
+}
+
+#[tokio::test]
+async fn test_rewrite_frames() {
+    symbolicator_test::setup();
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = proguard_server("rewrite_frames", |_url, _query| {
+        json!([{
+            "id":"proguard.txt",
+            "uuid":"550e8400-e29b-41d4-a716-446655440000",
+            "debugId":"550e8400-e29b-41d4-a716-446655440000",
+            "codeId":null,
+            "cpuName":"any",
+            "objectName":"proguard-mapping",
+            "symbolType":"proguard",
+            "headers": {
+                "Content-Type":"text/x-proguard+plain"
+            },
+            "size":1000,
+            "sha1":"0000000000000000000000000000000000000000",
+            "dateCreated":"2024-02-14T10:49:38.770116Z",
+            "data":{
+                "features":["mapping"]
+            }
+        }])
+    });
+
+    let source = SourceConfig::Sentry(Arc::new(source));
+
+    // Test with NullPointerException thrown at a.start
+    // In CallerFirst order: [outermost_caller, ..., exception_location]
+    // So we have: draw (outermost) -> dispatch -> start (where exception thrown)
+    //
+    // After rewrite:
+    //   - c.draw(20) -> UiBridge.render(200)
+    //   - b.dispatch(5) -> StreamRouter.dispatch(12) + StreamRouter$Inline.internalDispatch(30)
+    //   - a.start(10) -> Initializer.start(42) only (2 inlined frames removed by rewrite rule)
+    let frames_npe = r#"[{
+        "function": "draw",
+        "module": "c",
+        "lineno": 20,
+        "index": 0
+    }, {
+        "function": "dispatch",
+        "module": "b",
+        "lineno": 5,
+        "index": 1
+    }, {
+        "function": "start",
+        "module": "a",
+        "lineno": 10,
+        "index": 2
+    }]"#;
+
+    let request_npe = make_jvm_request(
+        source.clone(),
+        r#"{"type": "NullPointerException", "module": "java.lang"}"#,
+        frames_npe,
+        r#"[{"uuid": "550e8400-e29b-41d4-a716-446655440000", "type": "proguard"}]"#,
+        None,
+    );
+
+    let response_npe = symbolication.symbolicate_jvm(request_npe).await;
+    assert_snapshot!(response_npe);
 }

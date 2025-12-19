@@ -27,6 +27,10 @@ Content-Type: application/json
     ],
     "stacktraces": [
         {
+            "exception": {
+                "type": "RuntimeException",
+                "module": "io.sentry.samples"
+            },
             "frames": [
                 {
                     "function": "otherMethod",
@@ -75,6 +79,7 @@ Content-Type: application/json
 - `modules`: A list of source code files with a corresponding debug id that
   were loaded during JVM code execution. The list is handled by the Sentry source.
 - `stacktrace`: A list of stacktraces to symbolicate.
+  - `exception`: (_optional_) The stacktrace exception which will have its module and type fields remapped. Necessary for applying [rewrite rules](https://r8.googlesource.com/r8/+/refs/heads/main/doc/retrace.md#rewriteframe-introduced-at-version-2_0).
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
     and other optional fields like `colno` or minified `function` name. This list is assumed to be ordered according to the `frame_order` option (see below).
 - `release_package`: Name of Sentry `release` for the processed request.

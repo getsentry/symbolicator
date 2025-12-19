@@ -6,7 +6,10 @@ exceptions:
   - type: g$a
     module: org.a.b
 stacktraces:
-  - frames:
+  - exception:
+      type: g$a
+      module: org.a.b
+    frames:
       - function: onClick
         module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
         lineno: 2

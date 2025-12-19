@@ -6,7 +6,10 @@ exceptions:
   - type: RuntimeException
     module: io.sentry.samples
 stacktraces:
-  - frames:
+  - exception:
+      type: RuntimeException
+      module: io.sentry.samples
+    frames:
       - function: otherMethod
         filename: OtherActivity.java
         module: OtherActivity

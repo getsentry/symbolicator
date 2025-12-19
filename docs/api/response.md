@@ -201,6 +201,10 @@ a list of processed stack traces, exceptions and classes as well as an optional 
   ],
   "stacktraces": [
     {
+      "exception": {
+        "type": "RuntimeException",
+        "module": "java.lang"
+      },
       "frames": [
         {
           "function": "onMenuItemClick",

@@ -6,6 +6,9 @@ exceptions:
   - type: Util$ClassContextSecurityManager
     module: org.slf4j.helpers
 stacktraces:
-  - frames: []
+  - exception:
+      type: Util$ClassContextSecurityManager
+      module: org.slf4j.helpers
+    frames: []
 classes: {}
 errors: []

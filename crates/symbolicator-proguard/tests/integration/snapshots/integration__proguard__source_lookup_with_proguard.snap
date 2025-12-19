@@ -6,7 +6,10 @@ exceptions:
   - type: RuntimeException
     module: java.lang
 stacktraces:
-  - frames:
+  - exception:
+      type: RuntimeException
+      module: java.lang
+    frames:
       - function: main
         filename: ZygoteInit.java
         module: com.android.internal.os.ZygoteInit

@@ -1,0 +1,12 @@
+com.example.flow.Initializer -> a:
+    10:10:void com.example.flow.Inliner.firstStep(com.example.flow.Step):60:60 -> start
+    10:10:void com.example.flow.Inliner.secondStep(com.example.flow.Step):61:61 -> start
+    10:10:void start(com.example.flow.Step):42 -> start
+    # {"id":"com.android.tools.r8.rewriteFrame","conditions":["throws(Ljava/lang/NullPointerException;)"],"actions":["removeInnerFrames(2)"]}
+    15:15:void resume():55 -> start
+com.example.flow.StreamRouter -> b:
+    5:5:void com.example.flow.StreamRouter$Inline.internalDispatch(java.lang.String):30:30 -> dispatch
+    5:5:void dispatch(java.lang.String):12 -> dispatch
+    # {"id":"com.android.tools.r8.rewriteFrame","conditions":["throws(Ljava/lang/IllegalStateException;)"],"actions":["removeInnerFrames(1)"]}
+com.example.flow.UiBridge -> c:
+    20:20:void render():200 -> draw

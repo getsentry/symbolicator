@@ -14,6 +14,18 @@ use symbolicator_service::caching::CacheError;
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::FrameOrder;
 
+/// Result of attempting a full frame remap with rewrite rules.
+enum FullRemapResult {
+    /// Outline frame - skip this frame but preserve rewrite eligibility for next frame.
+    OutlineFrame,
+    /// Rewrite rules cleared all frames - skip this frame and disable rewrite for subsequent frames.
+    RewriteCleared,
+    /// Successfully remapped to these frames.
+    Frames(Vec<JvmFrame>),
+    /// No mappings found - try fallback methods.
+    NoFrames,
+}
+
 impl ProguardService {
     /// Symbolicates a JVM event.
     ///
@@ -145,10 +157,16 @@ impl ProguardService {
         let mut remapped_stacktraces: Vec<_> = stacktraces
             .into_iter()
             .map(|raw_stacktrace| {
+                let exception = raw_stacktrace
+                    .exception
+                    .as_ref()
+                    .map(|exc| Self::map_exception(&mappers, exc).unwrap_or_else(|| exc.clone()));
+
                 let mut frames = Self::map_stacktrace(
                     &mappers,
                     &raw_stacktrace.frames,
                     release_package.as_deref(),
+                    exception.as_ref(),
                     &mut stats,
                 );
 
@@ -157,7 +175,7 @@ impl ProguardService {
                     frames.reverse();
                 }
 
-                JvmStacktrace { frames }
+                JvmStacktrace { exception, frames }
             })
             .collect();
 
@@ -202,10 +220,21 @@ impl ProguardService {
         mappers: &[&proguard::ProguardCache],
         stacktrace: &[JvmFrame],
         release_package: Option<&str>,
+        exception: Option<&JvmException>,
         stats: &mut SymbolicationStats,
     ) -> Vec<JvmFrame> {
         let mut carried_outline_pos = vec![None; mappers.len()];
         let mut remapped_frames = Vec::new();
+
+        // Compute exception descriptor for rewrite rules
+        let exception_descriptor = exception.map(|exc| {
+            let full_class = format!("{}.{}", exc.module, exc.ty);
+            proguard::class_name_to_descriptor(&full_class)
+        });
+
+        // Track whether the next frame can have rewrite rules applied
+        // (only the first non-outline frame after an exception)
+        let mut next_frame_can_rewrite = exception_descriptor.is_some();
 
         'frames: for frame in stacktrace {
             let deobfuscated_signature = frame.signature.as_ref().and_then(|signature| {
@@ -253,22 +282,32 @@ impl ProguardService {
 
             let mut remap_buffer = Vec::new();
             for (mapper_idx, mapper) in mappers.iter().enumerate() {
-                if mapper.is_outline_frame(proguard_frame.class(), proguard_frame.method()) {
-                    carried_outline_pos[mapper_idx] = Some(proguard_frame.line());
-                    continue 'frames;
-                }
-
-                let effective = mapper.prepare_frame_for_mapping(
+                // Try full remap with rewrite rules
+                match Self::map_full_frame(
+                    mapper,
                     &proguard_frame,
+                    frame,
+                    exception_descriptor.as_deref(),
+                    next_frame_can_rewrite,
                     &mut carried_outline_pos[mapper_idx],
-                );
-
-                // First, try to remap the whole frame.
-                if let Some(frames_out) =
-                    Self::map_full_frame(mapper, frame, &effective, &mut remap_buffer)
-                {
-                    mapped_result = Some(frames_out);
-                    break;
+                    &mut remap_buffer,
+                ) {
+                    FullRemapResult::OutlineFrame => {
+                        // Outline frame - skip but preserve rewrite eligibility for next frame
+                        continue 'frames;
+                    }
+                    FullRemapResult::RewriteCleared => {
+                        // Rewrite rules cleared all frames - skip and disable rewrite
+                        next_frame_can_rewrite = false;
+                        continue 'frames;
+                    }
+                    FullRemapResult::Frames(frames) => {
+                        mapped_result = Some(frames);
+                        break;
+                    }
+                    FullRemapResult::NoFrames => {
+                        // Try fallbacks
+                    }
                 }
 
                 // Second, try to remap the frame's method.
@@ -283,6 +322,9 @@ impl ProguardService {
                     break;
                 }
             }
+
+            // After processing the first non-outline frame, disable rewrite rules for subsequent frames
+            next_frame_can_rewrite = false;
 
             // Fix up the frames' in-app fields only if they were actually mapped
             if let Some(frames) = mapped_result.as_mut() {
@@ -365,22 +407,48 @@ impl ProguardService {
     /// constructed from it.
     ///
     /// The `buf` parameter is used as a buffer for the frames returned
-    /// by `remap_frame`.
+    /// by `remap_frame_with_context`.
+    ///
+    /// The `exception_descriptor` parameter is used to apply rewrite rules
+    /// to the frame.
+    ///
+    /// The `apply_rewrite` parameter is used to determine whether to apply rewrite rules.
+    ///
+    /// The `carried_outline_pos` parameter is used to track the position of the
+    /// next frame in the outline.
     ///
     /// This function returns a list of frames because one frame may be expanded into
     /// a series of inlined frames. The returned list is sorted so that inlinees come before their callers.
-    #[tracing::instrument(skip_all)]
     fn map_full_frame<'a>(
         mapper: &'a proguard::ProguardCache<'a>,
-        original_frame: &JvmFrame,
         proguard_frame: &proguard::StackFrame<'a>,
+        original_frame: &JvmFrame,
+        exception_descriptor: Option<&str>,
+        apply_rewrite: bool,
+        carried_outline_pos: &mut Option<usize>,
         buf: &mut Vec<proguard::StackFrame<'a>>,
-    ) -> Option<Vec<JvmFrame>> {
+    ) -> FullRemapResult {
         buf.clear();
-        buf.extend(mapper.remap_frame(proguard_frame));
+
+        let Some(iter) = mapper.remap_frame_with_context(
+            proguard_frame,
+            exception_descriptor,
+            apply_rewrite,
+            carried_outline_pos,
+        ) else {
+            // Outline frame - preserve rewrite eligibility for next frame
+            return FullRemapResult::OutlineFrame;
+        };
+
+        let had_mappings = iter.had_mappings();
+        buf.extend(iter);
+        if had_mappings && buf.is_empty() {
+            // Rewrite rules cleared all frames
+            return FullRemapResult::RewriteCleared;
+        }
 
         if buf.is_empty() {
-            return None;
+            return FullRemapResult::NoFrames;
         }
 
         let res = buf
@@ -401,7 +469,8 @@ impl ProguardService {
                 ..original_frame.clone()
             })
             .collect();
-        Some(res)
+
+        FullRemapResult::Frames(res)
     }
 
     /// Tries to remap a frame's class and method.
@@ -512,6 +581,15 @@ mod tests {
         release_package: Option<&str>,
         frames: &mut [JvmFrame],
     ) -> Vec<JvmFrame> {
+        remap_stacktrace_caller_first_with_exception(proguard_source, release_package, None, frames)
+    }
+
+    fn remap_stacktrace_caller_first_with_exception(
+        proguard_source: &[u8],
+        release_package: Option<&str>,
+        exception: Option<&JvmException>,
+        frames: &mut [JvmFrame],
+    ) -> Vec<JvmFrame> {
         frames.reverse();
         let mapping = ProguardMapping::new(proguard_source);
         let mut cache = Vec::new();
@@ -523,6 +601,7 @@ mod tests {
             &[&cache],
             frames,
             release_package,
+            exception,
             &mut SymbolicationStats::default(),
         );
 
@@ -790,13 +869,13 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
           filename: App.java
           module: com.example.App
           abs_path: App.java
-          lineno: 0
+          lineno: 42
           index: 0
         - function: barInternalInject
           filename: App.java
           module: com.example.App
           abs_path: App.java
-          lineno: 0
+          lineno: 47
           index: 0
         "###);
     }
