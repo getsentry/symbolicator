@@ -16,8 +16,10 @@ use symbolicator_service::types::FrameOrder;
 
 /// Result of attempting a full frame remap with rewrite rules.
 enum FullRemapResult {
-    /// Outline frame or rewrite rules cleared all frames - skip this frame entirely.
-    Skip,
+    /// Outline frame - skip this frame but preserve rewrite eligibility for next frame.
+    OutlineFrame,
+    /// Rewrite rules cleared all frames - skip this frame and disable rewrite for subsequent frames.
+    RewriteCleared,
     /// Successfully remapped to these frames.
     Frames(Vec<JvmFrame>),
     /// No mappings found - try fallback methods.
@@ -290,8 +292,12 @@ impl ProguardService {
                     &mut carried_outline_pos[mapper_idx],
                     &mut remap_buffer,
                 ) {
-                    FullRemapResult::Skip => {
-                        // Outline frame or rewrite rules cleared all frames
+                    FullRemapResult::OutlineFrame => {
+                        // Outline frame - skip but preserve rewrite eligibility for next frame
+                        continue 'frames;
+                    }
+                    FullRemapResult::RewriteCleared => {
+                        // Rewrite rules cleared all frames - skip and disable rewrite
                         next_frame_can_rewrite = false;
                         continue 'frames;
                     }
@@ -430,15 +436,15 @@ impl ProguardService {
             apply_rewrite,
             carried_outline_pos,
         ) else {
-            // Outline frame
-            return FullRemapResult::Skip;
+            // Outline frame - preserve rewrite eligibility for next frame
+            return FullRemapResult::OutlineFrame;
         };
 
         let had_mappings = iter.had_mappings();
         buf.extend(iter);
         if had_mappings && buf.is_empty() {
             // Rewrite rules cleared all frames
-            return FullRemapResult::Skip;
+            return FullRemapResult::RewriteCleared;
         }
 
         if buf.is_empty() {
