@@ -739,6 +739,10 @@
 <span class="w">    </span><span class="p">],</span>
 <span class="w">    </span><span class="nt">&quot;stacktraces&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">        </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;exception&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;RuntimeException&quot;</span><span class="p">,</span>
+<span class="w">                </span><span class="nt">&quot;module&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;io.sentry.samples&quot;</span>
+<span class="w">            </span><span class="p">},</span>
 <span class="w">            </span><span class="nt">&quot;frames&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">                </span><span class="p">{</span>
 <span class="w">                    </span><span class="nt">&quot;function&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;otherMethod&quot;</span><span class="p">,</span>
@@ -786,6 +790,7 @@
 <li><code>modules</code>: A list of source code files with a corresponding debug id that
   were loaded during JVM code execution. The list is handled by the Sentry source.</li>
 <li><code>stacktrace</code>: A list of stacktraces to symbolicate.</li>
+<li><code>exception</code>: (<em>optional</em>) The stacktrace exception which will have its module and type fields remapped. Necessary for applying <a href="https://r8.googlesource.com/r8/+/refs/heads/main/doc/retrace.md#rewriteframe-introduced-at-version-2_0">rewrite rules</a>.</li>
 <li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
     and other optional fields like <code>colno</code> or minified <code>function</code> name. This list is assumed to be ordered according to the <code>frame_order</code> option (see below).</li>
 <li><code>release_package</code>: Name of Sentry <code>release</code> for the processed request.</li>
