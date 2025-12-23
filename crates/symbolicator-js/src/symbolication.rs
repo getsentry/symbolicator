@@ -262,8 +262,8 @@ async fn symbolicate_js_frame(
             && (frame.abs_path.starts_with("http:")
                 || frame.abs_path.starts_with("https:")
                 || frame.abs_path.starts_with("webpack:")
-                || frame.abs_path.starts_with("turbopack:"))
-            || frame.abs_path.starts_with("app:")
+                || frame.abs_path.starts_with("turbopack:")
+                || frame.abs_path.starts_with("app:"))
         {
             frame.module = Some(generate_module(&frame.abs_path));
         }
