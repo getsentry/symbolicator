@@ -13,7 +13,8 @@ use crate::interface::{
 use crate::lookup::SourceMapLookup;
 use crate::metrics::{SymbolicationStats, record_stacktrace_metrics};
 use crate::utils::{
-    fixup_webpack_filename, fold_function_name, generate_module, get_function_for_token, join_paths,
+    fixup_turbopack_filename, fixup_webpack_filename, fold_function_name, generate_module,
+    get_function_for_token, join_paths,
 };
 
 impl SourceMapService {
@@ -252,13 +253,17 @@ async fn symbolicate_js_frame(
         if filename.starts_with("webpack:") {
             filename = fixup_webpack_filename(&filename);
             frame.module = Some(generate_module(&filename));
+        } else if filename.starts_with("turbopack:") {
+            filename = fixup_turbopack_filename(&filename);
+            frame.module = Some(generate_module(&filename));
         }
 
         if frame.module.is_none()
             && (frame.abs_path.starts_with("http:")
                 || frame.abs_path.starts_with("https:")
                 || frame.abs_path.starts_with("webpack:")
-                || frame.abs_path.starts_with("app:"))
+                || frame.abs_path.starts_with("turbopack:"))
+            || frame.abs_path.starts_with("app:")
         {
             frame.module = Some(generate_module(&frame.abs_path));
         }
