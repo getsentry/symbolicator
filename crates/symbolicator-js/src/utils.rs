@@ -110,6 +110,22 @@ pub fn fixup_webpack_filename(filename: &str) -> String {
     }
 }
 
+pub fn fixup_turbopack_filename(filename: &str) -> String {
+    if let Some((_, rest)) = filename.split_once("/~/") {
+        format!("~/{rest}")
+    } else if let Some(rest) = filename.strip_prefix("turbopack:///") {
+        // Handle turbopack:///[project]/path/to/file.tsx
+        // Optionally strip [project] prefix if present
+        if let Some(path_after_project) = rest.strip_prefix("[project]/") {
+            path_after_project.to_string()
+        } else {
+            rest.to_string()
+        }
+    } else {
+        filename.to_string()
+    }
+}
+
 // As a running joke, here you have a 8 year old comment from 2015:
 // TODO(dcramer): replace CLEAN_MODULE_RE with tokenizer completely
 static CLEAN_MODULE_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -169,7 +185,7 @@ pub fn generate_module(abs_path: &str) -> String {
 /// Joins the `right` path to the `base` path, taking care of our special `~/` prefix that is treated just
 /// like an absolute url.
 pub fn join_paths(base: &str, right: &str) -> String {
-    if right.contains("://") || right.starts_with("webpack:") {
+    if right.contains("://") || right.starts_with("webpack:") || right.starts_with("turbopack:") {
         return right.into();
     }
 
@@ -486,6 +502,13 @@ mod tests {
         let path = "webpack:///../node_modules/scheduler/cjs/scheduler.production.min.js";
         assert_eq!(join_paths("http://example.com", path), path);
 
+        // turbopack paths should also be treated as absolute
+        let turbopack_path = "turbopack:///[project]/node_modules/foo/cjs/bar.js";
+        assert_eq!(
+            join_paths("http://example.com", turbopack_path),
+            turbopack_path
+        );
+
         // path with a dot in the middle
         assert_eq!(
             join_paths("http://example.com", "path/./to/file.min.js"),
@@ -656,6 +679,39 @@ mod tests {
 
         let filename = "webpack-internal:///./src/App.jsx";
         assert_eq!(fixup_webpack_filename(filename), "./src/App.jsx");
+    }
+
+    #[test]
+    fn test_fixup_turbopack_filename() {
+        let filename = "turbopack:///[project]/app/sentry-example-page/page.tsx";
+        assert_eq!(
+            fixup_turbopack_filename(filename),
+            "app/sentry-example-page/page.tsx"
+        );
+
+        let filename = "turbopack:///app/utils/file.tsx";
+        assert_eq!(fixup_turbopack_filename(filename), "app/utils/file.tsx");
+
+        let filename = "turbopack:///[project]/~/src/components/Button.tsx";
+        assert_eq!(
+            fixup_turbopack_filename(filename),
+            "~/src/components/Button.tsx"
+        );
+
+        let filename = "turbopack:///[project]/app/components/Header/Header.tsx";
+        assert_eq!(
+            fixup_turbopack_filename(filename),
+            "app/components/Header/Header.tsx"
+        );
+
+        let filename = "webpack:///./src/file.tsx";
+        assert_eq!(
+            fixup_turbopack_filename(filename),
+            "webpack:///./src/file.tsx"
+        );
+
+        let filename = "./src/file.tsx";
+        assert_eq!(fixup_turbopack_filename(filename), "./src/file.tsx");
     }
 
     #[test]
