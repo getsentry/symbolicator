@@ -1,5 +1,32 @@
 # Changelog
 
+## 25.12.1
+
+### New Features ✨
+
+- feat(proguard): Support rewriteFrame annotation by @romtsn in [#1845](https://github.com/getsentry/symbolicator/pull/1845)
+
+### Bug Fixes 🐛
+
+- fix(s3): Don't log entire S3 errors by @loewenheim in [#1853](https://github.com/getsentry/symbolicator/pull/1853)
+
+### Build / dependencies / internal 🔧
+
+#### Deps
+
+- build(deps): bump actions/checkout from 6.0.0 to 6.0.1 by @dependabot in [#1844](https://github.com/getsentry/symbolicator/pull/1844)
+- build(deps): bump actions/download-artifact from 6.0.0 to 7.0.0 by @dependabot in [#1846](https://github.com/getsentry/symbolicator/pull/1846)
+- build(deps): bump actions/cache from 4.3.0 to 5.0.1 by @dependabot in [#1847](https://github.com/getsentry/symbolicator/pull/1847)
+
+#### Other
+
+- ci: upgrade to action-setup-venv 3.2.0 by @joshuarli in [#1854](https://github.com/getsentry/symbolicator/pull/1854)
+- build: Update AWS dependencies by @loewenheim in [#1852](https://github.com/getsentry/symbolicator/pull/1852)
+
+### Other
+
+- ref(s3): Capture signature mismatch errors by @loewenheim in [#1851](https://github.com/getsentry/symbolicator/pull/1851)
+
 ## 25.12.0
 
 ### Various fixes & improvements
