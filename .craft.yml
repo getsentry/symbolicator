@@ -1,5 +1,6 @@
-minVersion: 0.23.1
-changelogPolicy: auto
+minVersion: "2.15.0"
+changelog:
+  policy: auto
 targets:
   - name: github
   - name: registry
@@ -19,12 +20,12 @@ targets:
           cacheControl: public, max-age=600
   - id: release
     name: docker
-    source: us-central1-docker.pkg.dev/sentryio/symbolicator/image
-    target: getsentry/symbolicator
+    source: ghcr.io/getsentry/symbolicator
+    target: ghcr.io/getsentry/symbolicator
   - id: latest
     name: docker
-    source: us-central1-docker.pkg.dev/sentryio/symbolicator/image
-    target: getsentry/symbolicator
+    source: ghcr.io/getsentry/symbolicator
+    target: ghcr.io/getsentry/symbolicator
     targetFormat: '{{{target}}}:latest'
 requireNames:
   - /^symbolicator-Darwin-universal$/
