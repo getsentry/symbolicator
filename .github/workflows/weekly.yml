@@ -8,6 +8,10 @@ on:
 env:
   RUSTFLAGS: -Dwarnings
 
+
+permissions:
+  contents: write
+  pull-requests: write
 jobs:
   weekly-ci:
     strategy:

@@ -18,6 +18,10 @@ defaults:
     #      bash --noprofile --norc -eo pipefail {0}
     shell: bash --noprofile --norc -eo pipefail -ux {0}
 
+
+permissions:
+  contents: write
+  pull-requests: write
 jobs:
   pre-commit:
     name: pre-commit
