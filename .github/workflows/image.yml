@@ -11,10 +11,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-permissions:
-  contents: write
-  pull-requests: write
-
 jobs:
   build-setup:
     name: Setup build metadata
@@ -65,7 +61,7 @@ jobs:
         }')[matrix.arch] }}
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
         with:
           submodules: recursive
 
@@ -130,7 +126,7 @@ jobs:
       id-token: write  # required for GAR
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
 
       - name: Download Binaries
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
@@ -208,7 +204,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
 
       - name: Download amd64 binary
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
