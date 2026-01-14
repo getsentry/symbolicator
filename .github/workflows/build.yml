@@ -5,10 +5,6 @@ on:
     branches:
       - release/**
 
-
-permissions:
-  contents: write
-  pull-requests: write
 jobs:
   linux:
     name: Build Binary on Linux ${{ matrix.arch }}
@@ -23,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
@@ -68,7 +64,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin --no-self-update
@@ -126,7 +122,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/checkout@v6.0.1
         with:
           submodules: recursive
 

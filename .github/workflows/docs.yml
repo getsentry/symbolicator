@@ -5,10 +5,6 @@ on:
     branches:
       - master
 
-
-permissions:
-  contents: write
-  pull-requests: write
 jobs:
   docs:
     name: Publish Docs
@@ -16,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - uses: astral-sh/setup-uv@884ad927a57e558e7a70b92f2bccf9198a4be546 # v6
 

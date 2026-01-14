@@ -14,10 +14,6 @@ concurrency:
 env:
   RUSTFLAGS: -Dwarnings
 
-
-permissions:
-  contents: write
-  pull-requests: write
 jobs:
   lints:
     name: Lints
@@ -29,7 +25,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
@@ -53,7 +49,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
@@ -83,11 +79,11 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout Symbolicator
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       # Checkout Sentry and run integration tests against latest Symbolicator
       - name: Checkout sentry
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
         with:
           repository: getsentry/sentry
           path: sentry
@@ -136,7 +132,7 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component rust-docs --no-self-update
@@ -151,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        uses: actions/checkout@v6.0.1
 
       - uses: astral-sh/setup-uv@884ad927a57e558e7a70b92f2bccf9198a4be546 # v6
 
@@ -174,7 +170,7 @@ jobs:
           sudo apt update
           sudo apt-get install -y libcurl4-openssl-dev
 
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+      - uses: actions/checkout@v6.0.1
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
