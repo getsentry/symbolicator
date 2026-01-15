@@ -1,7 +1,7 @@
 [package]
 name = "symbolicator-native"
 publish = false
-version = "25.12.1"
+version = "26.1.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"

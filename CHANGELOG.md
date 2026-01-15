@@ -1,5 +1,15 @@
 # Changelog
 
+## 26.1.0
+
+### New Features ✨
+
+- Handle turbopack file paths by @chargome in [#1855](https://github.com/getsentry/symbolicator/pull/1855)
+
+### Build / dependencies / internal 🔧
+
+- (build) Release Docker image to GHCR via Craft by @aldy505 in [#1856](https://github.com/getsentry/symbolicator/pull/1856)
+
 ## 25.12.1
 
 ### New Features ✨
