@@ -13,11 +13,9 @@ local deploy_canary_stage(region) =
           jobs: {
             create_sentry_release: {
               environment_variables: {
-                SENTRY_URL: 'https://sentry.my.sentry.io/',
-                ENVIRONMENT: 'canary',
-                // Temporary; self-service encrypted secrets aren't implemented yet.
-                // This should really be rotated to an internal integration token.
-                SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}',
+                SENTRY_URL: 'https://sentry-s4s2.sentry.io/',
+                // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
+                SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
               },
               timeout: 1200,
               elastic_profile_id: 'symbolicator',
@@ -82,11 +80,9 @@ function(region) {
         jobs: {
           create_sentry_release: {
             environment_variables: {
-              SENTRY_URL: 'https://sentry.my.sentry.io/',
-              ENVIRONMENT: 'production',
-              // Temporary; self-service encrypted secrets aren't implemented yet.
-              // This should really be rotated to an internal integration token.
-              SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}',
+              SENTRY_URL: 'https://sentry-s4s2.sentry.io/',
+              // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
+              SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
             },
             timeout: 1200,
             elastic_profile_id: 'symbolicator',

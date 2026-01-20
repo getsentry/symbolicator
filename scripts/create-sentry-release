@@ -32,6 +32,8 @@ echo 'Creating a new deploy in Sentry...'
 sentry-cli releases new "${VERSION}"
 # NOTE: linking commits requires a valid GitHub integration in Sentry4Sentry, which we don't have.
 # sentry-cli releases set-commits "${VERSION}" --commit "${GITHUB_PROJECT}@${VERSION}"
-sentry-cli releases deploys "${VERSION}" new -e "${ENVIRONMENT}"
+if [ ! -z "${ENVIRONMENT:-}" ]; then
+  sentry-cli releases deploys "${VERSION}" new -e "${ENVIRONMENT}"
+fi
 sentry-cli releases finalize "${VERSION}"
 echo 'Deploy created.'
