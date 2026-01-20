@@ -6,16 +6,17 @@ set -eu
 VERSION="${1:-}"
 ENVIRONMENT="${2:-}"
 # GITHUB_PROJECT="getsentry/symbolicator"
-export SENTRY_ORG="sentry"
-export SENTRY_PROJECT="symbolicator"
 
 if [ -z "${VERSION}" ]; then
   echo 'No version specified' && exit 1
 fi
 
-
 if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
   echo 'No Sentry auth token found' && exit 1
+fi
+
+if [ -z "${SENTRY_ORG:-}" ] || [ -z "${SENTRY_PROJECT:-}" ]; then
+  echo 'No SENTRY_ORG or SENTRY_PROJECT provided' && exit 1
 fi
 
 sentry-cli --version
