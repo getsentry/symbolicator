@@ -119,6 +119,7 @@ pub fn execute() -> Result<()> {
         release,
         session_mode: sentry::SessionMode::Request,
         auto_session_tracking: false,
+        attach_stacktrace: config.logging.enable_backtraces,
         traces_sampler: Some(Arc::new(move |ctx| {
             if Some(true) == ctx.sampled() && config.propagate_traces {
                 1.0
