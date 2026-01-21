@@ -1,6 +1,14 @@
 local getsentry = import 'github.com/getsentry/gocd-jsonnet/libs/getsentry.libsonnet';
 local gocdtasks = import 'github.com/getsentry/gocd-jsonnet/libs/gocd-tasks.libsonnet';
 
+local sentry_create_env_vars(region) = {
+  SENTRY_ORG: if region == 's4s2' then 'sentry-st' else 'sentry-s4s2',
+  SENTRY_PROJECT: 'symbolicator',
+  SENTRY_URL: 'https://sentry.io',
+  // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
+  SENTRY_AUTH_TOKEN: if region == 's4s2' then '{{SECRET:[devinfra-sentryst][token]}}' else '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
+};
+
 // Only the US region has a canary deployment.
 local deploy_canary_stage(region) =
   if region != 'us' then
@@ -12,13 +20,7 @@ local deploy_canary_stage(region) =
           fetch_materials: true,
           jobs: {
             create_sentry_release: {
-              environment_variables: {
-                SENTRY_URL: 'https://sentry.io',
-                // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
-                SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
-                SENTRY_ORG: 'sentry-s4s2',
-                SENTRY_PROJECT: 'symbolicator',
-              },
+              environment_variables: sentry_create_env_vars(region),
               timeout: 1200,
               elastic_profile_id: 'symbolicator',
               tasks: [
@@ -81,13 +83,7 @@ function(region) {
         fetch_materials: true,
         jobs: {
           create_sentry_release: {
-            environment_variables: {
-              SENTRY_URL: 'https://sentry.io',
-              // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
-              SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
-              SENTRY_ORG: 'sentry-s4s2',
-              SENTRY_PROJECT: 'symbolicator',
-            },
+            environment_variables: sentry_create_env_vars(region),
             timeout: 1200,
             elastic_profile_id: 'symbolicator',
             tasks: [
