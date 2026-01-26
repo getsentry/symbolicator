@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --no-self-update
@@ -64,7 +64,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v6.0.2
 
       - name: Install rust stable toolchain
         run: rustup toolchain install stable --profile minimal --target x86_64-apple-darwin --target aarch64-apple-darwin --no-self-update
@@ -122,7 +122,7 @@ jobs:
     runs-on: windows-2022
 
     steps:
-      - uses: actions/checkout@v6.0.1
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
 
