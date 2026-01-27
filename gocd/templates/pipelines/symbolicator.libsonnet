@@ -11,7 +11,7 @@ local sentry_create_env_vars(region) = {
 
 // Only the US and DE regions has a canary deployment.
 local deploy_canary_stage(region) =
-  if region not in ['us', 'de'] then
+  if region != 'us' and region != 'de' then
     []
   else
     [
