@@ -9,9 +9,9 @@ local sentry_create_env_vars(region) = {
   SENTRY_AUTH_TOKEN: if region == 's4s2' then '{{SECRET:[devinfra-sentryst][token]}}' else '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
 };
 
-// Only the US region has a canary deployment.
+// Only the US and DE regions has a canary deployment.
 local deploy_canary_stage(region) =
-  if region != 'us' then
+  if region not in ['us', 'de'] then
     []
   else
     [
