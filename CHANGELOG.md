@@ -1,5 +1,38 @@
 # Changelog
 
+## 26.2.0
+
+### Bug Fixes 🐛
+
+#### Gocd
+
+- More sentry-cli/gocd script fixes by @Dav1dde in [#1865](https://github.com/getsentry/symbolicator/pull/1865)
+- Shell settings in gocd require variables, default it to nothing by @Dav1dde in [#1864](https://github.com/getsentry/symbolicator/pull/1864)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump bytes from 1.10.1 to 1.11.1 by @dependabot in [#1877](https://github.com/getsentry/symbolicator/pull/1877)
+- Bump actions/cache from 5.0.2 to 5.0.3 by @dependabot in [#1875](https://github.com/getsentry/symbolicator/pull/1875)
+- Bump virtualenv from 20.29.3 to 20.36.1 by @dependabot in [#1871](https://github.com/getsentry/symbolicator/pull/1871)
+- Bump filelock from 3.18.0 to 3.20.3 by @dependabot in [#1872](https://github.com/getsentry/symbolicator/pull/1872)
+- Bump actions/checkout from 6.0.1 to 6.0.2 by @dependabot in [#1870](https://github.com/getsentry/symbolicator/pull/1870)
+- Bump urllib3 from 2.5.0 to 2.6.3 by @dependabot in [#1862](https://github.com/getsentry/symbolicator/pull/1862)
+- Bump actions/cache from 5.0.1 to 5.0.2 by @dependabot in [#1861](https://github.com/getsentry/symbolicator/pull/1861)
+
+#### Gocd
+
+- Enable canary deployment for DE by @loewenheim in [#1874](https://github.com/getsentry/symbolicator/pull/1874)
+- Point s4s2 to sentry-st by @Dav1dde in [#1869](https://github.com/getsentry/symbolicator/pull/1869)
+- Bump gocd lib version to v2.18.0 (again) by @Dav1dde in [#1866](https://github.com/getsentry/symbolicator/pull/1866)
+- Switch debug file uploads to s4s2 by @Dav1dde in [#1863](https://github.com/getsentry/symbolicator/pull/1863)
+
+#### Other
+
+- (symbolicator) Enable stacktraces for sentry issues when backtraces are enabled by @Dav1dde in [#1868](https://github.com/getsentry/symbolicator/pull/1868)
+- Add log line when starting cleanup thread by @loewenheim in [#1873](https://github.com/getsentry/symbolicator/pull/1873)
+
 ## 26.1.0
 
 ### New Features ✨
