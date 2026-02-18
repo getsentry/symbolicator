@@ -40,34 +40,62 @@ impl HttpDownloader {
         tracing::debug!("Fetching debug file from `{}`", download_url);
 
         // Use `self.no_ssl_client` if the source is configured to accept invalid SSL certs
-        let mut builder = if file_source.source.accept_invalid_certs {
+        let builder = if file_source.source.accept_invalid_certs {
             self.no_ssl_client.get(download_url)
         } else {
             self.client.get(download_url)
         };
 
-        builder = builder.header(header::USER_AGENT, USER_AGENT);
-        let headers = file_source
+        super::download_reqwest(
+            source_name,
+            builder.headers(Self::headers_for_source(file_source)),
+            &self.timeouts,
+            destination,
+        )
+        .await
+    }
+
+    /// Returns a map of headers that should be used for requests to the given source.
+    fn headers_for_source(file_source: &HttpRemoteFile) -> header::HeaderMap {
+        let mut headers: header::HeaderMap = file_source
             .source
             .headers
             .0
             .iter()
-            .chain(file_source.headers.0.iter());
-        for (key, value) in headers {
-            if let Ok(key) = header::HeaderName::from_bytes(key.as_bytes()) {
-                builder = builder.header(key, value.as_str());
-            }
+            .chain(file_source.headers.0.iter())
+            .filter_map(|(name, value)| {
+                let name = header::HeaderName::from_bytes(name.as_bytes())
+                    .inspect_err(|_| tracing::warn!(name, "Invalid header name"))
+                    .ok()?;
+
+                let value = header::HeaderValue::from_str(value)
+                    .inspect_err(|_| tracing::warn!(value, "Invalid header value"))
+                    .ok()?;
+                Some((name, value))
+            })
+            .collect();
+
+        // Set the default user agent if the source config doesn't override it
+        if !headers.contains_key(header::USER_AGENT) {
+            headers.insert(
+                header::USER_AGENT,
+                header::HeaderValue::from_static(USER_AGENT),
+            );
         }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        headers
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
-    use symbolicator_sources::{SourceConfig, SourceLocation};
+    use symbolicator_sources::{
+        HttpHeaders, HttpSourceConfig, SourceConfig, SourceId, SourceLocation,
+    };
 
     use crate::test;
 
@@ -146,6 +174,41 @@ mod tests {
             Err(CacheError::PermissionDenied(
                 "Potential login page detected".into()
             ))
+        );
+    }
+
+    #[test]
+    fn test_user_agent() {
+        let source_with_user_agent = HttpSourceConfig {
+            id: SourceId::new("with-user-agent"),
+            url: "http://test.com/".parse().unwrap(),
+            headers: HttpHeaders([("User-Agent".to_owned(), "curl/7.72.0".to_owned())].into()),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        };
+
+        let file_with_user_agent =
+            HttpRemoteFile::new(Arc::new(source_with_user_agent), SourceLocation::new(""));
+
+        assert_eq!(
+            HttpDownloader::headers_for_source(&file_with_user_agent)[header::USER_AGENT],
+            "curl/7.72.0"
+        );
+
+        let source_without_user_agent = HttpSourceConfig {
+            id: SourceId::new("without-user-agent"),
+            url: "http://test.com/".parse().unwrap(),
+            headers: Default::default(),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        };
+
+        let file_without_user_agent =
+            HttpRemoteFile::new(Arc::new(source_without_user_agent), SourceLocation::new(""));
+
+        assert_eq!(
+            HttpDownloader::headers_for_source(&file_without_user_agent)[header::USER_AGENT],
+            USER_AGENT
         );
     }
 }
