@@ -59,7 +59,6 @@ impl HttpDownloader {
             builder = builder.header(header::USER_AGENT, USER_AGENT);
         }
 
-        builder = builder.header(header::USER_AGENT, USER_AGENT);
         let headers = file_source
             .source
             .headers
