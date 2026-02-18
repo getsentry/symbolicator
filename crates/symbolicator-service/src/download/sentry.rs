@@ -15,7 +15,7 @@ use symbolicator_sources::{
     ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig, SentryToken,
 };
 
-use super::{Destination, FileType, USER_AGENT};
+use super::{Destination, FileType};
 use crate::caching::{CacheContents, CacheError};
 use crate::config::{DownloadTimeouts, InMemoryCacheConfig};
 use crate::utils::futures::{CancelOnDrop, m, measure};
@@ -135,8 +135,7 @@ impl SentryDownloader {
         let mut request = client
             .get(query.index_url.clone())
             .bearer_auth(&query.token.0)
-            .header("Accept-Encoding", "identity")
-            .header("User-Agent", USER_AGENT);
+            .header("Accept-Encoding", "identity");
 
         if propagate_traces && let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
             for (k, v) in span.iter_headers() {
@@ -258,7 +257,7 @@ impl SentryDownloader {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);
 
-        let mut builder = self.client.get(url).header("User-Agent", USER_AGENT);
+        let mut builder = self.client.get(url);
         if file_source.use_credentials() {
             builder = builder.bearer_auth(&file_source.source.token.0);
         }

@@ -9,7 +9,7 @@ use crate::{
     config::DownloadTimeouts,
 };
 
-use super::{Destination, USER_AGENT};
+use super::Destination;
 
 /// Downloader implementation that supports the HTTP source.
 #[derive(Debug)]
@@ -46,7 +46,6 @@ impl HttpDownloader {
             self.client.get(download_url)
         };
 
-        builder = builder.header(header::USER_AGENT, USER_AGENT);
         let headers = file_source
             .source
             .headers

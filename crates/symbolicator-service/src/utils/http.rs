@@ -4,9 +4,12 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
-use reqwest::{StatusCode, Url, redirect};
+use reqwest::{StatusCode, Url, header, redirect};
 
 use crate::config::DownloadTimeouts;
+
+/// HTTP User-Agent string to use.
+const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
 static RESERVED_IP_BLOCKS: LazyLock<Vec<Ipv4Network>> = LazyLock::new(|| {
     [
@@ -67,7 +70,11 @@ pub fn create_client(
     connect_to_reserved_ips: bool,
     accept_invalid_certs: bool,
 ) -> reqwest::Client {
+    let mut default_headers = header::HeaderMap::new();
+    default_headers.insert(header::USER_AGENT, USER_AGENT.parse().unwrap());
+
     let mut builder = reqwest::ClientBuilder::new()
+        .default_headers(default_headers)
         .gzip(true)
         .hickory_dns(true)
         .connect_timeout(timeouts.connect)
