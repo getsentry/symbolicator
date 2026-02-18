@@ -57,9 +57,6 @@ impl ConfigureScope for RemoteFile {
     }
 }
 
-/// HTTP User-Agent string to use.
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
-
 impl CacheError {
     fn download_error(mut error: &dyn Error) -> Self {
         while let Some(src) = error.source() {
