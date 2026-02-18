@@ -46,6 +46,19 @@ impl HttpDownloader {
             self.client.get(download_url)
         };
 
+        // Only set `symbolicator` as the user agent if the `file_source` does not have a custom
+        // user agent that should be used.
+        let has_custom_user_agent = file_source
+            .source
+            .headers
+            .0
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("user-agent"));
+
+        if !has_custom_user_agent {
+            builder = builder.header(header::USER_AGENT, USER_AGENT);
+        }
+
         builder = builder.header(header::USER_AGENT, USER_AGENT);
         let headers = file_source
             .source
