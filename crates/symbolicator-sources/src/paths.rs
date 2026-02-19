@@ -758,15 +758,10 @@ mod tests {
             FileType::ElfCode,
             &ELF_OBJECT_ID,
         );
-        assert_eq!(paths.len(), 2);
-        assert_eq!(
-            paths[0],
-            "libm-2.23.so/dfb85de42daffd09640c8fe377d572de3e168920/symbols"
-        );
-        assert_eq!(
-            paths[1],
-            "libm-2.23.so/DFB85DE42DAFFD09640C8FE377D572DE3E168920/symbols"
-        );
+        assert_eq!(&paths, &[
+            "libm-2.23.so/dfb85de42daffd09640c8fe377d572de3e168920/symbols",
+            "libm-2.23.so/DFB85DE42DAFFD09640C8FE377D572DE3E168920/symbols",
+        ]);
     }
 
     #[test]
