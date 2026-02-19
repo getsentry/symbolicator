@@ -8,12 +8,8 @@ use aws_config::ecs::EcsCredentialsProvider;
 use aws_credential_types::Credentials;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_sdk_s3::Client;
-pub use aws_sdk_s3::Error as S3Error;
-use aws_sdk_s3::error::ProvideErrorMetadata;
-use aws_sdk_s3::error::SdkError;
-use futures::TryStreamExt as _;
+use aws_sdk_s3::presigning::PresigningConfig;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
-use tokio::io::AsyncWriteExt as _;
 
 use crate::caching::{CacheContents, CacheError};
 use crate::config::DownloadTimeouts;
@@ -22,9 +18,17 @@ use super::Destination;
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
+/// Pre signed URLs are created with this expiry.
+///
+/// In practice this value does not matter for Symbolicator as the pre signed URL
+/// is immediately used. Even with very slow downloads lasting longer than
+/// this duration are fine.
+const PRE_SIGN_EXPIRY: Duration = Duration::from_mins(15);
+
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
     client_cache: ClientCache,
+    http_client: reqwest::Client,
     timeouts: DownloadTimeouts,
 }
 
@@ -37,9 +41,14 @@ impl fmt::Debug for S3Downloader {
 }
 
 impl S3Downloader {
-    pub fn new(timeouts: DownloadTimeouts, s3_client_capacity: u64) -> Self {
+    pub fn new(
+        http_client: reqwest::Client,
+        timeouts: DownloadTimeouts,
+        s3_client_capacity: u64,
+    ) -> Self {
         Self {
             client_cache: ClientCache::new(s3_client_capacity),
+            http_client,
             timeouts,
         }
     }
@@ -117,95 +126,24 @@ impl S3Downloader {
 
         let source_key = file_source.source.source_key.clone();
         let client = self.get_s3_client(&source_key).await;
-        let request = client.get_object().bucket(&bucket).key(&key).send();
 
-        let timeout = self.timeouts.head;
-        let request = tokio::time::timeout(timeout, request);
-        let request = super::measure_download_time(source_name, request);
+        let presigned = PresigningConfig::expires_in(PRE_SIGN_EXPIRY)
+            .map_err(|e| CacheError::DownloadError(e.to_string()))?;
 
-        let response = request.await.map_err(|_| CacheError::Timeout(timeout))?; // Timeout
+        let presigned = client
+            .get_object()
+            .bucket(&bucket)
+            .key(&key)
+            .presigned(presigned)
+            .await
+            .map_err(|e| CacheError::DownloadError(e.to_string()))?;
 
-        let response = match response {
-            Ok(response) => response,
-            Err(err) => {
-                tracing::debug!("Skipping response from s3://{}/{}: {}", &bucket, &key, err);
-
-                // we first check for some specific errors variants, and afterwards we cast this to
-                // a very generic `S3Error` that internally converts things around.
-                match &err {
-                    SdkError::TimeoutError(_) => {
-                        // FIXME(swatinem): we can probably remove this log once we capture a few
-                        // of these in production and figure out what we actually get here
-                        tracing::error!(
-                            error = &err as &dyn std::error::Error,
-                            "S3 request timed out",
-                        );
-                        return Err(CacheError::Timeout(Duration::ZERO));
-                    }
-                    SdkError::ServiceError(service_err) => {
-                        // The errors and status codes are explained here:
-                        // <https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html#ErrorCodeList>
-                        let response = service_err.raw();
-                        let status = response.status();
-                        let code = service_err.err().code();
-
-                        // Capturing signature mismatch errors for issue #1850/SYMBOLI-44
-                        if code == Some("SignatureDoesNotMatch") {
-                            tracing::error!("S3 signature mismatch")
-                        }
-
-                        // NOTE: leaving the credentials empty as our unit / integration tests do
-                        // leads to a `AuthorizationHeaderMalformed` error.
-                        if matches!(status.as_u16(), 401 | 403)
-                            || code == Some("AuthorizationHeaderMalformed")
-                        {
-                            let details =
-                                service_err.err().message().unwrap_or_default().to_string();
-                            return Err(CacheError::PermissionDenied(details));
-                        }
-                    }
-                    _ => {}
-                };
-
-                let err = S3Error::from(err);
-                return match &err {
-                    S3Error::NoSuchBucket(_) | S3Error::NoSuchKey(_) | S3Error::NotFound(_) => {
-                        Err(CacheError::NotFound)
-                    }
-                    // Dear AWS SDK? Why do I have to match these using the `code`?
-                    // Why is the `From` impl not converting these properly?
-                    _ if matches!(err.code(), Some("NoSuchBucket" | "NoSuchKey" | "NotFound")) => {
-                        Err(CacheError::NotFound)
-                    }
-                    _ => {
-                        tracing::debug!(
-                            error = &err as &dyn std::error::Error,
-                            "S3 request failed: {:?}",
-                            err.code(),
-                        );
-                        let details = err.to_string();
-                        Err(CacheError::DownloadError(details))
-                    }
-                };
-            }
-        };
-
-        if response.content_length == Some(0) {
-            tracing::debug!(key, "Empty response from s3");
-            return Err(CacheError::NotFound);
+        let mut builder = self.http_client.get(presigned.uri());
+        for (header_name, header_value) in presigned.headers() {
+            builder = builder.header(header_name, header_value);
         }
 
-        let mut body = std::pin::pin!(response.body);
-        let stream = futures::stream::poll_fn(move |cx| body.as_mut().poll_next(cx))
-            .map_err(|err| CacheError::download_error(&err));
-
-        let mut destination = std::pin::pin!(destination.into_write());
-
-        super::download_stream(source_name, stream, destination.as_mut()).await?;
-
-        destination.flush().await?;
-
-        Ok(())
+        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
     }
 }
 
@@ -215,15 +153,15 @@ mod tests {
 
     use std::path::Path;
 
+    use aws_sdk_s3::Error as S3Error;
+    use aws_sdk_s3::primitives::ByteStream;
+    use sha1::{Digest as _, Sha1};
     use symbolicator_sources::{
         CommonSourceConfig, DirectoryLayoutType, RemoteFileUri, S3SecretKey, S3SourceConfig,
         SourceId, SourceLocation,
     };
 
     use crate::test;
-
-    use aws_sdk_s3::primitives::ByteStream;
-    use sha1::{Digest as _, Sha1};
 
     /// Name of the bucket to create for testing.
     const S3_BUCKET: &str = "symbolicator-test";
@@ -369,7 +307,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Default::default(), 100);
+        let downloader = S3Downloader::new(reqwest::Client::new(), Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -398,7 +336,7 @@ mod tests {
         setup_bucket(source_key.clone()).await;
 
         let source = s3_source(source_key);
-        let downloader = S3Downloader::new(Default::default(), 100);
+        let downloader = S3Downloader::new(reqwest::Client::new(), Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -425,7 +363,7 @@ mod tests {
             secret_key: S3SecretKey("".into()),
         };
         let source = s3_source(broken_key);
-        let downloader = S3Downloader::new(Default::default(), 100);
+        let downloader = S3Downloader::new(reqwest::Client::new(), Default::default(), 100);
 
         let tempdir = test::tempdir();
         let target_path = tempdir.path().join("myfile");
@@ -439,7 +377,7 @@ mod tests {
             .await;
 
         assert!(
-            matches!(download_status, Err(CacheError::PermissionDenied(_))),
+            matches!(download_status, Err(CacheError::NotFound)),
             "{download_status:?}"
         );
     }

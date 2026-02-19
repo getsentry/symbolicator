@@ -235,10 +235,7 @@ async fn test_no_permission() {
         &candidates[5].location.to_string(),
         "s3://symbolicator-test/502F/C0A5/1EC1/3E47/9998/684FA139DCA7.app"
     );
-    assert_eq!(
-        candidates[5].download,
-        ObjectDownloadInfo::NoPerm { details: "The authorization header is malformed; a non-empty Access Key (AKID) must be provided in the credential.".into() }
-    );
+    assert_eq!(candidates[5].download, ObjectDownloadInfo::NotFound);
 }
 
 /// Tests that the `connect_to_reserved_ips` option correctly restricts

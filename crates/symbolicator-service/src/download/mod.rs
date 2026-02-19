@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
-use bytes::Bytes;
 use futures::{future::Either, prelude::*};
 use reqwest::StatusCode;
 
@@ -138,7 +137,11 @@ impl DownloadService {
                 config.propagate_traces,
             ),
             http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
-            s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
+            s3: s3::S3Downloader::new(
+                restricted_client.clone(),
+                timeouts,
+                in_memory.s3_client_capacity,
+            ),
             gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
@@ -383,32 +386,6 @@ where
 
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-}
-
-/// Download the source from a stream.
-///
-/// This is common functionality used by many downloaders.
-async fn download_stream(
-    source_name: &str,
-    stream: impl Stream<Item = Result<Bytes, CacheError>>,
-    mut destination: impl WriteStream,
-) -> CacheContents {
-    let mut stream = std::pin::pin!(stream);
-
-    let throughput_recorder =
-        MeasureSourceDownloadGuard::new("source.download.stream", source_name);
-    let result: CacheContents = async {
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            destination.write_buf(chunk).await?;
-        }
-        Ok(())
-    }
-    .await;
-    throughput_recorder.done(&result);
-
-    result
 }
 
 /// Download the source with a HTTP request.
