@@ -414,10 +414,24 @@ fn get_unified_path(filetype: FileType, identifier: &ObjectId) -> Option<String>
     Some(format!("{}/{}/{}", id.get(..2)?, id.get(2..)?, suffix))
 }
 
-fn get_slashsymbols_path(identifier: &ObjectId) -> Option<String> {
-    let code_id = identifier.code_id.as_ref()?;
-    let code_file = identifier.validated_code_file_basename()?;
-    Some(format!("{code_file}/{code_id}/symbols"))
+fn get_slashsymbols_paths(identifier: &ObjectId) -> Vec<String> {
+    let Some(code_id) = identifier.code_id.as_ref() else {
+        return Vec::new();
+    };
+    let Some(code_file) = identifier.validated_code_file_basename() else {
+        return Vec::new();
+    };
+
+    let lower = code_id.as_str();
+    let upper = lower.to_ascii_uppercase();
+
+    // Return both lowercase and uppercase build ID variants.
+    // Sony's PS5 tooling (prospero-symupload) stores symbols with uppercase
+    // build IDs, while the canonical CodeId representation is lowercase.
+    vec![
+        format!("{code_file}/{lower}/symbols"),
+        format!("{code_file}/{upper}/symbols"),
+    ]
 }
 
 /// Determines the paths for an object file in the given layout.
@@ -445,9 +459,7 @@ pub fn get_directory_paths(
         DirectoryLayoutType::Unified => {
             get_unified_path(filetype, identifier).into_iter().collect()
         }
-        DirectoryLayoutType::SlashSymbols => {
-            get_slashsymbols_path(identifier).into_iter().collect()
-        }
+        DirectoryLayoutType::SlashSymbols => get_slashsymbols_paths(identifier),
     };
 
     for path in paths.iter_mut() {
@@ -746,10 +758,12 @@ mod tests {
             FileType::ElfCode,
             &ELF_OBJECT_ID,
         );
-        assert_eq!(paths.len(), 1);
         assert_eq!(
-            paths[0],
-            "libm-2.23.so/dfb85de42daffd09640c8fe377d572de3e168920/symbols"
+            &paths,
+            &[
+                "libm-2.23.so/dfb85de42daffd09640c8fe377d572de3e168920/symbols",
+                "libm-2.23.so/DFB85DE42DAFFD09640C8FE377D572DE3E168920/symbols",
+            ]
         );
     }
 
