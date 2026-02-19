@@ -428,12 +428,10 @@ fn get_slashsymbols_paths(identifier: &ObjectId) -> Vec<String> {
     // Return both lowercase and uppercase build ID variants.
     // Sony's PS5 tooling (prospero-symupload) stores symbols with uppercase
     // build IDs, while the canonical CodeId representation is lowercase.
-    let mut paths = Vec::with_capacity(2);
-    if lower != upper {
-        paths.push(format!("{code_file}/{lower}/symbols"));
-    }
-    paths.push(format!("{code_file}/{upper}/symbols"));
-    paths
+    vec![
+        format!("{code_file}/{lower}/symbols"),
+        format!("{code_file}/{upper}/symbols"),
+    ]
 }
 
 /// Determines the paths for an object file in the given layout.
