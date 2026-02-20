@@ -172,11 +172,14 @@ impl ErrorHandler for S3ErrorHandler {
             return error;
         }
 
-        let details = match metadata.as_ref().map(|m| (m.code(), m.message())) {
-            Some((Some(code), None)) => code.to_owned(),
-            Some((None, Some(message))) => format!("{status}: {message}"),
-            Some((Some(code), Some(message))) => format!("{code}: {message}"),
-            None | Some((None, None)) => status.to_string(),
+        let details = match (
+            metadata.as_ref().and_then(|m| m.code()),
+            metadata.as_ref().and_then(|m| m.message()),
+        ) {
+            (Some(code), None) => code.to_owned(),
+            (None, Some(message)) => format!("{status}: {message}"),
+            (Some(code), Some(message)) => format!("{code}: {message}"),
+            (None, None) => status.to_string(),
         };
 
         tracing::debug!(
