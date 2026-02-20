@@ -92,8 +92,17 @@ impl S3Downloader {
             config_loader = config_loader.endpoint_url(endpoint_url);
         };
 
-        let config = config_loader.load().await;
-        Client::new(&config)
+        let shared_config = config_loader.load().await;
+
+        let mut config = aws_sdk_s3::config::Builder::from(&shared_config);
+        // Force path style addressing `endpoint/bucket/key` instead of AWS's virtual host style
+        // addressing `bucket.endpoint/key` for 3rd party S3 API providers, these might not
+        // implement the virtual host style addressing.
+        if region.endpoint.is_some() {
+            config = config.force_path_style(true);
+        }
+
+        Client::from_conf(config.build())
     }
 
     /// Downloads a source hosted on an S3 bucket.
