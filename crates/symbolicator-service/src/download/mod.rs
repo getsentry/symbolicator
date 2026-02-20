@@ -388,6 +388,15 @@ where
     }
 }
 
+/// An error handler is used for converting download errors to [`CacheError`].
+trait ErrorHandler: Sync {
+    fn handle(
+        &self,
+        source: &str,
+        response: SymResponse<'_>,
+    ) -> impl Future<Output = CacheError> + Send;
+}
+
 /// Download the source with a HTTP request.
 ///
 /// This is common functionality used by many downloaders.
@@ -396,6 +405,7 @@ async fn download_reqwest(
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
     destination: impl Destination,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
@@ -416,10 +426,16 @@ async fn download_reqwest(
     };
 
     let result = match destination {
-        Ok(destination) => do_download_reqwest_range(request, destination).send().await,
+        Ok(destination) => {
+            do_download_reqwest_range(request, destination, error_handler)
+                .send()
+                .await
+        }
         Err(destination) => {
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).send().await
+            do_download_reqwest(request, destination, error_handler)
+                .send()
+                .await
         }
     };
 
@@ -445,6 +461,7 @@ async fn download_reqwest(
 async fn do_download_reqwest_range(
     request: SymRequest<'_>,
     mut destination: impl MultiStreamDestination,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let source = request.to_source();
 
@@ -481,10 +498,10 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).await
+            do_download_reqwest(request, destination, error_handler).await
         }
         // Server returned some generic error, we need to bubble it up.
-        None => Err(response_to_error(&source, response).await),
+        None => Err(error_handler.handle(&source, response).await),
         // Malformed range header.
         Some(Err(err)) => {
             // This case can happen if the server returns an invalid header or a header which does
@@ -501,7 +518,7 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).await
+            do_download_reqwest(request, destination, error_handler).await
         }
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
@@ -540,7 +557,7 @@ async fn do_download_reqwest_range(
                     .with_range(range);
 
                 let destination = destination.stream(range.start, range.size());
-                let partial = do_download_reqwest(request, destination).send();
+                let partial = do_download_reqwest(request, destination, error_handler).send();
                 futures.push(Either::Right(partial));
             }
 
@@ -560,6 +577,7 @@ async fn do_download_reqwest_range(
 async fn do_download_reqwest(
     request: SymRequest<'_>,
     destination: impl WriteStream,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let source = request.to_source();
     let response = request.execute().await?;
@@ -569,61 +587,55 @@ async fn do_download_reqwest(
         tracing::trace!("Success hitting `{source}`");
         response.download(destination).await
     } else {
-        Err(response_to_error(&source, response).await)
+        Err(error_handler.handle(&source, response).await)
     }
 }
 
 /// Converts a response to an error.
 ///
-/// Any response will be converted to an error, callers must ensure success cases
-/// are handled before turning the response into an error using this function.
-async fn response_to_error(source: &str, response: SymResponse<'_>) -> CacheError {
-    let status = response.status();
-    debug_assert!(!status.is_success());
+/// This error handler uses the HTTP status code to infer the [`CacheError`],
+/// this works for any HTTP request, but does not consider API specific responses.
+struct GenericErrorHandler;
 
-    if let Ok(details) = response.response.text().await {
-        ::sentry::configure_scope(|scope| {
-            scope.set_extra(
-                "reqwest_response_body",
-                ::sentry::protocol::Value::String(details.clone()),
+impl ErrorHandler for GenericErrorHandler {
+    async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
+        let status = response.status();
+        debug_assert!(!status.is_success());
+
+        if let Ok(details) = response.response.text().await {
+            ::sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    "reqwest_response_body",
+                    ::sentry::protocol::Value::String(details.clone()),
+                );
+            });
+        };
+
+        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+            tracing::debug!("Insufficient permissions to download `{source}`: {status}",);
+
+            // TODO: figure out if we can log/return the whole response text
+            // let details = response.text().await?;
+            let details = status.to_string();
+
+            CacheError::PermissionDenied(details)
+        } else if status.is_client_error() {
+            // If it's a client error, chances are it's a 404.
+            tracing::debug!("Unexpected client error status code from `{source}`: {status}",);
+
+            CacheError::NotFound
+        } else if status == StatusCode::FOUND {
+            tracing::debug!(
+                "Potential login page detected when downloading from `{source}`: {status}",
             );
-        });
-    };
 
-    if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
-        tracing::debug!(
-            "Insufficient permissions to download `{}`: {}",
-            source,
-            status
-        );
+            CacheError::PermissionDenied("Potential login page detected".to_string())
+        } else {
+            tracing::debug!("Unexpected status code from `{source}`: {status}");
 
-        // TODO: figure out if we can log/return the whole response text
-        // let details = response.text().await?;
-        let details = status.to_string();
-
-        CacheError::PermissionDenied(details)
-    } else if status.is_client_error() {
-        // If it's a client error, chances are it's a 404.
-        tracing::debug!(
-            "Unexpected client error status code from `{}`: {}",
-            source,
-            status
-        );
-
-        CacheError::NotFound
-    } else if status == StatusCode::FOUND {
-        tracing::debug!(
-            "Potential login page detected when downloading from `{}`: {}",
-            source,
-            status
-        );
-
-        CacheError::PermissionDenied("Potential login page detected".to_string())
-    } else {
-        tracing::debug!("Unexpected status code from `{}`: {}", source, status);
-
-        let details = status.to_string();
-        CacheError::DownloadError(details)
+            let details = status.to_string();
+            CacheError::DownloadError(details)
+        }
     }
 }
 

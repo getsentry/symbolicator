@@ -262,7 +262,14 @@ impl SentryDownloader {
             builder = builder.bearer_auth(&file_source.source.token.0);
         }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.timeouts,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
     }
 }
 

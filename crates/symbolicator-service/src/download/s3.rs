@@ -9,12 +9,15 @@ use aws_credential_types::Credentials;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_sdk_s3::Client;
 use aws_sdk_s3::presigning::PresigningConfig;
+use aws_smithy_types::error::metadata::ErrorMetadata;
+use aws_smithy_xml::decode::{Document, XmlDecodeError, try_data};
+use reqwest::StatusCode;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
 
 use crate::caching::{CacheContents, CacheError};
 use crate::config::DownloadTimeouts;
 
-use super::Destination;
+use super::{Destination, ErrorHandler, SymResponse};
 
 type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 
@@ -143,8 +146,87 @@ impl S3Downloader {
             builder = builder.header(header_name, header_value);
         }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.timeouts,
+            destination,
+            &S3ErrorHandler,
+        )
+        .await
     }
+}
+
+struct S3ErrorHandler;
+
+impl ErrorHandler for S3ErrorHandler {
+    async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
+        let status = response.status();
+        debug_assert!(!status.is_success());
+
+        let body = response.response.bytes().await.ok();
+        let metadata = body.and_then(|body| parse_error_metadata(&body).ok());
+
+        if let Some(error) = metadata.as_ref().and_then(error_from_metadata) {
+            tracing::debug!("Known S3 Error: {error}");
+            return error;
+        }
+
+        let details = match metadata.as_ref().map(|m| (m.code(), m.message())) {
+            Some((Some(code), None)) => code.to_owned(),
+            Some((None, Some(message))) => format!("{status}: {message}"),
+            Some((Some(code), Some(message))) => format!("{code}: {message}"),
+            None | Some((None, None)) => status.to_string(),
+        };
+
+        tracing::debug!(
+            "Falling back to status code error handling in {source} with status {status}: {details}"
+        );
+
+        match status {
+            StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED => {
+                CacheError::PermissionDenied(details)
+            }
+            StatusCode::NOT_FOUND => CacheError::NotFound,
+            _ => CacheError::DownloadError(details),
+        }
+    }
+}
+
+fn error_from_metadata(metadata: &ErrorMetadata) -> Option<CacheError> {
+    let code = metadata.code()?;
+
+    Some(match code {
+        "AuthorizationHeaderMalformed"
+        | "AuthorizationQueryParametersError"
+        | "AccessDenied"
+        | "SignatureDoesNotMatch"
+        | "InvalidAccessKeyId" => CacheError::PermissionDenied(match metadata.message() {
+            Some(message) => format!("{code}: {message}"),
+            None => code.to_owned(),
+        }),
+        "NoSuchBucket" | "NoSuchKey" | "NotFound" => CacheError::NotFound,
+        _ => return None,
+    })
+}
+
+/// The function parses S3 XML and returns the parsed `Code` and `Messsage` fields.
+fn parse_error_metadata(body: &[u8]) -> Result<ErrorMetadata, XmlDecodeError> {
+    let mut doc = Document::try_from(body)?;
+    let mut root = doc.root_element()?;
+    let mut builder = ErrorMetadata::builder();
+    while let Some(mut tag) = root.next_tag() {
+        match tag.start_el().local() {
+            "Code" => {
+                builder = builder.code(try_data(&mut tag)?);
+            }
+            "Message" => {
+                builder = builder.message(try_data(&mut tag)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(builder.build())
 }
 
 #[cfg(test)]
@@ -377,7 +459,7 @@ mod tests {
             .await;
 
         assert!(
-            matches!(download_status, Err(CacheError::NotFound)),
+            matches!(download_status, Err(CacheError::PermissionDenied(_))),
             "{download_status:?}"
         );
     }
