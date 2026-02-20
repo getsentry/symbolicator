@@ -1,5 +1,12 @@
 # Changelog
 
+## 26.2.1
+
+### Bug Fixes 🐛
+
+- (playstation) Prospero symbol uploader is using uppercase for IDs by @mujacica in [#1881](https://github.com/getsentry/symbolicator/pull/1881)
+- Do not double write `user-agent` by @tobias-wilfert in [#1880](https://github.com/getsentry/symbolicator/pull/1880)
+
 ## 26.2.0
 
 ### Bug Fixes 🐛
