@@ -58,7 +58,14 @@ impl HttpDownloader {
             }
         }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.timeouts,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
     }
 }
 
