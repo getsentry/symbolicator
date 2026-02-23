@@ -5269,6 +5269,8 @@ dependencies = [
  "aws-config",
  "aws-credential-types",
  "aws-sdk-s3",
+ "aws-smithy-types",
+ "aws-smithy-xml",
  "bytes",
  "cab",
  "cadence",
