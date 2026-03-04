@@ -53,7 +53,7 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 
 [workspace.dependencies]
 anyhow = "1.0.66"
-apple-crash-report-parser = "0.5.1"
+apple-crash-report-parser = "0.5.2"
 async-trait = "0.1.53"
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.2.11", features = [
