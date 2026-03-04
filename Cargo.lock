@@ -278,9 +278,9 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "apple-crash-report-parser"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fc62d1d734597ddedd2ba0673780ee0a57b4de9a6e05f8731f2361d90b9c3e3"
+checksum = "6df06884aa43f80e273e777bbf2d0483e2c4e0d6a51a0f9b59e268b225c6a2e8"
 dependencies = [
  "chrono",
  "lazy_static",
