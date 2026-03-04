@@ -112,16 +112,42 @@ impl DownloadService {
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = config.timeouts;
 
-        // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
-        // | -----------| ----------------------------|---------------------------|
-        // |   trusted  |             yes             |             no            |
-        // | restricted | according to config setting |             no            |
-        // |   no_ssl   | according to config setting |             yes           |
-        let trusted_client = crate::utils::http::create_client(&timeouts, true, false);
-        let restricted_client =
-            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, false);
-        let no_ssl_client =
-            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, true);
+        // |   client    | can connect to reserved IPs | accepts invalid SSL certs | compression |
+        // | ------------| ----------------------------|---------------------------|-------------|
+        // |   trusted   |             yes             |             no            |     yes     |
+        // | htto restr. | according to config setting |             no            |     yes     |
+        // | http no ssl | according to config setting |             yes           |     yes     |
+        // |     s3      | according to config setting |             no            |     no      |
+        // |     gcs     | according to config setting |             no            |     yes     |
+        let trusted_client = crate::utils::http::create_client(&timeouts, true, false, true);
+        let http_restricted_client = crate::utils::http::create_client(
+            &timeouts,
+            config.connect_to_reserved_ips,
+            false,
+            true,
+        );
+        let http_no_ssl_client = crate::utils::http::create_client(
+            &timeouts,
+            config.connect_to_reserved_ips,
+            true,
+            true,
+        );
+        let s3_client = crate::utils::http::create_client(
+            &timeouts,
+            config.connect_to_reserved_ips,
+            false,
+            // S3 returns the raw byte stream on range requests, with transparent decompression
+            // enabled this breaks for individual parts.
+            false,
+        );
+        let gcs_client = crate::utils::http::create_client(
+            &timeouts,
+            config.connect_to_reserved_ips,
+            false,
+            // GCS ignores the range request for compressed objects, which is the behaviour we
+            // need.
+            true,
+        );
 
         let in_memory = &config.caches.in_memory;
 
@@ -136,13 +162,9 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
-            s3: s3::S3Downloader::new(
-                restricted_client.clone(),
-                timeouts,
-                in_memory.s3_client_capacity,
-            ),
-            gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
+            http: http::HttpDownloader::new(http_restricted_client, http_no_ssl_client, timeouts),
+            s3: s3::S3Downloader::new(s3_client, timeouts, in_memory.s3_client_capacity),
+            gcs: gcs::GcsDownloader::new(gcs_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
                 .deny_list_enabled
@@ -477,17 +499,30 @@ async fn do_download_reqwest_range(
         .execute()
         .await?;
 
+    macro_rules! incr {
+        ($status:literal) => {{
+            metric!(
+                counter("download.range_request.initial") += 1,
+                "source" => &source,
+                "status" => $status,
+            );
+        }};
+    }
+
     // Server supports range requests and just sent us the first batch.
     match response.content_range() {
         // Server does not know about ranges and returns us the full contents.
         None if response.status().is_success() => {
+            incr!("no_content_range");
             tracing::trace!(
                 "Success hitting `{source}`, but server does not support range requests"
             );
+
             let destination = std::pin::pin!(destination.into_write());
             response.download(destination).await
         }
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
+            incr!("range_not_satisfiable");
             // This case should never happen, since our initial request is always a valid request,
             // when this happens, just retry without a range header and log the error for investigation.
             tracing::debug!(
@@ -501,9 +536,13 @@ async fn do_download_reqwest_range(
             do_download_reqwest(request, destination, error_handler).await
         }
         // Server returned some generic error, we need to bubble it up.
-        None => Err(error_handler.handle(&source, response).await),
+        None => {
+            incr!("error");
+            Err(error_handler.handle(&source, response).await)
+        }
         // Malformed range header.
         Some(Err(err)) => {
+            incr!("invalid_range");
             // This case can happen if the server returns an invalid header or a header which does
             // not specify the total length of the resource, in which case we cancel the original
             // request and just retry without a range request.
@@ -522,6 +561,7 @@ async fn do_download_reqwest_range(
         }
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
+            incr!("successful_range");
             tracing::trace!(
                 "Successfully requested an initial range {content_range} from `{source}`"
             );
