@@ -1,6 +1,6 @@
 use std::{fmt, str::FromStr};
 
-use reqwest::StatusCode;
+use reqwest::{StatusCode, header};
 
 /// The maximum amount of partial requests per download.
 ///
@@ -142,9 +142,32 @@ impl BytesContentRange {
             return None;
         }
 
+        // If the server responds with a content encoding, the automatic decoding of the HTTP
+        // client, will mess up the range requests. But not only that, even if we disable the
+        // transparent decompression, we end up with a compressed download instead of the
+        // decompressed variant.
+        //
+        // Server's should not respond with an encoding if they honor the range request, but
+        // especially AWS S3 just responds with the headers which the file was uploaded with,
+        // meaning individual range requests may not be valid compressed chunks.
+        //
+        // This check here is just a band-aid, a better solution is to introduce a bit more typing
+        // into how Symbolicator downloads files and indicate to the caller whether a downloaded
+        // file is compressed or not.
+        // Most code-paths already go through `fetch_file` which handle this correctly, the few
+        // remaining ones, immediately transform the data, meaning we can wrap it in a streaming
+        // decoder.
+        let content_encoding = response.headers().get(header::CONTENT_ENCODING);
+        if let Some(content_encoding) = content_encoding
+            // Server's _should not_ send `identity`, but might as well check for it.
+            && content_encoding.as_bytes() != b"identity"
+        {
+            return Some(Err(InvalidBytesRange::ContentEncoding));
+        }
+
         response
             .headers()
-            .get(reqwest::header::CONTENT_RANGE)
+            .get(header::CONTENT_RANGE)
             .and_then(|hv| hv.to_str().ok())
             .map(|s| s.parse())
     }
@@ -159,6 +182,9 @@ impl fmt::Display for BytesContentRange {
 /// An error which can be returned when parsing a [`BytesContentRange`].
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum InvalidBytesRange {
+    /// The server returned a content-encoding in a range request response.
+    #[error("server returned content-encoding header in range response")]
+    ContentEncoding,
     /// The header is malformed.
     #[error("content range header is malformed")]
     Malformed,

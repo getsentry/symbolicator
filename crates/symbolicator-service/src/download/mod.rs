@@ -477,17 +477,30 @@ async fn do_download_reqwest_range(
         .execute()
         .await?;
 
+    macro_rules! incr {
+        ($status:literal) => {{
+            metric!(
+                counter("download.range_request.initial") += 1,
+                "source" => &source,
+                "status" => $status,
+            );
+        }};
+    }
+
     // Server supports range requests and just sent us the first batch.
     match response.content_range() {
         // Server does not know about ranges and returns us the full contents.
         None if response.status().is_success() => {
+            incr!("no_content_range");
             tracing::trace!(
                 "Success hitting `{source}`, but server does not support range requests"
             );
+
             let destination = std::pin::pin!(destination.into_write());
             response.download(destination).await
         }
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
+            incr!("range_not_satisfiable");
             // This case should never happen, since our initial request is always a valid request,
             // when this happens, just retry without a range header and log the error for investigation.
             tracing::debug!(
@@ -501,9 +514,13 @@ async fn do_download_reqwest_range(
             do_download_reqwest(request, destination, error_handler).await
         }
         // Server returned some generic error, we need to bubble it up.
-        None => Err(error_handler.handle(&source, response).await),
+        None => {
+            incr!("error");
+            Err(error_handler.handle(&source, response).await)
+        }
         // Malformed range header.
         Some(Err(err)) => {
+            incr!("invalid_range");
             // This case can happen if the server returns an invalid header or a header which does
             // not specify the total length of the resource, in which case we cancel the original
             // request and just retry without a range request.
@@ -522,6 +539,7 @@ async fn do_download_reqwest_range(
         }
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
+            incr!("successful_range");
             tracing::trace!(
                 "Successfully requested an initial range {content_range} from `{source}`"
             );
