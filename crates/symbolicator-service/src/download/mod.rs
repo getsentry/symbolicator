@@ -503,7 +503,7 @@ async fn do_download_reqwest_range(
         ($status:literal) => {{
             metric!(
                 counter("download.range_request.initial") += 1,
-                "source" => &source,
+                "source" => &request.source_name,
                 "status" => $status,
             );
         }};
