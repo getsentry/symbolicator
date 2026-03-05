@@ -76,6 +76,7 @@ mod tests {
     use symbolicator_sources::{SourceConfig, SourceLocation};
 
     use crate::test;
+    use crate::utils::http::ClientSettings;
 
     #[tokio::test]
     async fn test_download_source() {
@@ -138,11 +139,15 @@ mod tests {
         let file_source =
             HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
 
-        let restricted_client =
-            crate::utils::http::create_client(&Default::default(), true, false, true);
-        let no_ssl_client =
-            crate::utils::http::create_client(&Default::default(), true, true, true);
-
+        let restricted_client = crate::utils::http::create_client(&ClientSettings {
+            connect_to_reserved_ips: true,
+            ..Default::default()
+        });
+        let no_ssl_client = crate::utils::http::create_client(&ClientSettings {
+            connect_to_reserved_ips: true,
+            accept_invalid_certs: true,
+            ..Default::default()
+        });
         let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
         let mut destination = tokio::fs::File::create(&dest).await.unwrap();
         let download_status = downloader
