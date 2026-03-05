@@ -56,36 +56,50 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
     true
 }
 
+/// Client settings for creating new http clients using [`create_client`].
+#[derive(Debug, Copy, Clone)]
+pub struct ClientSettings {
+    /// Controls connection and download timeouts.
+    pub timeouts: DownloadTimeouts,
+    /// Determines whether the client is allowed to connect to reserved IPs
+    /// (as defined in `RESERVED_IP_BLOCKS`).
+    pub connect_to_reserved_ips: bool,
+    /// Determines whether the client accepts invalid SSL certificates.
+    pub accept_invalid_certs: bool,
+    /// Controls whether transparent decompression is enabled.
+    pub compression: bool,
+}
+
+impl Default for ClientSettings {
+    fn default() -> Self {
+        Self {
+            timeouts: Default::default(),
+            connect_to_reserved_ips: false,
+            accept_invalid_certs: false,
+            compression: true,
+        }
+    }
+}
+
 /// Creates a [`reqwest::Client`] with the provided options.
 ///
-/// * `timeouts` controls connection and download timeouts.
-/// * `connect_to_reserved_ips` determines whether the client is allowed to
-///   connect to reserved IPs (as defined in `RESERVED_IP_BLOCKS`).
-/// * `accept_invalid_certs` determines whether the client accepts invalid
-///   SSL certificates.
-/// * `compression` controls whether transparent decompression is enabled
-/// * Uses a custom redirect policy that limits redirects from certain hosts
-///   to avoid fetching login pages.
-pub fn create_client(
-    timeouts: &DownloadTimeouts,
-    connect_to_reserved_ips: bool,
-    accept_invalid_certs: bool,
-    compression: bool,
-) -> reqwest::Client {
+/// Uses a custom redirect policy that limits redirects from certain hosts
+/// to avoid fetching login pages.
+pub fn create_client(settings: &ClientSettings) -> reqwest::Client {
     let mut default_headers = header::HeaderMap::new();
     default_headers.insert(header::USER_AGENT, USER_AGENT.parse().unwrap());
 
     let mut builder = reqwest::ClientBuilder::new()
         .default_headers(default_headers)
-        .gzip(compression)
-        .deflate(compression)
-        .brotli(compression)
-        .zstd(compression)
+        .gzip(settings.compression)
+        .deflate(settings.compression)
+        .brotli(settings.compression)
+        .zstd(settings.compression)
         .hickory_dns(true)
-        .connect_timeout(timeouts.connect)
-        .timeout(timeouts.max_download)
+        .connect_timeout(settings.timeouts.connect)
+        .timeout(settings.timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30))
-        .danger_accept_invalid_certs(accept_invalid_certs)
+        .danger_accept_invalid_certs(settings.accept_invalid_certs)
         .redirect(redirect::Policy::custom(|attempt: redirect::Attempt| {
             // The default redirect policy allows to follow up to 10 redirects. This is problematic
             // when symbolicator tries to fetch native source files from a web source, as a redirect
@@ -107,7 +121,7 @@ pub fn create_client(
             redirect::Policy::default().redirect(attempt)
         }));
 
-    if !connect_to_reserved_ips {
+    if !settings.connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
     }
 
@@ -232,7 +246,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let result = create_client(&Default::default(), false, false, true) // untrusted
+        let result = create_client(&Default::default()) // untrusted
             .get(server.url("/"))
             .send()
             .await;
@@ -248,7 +262,7 @@ mod tests {
 
         let mut url = server.url("/");
         url.set_host(Some("127.0.0.1")).unwrap();
-        let result = create_client(&Default::default(), false, false, true) // untrusted
+        let result = create_client(&Default::default()) // untrusted
             .get(url)
             .send()
             .await;
@@ -262,11 +276,14 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let response = create_client(&Default::default(), true, false, true) // allowed to connect to reserved IPs
-            .get(server.url("/garbage_data/OK"))
-            .send()
-            .await
-            .unwrap();
+        let response = create_client(&ClientSettings {
+            connect_to_reserved_ips: true,
+            ..Default::default()
+        })
+        .get(server.url("/garbage_data/OK"))
+        .send()
+        .await
+        .unwrap();
 
         let text = response.text().await.unwrap();
         assert_eq!(text, "OK");
@@ -274,7 +291,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_redirect_policy() {
-        let client = create_client(&Default::default(), false, false, true);
+        let client = create_client(&Default::default());
 
         let response = client
             .get("https://dev.azure.com/foo/bar.cs")

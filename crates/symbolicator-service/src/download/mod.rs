@@ -19,6 +19,7 @@ use crate::download::deny_list::HostDenyList;
 use crate::types::Scope;
 use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
+use crate::utils::http::ClientSettings;
 use crate::utils::sentry::ConfigureScope;
 use stream::FuturesUnordered;
 pub use symbolicator_sources::{
@@ -112,42 +113,39 @@ impl DownloadService {
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = config.timeouts;
 
-        // |   client    | can connect to reserved IPs | accepts invalid SSL certs | compression |
-        // | ------------| ----------------------------|---------------------------|-------------|
-        // |   trusted   |             yes             |             no            |     yes     |
-        // | htto restr. | according to config setting |             no            |     yes     |
-        // | http no ssl | according to config setting |             yes           |     yes     |
-        // |     s3      | according to config setting |             no            |     no      |
-        // |     gcs     | according to config setting |             no            |     yes     |
-        let trusted_client = crate::utils::http::create_client(&timeouts, true, false, true);
-        let http_restricted_client = crate::utils::http::create_client(
-            &timeouts,
-            config.connect_to_reserved_ips,
-            false,
-            true,
-        );
-        let http_no_ssl_client = crate::utils::http::create_client(
-            &timeouts,
-            config.connect_to_reserved_ips,
-            true,
-            true,
-        );
-        let s3_client = crate::utils::http::create_client(
-            &timeouts,
-            config.connect_to_reserved_ips,
-            false,
+        // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
+        // | ----------| ----------------------------|---------------------------|-------------|
+        // |  trusted  |             yes             |             no            |     yes     |
+        // | restrcted | according to config setting |             no            |     yes     |
+        // |  no ssl   | according to config setting |             yes           |     yes     |
+        // |    s3     | according to config setting |             no            |     no      |
+        // |    gcs    | according to config setting |             no            |     yes     |
+        let restricted_settings = ClientSettings {
+            timeouts,
+            connect_to_reserved_ips: config.connect_to_reserved_ips,
+            accept_invalid_certs: false,
+            compression: true,
+        };
+        let trusted_settings = ClientSettings {
+            connect_to_reserved_ips: true,
+            ..restricted_settings
+        };
+        let no_ssl_settings = ClientSettings {
+            accept_invalid_certs: true,
+            ..restricted_settings
+        };
+        let no_compression_settings = ClientSettings {
             // S3 returns the raw byte stream on range requests, with transparent decompression
             // enabled this breaks for individual parts.
-            false,
-        );
-        let gcs_client = crate::utils::http::create_client(
-            &timeouts,
-            config.connect_to_reserved_ips,
-            false,
-            // GCS ignores the range request for compressed objects, which is the behaviour we
-            // need.
-            true,
-        );
+            compression: false,
+            ..restricted_settings
+        };
+
+        let trusted_client = crate::utils::http::create_client(&trusted_settings);
+        let http_restricted_client = crate::utils::http::create_client(&restricted_settings);
+        let http_no_ssl_client = crate::utils::http::create_client(&no_ssl_settings);
+        let s3_client = crate::utils::http::create_client(&no_compression_settings);
+        let gcs_client = crate::utils::http::create_client(&restricted_settings);
 
         let in_memory = &config.caches.in_memory;
 
