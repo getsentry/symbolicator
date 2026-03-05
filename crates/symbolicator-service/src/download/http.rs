@@ -138,8 +138,10 @@ mod tests {
         let file_source =
             HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
 
-        let restricted_client = crate::utils::http::create_client(&Default::default(), true, false);
-        let no_ssl_client = crate::utils::http::create_client(&Default::default(), true, true);
+        let restricted_client =
+            crate::utils::http::create_client(&Default::default(), true, false, true);
+        let no_ssl_client =
+            crate::utils::http::create_client(&Default::default(), true, true, true);
 
         let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
         let mut destination = tokio::fs::File::create(&dest).await.unwrap();

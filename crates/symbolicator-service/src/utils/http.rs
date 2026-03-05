@@ -63,19 +63,24 @@ fn is_external_ip(ip: std::net::IpAddr) -> bool {
 ///   connect to reserved IPs (as defined in `RESERVED_IP_BLOCKS`).
 /// * `accept_invalid_certs` determines whether the client accepts invalid
 ///   SSL certificates.
+/// * `compression` controls whether transparent decompression is enabled
 /// * Uses a custom redirect policy that limits redirects from certain hosts
 ///   to avoid fetching login pages.
 pub fn create_client(
     timeouts: &DownloadTimeouts,
     connect_to_reserved_ips: bool,
     accept_invalid_certs: bool,
+    compression: bool,
 ) -> reqwest::Client {
     let mut default_headers = header::HeaderMap::new();
     default_headers.insert(header::USER_AGENT, USER_AGENT.parse().unwrap());
 
     let mut builder = reqwest::ClientBuilder::new()
         .default_headers(default_headers)
-        .gzip(true)
+        .gzip(compression)
+        .deflate(compression)
+        .brotli(compression)
+        .zstd(compression)
         .hickory_dns(true)
         .connect_timeout(timeouts.connect)
         .timeout(timeouts.max_download)
@@ -227,7 +232,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let result = create_client(&Default::default(), false, false) // untrusted
+        let result = create_client(&Default::default(), false, false, true) // untrusted
             .get(server.url("/"))
             .send()
             .await;
@@ -243,7 +248,7 @@ mod tests {
 
         let mut url = server.url("/");
         url.set_host(Some("127.0.0.1")).unwrap();
-        let result = create_client(&Default::default(), false, false) // untrusted
+        let result = create_client(&Default::default(), false, false, true) // untrusted
             .get(url)
             .send()
             .await;
@@ -257,7 +262,7 @@ mod tests {
 
         let server = symbolicator_test::Server::new();
 
-        let response = create_client(&Default::default(), true, false) // allowed to connect to reserved IPs
+        let response = create_client(&Default::default(), true, false, true) // allowed to connect to reserved IPs
             .get(server.url("/garbage_data/OK"))
             .send()
             .await
@@ -269,7 +274,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_redirect_policy() {
-        let client = create_client(&Default::default(), false, false);
+        let client = create_client(&Default::default(), false, false, true);
 
         let response = client
             .get("https://dev.azure.com/foo/bar.cs")
