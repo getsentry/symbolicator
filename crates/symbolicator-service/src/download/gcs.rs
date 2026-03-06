@@ -87,7 +87,14 @@ impl GcsDownloader {
             .get(url)
             .header("authorization", format!("Bearer {}", token.bearer_token.0));
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.timeouts,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
     }
 }
 

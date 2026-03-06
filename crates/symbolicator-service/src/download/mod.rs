@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
-use bytes::Bytes;
 use futures::{future::Either, prelude::*};
 use reqwest::StatusCode;
 
@@ -20,6 +19,7 @@ use crate::download::deny_list::HostDenyList;
 use crate::types::Scope;
 use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
+use crate::utils::http::ClientSettings;
 use crate::utils::sentry::ConfigureScope;
 use stream::FuturesUnordered;
 pub use symbolicator_sources::{
@@ -56,9 +56,6 @@ impl ConfigureScope for RemoteFile {
         scope.set_tag("source.uri", self.uri());
     }
 }
-
-/// HTTP User-Agent string to use.
-const USER_AGENT: &str = concat!("symbolicator/", env!("CARGO_PKG_VERSION"));
 
 impl CacheError {
     fn download_error(mut error: &dyn Error) -> Self {
@@ -116,16 +113,39 @@ impl DownloadService {
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
         let timeouts = config.timeouts;
 
-        // |   client   | can connect to reserved IPs | accepts invalid SSL certs |
-        // | -----------| ----------------------------|---------------------------|
-        // |   trusted  |             yes             |             no            |
-        // | restricted | according to config setting |             no            |
-        // |   no_ssl   | according to config setting |             yes           |
-        let trusted_client = crate::utils::http::create_client(&timeouts, true, false);
-        let restricted_client =
-            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, false);
-        let no_ssl_client =
-            crate::utils::http::create_client(&timeouts, config.connect_to_reserved_ips, true);
+        // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
+        // | ----------| ----------------------------|---------------------------|-------------|
+        // |  trusted  |             yes             |             no            |     yes     |
+        // | restrcted | according to config setting |             no            |     yes     |
+        // |  no ssl   | according to config setting |             yes           |     yes     |
+        // |    s3     | according to config setting |             no            |     no      |
+        // |    gcs    | according to config setting |             no            |     yes     |
+        let restricted_settings = ClientSettings {
+            timeouts,
+            connect_to_reserved_ips: config.connect_to_reserved_ips,
+            accept_invalid_certs: false,
+            compression: true,
+        };
+        let trusted_settings = ClientSettings {
+            connect_to_reserved_ips: true,
+            ..restricted_settings
+        };
+        let no_ssl_settings = ClientSettings {
+            accept_invalid_certs: true,
+            ..restricted_settings
+        };
+        let no_compression_settings = ClientSettings {
+            // S3 returns the raw byte stream on range requests, with transparent decompression
+            // enabled this breaks for individual parts.
+            compression: false,
+            ..restricted_settings
+        };
+
+        let trusted_client = crate::utils::http::create_client(&trusted_settings);
+        let http_restricted_client = crate::utils::http::create_client(&restricted_settings);
+        let http_no_ssl_client = crate::utils::http::create_client(&no_ssl_settings);
+        let s3_client = crate::utils::http::create_client(&no_compression_settings);
+        let gcs_client = crate::utils::http::create_client(&restricted_settings);
 
         let in_memory = &config.caches.in_memory;
 
@@ -140,9 +160,9 @@ impl DownloadService {
                 in_memory,
                 config.propagate_traces,
             ),
-            http: http::HttpDownloader::new(restricted_client.clone(), no_ssl_client, timeouts),
-            s3: s3::S3Downloader::new(timeouts, in_memory.s3_client_capacity),
-            gcs: gcs::GcsDownloader::new(restricted_client, timeouts, in_memory.gcs_token_capacity),
+            http: http::HttpDownloader::new(http_restricted_client, http_no_ssl_client, timeouts),
+            s3: s3::S3Downloader::new(s3_client, timeouts, in_memory.s3_client_capacity),
+            gcs: gcs::GcsDownloader::new(gcs_client, timeouts, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
                 .deny_list_enabled
@@ -388,30 +408,13 @@ where
     }
 }
 
-/// Download the source from a stream.
-///
-/// This is common functionality used by many downloaders.
-async fn download_stream(
-    source_name: &str,
-    stream: impl Stream<Item = Result<Bytes, CacheError>>,
-    mut destination: impl WriteStream,
-) -> CacheContents {
-    let mut stream = std::pin::pin!(stream);
-
-    let throughput_recorder =
-        MeasureSourceDownloadGuard::new("source.download.stream", source_name);
-    let result: CacheContents = async {
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            throughput_recorder.add_bytes_transferred(chunk.len() as u64);
-            destination.write_buf(chunk).await?;
-        }
-        Ok(())
-    }
-    .await;
-    throughput_recorder.done(&result);
-
-    result
+/// An error handler is used for converting download errors to [`CacheError`].
+trait ErrorHandler: Sync {
+    fn handle(
+        &self,
+        source: &str,
+        response: SymResponse<'_>,
+    ) -> impl Future<Output = CacheError> + Send;
 }
 
 /// Download the source with a HTTP request.
@@ -422,6 +425,7 @@ async fn download_reqwest(
     builder: reqwest::RequestBuilder,
     timeouts: &DownloadTimeouts,
     destination: impl Destination,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let (client, request) = builder.build_split();
     let request = request?;
@@ -442,10 +446,16 @@ async fn download_reqwest(
     };
 
     let result = match destination {
-        Ok(destination) => do_download_reqwest_range(request, destination).send().await,
+        Ok(destination) => {
+            do_download_reqwest_range(request, destination, error_handler)
+                .send()
+                .await
+        }
         Err(destination) => {
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).send().await
+            do_download_reqwest(request, destination, error_handler)
+                .send()
+                .await
         }
     };
 
@@ -471,6 +481,7 @@ async fn download_reqwest(
 async fn do_download_reqwest_range(
     request: SymRequest<'_>,
     mut destination: impl MultiStreamDestination,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let source = request.to_source();
 
@@ -486,17 +497,30 @@ async fn do_download_reqwest_range(
         .execute()
         .await?;
 
+    macro_rules! incr {
+        ($status:literal) => {{
+            metric!(
+                counter("download.range_request.initial") += 1,
+                "source" => &request.source_name,
+                "status" => $status,
+            );
+        }};
+    }
+
     // Server supports range requests and just sent us the first batch.
     match response.content_range() {
         // Server does not know about ranges and returns us the full contents.
         None if response.status().is_success() => {
+            incr!("no_content_range");
             tracing::trace!(
                 "Success hitting `{source}`, but server does not support range requests"
             );
+
             let destination = std::pin::pin!(destination.into_write());
             response.download(destination).await
         }
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
+            incr!("range_not_satisfiable");
             // This case should never happen, since our initial request is always a valid request,
             // when this happens, just retry without a range header and log the error for investigation.
             tracing::debug!(
@@ -507,12 +531,16 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).await
+            do_download_reqwest(request, destination, error_handler).await
         }
         // Server returned some generic error, we need to bubble it up.
-        None => Err(response_to_error(&source, response).await),
+        None => {
+            incr!("error");
+            Err(error_handler.handle(&source, response).await)
+        }
         // Malformed range header.
         Some(Err(err)) => {
+            incr!("invalid_range");
             // This case can happen if the server returns an invalid header or a header which does
             // not specify the total length of the resource, in which case we cancel the original
             // request and just retry without a range request.
@@ -527,10 +555,11 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination).await
+            do_download_reqwest(request, destination, error_handler).await
         }
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
+            incr!("successful_range");
             tracing::trace!(
                 "Successfully requested an initial range {content_range} from `{source}`"
             );
@@ -566,7 +595,7 @@ async fn do_download_reqwest_range(
                     .with_range(range);
 
                 let destination = destination.stream(range.start, range.size());
-                let partial = do_download_reqwest(request, destination).send();
+                let partial = do_download_reqwest(request, destination, error_handler).send();
                 futures.push(Either::Right(partial));
             }
 
@@ -586,6 +615,7 @@ async fn do_download_reqwest_range(
 async fn do_download_reqwest(
     request: SymRequest<'_>,
     destination: impl WriteStream,
+    error_handler: &impl ErrorHandler,
 ) -> CacheContents {
     let source = request.to_source();
     let response = request.execute().await?;
@@ -595,61 +625,55 @@ async fn do_download_reqwest(
         tracing::trace!("Success hitting `{source}`");
         response.download(destination).await
     } else {
-        Err(response_to_error(&source, response).await)
+        Err(error_handler.handle(&source, response).await)
     }
 }
 
 /// Converts a response to an error.
 ///
-/// Any response will be converted to an error, callers must ensure success cases
-/// are handled before turning the response into an error using this function.
-async fn response_to_error(source: &str, response: SymResponse<'_>) -> CacheError {
-    let status = response.status();
-    debug_assert!(!status.is_success());
+/// This error handler uses the HTTP status code to infer the [`CacheError`],
+/// this works for any HTTP request, but does not consider API specific responses.
+struct GenericErrorHandler;
 
-    if let Ok(details) = response.response.text().await {
-        ::sentry::configure_scope(|scope| {
-            scope.set_extra(
-                "reqwest_response_body",
-                ::sentry::protocol::Value::String(details.clone()),
+impl ErrorHandler for GenericErrorHandler {
+    async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
+        let status = response.status();
+        debug_assert!(!status.is_success());
+
+        if let Ok(details) = response.response.text().await {
+            ::sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    "reqwest_response_body",
+                    ::sentry::protocol::Value::String(details.clone()),
+                );
+            });
+        };
+
+        if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
+            tracing::debug!("Insufficient permissions to download `{source}`: {status}",);
+
+            // TODO: figure out if we can log/return the whole response text
+            // let details = response.text().await?;
+            let details = status.to_string();
+
+            CacheError::PermissionDenied(details)
+        } else if status.is_client_error() {
+            // If it's a client error, chances are it's a 404.
+            tracing::debug!("Unexpected client error status code from `{source}`: {status}",);
+
+            CacheError::NotFound
+        } else if status == StatusCode::FOUND {
+            tracing::debug!(
+                "Potential login page detected when downloading from `{source}`: {status}",
             );
-        });
-    };
 
-    if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
-        tracing::debug!(
-            "Insufficient permissions to download `{}`: {}",
-            source,
-            status
-        );
+            CacheError::PermissionDenied("Potential login page detected".to_string())
+        } else {
+            tracing::debug!("Unexpected status code from `{source}`: {status}");
 
-        // TODO: figure out if we can log/return the whole response text
-        // let details = response.text().await?;
-        let details = status.to_string();
-
-        CacheError::PermissionDenied(details)
-    } else if status.is_client_error() {
-        // If it's a client error, chances are it's a 404.
-        tracing::debug!(
-            "Unexpected client error status code from `{}`: {}",
-            source,
-            status
-        );
-
-        CacheError::NotFound
-    } else if status == StatusCode::FOUND {
-        tracing::debug!(
-            "Potential login page detected when downloading from `{}`: {}",
-            source,
-            status
-        );
-
-        CacheError::PermissionDenied("Potential login page detected".to_string())
-    } else {
-        tracing::debug!("Unexpected status code from `{}`: {}", source, status);
-
-        let details = status.to_string();
-        CacheError::DownloadError(details)
+            let details = status.to_string();
+            CacheError::DownloadError(details)
+        }
     }
 }
 

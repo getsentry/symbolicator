@@ -1,3 +1,4 @@
+#![recursion_limit = "256"]
 use std::path::PathBuf;
 use std::time::Duration;
 
