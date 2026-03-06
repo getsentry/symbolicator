@@ -265,17 +265,6 @@ impl ProguardService {
                         )
                     })
                 })
-                // This is for parity with the Python implementation. It's unclear why remapping a frame with line 0
-                // would produce useful information, and I have no conclusive evidence that it does.
-                // See the `line_0_1` and `line_0_2` unit tests in this file for examples of the results this produces.
-                //
-                // TODO(@loewenheim): Find out if this is useful and remove it otherwise.
-                // The PR that introduced this was https://github.com/getsentry/symbolicator/pull/1434.
-                //
-                // UPDATE(@loewenheim): The retrace implementation at https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
-                // returns the same value whether you give it line 0 or no line at all, and it is the same result that our implementation
-                // gives with line 0. This indicates that the _behavior_ is correct, but we should be able to get there without
-                // backfilling the line number with 0.
                 .unwrap_or_else(|| proguard::StackFrame::new(&frame.module, &frame.function, 0));
 
             let mut mapped_result = None;
@@ -354,6 +343,19 @@ impl ProguardService {
                     .or_default() += 1;
                 vec![frame.clone()]
             });
+
+            // Drop frames whose methods were synthesized by the compiler (e.g. lambda bridges).
+            // Only filter when the original frame had a line number. This matches a retrace
+            // quirk: without a line number, retrace resolves via MemberNaming (which lacks
+            // range-level synthesized annotations) and keeps the frame. This is arguably a
+            // retrace bug, but we match it because users compare our output against tools
+            // built on retrace. See `line_0_2` test for an example.
+            if frame.lineno.is_some() {
+                frames.retain(|f| !f.method_synthesized);
+                if frames.is_empty() {
+                    continue 'frames;
+                }
+            }
 
             for mapped_frame in &mut frames {
                 // add the signature if we received one and we were
@@ -456,7 +458,7 @@ impl ProguardService {
             .map(|new_frame| JvmFrame {
                 module: new_frame.class().to_owned(),
                 function: new_frame.method().to_owned(),
-                lineno: Some(new_frame.line() as u32),
+                lineno: new_frame.line().map(|l| l as u32),
                 abs_path: new_frame
                     .file()
                     .map(String::from)
@@ -713,31 +715,41 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
+          filename: "-.java"
           module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
+          abs_path: "-.java"
           lineno: 2
           index: 0
         - function: onClickHandler
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
+          abs_path: MainActivity.java
           lineno: 40
           index: 1
         - function: foo
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
+          abs_path: MainActivity.java
           lineno: 44
           index: 1
         - function: bar
           filename: MainActivity.java
           module: io.sentry.sample.MainActivity
+          abs_path: MainActivity.java
           lineno: 54
           index: 1
         - function: onClickHandler
+          filename: MainActivity.java
           module: io.sentry.sample.MainActivity
-          lineno: 0
+          abs_path: MainActivity.java
+          lineno: 40
           index: 2
           signature: (android.view.View)
         - function: onClickHandler
+          filename: MainActivity.java
           module: io.sentry.sample.MainActivity
+          abs_path: MainActivity.java
+          lineno: 0
           index: 3
           signature: (android.view.View)
         - function: onClickHandler
@@ -911,15 +923,14 @@ y.b -> y.b:
 
         let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
 
-        // Without the "line 0" change, the module is "com.google.firebase.concurrent.CustomThreadFactory$$ExternalSyntheticLambda0".
-        // The `retrace` implementation at
-        // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
-        // also returns this, no matter whether you give it line 0 or no line at all.
+        // The mapped frame `run$bridge` has `method_synthesized: true`, but the
+        // original frame had no line number, so synthesized filtering is skipped
+        // (matching retrace behavior).
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: run$bridge
-          filename: CustomThreadFactory
+          filename: CustomThreadFactory.java
           module: com.google.firebase.concurrent.CustomThreadFactory$$InternalSyntheticLambda$1$53203795c28a6fcdb3bac755806c9ee73cb3e8dcd4c9bbf8ca5d25d4d9c378dd$0
-          abs_path: CustomThreadFactory
+          abs_path: CustomThreadFactory.java
           lineno: 0
           index: 0
           method_synthesized: true
@@ -1048,20 +1059,6 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
           abs_path: MainActivity.kt
           lineno: 14
           index: 1
-        - function: $r8$lambda$pOQDVg57r6gG0-DzwbGf17BfNbs
-          filename: MainActivity.kt
-          module: io.wzieba.r8fullmoderenamessources.MainActivity
-          abs_path: MainActivity.kt
-          lineno: 0
-          index: 2
-          method_synthesized: true
-        - function: onClick
-          filename: MainActivity
-          module: io.wzieba.r8fullmoderenamessources.MainActivity$$ExternalSyntheticLambda0
-          abs_path: MainActivity
-          lineno: 0
-          index: 3
-          method_synthesized: true
         - function: performClick
           filename: View.java
           module: android.view.View
@@ -1108,6 +1105,8 @@ com.mycompany.android.MapAnnotations -> uu0.k:
     43:46:com.mycompany.android.IProjectionMarker createProjectionMarker(com.mycompany.android.IProjectionMarkerOptions):0:0 -> l
     43:46:lv0.IProjectionMarker uu0.MapAnnotations.createProjectionMarker(lv0.IProjectionMarkerOptions):0 -> l
       # {"id":"com.android.tools.r8.outlineCallsite","positions":{"1":50,"3":52,"6":55},"outline":"Lev/h;b(Ljava/lang/String;Lme/company/android/logging/L;)V"}
+    52:52:com.mycompany.android.ViewProjectionMarker com.mycompany.android.Delegate.createProjectionMarker():79:79 -> l
+    52:52:com.mycompany.android.IProjectionMarker createProjectionMarker(com.mycompany.android.IProjectionMarkerOptions):63 -> l
 com.mycompany.android.Renderer -> b80.f:
 # {"id":"sourceFile","fileName":"Renderer.kt"}
     33:40:com.mycompany.android.ViewProjectionMarker com.mycompany.android.Delegate.createProjectionMarker():101:101 -> a
@@ -1169,10 +1168,16 @@ com.mycompany.android.Delegate -> b80.h:
           lineno: 101
           index: 0
         - function: createProjectionMarker
-          filename: SourceFile
+          filename: MapAnnotations.kt
           module: com.mycompany.android.MapAnnotations
-          abs_path: SourceFile
-          lineno: 43
+          abs_path: MapAnnotations.kt
+          lineno: 63
+          index: 1
+        - function: createProjectionMarker
+          filename: Delegate.kt
+          module: com.mycompany.android.Delegate
+          abs_path: Delegate.kt
+          lineno: 79
           index: 1
         "###);
     }
@@ -1213,7 +1218,9 @@ some.Class -> b:
 
         insta::assert_yaml_snapshot!(remapped, @r###"
         - function: outlineCaller
+          filename: Class.java
           module: some.Class
+          abs_path: Class.java
           lineno: 98
           index: 1
         "###);
