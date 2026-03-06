@@ -362,6 +362,19 @@ impl ProguardService {
                 vec![frame.clone()]
             });
 
+            // Drop frames whose methods were synthesized by the compiler (e.g. lambda bridges).
+            // Only filter when the original frame had a line number. This matches a retrace
+            // quirk: without a line number, retrace resolves via MemberNaming (which lacks
+            // range-level synthesized annotations) and keeps the frame. This is arguably a
+            // retrace bug, but we match it because users compare our output against tools
+            // built on retrace. See `line_0_2` test for an example.
+            if frame.lineno.is_some() {
+                frames.retain(|f| !f.method_synthesized);
+                if frames.is_empty() {
+                    continue 'frames;
+                }
+            }
+
             for mapped_frame in &mut frames {
                 // add the signature if we received one and we were
                 // able to translate/deobfuscate it
