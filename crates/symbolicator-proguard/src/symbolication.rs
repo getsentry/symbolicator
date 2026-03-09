@@ -317,6 +317,19 @@ impl ProguardService {
 
             // Fix up the frames' in-app fields only if they were actually mapped
             if let Some(frames) = mapped_result.as_mut() {
+                // Drop frames whose methods were synthesized by the compiler (e.g. lambda bridges).
+                // Only filter when the original frame had a line number. This matches a retrace
+                // quirk: without a line number, retrace resolves via MemberNaming (which lacks
+                // range-level synthesized annotations) and keeps the frame. This is arguably a
+                // retrace bug, but we match it because users compare our output against tools
+                // built on retrace. See `line_0_2` test for an example.
+                if frame.lineno.is_some() {
+                    frames.retain(|f| !f.method_synthesized);
+                    if frames.is_empty() {
+                        continue 'frames;
+                    }
+                }
+
                 for mapped_frame in frames {
                     // mark the frame as in_app after deobfuscation based on the release package name
                     // only if it's not present
@@ -343,19 +356,6 @@ impl ProguardService {
                     .or_default() += 1;
                 vec![frame.clone()]
             });
-
-            // Drop frames whose methods were synthesized by the compiler (e.g. lambda bridges).
-            // Only filter when the original frame had a line number. This matches a retrace
-            // quirk: without a line number, retrace resolves via MemberNaming (which lacks
-            // range-level synthesized annotations) and keeps the frame. This is arguably a
-            // retrace bug, but we match it because users compare our output against tools
-            // built on retrace. See `line_0_2` test for an example.
-            if frame.lineno.is_some() {
-                frames.retain(|f| !f.method_synthesized);
-                if frames.is_empty() {
-                    continue 'frames;
-                }
-            }
 
             for mapped_frame in &mut frames {
                 // add the signature if we received one and we were
