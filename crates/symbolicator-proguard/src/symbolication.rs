@@ -78,7 +78,10 @@ impl ProguardService {
                         tracing::error!(%debug_id, "Error reading Proguard file: {e}");
                     }
                     let kind = match e {
-                        CacheError::Malformed(_) => ProguardErrorKind::Invalid,
+                        CacheError::Malformed(msg) => match msg.as_str() {
+                            "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
+                            _ => unreachable!(),
+                        },
                         _ => ProguardErrorKind::Missing,
                     };
                     errors.push(ProguardError {
