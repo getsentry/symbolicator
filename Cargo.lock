@@ -278,9 +278,9 @@ checksum = "b0674a1ddeecb70197781e945de4b3b8ffb61fa939a5597bcf48503737663100"
 
 [[package]]
 name = "apple-crash-report-parser"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fc62d1d734597ddedd2ba0673780ee0a57b4de9a6e05f8731f2361d90b9c3e3"
+checksum = "6df06884aa43f80e273e777bbf2d0483e2c4e0d6a51a0f9b59e268b225c6a2e8"
 dependencies = [
  "chrono",
  "lazy_static",
@@ -1039,9 +1039,9 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
 name = "bytes"
-version = "1.10.1"
+version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
+checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
 name = "bytes-utils"
@@ -3746,7 +3746,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5138,7 +5138,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -5178,7 +5178,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "bindgen",
  "cmake",
@@ -5186,7 +5186,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "data-url",
  "futures",
@@ -5212,7 +5212,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -5245,7 +5245,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "futures",
  "insta",
@@ -5263,12 +5263,14 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "aws-config",
  "aws-credential-types",
  "aws-sdk-s3",
+ "aws-smithy-types",
+ "aws-smithy-xml",
  "bytes",
  "cab",
  "cadence",
@@ -5315,7 +5317,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -5331,7 +5333,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -5354,7 +5356,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "axum",
  "humantime",
@@ -5373,7 +5375,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -5397,7 +5399,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6202,7 +6204,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-split"
-version = "26.1.0"
+version = "26.2.1"
 dependencies = [
  "anyhow",
  "clap",

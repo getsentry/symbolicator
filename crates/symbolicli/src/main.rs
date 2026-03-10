@@ -1,6 +1,7 @@
+#![recursion_limit = "256"]
 use std::fs::File;
 use std::io::{Read, Seek};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, io};
 
@@ -8,7 +9,7 @@ use event::{create_js_symbolication_request, create_native_symbolication_request
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
-use settings::Mode;
+use settings::{Mode, SymbolsPath};
 use symbolicator_js::SourceMapService;
 use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
@@ -16,8 +17,8 @@ use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
-    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
-    SentrySourceConfig, SentryToken, SourceConfig, SourceId,
+    CommonSourceConfig, DirectoryLayout, FilesystemSourceConfig, SentrySourceConfig, SentryToken,
+    SourceConfig, SourceId,
 };
 
 use anyhow::{Context, Result};
@@ -192,7 +193,7 @@ async fn main() -> Result<()> {
 fn prepare_dsym_sources(
     mode: Mode,
     symbolicator_config: &Config,
-    local_symbols: Option<PathBuf>,
+    local_symbols: Option<SymbolsPath>,
 ) -> Arc<[SourceConfig]> {
     let mut dsym_sources = vec![];
     if let Mode::Online {
@@ -215,14 +216,14 @@ fn prepare_dsym_sources(
     }
 
     dsym_sources.extend(symbolicator_config.sources.iter().cloned());
-    if let Some(path) = local_symbols {
+    if let Some(symbols_path) = local_symbols {
         let local_source = FilesystemSourceConfig {
             id: SourceId::new("local:cli"),
-            path,
+            path: symbols_path.path,
             files: CommonSourceConfig {
                 filters: Default::default(),
                 layout: DirectoryLayout {
-                    ty: DirectoryLayoutType::Unified,
+                    ty: symbols_path.layout_type,
                     casing: Default::default(),
                 },
                 is_public: false,
