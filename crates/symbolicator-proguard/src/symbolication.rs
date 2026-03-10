@@ -250,7 +250,12 @@ impl ProguardService {
             // We create the proguard frame according to these priorities:
             // * Use the frame's line number if it exists
             // * Use the frame's parameters if they exist
-            // * Use line number 0
+            // * Use line number 0 as a fallback
+            //
+            // The line-0 fallback is intentional and matches retrace behavior: it triggers
+            // the no-line-info path in ProguardCache, which picks the first range group and
+            // resolves inline chains (e.g. the `line_0_1` test produces `onCreate` +
+            // `barInternalInject`). Retrace does the same via `allRangesForLine(0, true)`.
             let proguard_frame = frame
                 .lineno
                 .map(|lineno| {
