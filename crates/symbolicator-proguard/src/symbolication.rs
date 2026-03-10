@@ -582,6 +582,7 @@ mod tests {
     use proguard::{ProguardCache, ProguardMapping};
 
     static MAPPING_OUTLINE_COMPLEX: &[u8] = include_bytes!("res/mapping-outline-complex.txt");
+    static MAPPING_SYNTHESIZED_FRAMES: &[u8] = include_bytes!("res/mapping-synthesized-frames.txt");
 
     fn remap_stacktrace_caller_first(
         proguard_source: &[u8],
@@ -1493,5 +1494,1062 @@ some.Class -> b:
           lineno: 160
           index: 1
         "###);
+    }
+
+    #[test]
+    fn synthesized_frames() {
+        let mut frames: Vec<JvmFrame> = serde_json::from_str(
+            r#"[{
+                "function": "main",
+                "module": "com.android.internal.os.ZygoteInit",
+                "filename": "ZygoteInit.java",
+                "lineno": 975,
+                "index": 19
+            }, {
+                "function": "run",
+                "module": "com.android.internal.os.RuntimeInit$MethodAndArgsCaller",
+                "filename": "RuntimeInit.java",
+                "lineno": 632,
+                "index": 18
+            }, {
+                "function": "invoke",
+                "module": "java.lang.reflect.Method",
+                "filename": "Method.java",
+                "index": 17
+            }, {
+                "function": "main",
+                "module": "android.app.ActivityThread",
+                "filename": "ActivityThread.java",
+                "lineno": 10060,
+                "index": 16
+            }, {
+                "function": "loop",
+                "module": "android.os.Looper",
+                "filename": "Looper.java",
+                "lineno": 363,
+                "index": 15
+            }, {
+                "function": "loopOnce",
+                "module": "android.os.Looper",
+                "filename": "Looper.java",
+                "lineno": 273,
+                "index": 14
+            }, {
+                "function": "dispatchMessage",
+                "module": "android.os.Handler",
+                "filename": "Handler.java",
+                "lineno": 103,
+                "index": 13
+            }, {
+                "function": "handleCallback",
+                "module": "android.os.Handler",
+                "filename": "Handler.java",
+                "lineno": 995,
+                "index": 12
+            }, {
+                "function": "run",
+                "module": "android.view.Choreographer$FrameDisplayEventReceiver",
+                "filename": "Choreographer.java",
+                "lineno": 1870,
+                "index": 11
+            }, {
+                "function": "doFrame",
+                "module": "android.view.Choreographer",
+                "filename": "Choreographer.java",
+                "lineno": 1282,
+                "index": 10
+            }, {
+                "function": "doCallbacks",
+                "module": "android.view.Choreographer",
+                "filename": "Choreographer.java",
+                "lineno": 1367,
+                "index": 9
+            }, {
+                "function": "run",
+                "module": "android.view.Choreographer$CallbackRecord",
+                "filename": "Choreographer.java",
+                "lineno": 1910,
+                "index": 8
+            }, {
+                "function": "run",
+                "module": "android.view.Choreographer$CallbackRecord",
+                "filename": "Choreographer.java",
+                "lineno": 1899,
+                "index": 7
+            }, {
+                "function": "doFrame",
+                "module": "androidx.compose.ui.platform.H",
+                "lineno": 47,
+                "index": 6
+            }, {
+                "function": "doFrame",
+                "module": "androidx.compose.ui.platform.J",
+                "lineno": 8,
+                "index": 5
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.o0",
+                "lineno": 772,
+                "index": 4
+            }, {
+                "function": "N",
+                "module": "androidx.compose.runtime.p0",
+                "lineno": 470,
+                "index": 3
+            }, {
+                "function": "h",
+                "module": "androidx.compose.runtime.v",
+                "lineno": 43,
+                "index": 2
+            }, {
+                "function": "i0",
+                "module": "androidx.compose.runtime.o",
+                "lineno": 144,
+                "index": 1
+            }, {
+                "function": "o0",
+                "module": "androidx.compose.runtime.o",
+                "lineno": 66,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "B3.i",
+                "lineno": 1459,
+                "index": 1
+            }, {
+                "function": "j0",
+                "module": "androidx.compose.runtime.o",
+                "lineno": 138,
+                "index": 1
+            }, {
+                "function": "d",
+                "module": "Q0.n",
+                "lineno": 17,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "Ua.b",
+                "lineno": 271,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "di.h",
+                "lineno": 445,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.navigation3.ui.i",
+                "lineno": 32,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.sharedtabs.detail.B",
+                "lineno": 218,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "li.c",
+                "lineno": 367,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "Na.b",
+                "lineno": 649,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.i",
+                "lineno": 193,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.navigation3.ui.i",
+                "lineno": 147,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.sharedtabs.detail.B",
+                "lineno": 218,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "li.c",
+                "lineno": 367,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "w9.b",
+                "lineno": 897,
+                "index": 1
+            }, {
+                "function": "e",
+                "module": "V0.c",
+                "lineno": 163,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.i",
+                "lineno": 204,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.navigation3.ui.i",
+                "lineno": 65,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "li.c",
+                "lineno": 367,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.usmerchantcashback.ui.r",
+                "lineno": 561,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.i",
+                "lineno": 193,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.navigation3.ui.i",
+                "lineno": 114,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "y3.b",
+                "lineno": 42,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.businessinvoice.qrcode.d",
+                "lineno": 175,
+                "index": 1
+            }, {
+                "function": "g",
+                "module": "com.example.businessinvoice.qrcode.d",
+                "lineno": 176,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.i",
+                "lineno": 204,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 1,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.commonscreensui.coordinator.base.D",
+                "lineno": 142,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "androidx.compose.runtime.internal.a",
+                "filename": "SourceFile",
+                "lineno": 2,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "androidx.compose.runtime.internal.a",
+                "lineno": 45,
+                "index": 1
+            }, {
+                "function": "invoke",
+                "module": "com.example.dynamicflow.ui.A",
+                "lineno": 86,
+                "index": 1
+            }, {
+                "function": "b",
+                "module": "com.example.dynamicflow.b",
+                "lineno": 160,
+                "index": 1
+            }, {
+                "function": "d",
+                "module": "ab.c",
+                "lineno": 104,
+                "index": 1
+            }, {
+                "function": "a",
+                "module": "com.example.card.googlepay.b",
+                "lineno": 50,
+                "index": 0
+            }]"#,
+        )
+        .unwrap();
+
+        let mut mapped_frames = remap_stacktrace_caller_first(
+            MAPPING_SYNTHESIZED_FRAMES,
+            Some("com.example"),
+            &mut frames,
+        );
+
+        // Output in callee-first order (standard Java stacktrace convention)
+        // to make it easier to compare with retrace / remap_stacktrace output.
+        mapped_frames.reverse();
+
+        insta::assert_yaml_snapshot!(mapped_frames, @r"
+        - function: AddGooglePayCoordinatorScreen
+          filename: AddGooglePayUi.kt
+          module: com.example.card.googlepay.AddGooglePayUiKt
+          abs_path: AddGooglePayUi.kt
+          lineno: 29
+          in_app: true
+          index: 0
+        - function: Screen
+          filename: CardDynamicFlowCustomStageRegistryEntry.kt
+          module: com.example.card.CardDynamicFlowCustomStageRegistryEntry
+          abs_path: CardDynamicFlowCustomStageRegistryEntry.kt
+          lineno: 60
+          in_app: true
+          index: 1
+        - function: CustomStageScreen
+          filename: DynamicFlowCustomStageRegistry.kt
+          module: com.example.dynamicflow.RealDynamicFlowCustomStageRegistry
+          abs_path: DynamicFlowCustomStageRegistry.kt
+          lineno: 63
+          in_app: true
+          index: 1
+        - function: DynamicFlowScreen$lambda$1
+          filename: DynamicFlowScreen.kt
+          module: com.example.dynamicflow.ui.DynamicFlowScreenKt
+          abs_path: DynamicFlowScreen.kt
+          lineno: 73
+          in_app: true
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: CoordinatorScreen$lambda$32$lambda$29$lambda$28$lambda$27$lambda$26
+          filename: coordinatorScreen.kt
+          module: com.example.commonscreensui.coordinator.base.CoordinatorScreenKt
+          abs_path: coordinatorScreen.kt
+          lineno: 256
+          in_app: true
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: CompositionLocalProvider
+          filename: CompositionLocal.kt
+          module: androidx.compose.runtime.CompositionLocalKt
+          abs_path: CompositionLocal.kt
+          lineno: 378
+          index: 1
+        - function: CoordinatorScreen$lambda$32$lambda$29$lambda$28$lambda$27
+          filename: coordinatorScreen.kt
+          module: com.example.commonscreensui.coordinator.base.CoordinatorScreenKt
+          abs_path: coordinatorScreen.kt
+          lineno: 238
+          in_app: true
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: _init_$lambda$3$lambda$2
+          filename: ViewModelStoreNavEntryDecorator.kt
+          module: androidx.lifecycle.viewmodel.navigation3.ViewModelStoreNavEntryDecorator
+          abs_path: ViewModelStoreNavEntryDecorator.kt
+          lineno: 134
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: CompositionLocalProvider
+          filename: CompositionLocal.kt
+          module: androidx.compose.runtime.CompositionLocalKt
+          abs_path: CompositionLocal.kt
+          lineno: 398
+          index: 1
+        - function: _init_$lambda$3
+          filename: ViewModelStoreNavEntryDecorator.kt
+          module: androidx.lifecycle.viewmodel.navigation3.ViewModelStoreNavEntryDecorator
+          abs_path: ViewModelStoreNavEntryDecorator.kt
+          lineno: 133
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: decorateEntry$lambda$12$lambda$11$lambda$10
+          filename: DecoratedNavEntries.kt
+          module: androidx.navigation3.runtime.DecoratedNavEntriesKt
+          abs_path: DecoratedNavEntries.kt
+          lineno: 227
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: _init_$lambda$2$lambda$1
+          filename: SaveableStateHolderNavEntryDecorator.kt
+          module: androidx.navigation3.runtime.SaveableStateHolderNavEntryDecorator
+          abs_path: SaveableStateHolderNavEntryDecorator.kt
+          lineno: 57
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: CompositionLocalProvider
+          filename: CompositionLocal.kt
+          module: androidx.compose.runtime.CompositionLocalKt
+          abs_path: CompositionLocal.kt
+          lineno: 378
+          index: 1
+        - function: SaveableStateProvider
+          filename: SaveableStateHolder.kt
+          module: androidx.compose.runtime.saveable.SaveableStateHolderImpl
+          abs_path: SaveableStateHolder.kt
+          lineno: 82
+          index: 1
+        - function: _init_$lambda$2
+          filename: SaveableStateHolderNavEntryDecorator.kt
+          module: androidx.navigation3.runtime.SaveableStateHolderNavEntryDecorator
+          abs_path: SaveableStateHolderNavEntryDecorator.kt
+          lineno: 57
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: decorateEntry$lambda$12$lambda$11$lambda$10
+          filename: DecoratedNavEntries.kt
+          module: androidx.navigation3.runtime.DecoratedNavEntriesKt
+          abs_path: DecoratedNavEntries.kt
+          lineno: 227
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: decorateEntry$lambda$12
+          filename: DecoratedNavEntries.kt
+          module: androidx.navigation3.runtime.DecoratedNavEntriesKt
+          abs_path: DecoratedNavEntries.kt
+          lineno: 229
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: rememberTransitionAwareLifecycleNavEntryDecorator$lambda$4$lambda$3
+          filename: TransitionAwareLifecycleNavLocalDecorator.kt
+          module: androidx.navigation3.ui.TransitionAwareLifecycleNavLocalDecoratorKt
+          abs_path: TransitionAwareLifecycleNavLocalDecorator.kt
+          lineno: 47
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: CompositionLocalProvider
+          filename: CompositionLocal.kt
+          module: androidx.compose.runtime.CompositionLocalKt
+          abs_path: CompositionLocal.kt
+          lineno: 398
+          index: 1
+        - function: rememberTransitionAwareLifecycleNavEntryDecorator$lambda$4
+          filename: TransitionAwareLifecycleNavLocalDecorator.kt
+          module: androidx.navigation3.ui.TransitionAwareLifecycleNavLocalDecoratorKt
+          abs_path: TransitionAwareLifecycleNavLocalDecorator.kt
+          lineno: 47
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: decorateEntry$lambda$12$lambda$11$lambda$10
+          filename: DecoratedNavEntries.kt
+          module: androidx.navigation3.runtime.DecoratedNavEntriesKt
+          abs_path: DecoratedNavEntries.kt
+          lineno: 227
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: decorateEntry$lambda$12
+          filename: DecoratedNavEntries.kt
+          module: androidx.navigation3.runtime.DecoratedNavEntriesKt
+          abs_path: DecoratedNavEntries.kt
+          lineno: 229
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: Content
+          filename: NavEntry.kt
+          module: androidx.navigation3.runtime.NavEntry
+          abs_path: NavEntry.kt
+          lineno: 65
+          index: 1
+        - function: _init_$lambda$4$lambda$3
+          filename: SceneSetupNavEntryDecorator.kt
+          module: androidx.navigation3.scene.SceneSetupNavEntryDecorator
+          abs_path: SceneSetupNavEntryDecorator.kt
+          lineno: 79
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: lambda__51699941$lambda$0
+          filename: SceneSetupNavEntryDecorator.kt
+          module: androidx.navigation3.scene.ComposableSingletons$SceneSetupNavEntryDecoratorKt
+          abs_path: SceneSetupNavEntryDecorator.kt
+          lineno: 74
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 131
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: invokeMovableContentLambda$lambda$0
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2279
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 122
+          index: 1
+        - function: invoke
+          filename: ComposableLambda.kt
+          module: androidx.compose.runtime.internal.ComposableLambdaImpl
+          abs_path: ComposableLambda.kt
+          lineno: 52
+          index: 1
+        - function: invokeComposable
+          filename: Expect_jvm.kt
+          module: androidx.compose.runtime.internal.Expect_jvmKt
+          abs_path: Expect_jvm.kt
+          lineno: 24
+          index: 1
+        - function: invokeMovableContentLambda$lambda$0
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2279
+          index: 1
+        - function: invokeMovableContentLambda
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2279
+          index: 1
+        - function: insertMovableContentGuarded$lambda$0$0$0$0
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2345
+          index: 1
+        - function: recomposeMovableContent
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2465
+          index: 1
+        - function: recomposeMovableContent$default
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2446
+          index: 1
+        - function: insertMovableContentGuarded
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 2341
+          index: 1
+        - function: use
+          filename: RememberEventDispatcher.kt
+          module: androidx.compose.runtime.internal.RememberEventDispatcher
+          abs_path: RememberEventDispatcher.kt
+          lineno: 89
+          index: 2
+        - function: insertMovableContentReferences
+          filename: ComposerImpl.kt
+          module: androidx.compose.runtime.ComposerImpl
+          abs_path: ComposerImpl.kt
+          lineno: 1178
+          index: 2
+        - function: insertMovableContent
+          filename: Composition.kt
+          module: androidx.compose.runtime.CompositionImpl
+          abs_path: Composition.kt
+          lineno: 1092
+          index: 2
+        - function: performInsertValues
+          filename: Recomposer.kt
+          module: androidx.compose.runtime.Recomposer
+          abs_path: Recomposer.kt
+          lineno: 1497
+          index: 3
+        - function: access$performInsertValues
+          filename: Recomposer.kt
+          module: androidx.compose.runtime.Recomposer
+          abs_path: Recomposer.kt
+          lineno: 159
+          index: 4
+        - function: invokeSuspend$lambda$2
+          filename: Recomposer.kt
+          module: androidx.compose.runtime.Recomposer$runRecomposeAndApplyChanges$2
+          abs_path: Recomposer.kt
+          lineno: 687
+          index: 4
+        - function: doFrame
+          filename: AndroidUiFrameClock.android.kt
+          module: androidx.compose.ui.platform.AndroidUiFrameClock$withFrameNanos$2$callback$1
+          abs_path: AndroidUiFrameClock.android.kt
+          lineno: 39
+          index: 5
+        - function: performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 108
+          index: 6
+        - function: access$performFrameDispatch
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 41
+          index: 6
+        - function: doFrame
+          filename: AndroidUiDispatcher.android.kt
+          module: androidx.compose.ui.platform.AndroidUiDispatcher$dispatchCallback$1
+          abs_path: AndroidUiDispatcher.android.kt
+          lineno: 69
+          index: 6
+        - function: run
+          filename: Choreographer.java
+          module: android.view.Choreographer$CallbackRecord
+          lineno: 1899
+          index: 7
+        - function: run
+          filename: Choreographer.java
+          module: android.view.Choreographer$CallbackRecord
+          lineno: 1910
+          index: 8
+        - function: doCallbacks
+          filename: Choreographer.java
+          module: android.view.Choreographer
+          lineno: 1367
+          index: 9
+        - function: doFrame
+          filename: Choreographer.java
+          module: android.view.Choreographer
+          lineno: 1282
+          index: 10
+        - function: run
+          filename: Choreographer.java
+          module: android.view.Choreographer$FrameDisplayEventReceiver
+          lineno: 1870
+          index: 11
+        - function: handleCallback
+          filename: Handler.java
+          module: android.os.Handler
+          lineno: 995
+          index: 12
+        - function: dispatchMessage
+          filename: Handler.java
+          module: android.os.Handler
+          lineno: 103
+          index: 13
+        - function: loopOnce
+          filename: Looper.java
+          module: android.os.Looper
+          lineno: 273
+          index: 14
+        - function: loop
+          filename: Looper.java
+          module: android.os.Looper
+          lineno: 363
+          index: 15
+        - function: main
+          filename: ActivityThread.java
+          module: android.app.ActivityThread
+          lineno: 10060
+          index: 16
+        - function: invoke
+          filename: Method.java
+          module: java.lang.reflect.Method
+          index: 17
+        - function: run
+          filename: RuntimeInit.java
+          module: com.android.internal.os.RuntimeInit$MethodAndArgsCaller
+          lineno: 632
+          index: 18
+        - function: main
+          filename: ZygoteInit.java
+          module: com.android.internal.os.ZygoteInit
+          lineno: 975
+          index: 19
+        ");
     }
 }
