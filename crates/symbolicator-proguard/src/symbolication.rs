@@ -78,13 +78,7 @@ impl ProguardService {
                         tracing::error!(%debug_id, "Error reading Proguard file: {e}");
                     }
                     let kind = match e {
-                        CacheError::Malformed(msg) => match msg.as_str() {
-                            "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
-                            "The ProGuard file doesn't contain any line mappings" => {
-                                ProguardErrorKind::NoLineInfo
-                            }
-                            _ => unreachable!(),
-                        },
+                        CacheError::Malformed(_) => ProguardErrorKind::Invalid,
                         _ => ProguardErrorKind::Missing,
                     };
                     errors.push(ProguardError {
