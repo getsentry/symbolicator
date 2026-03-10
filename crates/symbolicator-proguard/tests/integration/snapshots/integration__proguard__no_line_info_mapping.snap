@@ -1,0 +1,32 @@
+---
+source: crates/symbolicator-proguard/tests/integration/proguard.rs
+expression: response
+---
+exceptions:
+  - type: RuntimeException
+    module: java.lang
+stacktraces:
+  - exception:
+      type: RuntimeException
+      module: java.lang
+    frames:
+      - function: checkMessageInitialized
+        filename: AbstractParser.java
+        module: com.google.protobuf.AbstractParser
+        abs_path: AbstractParser.java
+        lineno: 42
+        index: 0
+      - function: ensureIsMutable
+        filename: AbstractProtobufList.java
+        module: com.google.protobuf.AbstractProtobufList
+        abs_path: AbstractProtobufList.java
+        lineno: 123
+        index: 1
+      - function: coroutineBoundary
+        filename: ArtificialStackFrames.java
+        module: _COROUTINE.ArtificialStackFrames
+        abs_path: ArtificialStackFrames.java
+        lineno: 0
+        index: 2
+classes: {}
+errors: []

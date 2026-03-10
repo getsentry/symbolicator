@@ -176,10 +176,6 @@ impl CacheItemRequest for FetchProguard {
                 Err(CacheError::Malformed(
                     "The file is not a valid ProGuard file".into(),
                 ))
-            } else if !mapping.has_line_info() {
-                Err(CacheError::Malformed(
-                    "The ProGuard file doesn't contain any line mappings".into(),
-                ))
             } else {
                 let cache_temp_file = tempfile_in_parent(temp_file)?;
                 let mut writer = BufWriter::new(cache_temp_file);

@@ -80,9 +80,6 @@ impl ProguardService {
                     let kind = match e {
                         CacheError::Malformed(msg) => match msg.as_str() {
                             "The file is not a valid ProGuard file" => ProguardErrorKind::Invalid,
-                            "The ProGuard file doesn't contain any line mappings" => {
-                                ProguardErrorKind::NoLineInfo
-                            }
                             _ => unreachable!(),
                         },
                         _ => ProguardErrorKind::Missing,
@@ -2552,4 +2549,5 @@ some.Class -> b:
           index: 19
         ");
     }
+
 }
