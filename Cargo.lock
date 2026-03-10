@@ -3768,9 +3768,9 @@ dependencies = [
 
 [[package]]
 name = "proguard"
-version = "5.9.0"
+version = "5.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "485ce6a0eaff8ca5566dde882ee2ef65dc25ba9f3ef1dba1129a8dd78a181952"
+checksum = "c8229689975f1a875da21896b99d7cdd0dc6acecd54e9a37c7faf59e27d2add2"
 dependencies = [
  "serde",
  "serde_json",
