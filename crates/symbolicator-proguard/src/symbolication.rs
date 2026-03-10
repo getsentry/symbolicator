@@ -2549,5 +2549,4 @@ some.Class -> b:
           index: 19
         ");
     }
-
 }
