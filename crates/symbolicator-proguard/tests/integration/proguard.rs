@@ -545,3 +545,61 @@ async fn test_rewrite_frames() {
     let response_npe = symbolication.symbolicate_jvm(request_npe).await;
     assert_snapshot!(response_npe);
 }
+
+#[tokio::test]
+async fn test_no_line_info_mapping() {
+    symbolicator_test::setup();
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = proguard_server("no_line_info", |_url, _query| {
+        json!([{
+            "id":"proguard.txt",
+            "uuid":"246fb328-fc4e-406a-87ff-fc35f6149d8f",
+            "debugId":"246fb328-fc4e-406a-87ff-fc35f6149d8f",
+            "codeId":null,
+            "cpuName":"any",
+            "objectName":"proguard-mapping",
+            "symbolType":"proguard",
+            "headers": {
+                "Content-Type":"text/x-proguard+plain"
+            },
+            "size":1000,
+            "sha1":"0000000000000000000000000000000000000000",
+            "dateCreated":"2024-02-14T10:49:38.770116Z",
+            "data":{
+                "features":["mapping"]
+            }
+        }])
+    });
+
+    let source = SourceConfig::Sentry(Arc::new(source));
+
+    // Mapping file has no line number ranges — only class/method name mappings.
+    // Previously rejected with "doesn't contain any line mappings".
+    let frames = r#"[{
+        "function": "kc",
+        "module": "yy.xv",
+        "lineno": 42,
+        "index": 0
+    }, {
+        "function": "kV",
+        "module": "yy.Fv",
+        "lineno": 123,
+        "index": 1
+    }, {
+        "function": "VF",
+        "module": "yy.zX",
+        "index": 2
+    }]"#;
+
+    let request = make_jvm_request(
+        source,
+        r#"{"type": "RuntimeException", "module": "java.lang"}"#,
+        frames,
+        r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
+        None,
+    );
+
+    let response = symbolication.symbolicate_jvm(request).await;
+
+    assert_snapshot!(response);
+}

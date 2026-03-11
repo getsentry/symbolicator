@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
 use symbolicator_service::config::{CacheConfigs, Config};
-use symbolicator_sources::SourceConfig;
+use symbolicator_sources::{DirectoryLayoutType, SourceConfig};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
@@ -106,10 +107,14 @@ struct Cli {
 
     /// An additional directory containing native symbols.
     ///
-    /// The symbols must conform to the `unified` symbol server
-    /// layout, as produced by `symsorter`.
+    /// Format: `[<layout>:]<path>`
+    ///
+    /// The symbol path is optionally prefixed with the symbol layout. The layout defaults to `unified`.
+    ///
+    /// Supported layouts: native, symstore, symstore_index2, ssqp,
+    /// debuginfod, unified, slashsymbols.
     #[arg(long)]
-    symbols: Option<PathBuf>,
+    symbols: Option<SymbolsPath>,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -139,6 +144,44 @@ impl ConfigFile {
     }
 }
 
+/// A local symbols path with an associated directory layout type.
+#[derive(Clone, Debug)]
+pub struct SymbolsPath {
+    pub path: PathBuf,
+    pub layout_type: DirectoryLayoutType,
+}
+
+impl FromStr for SymbolsPath {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let path = s
+            .split_once(':')
+            // Be lenient on the conversion, the path may contain a `:`.
+            .and_then(|(layout, path)| Some((parse_layout_type(layout)?, path.into())))
+            .map(|(layout_type, path)| Self { path, layout_type })
+            .unwrap_or_else(|| Self {
+                path: s.into(),
+                layout_type: DirectoryLayoutType::Unified,
+            });
+
+        Ok(path)
+    }
+}
+
+fn parse_layout_type(s: &str) -> Option<DirectoryLayoutType> {
+    Some(match s {
+        "native" => DirectoryLayoutType::Native,
+        "symstore" => DirectoryLayoutType::Symstore,
+        "symstore_index2" => DirectoryLayoutType::SymstoreIndex2,
+        "ssqp" => DirectoryLayoutType::Ssqp,
+        "debuginfod" => DirectoryLayoutType::Debuginfod,
+        "unified" => DirectoryLayoutType::Unified,
+        "slashsymbols" => DirectoryLayoutType::SlashSymbols,
+        _ => return None,
+    })
+}
+
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub event_id: String,
@@ -146,7 +189,7 @@ pub struct Settings {
     pub output_format: OutputFormat,
     pub log_level: LevelFilter,
     pub mode: Mode,
-    pub symbols: Option<PathBuf>,
+    pub symbols: Option<SymbolsPath>,
 }
 
 impl Settings {

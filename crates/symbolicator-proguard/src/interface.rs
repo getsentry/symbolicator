@@ -165,8 +165,6 @@ pub enum ProguardErrorKind {
     Missing,
     /// The file is invalid according to [`is_valid`](proguard::ProguardMapping::is_valid).
     Invalid,
-    /// The file doesn't contain line mapping information.
-    NoLineInfo,
 }
 
 impl fmt::Display for ProguardErrorKind {
@@ -174,9 +172,6 @@ impl fmt::Display for ProguardErrorKind {
         match self {
             ProguardErrorKind::Missing => write!(f, "The proguard mapping file is missing."),
             ProguardErrorKind::Invalid => write!(f, "The proguard mapping file is invalid."),
-            ProguardErrorKind::NoLineInfo => {
-                write!(f, "The proguard mapping file does not contain line info.")
-            }
         }
     }
 }

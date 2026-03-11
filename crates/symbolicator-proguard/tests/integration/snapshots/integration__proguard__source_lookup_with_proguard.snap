@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 482
 expression: response
 ---
 exceptions:
@@ -99,13 +100,6 @@ stacktraces:
         module: androidx.appcompat.widget.Toolbar$1
         lineno: 7
         index: 17
-      - function: onMenuItemClick
-        filename: R8$$SyntheticClass
-        module: io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0
-        lineno: 0
-        in_app: true
-        index: 18
-        method_synthesized: true
       - function: onCreate$lambda-1
         filename: EditActivity.kt
         module: io.sentry.samples.instrumentation.ui.EditActivity
@@ -127,8 +121,9 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloThere
-        filename: R8$$SyntheticClass
+        filename: SomeService.java
         module: io.sentry.samples.instrumentation.ui.SomeService
+        abs_path: SomeService.java
         lineno: 5
         pre_context:
           - package io.sentry.samples.instrumentation.ui
@@ -145,8 +140,9 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloInner
-        filename: R8$$SyntheticClass
+        filename: SomeService.java
         module: io.sentry.samples.instrumentation.ui.SomeService$InnerClassOfSomeService
+        abs_path: SomeService.java
         lineno: 10
         pre_context:
           - "        InnerClassOfSomeService().helloInner()"
@@ -164,20 +160,23 @@ stacktraces:
         in_app: true
         index: 18
       - function: helloOther
-        filename: R8$$SyntheticClass
+        filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
+        abs_path: AnotherClassInSameFile.java
         lineno: 17
         in_app: true
         index: 18
       - function: otherFun
-        filename: R8$$SyntheticClass
+        filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
+        abs_path: AnotherClassInSameFile.java
         lineno: 21
         in_app: true
         index: 18
       - function: helloOtherInner
-        filename: R8$$SyntheticClass
+        filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass
+        abs_path: AnotherClassInSameFile.java
         lineno: 26
         in_app: true
         index: 18
