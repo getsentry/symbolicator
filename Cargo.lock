@@ -1090,15 +1090,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ccbd3153aa153b2f5eff557537ffce81e4dd6c50ae0eddc41dc8d0c388436f"
 
 [[package]]
-name = "cadence"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3075f133bee430b7644c54fb629b9b4420346ffa275a45c81a6babe8b09b4f51"
-dependencies = [
- "crossbeam-channel",
-]
-
-[[package]]
 name = "cc"
 version = "1.2.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5400,9 +5391,7 @@ dependencies = [
  "aws-smithy-xml",
  "bytes",
  "cab",
- "cadence",
  "chrono",
- "crossbeam-utils",
  "filetime",
  "flate2",
  "futures",
@@ -5420,7 +5409,6 @@ dependencies = [
  "rand 0.9.2",
  "rayon",
  "reqwest",
- "rustc-hash",
  "sentry",
  "serde",
  "serde-vars",
@@ -5433,7 +5421,6 @@ dependencies = [
  "symbolicator-test",
  "tempfile",
  "thiserror 2.0.17",
- "thread_local",
  "tokio",
  "tokio-util",
  "tracing",

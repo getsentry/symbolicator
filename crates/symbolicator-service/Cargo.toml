@@ -14,9 +14,7 @@ aws-smithy-types = { workspace = true }
 aws-smithy-xml = { workspace = true }
 bytes = { workspace = true }
 cab = { workspace = true }
-cadence = { workspace = true }
 chrono = { workspace = true }
-crossbeam-utils = { workspace = true }
 filetime = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
@@ -42,7 +40,6 @@ reqwest = { workspace = true, features = [
     "hickory-dns",
     "socks",
 ] }
-rustc-hash = { workspace = true }
 sentry = { workspace = true, features = ["logs"] }
 serde = { workspace = true }
 serde-vars = { workspace = true }
@@ -58,7 +55,6 @@ symbolic = { workspace = true, features = [
 symbolicator-sources = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-thread_local = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
 tokio-util = { workspace = true, features = ["io"] }
 tracing = { workspace = true }
