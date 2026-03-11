@@ -58,6 +58,20 @@ pub enum ObjectType {
     Unknown,
 }
 
+impl ObjectType {
+    /// Returns a string representation of the object type.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ObjectType::Elf => "elf",
+            ObjectType::Macho => "macho",
+            ObjectType::Pe => "pe",
+            ObjectType::PeDotnet => "pe_dotnet",
+            ObjectType::Wasm => "wasm",
+            ObjectType::Unknown => "unknown",
+        }
+    }
+}
+
 impl FromStr for ObjectType {
     type Err = Infallible;
 
@@ -85,14 +99,7 @@ impl<'de> Deserialize<'de> for ObjectType {
 
 impl fmt::Display for ObjectType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            ObjectType::Elf => write!(f, "elf"),
-            ObjectType::Macho => write!(f, "macho"),
-            ObjectType::Pe => write!(f, "pe"),
-            ObjectType::PeDotnet => write!(f, "pe_dotnet"),
-            ObjectType::Wasm => write!(f, "wasm"),
-            ObjectType::Unknown => write!(f, "unknown"),
-        }
+        self.as_str().fmt(f)
     }
 }
 

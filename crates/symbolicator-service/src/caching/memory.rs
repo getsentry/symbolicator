@@ -132,7 +132,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
         let cache = InMemoryCache::builder()
             .max_capacity(config.in_memory_capacity)
-            .name(config.name().as_ref())
+            .name(config.name().as_str())
             .expire_after(CacheExpiration)
             // NOTE: we count all the bookkeeping structures to the weight as well
             .weigher(|_k, v| {
@@ -270,7 +270,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let entry = match entry {
             Some(entry) => entry,
             None => {
-                metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
+                metric!(counter("caches.computation") += 1, "cache" => name.as_str());
                 match request.compute(&mut temp_file).await {
                     Ok(()) => {
                         // Now we have written the data to the tempfile we can mmap it, persisting it later
@@ -353,16 +353,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                     Err(CacheError::Malformed(_)) => "malformed",
                     Err(_) => "cache-specific error",
                 },
-                "is_refresh" => &is_refresh.to_string(),
-                "cache" => name.as_ref(),
+                "is_refresh" => is_refresh.to_string(),
+                "cache" => name.as_str(),
             );
 
             if let Ok(byte_view) = contents {
                 metric!(
-                    distribution("caches.file.size") = byte_view.len() as u64,
+                    distribution("caches.file.size") = byte_view.len() as f64,
                     "hit" => "false",
-                    "is_refresh" => &is_refresh.to_string(),
-                    "cache" => name.as_ref(),
+                    "is_refresh" => if is_refresh { "true" } else { "false" },
+                    "cache" => name.as_str(),
                 );
             }
 
@@ -468,8 +468,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // in a deduplicated background task, which we will not await
                 metric!(
                     counter("caches.file.fallback") += 1,
-                    "version" => &version.to_string(),
-                    "cache" => name.as_ref(),
+                    "version" => version.to_string(),
+                    "cache" => name.as_str(),
                 );
                 self.spawn_refresh(request, cache_key.clone());
             }
@@ -493,7 +493,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// will return an `Err`. This err may be persisted in the cache for a time.
     pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        metric!(counter("caches.access") += 1, "cache" => name.as_ref());
+        metric!(counter("caches.access") += 1, "cache" => name.as_str());
 
         let entry = self
             .cache
@@ -502,7 +502,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             .await;
 
         if !entry.is_fresh() {
-            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_str());
         }
         entry.into_value().data
     }
@@ -521,7 +521,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // A file was not found. If this spikes, it's possible that the filesystem cache
         // just got pruned.
-        metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
+        metric!(counter("caches.file.miss") += 1, "cache" => name.as_str());
 
         let data = self
             .compute(request, cache_key, false)
@@ -554,7 +554,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         if max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
             max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
 
-            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
+            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_str());
             return;
         }
 
@@ -638,12 +638,12 @@ fn lookup_local_cache(
 
     // This is also reported for "negative cache hits": When we cached
     // the 404 response from a server as empty file.
-    metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
+    metric!(counter("caches.file.hit") += 1, "cache" => name.as_str());
     if let Ok(byteview) = data.contents() {
         metric!(
-            distribution("caches.file.size") = byteview.len() as u64,
+            distribution("caches.file.size") = byteview.len() as f64,
             "hit" => "true",
-            "cache" => name.as_ref(),
+            "cache" => name.as_str(),
         );
     }
 

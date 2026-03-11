@@ -100,7 +100,7 @@ impl<'a> MeasureGuard<'a> {
     pub fn start(&mut self) {
         metric!(
             timer("futures.wait_time") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
+            "task_name" => self.task_name.to_owned(),
         );
     }
 
@@ -118,8 +118,8 @@ impl Drop for MeasureGuard<'_> {
         };
         metric!(
             timer("futures.done") = self.creation_time.elapsed(),
-            "task_name" => self.task_name,
-            "status" => status,
+            "task_name" => self.task_name.to_owned(),
+            "status" => status.to_owned(),
         );
     }
 }

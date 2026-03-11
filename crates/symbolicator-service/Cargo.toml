@@ -26,6 +26,8 @@ humantime-serde = { workspace = true }
 idna = { workspace = true }
 ipnetwork = { workspace = true }
 jsonwebtoken = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-dogstatsd = { workspace = true }
 moka = { workspace = true }
 proguard = { workspace = true }
 rand = { workspace = true }
