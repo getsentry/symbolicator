@@ -41,7 +41,7 @@ where
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             metric!(
                 counter("responses.status_code") += 1,
-                "status" => status.as_str(),
+                "status" => status.as_str().to_owned(),
             );
         }
         poll

@@ -132,7 +132,7 @@ impl HostDenyList {
 
             if !self.never_block.contains(&host) {
                 self.blocked_hosts.insert(host, error.clone());
-                metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size(), "source" => source_name);
+                metric!(gauge("service.download.blocked-hosts") = self.blocked_hosts.weighted_size() as f64, "source" => source_name.to_owned());
             }
         }
     }

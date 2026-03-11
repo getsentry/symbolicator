@@ -7,9 +7,9 @@ use symbolicator_sources::ObjectType;
 
 use crate::interface::{CompleteObjectInfo, CompleteStacktrace};
 
-#[derive(Debug, Copy, Clone)]
 /// Where the Stack Traces in the [`SymbolicateStacktraces`](crate::interface::SymbolicateStacktraces)
 /// originated from.
+#[derive(Debug, Copy, Clone)]
 pub enum StacktraceOrigin {
     /// The stack traces came from a direct request to symbolicate.
     Symbolicate,
@@ -19,13 +19,20 @@ pub enum StacktraceOrigin {
     AppleCrashReport,
 }
 
-impl std::fmt::Display for StacktraceOrigin {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
+impl StacktraceOrigin {
+    /// A static string representation of the stack trace origin.
+    pub fn as_str(&self) -> &'static str {
+        match self {
             StacktraceOrigin::Symbolicate => "symbolicate",
             StacktraceOrigin::Minidump => "minidump",
             StacktraceOrigin::AppleCrashReport => "applecrashreport",
-        })
+        }
+    }
+}
+
+impl std::fmt::Display for StacktraceOrigin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -91,12 +98,12 @@ pub fn record_symbolication_metrics(
     modules: &[CompleteObjectInfo],
     stacktraces: &[CompleteStacktrace],
 ) {
-    let origin = origin.to_string();
-
+    let origin = origin.as_str();
     let event_platform = event_platform
         .as_ref()
         .map(|p| p.as_ref())
-        .unwrap_or("none");
+        .unwrap_or("none")
+        .to_owned();
 
     let object_platform = modules
         .iter()
@@ -108,7 +115,7 @@ pub fn record_symbolication_metrics(
             }
         })
         .unwrap_or(ObjectType::Unknown)
-        .to_string();
+        .as_str();
 
     // Unusable modules that don’t have any kind of ID to look them up with
     let mut unusable_modules = 0;
@@ -148,33 +155,33 @@ pub fn record_symbolication_metrics(
     }
 
     metric!(
-        distribution("symbolication.num_modules") = modules.len() as u64,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.num_modules") = modules.len() as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.unusable_modules") = unusable_modules,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.unusable_modules") = unusable_modules as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.unparsable_modules") = unparsable_modules,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.unparsable_modules") = unparsable_modules as f64,
+        "platform" => object_platform, "origin" => origin
     );
 
     metric!(
-        distribution("symbolication.num_stacktraces") = stacktraces.len() as u64,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.num_stacktraces") = stacktraces.len() as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.short_stacktraces") = metrics.short_traces,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.short_stacktraces") = metrics.short_traces as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.truncated_stacktraces") = metrics.truncated_traces,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.truncated_stacktraces") = metrics.truncated_traces as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.bad_stacktraces") = metrics.bad_traces,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.bad_stacktraces") = metrics.bad_traces as f64,
+        "platform" => object_platform, "origin" => origin
     );
 
     // Count number of frames by platform (including no platform)
@@ -189,39 +196,39 @@ pub fn record_symbolication_metrics(
     );
 
     for (p, count) in &frames_by_platform {
-        let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none");
+        let frame_platform = p.map(|p| p.as_ref()).unwrap_or("none").to_owned();
         metric!(
             distribution("symbolication.num_frames") =
-                count,
-            "platform" => &object_platform, "origin" => &origin,
-            "frame_platform" => frame_platform, "event_platform" => event_platform
+                *count as f64,
+            "platform" => object_platform, "origin" => origin,
+            "frame_platform" => frame_platform, "event_platform" => event_platform.clone()
         );
     }
     metric!(
-        distribution("symbolication.scanned_frames") = metrics.scanned_frames,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.scanned_frames") = metrics.scanned_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.unsymbolicated_frames") = metrics.unsymbolicated_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
         distribution("symbolication.unsymbolicated_context_frames") =
-            metrics.unsymbolicated_context_frames,
-        "platform" => &object_platform, "origin" => &origin
+            metrics.unsymbolicated_context_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
         distribution("symbolication.unsymbolicated_cfi_frames") =
-            metrics.unsymbolicated_cfi_frames,
-        "platform" => &object_platform, "origin" => &origin
+            metrics.unsymbolicated_cfi_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
         distribution("symbolication.unsymbolicated_scanned_frames") =
-            metrics.unsymbolicated_scanned_frames,
-        "platform" => &object_platform, "origin" => &origin
+            metrics.unsymbolicated_scanned_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
     metric!(
-        distribution("symbolication.unmapped_frames") = metrics.unmapped_frames,
-        "platform" => &object_platform, "origin" => &origin
+        distribution("symbolication.unmapped_frames") = metrics.unmapped_frames as f64,
+        "platform" => object_platform, "origin" => origin
     );
 }

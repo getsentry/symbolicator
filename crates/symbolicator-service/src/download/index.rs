@@ -440,7 +440,7 @@ impl SourceIndexService {
         // as a placeholder in case of errors.
         if entry.is_fresh() || entry.is_old_value_replaced() {
             let lastid = entry.value().0.as_ref().copied().unwrap_or_default();
-            metric!(gauge("index.symstore.lastid") = lastid as u64, "source" => source.source_metric_key());
+            metric!(gauge("index.symstore.lastid") = lastid as f64, "source" => source.source_metric_key().to_owned());
         }
 
         entry.into_value().0
