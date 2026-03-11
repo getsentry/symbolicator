@@ -36,18 +36,18 @@ pub fn configure_statsd(
 #[macro_export]
 macro_rules! metric {
     // counters
-    (counter($id:expr) += $value:expr $(, $($tt:tt)*)?) => {{
-        $crate::metrics::_metrics::counter!($id $(, $($tt)*)?).increment($value)
+    (counter($($id:tt)+) += $value:expr $(, $($tt:tt)*)?) => {{
+        $crate::metrics::_metrics::counter!($($id)* $(, $($tt)*)?).increment($value)
     }};
 
     // gauges
-    (gauge($id:expr) = $value:expr $(, $($tt:tt)*)?) => {{
-        $crate::metrics::_metrics::gauge!($id $(, $($tt)*)?).set($value)
+    (gauge($($id:tt)+) = $value:expr $(, $($tt:tt)*)?) => {{
+        $crate::metrics::_metrics::gauge!($($id)* $(, $($tt)*)?).set($value)
     }};
 
     // timers
-    (timer($id:expr) = $value:expr $(, $k:expr => $v:expr)* $(,)?) => {{ $crate::metric!(distribution($id) = $value $(, $k => $v)*) }};
+    (timer($($id:tt)+) = $value:expr $(, $($tt:tt)*)?) => {{ $crate::metrics::_metrics::histogram!($($id)* $(, $($tt)*)?).record($value.as_nanos() as f64 / 1e6) }};
 
     // distributions
-    (distribution($id:expr) = $value:expr $(, $($tt:tt)*)?) => {{ $crate::metrics::_metrics::histogram!($id $(, $($tt)*)?).record($value) }};
+    (distribution($($id:tt)+) = $value:expr $(, $($tt:tt)*)?) => {{ $crate::metrics::_metrics::histogram!($($id)* $(, $($tt)*)?).record($value) }};
 }
