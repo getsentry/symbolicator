@@ -168,6 +168,20 @@ async fn main() -> Result<()> {
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }
+        Payload::AppleCrashReport(file) => {
+            let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
+            tracing::info!("symbolicating apple crash report");
+            let res = native
+                .process_apple_crash_report(
+                    None,
+                    scope,
+                    AttachmentFile::Local(file),
+                    dsym_sources,
+                    Default::default(),
+                )
+                .await?;
+            CompletedResponse::NativeSymbolication(res)
+        }
         Payload::Event(event) => anyhow::bail!(
             "Cannot symbolicate event: invalid platform {}",
             event.platform
@@ -239,6 +253,7 @@ fn prepare_dsym_sources(
 enum Payload {
     Event(event::Event),
     Minidump(File),
+    AppleCrashReport(File),
 }
 
 impl Payload {
@@ -251,6 +266,8 @@ impl Payload {
 
                 if &magic == b"MDMP" || &magic == b"PMDM" {
                     Ok(Some(Payload::Minidump(file)))
+                } else if &magic == b"Inci" {
+                    Ok(Some(Payload::AppleCrashReport(file)))
                 } else {
                     let event =
                         serde_json::from_reader(file).context("failed to parse event json file")?;
