@@ -247,7 +247,7 @@ impl GcsState {
         };
         metric!(
             counter("services.shared_cache.exists") += 1,
-            "cache" => cache.as_ref(),
+            "cache" => cache.as_str(),
             "status" => status
         );
         ret
@@ -417,18 +417,18 @@ enum SharedCacheStoreResult {
     Skipped,
 }
 
-impl AsRef<str> for SharedCacheStoreResult {
-    fn as_ref(&self) -> &str {
+impl SharedCacheStoreResult {
+    fn as_str(&self) -> &'static str {
         match self {
-            SharedCacheStoreResult::Written(_) => "written",
-            SharedCacheStoreResult::Skipped => "skipped",
+            Self::Written(_) => "written",
+            Self::Skipped => "skipped",
         }
     }
 }
 
 impl fmt::Display for SharedCacheStoreResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -497,11 +497,11 @@ pub enum CacheStoreReason {
     Refresh,
 }
 
-impl AsRef<str> for CacheStoreReason {
-    fn as_ref(&self) -> &str {
+impl CacheStoreReason {
+    fn as_str(&self) -> &'static str {
         match self {
-            CacheStoreReason::New => "new",
-            CacheStoreReason::Refresh => "refresh",
+            Self::New => "new",
+            Self::Refresh => "refresh",
         }
     }
 }
@@ -566,8 +566,8 @@ impl SharedCacheService {
                         Self::single_uploader(done_tx.clone(), backend.clone(), message)
                             .bind_hub(Hub::new_from_top(Hub::current()))
                     );
-                    let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
-                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
+                    let uploads_in_flight = max_concurrent_uploads - uploads_counter;
+                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight as f64);
                 }
                 Some(_) = done_rx.recv() => {
                     uploads_counter += 1;
@@ -597,7 +597,7 @@ impl SharedCacheService {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend.name().into());
-            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("cache".to_string(), cache.as_str().into());
             map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
@@ -610,16 +610,15 @@ impl SharedCacheService {
             Ok(op) => {
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache.as_ref(),
-                    "write" => op.as_ref(),
+                    "cache" => cache.as_str(),
+                    "write" => op.as_str(),
                     "status" => "ok",
-                    "reason" => reason.as_ref(),
+                    "reason" => reason.as_str(),
                 );
                 if let SharedCacheStoreResult::Written(bytes) = op {
-                    let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                     metric!(
                         counter("services.shared_cache.store.bytes") += bytes,
-                        "cache" => cache.as_ref(),
+                        "cache" => cache.as_str(),
                     );
                 }
             }
@@ -639,9 +638,9 @@ impl SharedCacheService {
                 }
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "status" => "error",
-                    "reason" => reason.as_ref(),
+                    "reason" => reason.as_str(),
                     "errdetails" => errdetails,
                 );
             }
@@ -683,11 +682,11 @@ impl SharedCacheService {
     ) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();
-        let key = format!("{}/{key}", cache.as_ref());
+        let key = format!("{}/{key}", cache.as_str());
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
-            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("cache".to_string(), cache.as_str().into());
             map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
@@ -709,21 +708,20 @@ impl SharedCacheService {
             Ok(Some(bytes)) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "hit" => "true",
                     "status" => "ok",
                 );
-                let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                 metric!(
                     counter("services.shared_cache.fetch.bytes") += bytes,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                 );
                 true
             }
             Ok(None) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "hit" => "false",
                     "status" => "ok",
                 );
@@ -741,7 +739,7 @@ impl SharedCacheService {
                 }
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "status" => "error",
                     "errdetails" => errdetails,
                 );
@@ -787,12 +785,12 @@ impl SharedCacheService {
         }
         metric!(
             gauge("services.shared_cache.uploads_queue_capacity") =
-                self.upload_queue_tx.capacity() as u64
+                self.upload_queue_tx.capacity() as f64
         );
         self.upload_queue_tx
             .try_send(UploadMessage {
                 cache,
-                key: format!("{}/{key}", cache.as_ref()),
+                key: format!("{}/{key}", cache.as_str()),
                 content,
                 done_tx,
                 reason,

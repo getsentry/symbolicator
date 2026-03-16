@@ -71,7 +71,7 @@ impl Cache {
         in_memory_capacity: u64,
     ) -> io::Result<Self> {
         let tmp_dir = config.cache_dir("tmp");
-        let cache_dir = config.cache_dir(name.as_ref());
+        let cache_dir = config.cache_dir(name.as_str());
 
         if let Some(ref dir) = cache_dir {
             std::fs::create_dir_all(dir)?;

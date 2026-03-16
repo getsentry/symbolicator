@@ -244,7 +244,7 @@ impl DownloadService {
             && let Some(deny_list) = self.host_deny_list.as_ref()
             && let Some(reason) = deny_list.is_blocked(&host)
         {
-            metric!(counter("service.download.blocked") += 1, "source" => &source_metric_key);
+            metric!(counter("service.download.blocked") += 1, "source" => source_metric_key.clone());
             return Err(deny_list.format_error(&host, &reason));
         }
 
@@ -264,7 +264,7 @@ impl DownloadService {
         };
 
         if let Err(ref e @ (CacheError::DownloadError(_) | CacheError::Timeout(_))) = result {
-            metric!(counter("service.download.failure") += 1, "source" => &source_metric_key);
+            metric!(counter("service.download.failure") += 1, "source" => source_metric_key.clone());
 
             if source_metric_key == "sentry:project" {
                 ::sentry::configure_scope(|scope| scope.set_tag("host", host.clone()));
@@ -290,7 +290,7 @@ impl DownloadService {
                 Err(CacheError::Unsupported(_)) => "unsupported",
                 Err(CacheError::InternalError) => "internalerror",
             };
-            metric!(counter("service.builtin_source.download") += 1, "source" => &source_metric_key, "status" => status);
+            metric!(counter("service.builtin_source.download") += 1, "source" => source_metric_key, "status" => status);
         }
 
         result
@@ -501,7 +501,7 @@ async fn do_download_reqwest_range(
         ($status:literal) => {{
             metric!(
                 counter("download.range_request.initial") += 1,
-                "source" => &request.source_name,
+                "source" => request.source_name.to_owned(),
                 "status" => $status,
             );
         }};
@@ -858,10 +858,10 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
         let duration = self.creation_time.elapsed();
         metric!(
             timer("download_duration") = duration,
-            "task_name" => self.task_name,
-            "status" => status,
-            "source" => self.source_name,
-            "streams" => &streams,
+            "task_name" => self.task_name.to_owned(),
+            "status" => status.to_owned(),
+            "source" => self.source_name.to_owned(),
+            "streams" => streams.clone(),
         );
 
         let bytes_transferred = *self.bytes_transferred.get_mut();
@@ -876,19 +876,19 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 .unwrap_or(bytes_transferred);
 
             metric!(
-                distribution("download_throughput") = throughput,
-                "task_name" => self.task_name,
-                "status" => status,
-                "source" => self.source_name,
-                "streams" => &streams,
+                distribution("download_throughput") = throughput as f64,
+                "task_name" => self.task_name.to_owned(),
+                "status" => status.to_owned(),
+                "source" => self.source_name.to_owned(),
+                "streams" => streams.clone(),
             );
 
             metric!(
-                distribution("download_size") = bytes_transferred,
-                "task_name" => self.task_name,
-                "status" => status,
-                "source" => self.source_name,
-                "streams" => &streams,
+                distribution("download_size") = bytes_transferred as f64,
+                "task_name" => self.task_name.to_owned(),
+                "status" => status.to_owned(),
+                "source" => self.source_name.to_owned(),
+                "streams" => streams,
             );
         }
     }

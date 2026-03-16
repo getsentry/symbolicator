@@ -158,7 +158,7 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(module.code_file.to_owned(), cached_module);
         }
 
-        let metrics = JsMetrics::new(scope.as_ref().parse().ok());
+        let metrics = JsMetrics::default();
 
         let fetcher = ArtifactFetcher {
             objects,

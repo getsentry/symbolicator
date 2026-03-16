@@ -174,12 +174,12 @@ impl Cache {
             self.name
         );
 
-        metric!(gauge("caches.size.files") = stats.retained_files as u64, "cache" => self.name.as_ref());
-        metric!(gauge("caches.size.bytes") = stats.retained_bytes, "cache" => self.name.as_ref());
-        metric!(gauge("caches.size.metadata_bytes") = stats.retained_metadata_bytes, "cache" => self.name.as_ref());
-        metric!(counter("caches.size.files_removed") += stats.removed_files as i64, "cache" => self.name.as_ref());
-        metric!(counter("caches.size.bytes_removed") += stats.removed_bytes as i64, "cache" => self.name.as_ref());
-        metric!(counter("caches.size.metadata_bytes_removed") += stats.removed_metadata_bytes as i64, "cache" => self.name.as_ref());
+        metric!(gauge("caches.size.files") = stats.retained_files as f64, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.bytes") = stats.retained_bytes as f64, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.metadata_bytes") = stats.retained_metadata_bytes as f64, "cache" => self.name.as_str());
+        metric!(counter("caches.size.files_removed") += stats.removed_files as u64, "cache" => self.name.as_str());
+        metric!(counter("caches.size.bytes_removed") += stats.removed_bytes, "cache" => self.name.as_str());
+        metric!(counter("caches.size.metadata_bytes_removed") += stats.removed_metadata_bytes, "cache" => self.name.as_str());
 
         Ok(())
     }
