@@ -1,5 +1,38 @@
 # Changelog
 
+## 26.3.0
+
+### New Features ✨
+
+#### Symbolicli
+
+- Symbolicate local apple crash reports by @jjbayer in [#1900](https://github.com/getsentry/symbolicator/pull/1900)
+- Support different symbol layouts for cli by @Dav1dde in [#1888](https://github.com/getsentry/symbolicator/pull/1888)
+
+#### Other
+
+- (proguard) Bump proguard to 5.10.1 and filter synthesized frames by @romtsn in [#1896](https://github.com/getsentry/symbolicator/pull/1896)
+
+### Bug Fixes 🐛
+
+- (instr) Tag with source_name not source by @Dav1dde in [#1893](https://github.com/getsentry/symbolicator/pull/1893)
+- (proguard) Accept mapping files without line number ranges by @romtsn in [#1898](https://github.com/getsentry/symbolicator/pull/1898)
+- (s3) Force path style addressing for better 3rd party provider support by @Dav1dde in [#1883](https://github.com/getsentry/symbolicator/pull/1883)
+- (symbolicator) Disable transparent decompression for S3 downloads by @Dav1dde in [#1890](https://github.com/getsentry/symbolicator/pull/1890)
+- Compile-time recursion limit by @jjbayer in [#1895](https://github.com/getsentry/symbolicator/pull/1895)
+
+### Internal Changes 🔧
+
+- (deps) Bump actions/download-artifact from 7.0.0 to 8.0.0 by @dependabot in [#1886](https://github.com/getsentry/symbolicator/pull/1886)
+- (gocd) Bump gocd-jsonnet to v2.19.0 to disable fetch_materials on pipeline-complete by @mchen-sentry in [#1894](https://github.com/getsentry/symbolicator/pull/1894)
+- (http) Refactor client settings into a struct by @Dav1dde in [#1892](https://github.com/getsentry/symbolicator/pull/1892)
+- (proguard) Add synthesized frames e2e test by @romtsn in [#1897](https://github.com/getsentry/symbolicator/pull/1897)
+- (s3) Use pre-signed URLs with a parallelized download for S3 by @Dav1dde in [#1882](https://github.com/getsentry/symbolicator/pull/1882)
+
+### Other
+
+- Update apple-crash-report-parser to version 0.5.2 by @jjbayer in [#1887](https://github.com/getsentry/symbolicator/pull/1887)
+
 ## 26.2.1
 
 ### Bug Fixes 🐛
