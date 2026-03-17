@@ -1,5 +1,23 @@
 # Changelog
 
+## 26.3.1
+
+### New Features ✨
+
+- Emit warnings to Sentry by @jjbayer in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump actions/create-github-app-token from 2.2.1 to 3.0.0 by @dependabot in [#1901](https://github.com/getsentry/symbolicator/pull/1901)
+- Bump dorny/paths-filter from 3.0.2 to 4.0.1 by @dependabot in [#1902](https://github.com/getsentry/symbolicator/pull/1902)
+
+#### Other
+
+- Fail if env vars cannot be set by @jjbayer in [#1906](https://github.com/getsentry/symbolicator/pull/1906)
+- Replace deprecated recommendation for vscode by @jjbayer in [#1904](https://github.com/getsentry/symbolicator/pull/1904)
+
 ## 26.3.0
 
 ### New Features ✨
