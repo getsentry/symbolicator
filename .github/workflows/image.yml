@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
 
       - name: Download Binaries
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: symbolicator-binary-*
           path: /tmp/docker-ctx
@@ -188,7 +188,7 @@ jobs:
         with:
           version: ">= 390.0.0"
 
-      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: "symbolicator-debug@*"
           path: /tmp/debug-info/
@@ -207,7 +207,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
 
       - name: Download amd64 binary
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: symbolicator-binary-amd64
           path: /tmp/docker-ctx
@@ -241,7 +241,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Download amd64 Image from GitHub Artifacts
-        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           name: symbolicator-self-hosted-amd64
           path: /tmp/
