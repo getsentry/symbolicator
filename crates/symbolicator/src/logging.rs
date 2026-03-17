@@ -81,8 +81,8 @@ pub unsafe fn init_logging(config: &Config) {
     // Same as the default filter, except it sends everything at or above INFO as logs instead of breadcrumbs.
     let sentry_layer =
         sentry::integrations::tracing::layer().event_filter(|md| match *md.level() {
-            tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
-            tracing::Level::WARN | tracing::Level::INFO => EventFilter::Log,
+            tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Event | EventFilter::Log,
+            tracing::Level::INFO => EventFilter::Log,
             tracing::Level::DEBUG | tracing::Level::TRACE => EventFilter::Ignore,
         });
 
