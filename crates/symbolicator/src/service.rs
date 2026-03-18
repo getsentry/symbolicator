@@ -479,7 +479,7 @@ impl RequestService {
                     // group the same depending on stack trace, whereas without a stack trace, they
                     // group by the chained errors, which is much better in our case.
                     let error: &dyn std::error::Error = err.as_ref();
-                    tracing::error!(error, "Symbolication failed");
+                    tracing::warn!(error, "Symbolication failed");
 
                     sentry::end_session_with_status(SessionStatus::Crashed);
                     SymbolicationResponse::Failed {
