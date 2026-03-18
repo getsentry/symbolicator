@@ -582,7 +582,7 @@ impl ArtifactFetcher {
             if let Some(debug_id) = debug_id
                 && rand::random::<f64>() < 0.0001
             {
-                tracing::error!(
+                tracing::warn!(
                     source_url = %self.source.url,
                     abs_path,
                     %debug_id,
