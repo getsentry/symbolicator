@@ -737,7 +737,7 @@ impl SharedCacheService {
                 };
                 if let CacheError::Other(err) = outer_err {
                     let stderr: &dyn std::error::Error = &*err;
-                    tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
+                    tracing::warn!(stderr, "Error fetching from {} shared cache", backend_name);
                 }
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
@@ -799,7 +799,7 @@ impl SharedCacheService {
             })
             .unwrap_or_else(|_| {
                 metric!(counter("services.shared_cache.store.dropped") += 1);
-                tracing::error!("Shared cache upload queue full");
+                tracing::warn!("Shared cache upload queue full");
             });
         done_rx
     }
