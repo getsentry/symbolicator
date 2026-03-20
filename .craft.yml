@@ -2,48 +2,51 @@ minVersion: "2.15.0"
 changelog:
   policy: auto
 targets:
-  - name: github
-  - name: registry
-    apps:
-      app:symbolicator:
-        urlTemplate: https://downloads.sentry-cdn.com/symbolicator/{{version}}/{{file}}
-        includeNames: /^symbolicator-.*$/i
-  - name: gcs
-    bucket: sentry-sdk-assets
-    includeNames: /^symbolicator-.*$/
-    paths:
-      - path: /symbolicator/{{version}}/
-        metadata:
-          cacheControl: public, max-age=2592000
-      - path: /symbolicator/latest/
-        metadata:
-          cacheControl: public, max-age=600
-  - id: release
-    name: docker
-    source: ghcr.io/getsentry/symbolicator
-    target: ghcr.io/getsentry/symbolicator
-  - id: latest
-    name: docker
-    source: ghcr.io/getsentry/symbolicator
-    target: ghcr.io/getsentry/symbolicator
-    targetFormat: '{{{target}}}:latest'
+- name: github
+- name: registry
+  apps:
+    app:symbolicator:
+      urlTemplate: 
+        https://downloads.sentry-cdn.com/symbolicator/{{version}}/{{file}}
+      includeNames: /^symbolicator-.*$/i
+- name: gcs
+  bucket: sentry-sdk-assets
+  includeNames: /^symbolicator-.*$/
+  paths:
+  - path: /symbolicator/{{version}}/
+    metadata:
+      cacheControl: public, max-age=2592000
+  - path: /symbolicator/latest/
+    metadata:
+      cacheControl: public, max-age=600
+- id: release
+  name: docker
+  source: ghcr.io/getsentry/symbolicator
+  target: ghcr.io/getsentry/symbolicator
+- id: latest
+  name: docker
+  source: ghcr.io/getsentry/symbolicator
+  target: ghcr.io/getsentry/symbolicator
+  targetFormat: '{{{target}}}:latest'
 requireNames:
-  - /^symbolicator-Darwin-universal$/
-  - /^symbolicator-Linux-x86_64$/
-  - /^symbolicator-Linux-aarch64$/
-  - /^symbolicator-Linux-x86_64-debug.zip$/
-  - /^symbolicator-Linux-aarch64-debug.zip$/
-  - /^symbolicator-aarch64-apple-darwin-debug.zip$/
-  - /^symbolicator-x86_64-apple-darwin-debug.zip$/
-  - /^symbolicli-Darwin-universal$/
-  - /^symbolicli-Linux-x86_64$/
-  - /^symbolicli-Linux-aarch64$/
-  - /^symbolicli-Windows-x86_64\.exe$/
-  - /^symsorter-Darwin-universal$/
-  - /^symsorter-Linux-x86_64$/
-  - /^symsorter-Linux-aarch64$/
-  - /^symsorter-Windows-x86_64\.exe$/
-  - /^wasm-split-Darwin-universal$/
-  - /^wasm-split-Linux-x86_64$/
-  - /^wasm-split-Linux-aarch64$/
-  - /^wasm-split-Windows-x86_64\.exe$/
+- /^symbolicator-Darwin-universal$/
+- /^symbolicator-Linux-x86_64$/
+- /^symbolicator-Linux-aarch64$/
+- /^symbolicator-Linux-x86_64-debug.zip$/
+- /^symbolicator-Linux-aarch64-debug.zip$/
+- /^symbolicator-aarch64-apple-darwin-debug.zip$/
+- /^symbolicator-x86_64-apple-darwin-debug.zip$/
+- /^symbolicli-Darwin-universal$/
+- /^symbolicli-Linux-x86_64$/
+- /^symbolicli-Linux-aarch64$/
+- /^symbolicli-Windows-x86_64\.exe$/
+- /^symsorter-Darwin-universal$/
+- /^symsorter-Linux-x86_64$/
+- /^symsorter-Linux-aarch64$/
+- /^symsorter-Windows-x86_64\.exe$/
+- /^wasm-split-Darwin-universal$/
+- /^wasm-split-Linux-x86_64$/
+- /^wasm-split-Linux-aarch64$/
+- /^wasm-split-Windows-x86_64\.exe$/
+versioning:
+  policy: calver
