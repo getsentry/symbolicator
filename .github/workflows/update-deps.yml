@@ -9,7 +9,7 @@ on:
 
 jobs:
   native:
-    uses: getsentry/github-workflows/.github/workflows/updater.yml@v3
+    uses: getsentry/github-workflows/.github/workflows/updater.yml@26f565c05d0dd49f703d238706b775883037d76b # v3
     with:
       path: crates/symbolicator-crash/sentry-native
       name: Native SDK

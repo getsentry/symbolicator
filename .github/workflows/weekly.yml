@@ -23,7 +23,7 @@ jobs:
           sudo apt update
           sudo apt-get install -y libcurl4-openssl-dev
 
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
 
@@ -41,9 +41,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       # FIXME: find a maintained alternative to audit-check
-      - uses: actions-rs/audit-check@v1
+      - uses: actions-rs/audit-check@24a24e9d5c8179709dd1ad4d7ba661572de756e6 # v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
