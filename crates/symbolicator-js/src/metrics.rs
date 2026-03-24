@@ -45,48 +45,38 @@ pub struct JsMetrics {
     pub fetched_bundles: u64,
 
     // Product managers are interested in these metrics as a "funnel":
-    found_source_via_debugid: i64,
-    found_source_via_release_with_debugid: i64,
-    found_source_via_release_old_with_debugid: i64,
-    found_source_via_scraping_with_debugid: i64,
-    source_not_found_with_debugid: i64,
+    found_source_via_debugid: u64,
+    found_source_via_release_with_debugid: u64,
+    found_source_via_release_old_with_debugid: u64,
+    found_source_via_scraping_with_debugid: u64,
+    source_not_found_with_debugid: u64,
 
-    found_source_via_release_without_debugid: i64,
-    found_source_via_release_old_without_debugid: i64,
-    found_source_via_scraping_without_debugid: i64,
-    source_not_found_without_debugid: i64,
+    found_source_via_release_without_debugid: u64,
+    found_source_via_release_old_without_debugid: u64,
+    found_source_via_scraping_without_debugid: u64,
+    source_not_found_without_debugid: u64,
 
-    found_sourcemap_via_debugid: i64,
-    found_sourcemap_via_release_with_debugid: i64,
-    found_sourcemap_via_release_old_with_debugid: i64,
-    found_sourcemap_via_scraping_with_debugid: i64,
-    sourcemap_not_found_with_debugid: i64,
+    found_sourcemap_via_debugid: u64,
+    found_sourcemap_via_release_with_debugid: u64,
+    found_sourcemap_via_release_old_with_debugid: u64,
+    found_sourcemap_via_scraping_with_debugid: u64,
+    sourcemap_not_found_with_debugid: u64,
 
-    found_sourcemap_via_release_without_debugid: i64,
-    found_sourcemap_via_release_old_without_debugid: i64,
-    found_sourcemap_via_scraping_without_debugid: i64,
-    sourcemap_not_found_without_debugid: i64,
+    found_sourcemap_via_release_without_debugid: u64,
+    found_sourcemap_via_release_old_without_debugid: u64,
+    found_sourcemap_via_scraping_without_debugid: u64,
+    sourcemap_not_found_without_debugid: u64,
 
-    sourcemap_not_needed: i64,
+    sourcemap_not_needed: u64,
 
     // Engineers might also be interested in these metrics:
-    found_bundle_via_debugid: i64,
-    found_bundle_via_index: i64,
-    found_bundle_via_release: i64,
-    found_bundle_via_release_old: i64,
-
-    had_debug_id: bool,
-    project_id: Option<u64>,
+    found_bundle_via_debugid: u64,
+    found_bundle_via_index: u64,
+    found_bundle_via_release: u64,
+    found_bundle_via_release_old: u64,
 }
 
 impl JsMetrics {
-    pub fn new(project_id: Option<u64>) -> Self {
-        Self {
-            project_id,
-            ..Self::default()
-        }
-    }
-
     pub fn record_bundle_fetched(&mut self) {
         self.fetched_bundles += 1;
     }
@@ -94,14 +84,12 @@ impl JsMetrics {
     pub fn record_file_scraped(&mut self, file_ty: SourceFileType, had_debug_id: bool) {
         match (file_ty, had_debug_id) {
             (SourceFileType::SourceMap, true) => {
-                self.had_debug_id = true;
                 self.found_sourcemap_via_scraping_with_debugid += 1
             }
             (SourceFileType::SourceMap, false) => {
                 self.found_sourcemap_via_scraping_without_debugid += 1
             }
             (_, true) => {
-                self.had_debug_id = true;
                 self.found_source_via_scraping_with_debugid += 1;
             }
             (_, false) => self.found_source_via_scraping_without_debugid += 1,
@@ -111,12 +99,10 @@ impl JsMetrics {
     pub fn record_not_found(&mut self, file_ty: SourceFileType, had_debug_id: bool) {
         match (file_ty, had_debug_id) {
             (SourceFileType::SourceMap, true) => {
-                self.had_debug_id = true;
                 self.sourcemap_not_found_with_debugid += 1;
             }
             (SourceFileType::SourceMap, false) => self.sourcemap_not_found_without_debugid += 1,
             (_, true) => {
-                self.had_debug_id = true;
                 self.source_not_found_with_debugid += 1;
             }
             (_, false) => self.source_not_found_without_debugid += 1,
@@ -138,12 +124,10 @@ impl JsMetrics {
         use SourceFileType::*;
         match (file_ty, file_identified_by, bundle_resolved_by) {
             (SourceMap, DebugId, _) => {
-                self.had_debug_id = true;
                 self.found_sourcemap_via_debugid += 1;
             }
             (SourceMap, Url, ReleaseOld) => {
                 if had_debug_id {
-                    self.had_debug_id = true;
                     self.found_sourcemap_via_release_old_with_debugid += 1;
                 } else {
                     self.found_sourcemap_via_release_old_without_debugid += 1;
@@ -151,19 +135,16 @@ impl JsMetrics {
             }
             (SourceMap, _, _) => {
                 if had_debug_id {
-                    self.had_debug_id = true;
                     self.found_sourcemap_via_release_with_debugid += 1;
                 } else {
                     self.found_sourcemap_via_release_without_debugid += 1;
                 }
             }
             (_, DebugId, _) => {
-                self.had_debug_id = true;
                 self.found_source_via_debugid += 1;
             }
             (_, Url, ReleaseOld) => {
                 if had_debug_id {
-                    self.had_debug_id = true;
                     self.found_source_via_release_old_with_debugid += 1;
                 } else {
                     self.found_source_via_release_old_without_debugid += 1;
@@ -171,7 +152,6 @@ impl JsMetrics {
             }
             (_, _, _) => {
                 if had_debug_id {
-                    self.had_debug_id = true;
                     self.found_source_via_release_with_debugid += 1;
                 } else {
                     self.found_source_via_release_without_debugid += 1;
@@ -189,13 +169,13 @@ impl JsMetrics {
 
     pub fn submit(&self) {
         // per-event distribution, emitted as `distribution`
-        metric!(distribution("js.needed_files") = self.needed_files);
-        metric!(distribution("js.api_requests") = self.api_requests);
-        metric!(distribution("js.queried_bundles") = self.queried_bundles);
-        metric!(distribution("js.fetched_bundles") = self.fetched_bundles);
-        metric!(distribution("js.queried_artifacts") = self.queried_artifacts);
-        metric!(distribution("js.fetched_artifacts") = self.fetched_artifacts);
-        metric!(distribution("js.scraped_files") = self.scraped_files);
+        metric!(distribution("js.needed_files") = self.needed_files as f64);
+        metric!(distribution("js.api_requests") = self.api_requests as f64);
+        metric!(distribution("js.queried_bundles") = self.queried_bundles as f64);
+        metric!(distribution("js.fetched_bundles") = self.fetched_bundles as f64);
+        metric!(distribution("js.queried_artifacts") = self.queried_artifacts as f64);
+        metric!(distribution("js.fetched_artifacts") = self.fetched_artifacts as f64);
+        metric!(distribution("js.scraped_files") = self.scraped_files as f64);
 
         // Sources:
         metric!(
@@ -317,17 +297,6 @@ impl JsMetrics {
             counter("js.bundle_lookup") += self.found_bundle_via_release_old,
             "method" => "release-old"
         );
-
-        // Count this project if any of its source/sourcemap files had debug ids.
-        // Also separately count it if such a file wasn't found.
-        if let Some(project_id) = self.project_id {
-            if self.had_debug_id {
-                metric!(set("js.debugid_projects") = project_id);
-            }
-            if self.source_not_found_with_debugid > 0 || self.sourcemap_not_found_with_debugid > 0 {
-                metric!(set("js.debugid_projects_notfound") = project_id);
-            }
-        }
     }
 }
 
@@ -336,29 +305,30 @@ pub fn record_stacktrace_metrics(event_platform: Option<Platform>, stats: Symbol
     let event_platform = event_platform
         .as_ref()
         .map(|p| p.as_ref())
-        .unwrap_or("none");
+        .unwrap_or("none")
+        .to_owned();
 
-    metric!(distribution("symbolication.num_stacktraces") = stats.num_stacktraces);
+    metric!(distribution("symbolication.num_stacktraces") = stats.num_stacktraces as f64);
 
     for (p, count) in stats.symbolicated_frames {
-        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none").to_owned();
         metric!(
             distribution("symbolication.num_frames") =
-                count,
-            "frame_platform" => frame_platform, "event_platform" => event_platform
+                count as f64,
+            "frame_platform" => frame_platform, "event_platform" => event_platform.clone()
         );
     }
 
     for (p, count) in stats.unsymbolicated_frames {
-        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none");
+        let frame_platform = p.as_ref().map(|p| p.as_ref()).unwrap_or("none").to_owned();
         metric!(
             distribution("symbolication.unsymbolicated_frames") =
-                count,
-            "frame_platform" => frame_platform, "event_platform" => event_platform
+                count as f64,
+            "frame_platform" => frame_platform, "event_platform" => event_platform.clone()
         );
     }
 
-    metric!(distribution("js.missing_sourcescontent") = stats.missing_sourcescontent);
+    metric!(distribution("js.missing_sourcescontent") = stats.missing_sourcescontent as f64);
 }
 
 #[derive(Debug, Clone, Default)]
