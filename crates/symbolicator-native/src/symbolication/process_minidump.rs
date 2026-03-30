@@ -158,6 +158,12 @@ struct SymbolicatorSymbolProvider {
     object_type: ObjectType,
     /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
+    /// The actor used for fetching symcaches.
+    ///
+    /// Note that debug information is currently _not_ used to symbolicate frames
+    /// during stackwalking (which `rust-minidump` supports in principle). Rather,
+    /// we use it as a sanity check for `rust-minidump`'s stackwalker. See the
+    /// implementation of `fill_symbol` for details.
     symcache_actor: SymCacheActor,
     /// The debug ID of the first module in the minidump
     /// (by address).
@@ -272,11 +278,8 @@ impl SymbolicatorSymbolProvider {
         cficache
     }
 
-    /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
-    async fn load_symcache_module(
-        &self,
-        module: &(dyn Module + Sync),
-    ) -> DerivedCache<OwnedSymCache> {
+    /// Fetches debug info for the given module and parses it into a `SymCache`.
+    async fn load_symcache(&self, module: &(dyn Module + Sync)) -> DerivedCache<OwnedSymCache> {
         let sources = self.sources.clone();
         let scope = self.scope.clone();
 
@@ -309,7 +312,7 @@ impl SymbolicatorSymbolProvider {
                 scope,
             })
             // NOTE: this `bind_hub` is important!
-            // `load_symcache_module` is being called concurrently from `rust-minidump` via
+            // `load_symcache` is being called concurrently from `rust-minidump` via
             // `join_all`. We do need proper isolation of any async task that might
             // manipulate any Sentry scope.
             .bind_hub(Hub::new_from_top(Hub::current()))
@@ -324,6 +327,8 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
+        // By default we assume that neither CFI nor symbol info give us reason
+        // to reject the frame.
         let mut valid_by_cfi = true;
         let mut valid_by_symbol_info = true;
 
@@ -338,15 +343,10 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         // Try to validate the given instruction against the CFI module contents.
         //
         // This helps the `rust-minidump`'s stack-walker to make better decisions.
-        // Returning an error here will aggressively create frames.
-        // To indicate a that a potential instruction is not valid, we can return success
-        // here but also not fill in the symbol name.
-        //
         // If the successfully loaded CFI unwind info can not find the potential instruction
         // the passed instruction is most likely not a valid instruction from this module.
         // But since the instruction maps into the range of this module, we know it cannot
         // be part of a different module either -> it's not a valid instruction.
-        // Returning success in this case, means the frame will be skipped.
         //
         // See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
         if let Ok(Some(cached)) = &cfi_module.cache {
@@ -360,7 +360,9 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
             }
         }
 
-        let symcache_module = self.load_symcache_module(module).await;
+        let symcache_module = self.load_symcache(module).await;
+
+        // As above, but with symbol/debug information this time.
         if let Ok(cached) = &symcache_module.cache {
             let instruction = frame.get_instruction() - module.base_address();
 
@@ -371,11 +373,14 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
             }
         }
 
-        // In any other case, always return an error here to signal that we have no useful symbol information to
-        // contribute. Doing nothing would stop the stack scanning prematurely.
+        // If neither CFI nor symbol info reject the frame, return an error here to signal that
+        // we have no useful symbol information to contribute. Doing nothing would stop the stack scanning prematurely.
         if valid_by_cfi || valid_by_symbol_info {
             Err(FillSymbolError {})
         } else {
+            // To indicate a that a potential instruction is not valid, we can return success
+            // here but also not fill in the symbol name. This will cause `rust-minidump`'s stack
+            // scanner to disregard the frame.
             Ok(())
         }
     }
