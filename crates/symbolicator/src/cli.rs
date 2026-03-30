@@ -24,7 +24,7 @@ fn get_long_crate_version() -> &'static str {
         "version: ",
         env!("CARGO_PKG_VERSION"),
         "\ngit commit: ",
-        env!("SYMBOLICATOR_GIT_VERSION")
+        env!("SYMBOLICATOR_RELEASE")
     )
 }
 
