@@ -140,13 +140,10 @@ impl LookupKey {
 }
 
 #[derive(Clone)]
-enum LazyCache<T> {
-    Fetched(Arc<T>),
+enum LazyCfiCache {
+    Fetched(Arc<FetchedCfiCache>),
     Fetching(Arc<Notify>),
 }
-
-type LazyCfiCache = LazyCache<FetchedCfiCache>;
-type LazySymCache = LazyCache<DerivedCache<OwnedSymCache>>;
 
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
@@ -176,8 +173,6 @@ struct SymbolicatorSymbolProvider {
     rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
-    /// An internal database of loaded symcaches.
-    symcaches: Mutex<HashMap<LookupKey, LazySymCache>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -199,7 +194,6 @@ impl SymbolicatorSymbolProvider {
             first_module_debug_id,
             rewrite_first_module,
             cficaches: Default::default(),
-            symcaches: Default::default(),
         }
     }
 
@@ -282,31 +276,7 @@ impl SymbolicatorSymbolProvider {
     async fn load_symcache_module(
         &self,
         module: &(dyn Module + Sync),
-    ) -> Arc<DerivedCache<OwnedSymCache>> {
-        let key = LookupKey::new(module);
-
-        loop {
-            // FIXME: ideally, we would like to only lock once here, but the borrow checker does not
-            // understand that `drop()`-ing the guard before the `notified().await` does not hold
-            // the guard across an `await` point.
-            // Currently, it still thinks it does, and makes the resulting future `!Send`.
-            // We will therefore double-lock again in the `None` branch.
-            let entry = self.symcaches.lock().unwrap().get(&key).cloned();
-            match entry {
-                Some(LazySymCache::Fetched(symcache)) => return symcache,
-                Some(LazySymCache::Fetching(notify)) => {
-                    // unlock, wait and then try again
-                    notify.notified().await;
-                }
-                None => {
-                    // insert a notifier for concurrent accesses, then go on to actually fetch
-                    let mut symcaches = self.symcaches.lock().unwrap();
-                    symcaches.insert(key.clone(), LazySymCache::Fetching(Arc::new(Notify::new())));
-                    break;
-                }
-            }
-        }
-
+    ) -> DerivedCache<OwnedSymCache> {
         let sources = self.sources.clone();
         let scope = self.scope.clone();
 
@@ -331,8 +301,7 @@ impl SymbolicatorSymbolProvider {
             object_type: self.object_type,
         };
 
-        let symcache = self
-            .symcache_actor
+        self.symcache_actor
             .fetch(FetchSymCache {
                 object_type: self.object_type,
                 identifier,
@@ -344,16 +313,7 @@ impl SymbolicatorSymbolProvider {
             // `join_all`. We do need proper isolation of any async task that might
             // manipulate any Sentry scope.
             .bind_hub(Hub::new_from_top(Hub::current()))
-            .await;
-
-        let symcache = Arc::new(symcache);
-        let mut symcaches = self.symcaches.lock().unwrap();
-        if let Some(LazySymCache::Fetching(notify)) =
-            symcaches.insert(key, LazySymCache::Fetched(symcache.clone()))
-        {
-            notify.notify_waiters();
-        }
-        symcache
+            .await
     }
 }
 
