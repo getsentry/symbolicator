@@ -32,7 +32,7 @@ use super::native::{get_relative_caller_addr, symbolicate_native_frame};
 pub struct SymbolicationActor {
     demangle_cache: DemangleCache,
     pub(crate) objects: ObjectsActor,
-    symcaches: SymCacheActor,
+    pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,

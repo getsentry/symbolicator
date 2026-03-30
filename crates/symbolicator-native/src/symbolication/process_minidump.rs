@@ -24,6 +24,8 @@ use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
+use crate::caches::derived::DerivedCache;
+use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::interface::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ProcessMinidump, RawFrame, RawStacktrace,
     Registers, RewriteRules, SymbolicateStacktraces, SystemInfo,
@@ -138,10 +140,13 @@ impl LookupKey {
 }
 
 #[derive(Clone)]
-enum LazyCfiCache {
-    Fetched(Arc<FetchedCfiCache>),
+enum LazyCache<T> {
+    Fetched(Arc<T>),
     Fetching(Arc<Notify>),
 }
+
+type LazyCfiCache = LazyCache<FetchedCfiCache>;
+type LazySymCache = LazyCache<DerivedCache<OwnedSymCache>>;
 
 /// A [`SymbolProvider`] that uses a [`CfiCacheActor`] to fetch
 /// CFI for stackwalking.
@@ -156,6 +161,7 @@ struct SymbolicatorSymbolProvider {
     object_type: ObjectType,
     /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
+    symcache_actor: SymCacheActor,
     /// The debug ID of the first module in the minidump
     /// (by address).
     ///
@@ -170,6 +176,8 @@ struct SymbolicatorSymbolProvider {
     rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
+    /// An internal database of loaded symcaches.
+    symcaches: Mutex<HashMap<LookupKey, LazySymCache>>,
 }
 
 impl SymbolicatorSymbolProvider {
@@ -177,6 +185,7 @@ impl SymbolicatorSymbolProvider {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
         cficache_actor: CfiCacheActor,
+        symcache_actor: SymCacheActor,
         object_type: ObjectType,
         first_module_debug_id: Option<DebugId>,
         rewrite_first_module: RewriteRules,
@@ -185,10 +194,12 @@ impl SymbolicatorSymbolProvider {
             scope,
             sources,
             cficache_actor,
+            symcache_actor,
             object_type,
             first_module_debug_id,
             rewrite_first_module,
             cficaches: Default::default(),
+            symcaches: Default::default(),
         }
     }
 
@@ -266,6 +277,84 @@ impl SymbolicatorSymbolProvider {
         }
         cficache
     }
+
+    /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
+    async fn load_symcache_module(
+        &self,
+        module: &(dyn Module + Sync),
+    ) -> Arc<DerivedCache<OwnedSymCache>> {
+        let key = LookupKey::new(module);
+
+        loop {
+            // FIXME: ideally, we would like to only lock once here, but the borrow checker does not
+            // understand that `drop()`-ing the guard before the `notified().await` does not hold
+            // the guard across an `await` point.
+            // Currently, it still thinks it does, and makes the resulting future `!Send`.
+            // We will therefore double-lock again in the `None` branch.
+            let entry = self.symcaches.lock().unwrap().get(&key).cloned();
+            match entry {
+                Some(LazySymCache::Fetched(symcache)) => return symcache,
+                Some(LazySymCache::Fetching(notify)) => {
+                    // unlock, wait and then try again
+                    notify.notified().await;
+                }
+                None => {
+                    // insert a notifier for concurrent accesses, then go on to actually fetch
+                    let mut symcaches = self.symcaches.lock().unwrap();
+                    symcaches.insert(key.clone(), LazySymCache::Fetching(Arc::new(Notify::new())));
+                    break;
+                }
+            }
+        }
+
+        let sources = self.sources.clone();
+        let scope = self.scope.clone();
+
+        let code_file = non_empty_file_name(&module.code_file());
+        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
+        // Rewrite the first module's debug file according to the configured rewrite rules.
+        if module.debug_identifier() == self.first_module_debug_id
+            && let Some(new_debug_file) = debug_file
+                .as_ref()
+                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
+        {
+            debug_file = Some(new_debug_file);
+        }
+
+        let identifier = ObjectId {
+            code_id: module.code_identifier(),
+            code_file,
+            debug_id: module.debug_identifier(),
+            debug_file,
+            debug_checksum: None,
+            object_type: self.object_type,
+        };
+
+        let symcache = self
+            .symcache_actor
+            .fetch(FetchSymCache {
+                object_type: self.object_type,
+                identifier,
+                sources,
+                scope,
+            })
+            // NOTE: this `bind_hub` is important!
+            // `load_symcache_module` is being called concurrently from `rust-minidump` via
+            // `join_all`. We do need proper isolation of any async task that might
+            // manipulate any Sentry scope.
+            .bind_hub(Hub::new_from_top(Hub::current()))
+            .await;
+
+        let symcache = Arc::new(symcache);
+        let mut symcaches = self.symcaches.lock().unwrap();
+        if let Some(LazySymCache::Fetching(notify)) =
+            symcaches.insert(key, LazySymCache::Fetched(symcache.clone()))
+        {
+            notify.notify_waiters();
+        }
+        symcache
+    }
 }
 
 #[async_trait]
@@ -275,6 +364,9 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
+        let mut valid_by_cfi = true;
+        let mut valid_by_symbol_info = true;
+
         // This function is being called for every context frame,
         // regardless if any stack walking happens.
         // In contrast, `walk_frame` below will be skipped in case the minidump
@@ -304,13 +396,28 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
             if !cfi.is_empty() && cfi.get(instruction).is_none() {
                 // We definitely do have CFI information loaded, but the given instruction does not
                 // map to any stack frame info.
-                return Ok(());
+                valid_by_cfi = false;
+            }
+        }
+
+        let symcache_module = self.load_symcache_module(module).await;
+        if let Ok(cached) = &symcache_module.cache {
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if cached.get().lookup(instruction).next().is_none() {
+                // We definitely do have symbol information loaded, but the given instruction does not
+                // map to any symbol info.
+                valid_by_symbol_info = false;
             }
         }
 
         // In any other case, always return an error here to signal that we have no useful symbol information to
         // contribute. Doing nothing would stop the stack scanning prematurely.
-        Err(FillSymbolError {})
+        if valid_by_cfi || valid_by_symbol_info {
+            Err(FillSymbolError {})
+        } else {
+            Ok(())
+        }
     }
 
     async fn walk_frame(
@@ -359,6 +466,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 
 async fn stackwalk(
     cficaches: CfiCacheActor,
+    symcaches: SymCacheActor,
     minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
@@ -387,6 +495,7 @@ async fn stackwalk(
         scope,
         sources,
         cficaches,
+        symcaches,
         ty,
         first_module_debug_id,
         rewrite_first_module,
@@ -540,6 +649,7 @@ impl SymbolicationActor {
             duration,
         } = stackwalk(
             self.cficaches.clone(),
+            self.symcaches.clone(),
             &minidump,
             scope.clone(),
             sources.clone(),
