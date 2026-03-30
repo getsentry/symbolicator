@@ -203,6 +203,29 @@ impl SymbolicatorSymbolProvider {
         }
     }
 
+    fn object_id_from_module(&self, module: &dyn Module) -> ObjectId {
+        let code_file = non_empty_file_name(&module.code_file());
+        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
+        // Rewrite the first module's debug file according to the configured rewrite rules.
+        if module.debug_identifier() == self.first_module_debug_id
+            && let Some(new_debug_file) = debug_file
+                .as_ref()
+                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
+        {
+            debug_file = Some(new_debug_file);
+        }
+
+        ObjectId {
+            code_id: module.code_identifier(),
+            code_file,
+            debug_id: module.debug_identifier(),
+            debug_file,
+            debug_checksum: None,
+            object_type: self.object_type,
+        }
+    }
+
     /// Fetches CFI for the given module, parses it into a `SymbolFile`, and stores it internally.
     async fn load_cfi_module(&self, module: &(dyn Module + Sync)) -> Arc<FetchedCfiCache> {
         let key = LookupKey::new(module);
@@ -231,27 +254,7 @@ impl SymbolicatorSymbolProvider {
 
         let sources = self.sources.clone();
         let scope = self.scope.clone();
-
-        let code_file = non_empty_file_name(&module.code_file());
-        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
-
-        // Rewrite the first module's debug file according to the configured rewrite rules.
-        if module.debug_identifier() == self.first_module_debug_id
-            && let Some(new_debug_file) = debug_file
-                .as_ref()
-                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
-        {
-            debug_file = Some(new_debug_file);
-        }
-
-        let identifier = ObjectId {
-            code_id: module.code_identifier(),
-            code_file,
-            debug_id: module.debug_identifier(),
-            debug_file,
-            debug_checksum: None,
-            object_type: self.object_type,
-        };
+        let identifier = self.object_id_from_module(module);
 
         let cficache = self
             .cficache_actor
@@ -282,27 +285,7 @@ impl SymbolicatorSymbolProvider {
     async fn load_symcache(&self, module: &(dyn Module + Sync)) -> DerivedCache<OwnedSymCache> {
         let sources = self.sources.clone();
         let scope = self.scope.clone();
-
-        let code_file = non_empty_file_name(&module.code_file());
-        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
-
-        // Rewrite the first module's debug file according to the configured rewrite rules.
-        if module.debug_identifier() == self.first_module_debug_id
-            && let Some(new_debug_file) = debug_file
-                .as_ref()
-                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
-        {
-            debug_file = Some(new_debug_file);
-        }
-
-        let identifier = ObjectId {
-            code_id: module.code_identifier(),
-            code_file,
-            debug_id: module.debug_identifier(),
-            debug_file,
-            debug_checksum: None,
-            object_type: self.object_type,
-        };
+        let identifier = self.object_id_from_module(module);
 
         self.symcache_actor
             .fetch(FetchSymCache {
