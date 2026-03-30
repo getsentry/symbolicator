@@ -356,7 +356,7 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
             }
         }
 
-        // If neither CFI nor symbol info reject the frame, return an error here to signal that
+        // If either CFI or symbol info does not reject the frame, return an error here to signal that
         // we have no useful symbol information to contribute. Doing nothing would stop the stack scanning prematurely.
         if valid_by_cfi || valid_by_symbol_info {
             Err(FillSymbolError {})
