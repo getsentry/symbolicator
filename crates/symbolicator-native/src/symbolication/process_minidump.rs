@@ -314,7 +314,7 @@ impl SymbolicatorSymbolProvider {
     /// But since the instruction maps into the range of this module, we know it cannot
     /// be part of a different module either -> it's not a valid instruction.
     ///
-    /// See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
+    /// See: <https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877>
     async fn check_frame_by_cfi(
         &self,
         module: &(dyn Module + Sync),
@@ -354,7 +354,7 @@ impl SymbolicatorSymbolProvider {
     /// But since the instruction maps into the range of this module, we know it cannot
     /// be part of a different module either -> it's not a valid instruction.
     ///
-    /// See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
+    /// See: <https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877>
     async fn check_frame_by_symbol_info(
         &self,
         module: &(dyn Module + Sync),
