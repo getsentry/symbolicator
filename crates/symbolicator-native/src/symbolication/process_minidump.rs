@@ -301,6 +301,79 @@ impl SymbolicatorSymbolProvider {
             .bind_hub(Hub::new_from_top(Hub::current()))
             .await
     }
+
+    /// Try to validate the given frame's instruction address against the CFI for the module
+    /// (if we have it).
+    ///
+    /// Returns `false` if we have CFI for the module, but that CFI doesn't cover the frame's
+    /// instruction address. Returns `true` in any other case.
+    ///
+    /// This helps the `rust-minidump`'s stack-walker to make better decisions.
+    /// If the successfully loaded CFI unwind info can not find the potential instruction
+    /// the passed instruction is most likely not a valid instruction from this module.
+    /// But since the instruction maps into the range of this module, we know it cannot
+    /// be part of a different module either -> it's not a valid instruction.
+    ///
+    /// See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
+    async fn check_frame_by_cfi(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> bool {
+        // This function is being called (through `fill_symbol`) for every context frame,
+        // regardless if any stack walking happens.
+        // In contrast, `walk_frame` below will be skipped in case the minidump
+        // does not contain any actionable stack memory that would allow stack walking.
+        // Loading this module here means we will be able to backfill a possibly missing
+        // debug_id/file.
+        let cfi_module = self.load_cfi_module(module).await;
+
+        if let Ok(Some(cached)) = &cfi_module.cache {
+            let cfi = &cached.0.cfi_stack_info;
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if !cfi.is_empty() && cfi.get(instruction).is_none() {
+                // We definitely do have CFI information loaded, but the given instruction does not
+                // map to any stack frame info.
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Try to validate the given frame's instruction address against the debug information
+    /// for the module (if we have it).
+    ///
+    /// Returns `false` if we have debug info for the module, but that debug info doesn't cover the frame's
+    /// instruction address. Returns `true` in any other case.
+    ///
+    /// This helps the `rust-minidump`'s stack-walker to make better decisions.
+    /// If the successfully loaded symcache can not find the potential instruction
+    /// the passed instruction is most likely not a valid instruction from this module.
+    /// But since the instruction maps into the range of this module, we know it cannot
+    /// be part of a different module either -> it's not a valid instruction.
+    ///
+    /// See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
+    async fn check_frame_by_symbol_info(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> bool {
+        let symcache = self.load_symcache(module).await;
+
+        if let Ok(cached) = &symcache.cache {
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if cached.get().lookup(instruction).next().is_none() {
+                // We definitely do have symbol information loaded, but the given instruction does not
+                // map to any symbol info.
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 #[async_trait]
@@ -310,55 +383,11 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        // By default we assume that neither CFI nor symbol info give us reason
-        // to reject the frame.
-        let mut valid_by_cfi = true;
-        let mut valid_by_symbol_info = true;
-
-        // This function is being called for every context frame,
-        // regardless if any stack walking happens.
-        // In contrast, `walk_frame` below will be skipped in case the minidump
-        // does not contain any actionable stack memory that would allow stack walking.
-        // Loading this module here means we will be able to backfill a possibly missing
-        // debug_id/file.
-        let cfi_module = self.load_cfi_module(module).await;
-
-        // Try to validate the given instruction against the CFI module contents.
-        //
-        // This helps the `rust-minidump`'s stack-walker to make better decisions.
-        // If the successfully loaded CFI unwind info can not find the potential instruction
-        // the passed instruction is most likely not a valid instruction from this module.
-        // But since the instruction maps into the range of this module, we know it cannot
-        // be part of a different module either -> it's not a valid instruction.
-        //
-        // See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
-        if let Ok(Some(cached)) = &cfi_module.cache {
-            let cfi = &cached.0.cfi_stack_info;
-            let instruction = frame.get_instruction() - module.base_address();
-
-            if !cfi.is_empty() && cfi.get(instruction).is_none() {
-                // We definitely do have CFI information loaded, but the given instruction does not
-                // map to any stack frame info.
-                valid_by_cfi = false;
-            }
-        }
-
-        let symcache_module = self.load_symcache(module).await;
-
-        // As above, but with symbol/debug information this time.
-        if let Ok(cached) = &symcache_module.cache {
-            let instruction = frame.get_instruction() - module.base_address();
-
-            if cached.get().lookup(instruction).next().is_none() {
-                // We definitely do have symbol information loaded, but the given instruction does not
-                // map to any symbol info.
-                valid_by_symbol_info = false;
-            }
-        }
-
-        // If either CFI or symbol info does not reject the frame, return an error here to signal that
-        // we have no useful symbol information to contribute. Doing nothing would stop the stack scanning prematurely.
-        if valid_by_cfi || valid_by_symbol_info {
+        if self.check_frame_by_cfi(module, frame).await
+            || self.check_frame_by_symbol_info(module, frame).await
+        {
+            // If either CFI or symbol info does not reject the frame, return an error here to signal that
+            // we have no useful symbol information to contribute. Doing nothing would stop the stack scanning prematurely.
             Err(FillSymbolError {})
         } else {
             // To indicate a that a potential instruction is not valid, we can return success
