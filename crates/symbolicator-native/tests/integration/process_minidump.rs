@@ -57,7 +57,7 @@ async fn test_minidump_macos() {
 /// * falling into some module,
 /// * for which we have CFI or debug info,
 /// * which doesn't cover that instruction address,
-/// then that address is probably bogus.
+/// then that address is probably bogus and we discard the frame.
 ///
 /// The CFI half of this heuristic was implemented in
 /// https://github.com/getsentry/symbolicator/pull/1651.
@@ -65,7 +65,7 @@ async fn test_minidump_macos() {
 ///
 /// This test simulates an actual customer situation: we have both debug info and CFI
 /// for the minidump, but the CFI is truncated/poor. If we only used CFI to constrain the
-/// stack scanner, all frames in `main.c` would be rejected. However, since we also use
+/// stack scanner, all frames in `sentry_example` would be rejected. However, since we also use
 /// the (good) debug info to check the frames, they are retained.
 ///
 /// The `dyld` frames in the stacktrace are found by scanning, and since we have no CFI or
