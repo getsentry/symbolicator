@@ -74,7 +74,10 @@ pub enum AttachmentFile {
     /// The attachment has been stored on the local system already.
     Local(File),
     /// The attachment needs to be fetched from the remote url.
-    Remote(String),
+    Remote {
+        storage_url: String,
+        storage_token: Option<String>,
+    },
 }
 
 /// A request to process (stackwalk + symbolicate) a minidump.

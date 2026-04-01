@@ -105,9 +105,10 @@ async fn test_minidump_attachment_download() {
         .process_minidump(ProcessMinidump {
             platform: None,
             scope: Scope::Global,
-            minidump_file: AttachmentFile::Remote(
-                attachment_server.url("/the_minidump.dmp").to_string(),
-            ),
+            minidump_file: AttachmentFile::Remote {
+                storage_url: attachment_server.url("/the_minidump.dmp").to_string(),
+                storage_token: None,
+            },
             sources: Arc::new([source]),
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
