@@ -24,6 +24,8 @@ use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
+use crate::caches::derived::DerivedCache;
+use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::interface::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ProcessMinidump, RawFrame, RawStacktrace,
     Registers, RewriteRules, SymbolicateStacktraces, SystemInfo,
@@ -156,6 +158,13 @@ struct SymbolicatorSymbolProvider {
     object_type: ObjectType,
     /// The actor used for fetching CFI.
     cficache_actor: CfiCacheActor,
+    /// The actor used for fetching symcaches.
+    ///
+    /// Note that debug information is currently _not_ used to symbolicate frames
+    /// during stackwalking (which `rust-minidump` supports in principle). Rather,
+    /// we use it as a sanity check for `rust-minidump`'s stackwalker. See the
+    /// implementation of `fill_symbol` for details.
+    symcache_actor: SymCacheActor,
     /// The debug ID of the first module in the minidump
     /// (by address).
     ///
@@ -177,6 +186,7 @@ impl SymbolicatorSymbolProvider {
         scope: Scope,
         sources: Arc<[SourceConfig]>,
         cficache_actor: CfiCacheActor,
+        symcache_actor: SymCacheActor,
         object_type: ObjectType,
         first_module_debug_id: Option<DebugId>,
         rewrite_first_module: RewriteRules,
@@ -185,10 +195,34 @@ impl SymbolicatorSymbolProvider {
             scope,
             sources,
             cficache_actor,
+            symcache_actor,
             object_type,
             first_module_debug_id,
             rewrite_first_module,
             cficaches: Default::default(),
+        }
+    }
+
+    fn object_id_from_module(&self, module: &dyn Module) -> ObjectId {
+        let code_file = non_empty_file_name(&module.code_file());
+        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
+
+        // Rewrite the first module's debug file according to the configured rewrite rules.
+        if module.debug_identifier() == self.first_module_debug_id
+            && let Some(new_debug_file) = debug_file
+                .as_ref()
+                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
+        {
+            debug_file = Some(new_debug_file);
+        }
+
+        ObjectId {
+            code_id: module.code_identifier(),
+            code_file,
+            debug_id: module.debug_identifier(),
+            debug_file,
+            debug_checksum: None,
+            object_type: self.object_type,
         }
     }
 
@@ -220,27 +254,7 @@ impl SymbolicatorSymbolProvider {
 
         let sources = self.sources.clone();
         let scope = self.scope.clone();
-
-        let code_file = non_empty_file_name(&module.code_file());
-        let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
-
-        // Rewrite the first module's debug file according to the configured rewrite rules.
-        if module.debug_identifier() == self.first_module_debug_id
-            && let Some(new_debug_file) = debug_file
-                .as_ref()
-                .and_then(|debug_file| self.rewrite_first_module.rewrite(debug_file))
-        {
-            debug_file = Some(new_debug_file);
-        }
-
-        let identifier = ObjectId {
-            code_id: module.code_identifier(),
-            code_file,
-            debug_id: module.debug_identifier(),
-            debug_file,
-            debug_checksum: None,
-            object_type: self.object_type,
-        };
+        let identifier = self.object_id_from_module(module);
 
         let cficache = self
             .cficache_actor
@@ -266,6 +280,100 @@ impl SymbolicatorSymbolProvider {
         }
         cficache
     }
+
+    /// Fetches debug info for the given module and parses it into a `SymCache`.
+    async fn load_symcache(&self, module: &(dyn Module + Sync)) -> DerivedCache<OwnedSymCache> {
+        let sources = self.sources.clone();
+        let scope = self.scope.clone();
+        let identifier = self.object_id_from_module(module);
+
+        self.symcache_actor
+            .fetch(FetchSymCache {
+                object_type: self.object_type,
+                identifier,
+                sources,
+                scope,
+            })
+            // NOTE: this `bind_hub` is important!
+            // `load_symcache` is being called concurrently from `rust-minidump` via
+            // `join_all`. We do need proper isolation of any async task that might
+            // manipulate any Sentry scope.
+            .bind_hub(Hub::new_from_top(Hub::current()))
+            .await
+    }
+
+    /// Try to validate the given frame's instruction address against the CFI for the module
+    /// (if we have it).
+    ///
+    /// Returns `false` if we have CFI for the module, but that CFI doesn't cover the frame's
+    /// instruction address. Returns `true` in any other case.
+    ///
+    /// This helps the `rust-minidump`'s stack-walker to make better decisions.
+    /// If the successfully loaded CFI unwind info can not find the potential instruction
+    /// the passed instruction is most likely not a valid instruction from this module.
+    /// But since the instruction maps into the range of this module, we know it cannot
+    /// be part of a different module either -> it's not a valid instruction.
+    ///
+    /// See: <https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877>
+    async fn check_frame_by_cfi(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> bool {
+        // This function is being called (through `fill_symbol`) for every context frame,
+        // regardless if any stack walking happens.
+        // In contrast, `walk_frame` below will be skipped in case the minidump
+        // does not contain any actionable stack memory that would allow stack walking.
+        // Loading this module here means we will be able to backfill a possibly missing
+        // debug_id/file.
+        let cfi_module = self.load_cfi_module(module).await;
+
+        if let Ok(Some(cached)) = &cfi_module.cache {
+            let cfi = &cached.0.cfi_stack_info;
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if !cfi.is_empty() && cfi.get(instruction).is_none() {
+                // We definitely do have CFI information loaded, but the given instruction does not
+                // map to any stack frame info.
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Try to validate the given frame's instruction address against the debug information
+    /// for the module (if we have it).
+    ///
+    /// Returns `false` if we have debug info for the module, but that debug info doesn't cover the frame's
+    /// instruction address. Returns `true` in any other case.
+    ///
+    /// This helps the `rust-minidump`'s stack-walker to make better decisions.
+    /// If the successfully loaded symcache can not find the potential instruction
+    /// the passed instruction is most likely not a valid instruction from this module.
+    /// But since the instruction maps into the range of this module, we know it cannot
+    /// be part of a different module either -> it's not a valid instruction.
+    ///
+    /// See: <https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877>
+    async fn check_frame_by_symbol_info(
+        &self,
+        module: &(dyn Module + Sync),
+        frame: &mut (dyn FrameSymbolizer + Send),
+    ) -> bool {
+        let symcache = self.load_symcache(module).await;
+
+        if let Ok(cached) = &symcache.cache {
+            let instruction = frame.get_instruction() - module.base_address();
+
+            if cached.get().lookup(instruction).next().is_none() {
+                // We definitely do have symbol information loaded, but the given instruction does not
+                // map to any symbol info.
+                return false;
+            }
+        }
+
+        true
+    }
 }
 
 #[async_trait]
@@ -275,42 +383,18 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
         module: &(dyn Module + Sync),
         frame: &mut (dyn FrameSymbolizer + Send),
     ) -> Result<(), FillSymbolError> {
-        // This function is being called for every context frame,
-        // regardless if any stack walking happens.
-        // In contrast, `walk_frame` below will be skipped in case the minidump
-        // does not contain any actionable stack memory that would allow stack walking.
-        // Loading this module here means we will be able to backfill a possibly missing
-        // debug_id/file.
-        let cfi_module = self.load_cfi_module(module).await;
-
-        // Try to validate the given instruction against the CFI module contents.
-        //
-        // This helps the `rust-minidump`'s stack-walker to make better decisions.
-        // Returning an error here will aggressively create frames.
-        // To indicate a that a potential instruction is not valid, we can return success
-        // here but also not fill in the symbol name.
-        //
-        // If the successfully loaded CFI unwind info can not find the potential instruction
-        // the passed instruction is most likely not a valid instruction from this module.
-        // But since the instruction maps into the range of this module, we know it cannot
-        // be part of a different module either -> it's not a valid instruction.
-        // Returning success in this case, means the frame will be skipped.
-        //
-        // See: https://github.com/rust-minidump/rust-minidump/blob/32e01a0e54d987025aa64486ebc4154f7f6b16d2/minidump-unwind/src/lib.rs#L865-L877
-        if let Ok(Some(cached)) = &cfi_module.cache {
-            let cfi = &cached.0.cfi_stack_info;
-            let instruction = frame.get_instruction() - module.base_address();
-
-            if !cfi.is_empty() && cfi.get(instruction).is_none() {
-                // We definitely do have CFI information loaded, but the given instruction does not
-                // map to any stack frame info.
-                return Ok(());
-            }
+        if self.check_frame_by_cfi(module, frame).await
+            || self.check_frame_by_symbol_info(module, frame).await
+        {
+            // If either CFI or symbol info does not reject the frame, return an error here to signal that
+            // we have no useful symbol information to contribute. Doing nothing would stop the stack scanning prematurely.
+            Err(FillSymbolError {})
+        } else {
+            // To indicate a that a potential instruction is not valid, we can return success
+            // here but also not fill in the symbol name. This will cause `rust-minidump`'s stack
+            // scanner to disregard the frame.
+            Ok(())
         }
-
-        // In any other case, always return an error here to signal that we have no useful symbol information to
-        // contribute. Doing nothing would stop the stack scanning prematurely.
-        Err(FillSymbolError {})
     }
 
     async fn walk_frame(
@@ -359,6 +443,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
 
 async fn stackwalk(
     cficaches: CfiCacheActor,
+    symcaches: SymCacheActor,
     minidump: &Minidump,
     scope: Scope,
     sources: Arc<[SourceConfig]>,
@@ -387,6 +472,7 @@ async fn stackwalk(
         scope,
         sources,
         cficaches,
+        symcaches,
         ty,
         first_module_debug_id,
         rewrite_first_module,
@@ -540,6 +626,7 @@ impl SymbolicationActor {
             duration,
         } = stackwalk(
             self.cficaches.clone(),
+            self.symcaches.clone(),
             &minidump,
             scope.clone(),
             sources.clone(),

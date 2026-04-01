@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+- fix(stackwalking): Use debug info to inform scanning by @loewenheim in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+
 ## 26.3.1
 
 ### New Features ✨
