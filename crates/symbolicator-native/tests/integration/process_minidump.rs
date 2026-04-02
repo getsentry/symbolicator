@@ -48,6 +48,39 @@ async fn test_minidump_macos() {
     assert_snapshot!(res);
 }
 
+/// Verifies that debug information is used to guide stack scanning.
+///
+/// The minidump being tested has frame pointers disabled, so in the absence of (usable) CFI,
+/// there is no choice but to scan. Left to its own devices, the stack scanner can produce a lot
+/// of spurious frames, so we want to use both CFI and debug info that we have available to guide
+/// it. The heuristic is as follows: if stack scanning would produce an instruction address
+/// * falling into some module,
+/// * for which we have CFI or debug info,
+/// * which doesn't cover that instruction address,
+/// then that address is probably bogus and we discard the frame.
+///
+/// The CFI half of this heuristic was implemented in
+/// https://github.com/getsentry/symbolicator/pull/1651.
+/// https://github.com/getsentry/symbolicator/pull/1913 added the debug info part.
+///
+/// This test simulates an actual customer situation: we have both debug info and CFI
+/// for the minidump, but the CFI is truncated/poor. If we only used CFI to constrain the
+/// stack scanner, all frames in `sentry_example` would be rejected. However, since we also use
+/// the (good) debug info to check the frames, they are retained.
+///
+/// The `dyld` frames in the stacktrace are found by scanning, and since we have no CFI or
+/// debug info at all for that module, they're all accepted.
+#[tokio::test]
+async fn test_minidump_macos_broken_cfi() {
+    let res = stackwalk_minidump("macos-no-fp.dmp").await;
+    let crashed_thread = res
+        .stacktraces
+        .iter()
+        .find(|st| st.is_requesting.unwrap_or_default())
+        .unwrap();
+    assert_snapshot!(crashed_thread);
+}
+
 #[tokio::test]
 async fn test_minidump_linux() {
     let res = stackwalk_minidump("linux.dmp").await;
