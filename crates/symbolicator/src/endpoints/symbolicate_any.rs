@@ -40,10 +40,12 @@ pub struct SymbolicateAnyRequestBody {
 pub enum SymbolicationRequest {
     Minidump {
         storage_url: String,
+        storage_token: Option<String>,
         rewrite_first_module: RewriteRules,
     },
     AppleCrashreport {
         storage_url: String,
+        storage_token: Option<String>,
     },
     // TODO: it should be possible to also support native, js and jvm requests here as well
 }
@@ -60,27 +62,36 @@ pub async fn symbolicate_any(
     let request_id = match body.symbolicate {
         SymbolicationRequest::Minidump {
             storage_url,
+            storage_token,
             rewrite_first_module,
         } => service.process_minidump(
             ProcessMinidump {
                 platform: body.platform,
                 scope: params.scope,
-                minidump_file: AttachmentFile::Remote(storage_url),
+                minidump_file: AttachmentFile::Remote {
+                    storage_url,
+                    storage_token,
+                },
                 sources: body.sources,
                 scraping: body.scraping,
                 rewrite_first_module,
             },
             body.options,
         )?,
-        SymbolicationRequest::AppleCrashreport { storage_url } => service
-            .process_apple_crash_report(
-                body.platform,
-                params.scope,
-                AttachmentFile::Remote(storage_url),
-                body.sources,
-                body.scraping,
-                body.options,
-            )?,
+        SymbolicationRequest::AppleCrashreport {
+            storage_url,
+            storage_token,
+        } => service.process_apple_crash_report(
+            body.platform,
+            params.scope,
+            AttachmentFile::Remote {
+                storage_url,
+                storage_token,
+            },
+            body.sources,
+            body.scraping,
+            body.options,
+        )?,
     };
 
     match service.get_response(request_id, params.timeout).await {
