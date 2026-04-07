@@ -197,6 +197,7 @@ pub fn execute() -> Result<()> {
 
         if let Err(e) = metrics::configure_statsd(&config.metrics.prefix, statsd, tags) {
             tracing::error!(error = %e, "failed to initialize statsd backend");
+            return Err(e);
         }
     }
 
