@@ -1,5 +1,5 @@
 //! Exposes the command line application.
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -148,10 +148,6 @@ pub fn execute() -> Result<()> {
     }
 
     if let Some(ref statsd) = config.metrics.statsd {
-        let addrs = statsd
-            .to_socket_addrs()
-            .with_context(|| format!("invalid statsd host: {statsd}"))?
-            .collect();
         let mut tags = config.metrics.custom_tags.clone();
 
         if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
@@ -199,7 +195,10 @@ pub fn execute() -> Result<()> {
             }
         };
 
-        metrics::configure_statsd(&config.metrics.prefix, addrs, tags);
+        if let Err(e) = metrics::configure_statsd(&config.metrics.prefix, statsd, tags) {
+            tracing::error!(error = %e, "failed to initialize statsd backend");
+            return Err(e);
+        }
     }
 
     match cli.command {

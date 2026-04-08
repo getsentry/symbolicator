@@ -412,7 +412,7 @@ impl RequestService {
         let current_requests = Arc::clone(&self.inner.current_requests);
 
         let num_requests = current_requests.load(Ordering::Relaxed);
-        metric!(gauge("requests.in_flight") = num_requests as u64);
+        metric!(gauge("requests.in_flight") = num_requests as f64);
 
         // Reject the request if `requests` already contains `max_concurrent_requests` elements.
         if let Some(max_concurrent_requests) = self.inner.max_concurrent_requests
@@ -563,29 +563,29 @@ async fn wrap_response_channel(
     }
 }
 
-trait ToMaxingI64: TryInto<i64> + Copy {
-    fn to_maxing_i64(self) -> i64 {
-        self.try_into().unwrap_or(i64::MAX)
+trait ToMaxingU64: TryInto<u64> + Copy {
+    fn to_maxing_u64(self) -> u64 {
+        self.try_into().unwrap_or(u64::MAX)
     }
 }
 
-impl<T: TryInto<i64> + Copy> ToMaxingI64 for T {}
+impl<T: TryInto<u64> + Copy> ToMaxingU64 for T {}
 
-pub fn record_task_metrics(name: &str, metrics: &tokio_metrics::TaskMetrics) {
-    metric!(counter("tasks.instrumented_count") += metrics.instrumented_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.dropped_count") += metrics.dropped_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.first_poll_count") += metrics.first_poll_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_first_poll_delay") += metrics.total_first_poll_delay.as_millis().to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_idled_count") += metrics.total_idled_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_idle_duration") += metrics.total_idle_duration.as_millis().to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_scheduled_count") += metrics.total_scheduled_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_scheduled_duration") += metrics.total_scheduled_duration.as_millis().to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_poll_count") += metrics.total_poll_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_poll_duration") += metrics.total_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_fast_poll_count") += metrics.total_fast_poll_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_fast_poll_durations") += metrics.total_fast_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_slow_poll_count") += metrics.total_slow_poll_count.to_maxing_i64(), "taskname" => name);
-    metric!(counter("tasks.total_slow_poll_duration") += metrics.total_slow_poll_duration.as_millis().to_maxing_i64(), "taskname" => name);
+pub fn record_task_metrics(name: &'static str, metrics: &tokio_metrics::TaskMetrics) {
+    metric!(counter("tasks.instrumented_count") += metrics.instrumented_count, "taskname" => name);
+    metric!(counter("tasks.dropped_count") += metrics.dropped_count, "taskname" => name);
+    metric!(counter("tasks.first_poll_count") += metrics.first_poll_count, "taskname" => name);
+    metric!(counter("tasks.total_first_poll_delay") += metrics.total_first_poll_delay.as_millis().to_maxing_u64(), "taskname" => name);
+    metric!(counter("tasks.total_idled_count") += metrics.total_idled_count, "taskname" => name);
+    metric!(counter("tasks.total_idle_duration") += metrics.total_idle_duration.as_millis().to_maxing_u64(), "taskname" => name);
+    metric!(counter("tasks.total_scheduled_count") += metrics.total_scheduled_count, "taskname" => name);
+    metric!(counter("tasks.total_scheduled_duration") += metrics.total_scheduled_duration.as_millis().to_maxing_u64(), "taskname" => name);
+    metric!(counter("tasks.total_poll_count") += metrics.total_poll_count, "taskname" => name);
+    metric!(counter("tasks.total_poll_duration") += metrics.total_poll_duration.as_millis().to_maxing_u64(), "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_count") += metrics.total_fast_poll_count, "taskname" => name);
+    metric!(counter("tasks.total_fast_poll_durations") += metrics.total_fast_poll_duration.as_millis().to_maxing_u64(), "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_count") += metrics.total_slow_poll_count, "taskname" => name);
+    metric!(counter("tasks.total_slow_poll_duration") += metrics.total_slow_poll_duration.as_millis().to_maxing_u64(), "taskname" => name);
 }
 
 #[cfg(test)]
