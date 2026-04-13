@@ -17,8 +17,8 @@ async fn test_attachment_download() {
     let (_symsrv, source) = symbol_server();
 
     async fn get_crash_report() -> impl IntoResponse {
-        let minidump = read_fixture("apple_crash_report.txt");
-        let compressed = zstd::bulk::compress(&minidump, 0).unwrap();
+        let report = read_fixture("apple_crash_report.txt");
+        let compressed = zstd::bulk::compress(&report, 0).unwrap();
 
         ([(header::CONTENT_ENCODING, "zstd")], compressed)
     }
