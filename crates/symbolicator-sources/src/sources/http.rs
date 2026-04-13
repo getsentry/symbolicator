@@ -88,14 +88,6 @@ impl HttpRemoteFile {
         HttpRemoteFile::new(source, location)
     }
 
-    /// Adds bearer authorization to the request and returns the updated file.
-    pub fn bearer_auth(mut self, token: &str) -> Self {
-        self.headers
-            .0
-            .insert("Authorization".to_owned(), format!("Bearer {token}"));
-        self
-    }
-
     /// Returns a [`RemoteFileUri`] for the file.
     pub fn uri(&self) -> RemoteFileUri {
         match self.url() {

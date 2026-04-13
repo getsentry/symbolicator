@@ -134,7 +134,7 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
     ) -> Result<CompletedSymbolicationResponse> {
-        let report = download_attachment(self.download_svc.clone(), report).await?;
+        let report = download_attachment(&self.download_svc, report).await?;
         let (request, state) =
             self.parse_apple_crash_report(platform, scope, report, sources, scraping)?;
         let mut response = self.symbolicate(request).await?;
