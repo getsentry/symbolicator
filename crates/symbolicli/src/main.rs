@@ -259,23 +259,24 @@ enum Payload {
 impl Payload {
     fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> Result<Option<Self>> {
         match File::open(path) {
-            Ok(mut file) => {
-                let mut magic = [0; 4];
-                file.read_exact(&mut magic)?;
-                file.rewind()?;
-
-                if &magic == b"MDMP" || &magic == b"PMDM" {
-                    Ok(Some(Payload::Minidump(file)))
-                } else if &magic == b"Inci" {
-                    Ok(Some(Payload::AppleCrashReport(file)))
-                } else {
-                    let event =
-                        serde_json::from_reader(file).context("failed to parse event json file")?;
-                    Ok(Some(Payload::Event(event)))
-                }
-            }
+            Ok(file) => Self::parse_file(file).map(Option::Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e).context(format!("Could not open event file at {path:?}")),
+        }
+    }
+
+    fn parse_file(mut file: File) -> Result<Self> {
+        let mut magic = [0; 4];
+        file.read_exact(&mut magic)?;
+        file.rewind()?;
+
+        if &magic == b"MDMP" || &magic == b"PMDM" {
+            Ok(Payload::Minidump(file))
+        } else if &magic == b"Inci" || &magic == b"----" {
+            Ok(Payload::AppleCrashReport(file))
+        } else {
+            let event = serde_json::from_reader(file).context("failed to parse event json file")?;
+            Ok(Payload::Event(event))
         }
     }
 
@@ -284,17 +285,17 @@ impl Payload {
         let event = remote::download_event(client, key).await?;
         tracing::info!("event json file downloaded");
 
-        match remote::get_attached_minidump(client, key).await? {
-            Some(minidump_url) => {
-                tracing::info!("minidump attachment found");
-                let minidump_path = remote::download_minidump(client, minidump_url).await?;
-                tracing::info!(path = ?minidump_path, "minidump file downloaded");
+        match remote::get_attached_crash(client, key).await? {
+            Some(url) => {
+                tracing::info!("crash attachment found");
+                let file = remote::download_crash_file(client, url).await?;
+                tracing::info!(path = ?file, "crash file downloaded");
 
-                Ok(Payload::Minidump(minidump_path))
+                Payload::parse_file(file)
             }
 
             None => {
-                tracing::info!("no minidump attachment found");
+                tracing::info!("no crash attachment found");
                 Ok(Self::Event(event))
             }
         }
@@ -302,8 +303,8 @@ impl Payload {
 }
 
 mod remote {
-    use std::fs::File;
     use std::io::Write;
+    use std::{fs::File, io::Seek};
 
     use anyhow::{Context, Result, bail};
     use reqwest::{StatusCode, Url};
@@ -325,7 +326,7 @@ mod remote {
         id: String,
     }
 
-    pub async fn get_attached_minidump(
+    pub async fn get_attached_crash(
         client: &reqwest::Client,
         key: EventKey<'_>,
     ) -> Result<Option<Url>> {
@@ -366,7 +367,10 @@ mod remote {
 
         let Some(minidump_id) = attachments
             .iter()
-            .find(|attachment| attachment.r#type == "event.minidump")
+            .find(|attachment| {
+                attachment.r#type == "event.minidump"
+                    || attachment.r#type == "event.applecrashreport"
+            })
             .map(|attachment| &attachment.id)
         else {
             return Ok(None);
@@ -378,8 +382,8 @@ mod remote {
         Ok(Some(download_url))
     }
 
-    pub async fn download_minidump(client: &reqwest::Client, download_url: Url) -> Result<File> {
-        tracing::info!(url = %download_url, "downloading minidump file");
+    pub async fn download_crash_file(client: &reqwest::Client, download_url: Url) -> Result<File> {
+        tracing::info!(url = %download_url, "downloading crash file");
 
         let response = client
             .get(download_url)
@@ -387,7 +391,7 @@ mod remote {
             .await
             .context("Failed to send request")?;
 
-        let minidump = if response.status().is_success() {
+        let crash_file = if response.status().is_success() {
             response
                 .bytes()
                 .await
@@ -404,8 +408,10 @@ mod remote {
 
         let mut temp_file = tempfile::tempfile().unwrap();
         temp_file
-            .write_all(&minidump)
-            .context("Failed to write minidump to disk")?;
+            .write_all(&crash_file)
+            .context("Failed to write crash file to disk")?;
+
+        temp_file.rewind()?;
 
         Ok(temp_file)
     }
