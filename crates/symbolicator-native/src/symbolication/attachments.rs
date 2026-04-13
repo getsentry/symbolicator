@@ -1,15 +1,14 @@
 use std::fs::File;
-use std::pin::pin;
+use std::sync::Arc;
 
-use futures::TryStreamExt;
-use symbolicator_service::download::DownloadService;
-use tokio::io::{AsyncWriteExt, BufWriter};
-use tokio_util::io::StreamReader;
+use symbolicator_service::download::{DownloadService, fetch_file};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile};
+use url::Url;
 
 use crate::interface::AttachmentFile;
 
 pub async fn download_attachment(
-    download_svc: &DownloadService,
+    download_svc: Arc<DownloadService>,
     file: AttachmentFile,
 ) -> anyhow::Result<File> {
     let (storage_url, storage_token) = match file {
@@ -20,29 +19,20 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
-    // TODO: maybe its worth using the actual `DownloadService` instead of straight going to the `trusted_client`.
-    // Doing so would in theory allow us to have retries and error report, as well as being able to
-    // download files in multiple chunks concurrently, but I don’t think our `objecstore` server currently
-    // supports range requests, and those would also mess with streaming decompression.
-    // Not to mention that using the `DownloadService` is not that straight forward.
-    let mut request = download_svc.trusted_client.get(storage_url);
+    let mut http_remote_file = HttpRemoteFile::from_url(Url::parse(&storage_url)?, true);
+
     if let Some(token) = storage_token {
-        request = request.bearer_auth(token);
+        http_remote_file = http_remote_file.bearer_auth(&token);
     }
-    let stream = request
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes_stream()
-        .map_err(std::io::Error::other);
-    let mut reader = pin!(StreamReader::new(stream));
 
-    let file = tempfile::tempfile()?;
-    let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
-    tokio::io::copy(&mut reader, &mut writer).await?;
-    writer.flush().await?;
-    let file = writer.into_inner();
-    file.sync_data().await?;
+    let mut temp_file = tempfile::NamedTempFile::new()?;
 
-    Ok(file.into_std().await)
+    fetch_file(
+        download_svc,
+        RemoteFile::Http(http_remote_file),
+        &mut temp_file,
+    )
+    .await?;
+
+    Ok(temp_file.into_file())
 }
