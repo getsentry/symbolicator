@@ -1,0 +1,13 @@
+---
+source: crates/symbolicator-native/tests/integration/process_apple.rs
+expression: response.unwrap()
+---
+system_info:
+  os_name: ""
+  os_version: ""
+  os_build: ""
+  cpu_arch: unknown
+  device_model: ""
+crashed: true
+stacktraces: []
+modules: []
