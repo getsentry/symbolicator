@@ -155,6 +155,7 @@ impl SentryDownloader {
         }
     }
 
+    #[tracing::instrument(skip(self, source), fields(query))]
     pub async fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
@@ -180,6 +181,8 @@ impl SentryDownloader {
                 .query_pairs_mut()
                 .append_pair("code_id", code_id.as_str());
         }
+
+        tracing::Span::current().record("query", index_url.to_string());
 
         // NOTE: We intentionally don't limit the query to the provided file types, even though
         // the endpoint supports it. The reason is that the result of the query gets cached locally
@@ -225,7 +228,7 @@ impl SentryDownloader {
                 // TODO(flub): These queries do not handle pagination.  But sentry only starts to
                 // paginate at 20 results so we get away with this for now.
                 if result.len() >= 20 {
-                    tracing::error!(query = ?query.index_url, "Sentry API Query returned 20 results");
+                    tracing::error!("Sentry API Query returned 20 results");
                 }
             }
 
