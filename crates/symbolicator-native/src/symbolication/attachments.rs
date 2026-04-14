@@ -3,7 +3,7 @@ use std::pin::pin;
 
 use futures::TryStreamExt;
 use symbolicator_service::download::DownloadService;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
 use tokio_util::io::StreamReader;
 
 use crate::interface::AttachmentFile;
@@ -41,8 +41,10 @@ pub async fn download_attachment(
     let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
     tokio::io::copy(&mut reader, &mut writer).await?;
     writer.flush().await?;
-    let file = writer.into_inner();
+    let mut file = writer.into_inner();
     file.sync_data().await?;
+
+    file.rewind().await?;
 
     Ok(file.into_std().await)
 }
