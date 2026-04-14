@@ -5,8 +5,10 @@
 ### Bug Fixes
 
 - fix(stackwalking): Use debug info to inform scanning by @loewenheim in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+- fix(apple): Rewind objectstore downloads so they are parsed properly by @jjbayer in [#1924](https://github.com/getsentry/symbolicator/pull/1924)
 
 ### Deps
+
 - Bump Native SDK from 0.11.2 to 0.13.5 by @loewenheim in [#1917](https://github.com/getsentry/symbolicator/pull/1917)
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0135)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.11.2...0.13.5)
