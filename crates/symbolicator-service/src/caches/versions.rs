@@ -214,13 +214,23 @@ pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// SourceMapCache, with the following versions:
 ///
+/// - `3`: Improved name resolution during cache generation. See
+///   <https://github.com/getsentry/js-source-scopes/pull/35> and
+///   <https://github.com/getsentry/symbolic/pull/970>.
+///
 /// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Initial version.
 pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(2, CachePathFormat::V2),
-    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
-    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
+    current: CacheVersion::new(3, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(2, CachePathFormat::V2),
+        CacheVersion::new(1, CachePathFormat::V1),
+    ],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V2),
+    ],
 };
 
 /// Il2cpp cache, with the following versions:
