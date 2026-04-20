@@ -243,7 +243,9 @@ async fn symbolicate_js_frame(
         callsite_fn_name.as_deref(),
     )));
 
-    if let Some(filename) = token.file_name() {
+    if let Some(filename) = token.file_name()
+        && !filename.is_empty()
+    {
         let mut filename = filename.to_string();
         frame.abs_path = module
             .source_file_base()
