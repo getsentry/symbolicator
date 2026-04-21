@@ -283,6 +283,9 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Proguard Cache, with the following versions:
 ///
+/// - `7`: Recompute caches after starting to support Compose
+///   mappings with two-space indentation.
+///
 /// - `6`: Information about whether a method has rewrite rules is now part
 ///   of the cache format.
 ///
@@ -298,7 +301,7 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(6, CachePathFormat::V2),
+    current: CacheVersion::new(7, CachePathFormat::V2),
     fallbacks: &[],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
@@ -306,6 +309,7 @@ pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(3, CachePathFormat::V2),
         CacheVersion::new(4, CachePathFormat::V2),
         CacheVersion::new(5, CachePathFormat::V2),
+        CacheVersion::new(6, CachePathFormat::V2),
     ],
 };
 static_assert!(proguard::PRGCACHE_VERSION == 4);
