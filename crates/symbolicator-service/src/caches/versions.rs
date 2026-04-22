@@ -302,7 +302,7 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
     current: CacheVersion::new(7, CachePathFormat::V2),
-    fallbacks: &[],
+    fallbacks: &[CacheVersion::new(6, CachePathFormat::V2)],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
