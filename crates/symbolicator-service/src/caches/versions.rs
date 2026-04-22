@@ -283,7 +283,7 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Proguard Cache, with the following versions:
 ///
-/// - `7`: Recompute caches after starting to support Compose
+/// - `7`: Caches now support Compose
 ///   mappings with two-space indentation.
 ///
 /// - `6`: Information about whether a method has rewrite rules is now part
