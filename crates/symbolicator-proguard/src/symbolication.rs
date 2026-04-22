@@ -634,8 +634,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
     /// prepend a bogus `.` to the lookup key.
     #[test]
     fn remap_exception_root_package() {
-        let proguard_source =
-            b"androidx.compose.runtime.tooling.DiagnosticComposeException -> kj:
+        let proguard_source = b"androidx.compose.runtime.tooling.DiagnosticComposeException -> kj:
     1:3:void <init>(androidx.compose.runtime.tooling.ComposeStackTrace):18:18 -> <init>
 ";
 
