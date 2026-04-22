@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 26.4.1
 
 - fix(js): Improve scope name resolution by @loewenheim in [#1929](https://github.com/getsentry/symbolicator/pull/1929)
 
