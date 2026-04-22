@@ -220,11 +220,8 @@ impl ProguardService {
         let mut carried_outline_pos = vec![None; mappers.len()];
         let mut remapped_frames = Vec::new();
 
-        // Compute exception descriptor for rewrite rules
-        let exception_descriptor = exception.map(|exc| {
-            let full_class = format!("{}.{}", exc.module, exc.ty);
-            proguard::class_name_to_descriptor(&full_class)
-        });
+        let exception_descriptor =
+            exception.map(|exc| proguard::class_name_to_descriptor(&exc.full_class_name()));
 
         // Track whether the next frame can have rewrite rules applied
         // (only the first non-outline frame after an exception)
@@ -383,20 +380,11 @@ impl ProguardService {
             return None;
         }
 
-        let key = format!("{}.{}", exception.module, exception.ty);
-
+        let key = exception.full_class_name();
         let mapped = mappers.iter().find_map(|mapper| mapper.remap_class(&key))?;
 
-        // In the Python implementation, we just split by `.` here with no check. I assume
-        // this error can not actually occur.
-        let Some((new_module, new_ty)) = mapped.rsplit_once('.') else {
-            tracing::error!(
-                original = key,
-                remapped = mapped,
-                "Invalid remapped class name"
-            );
-            return None;
-        };
+        // Root-package classes remap to a bare class name with no dot.
+        let (new_module, new_ty) = mapped.rsplit_once('.').unwrap_or(("", mapped));
 
         Some(JvmException {
             ty: new_ty.into(),
@@ -638,6 +626,33 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
 
         assert_eq!(exception.ty, "Util$ClassContextSecurityManager");
         assert_eq!(exception.module, "org.slf4j.helpers");
+    }
+
+    /// Regression test for root-package obfuscated exception classes
+    /// (e.g. R8 aggressive mode renaming `DiagnosticComposeException` to `kj`).
+    /// The SDK sends these with an empty `module`, so remapping must not
+    /// prepend a bogus `.` to the lookup key.
+    #[test]
+    fn remap_exception_root_package() {
+        let proguard_source = b"androidx.compose.runtime.tooling.DiagnosticComposeException -> kj:
+    1:3:void <init>(androidx.compose.runtime.tooling.ComposeStackTrace):18:18 -> <init>
+";
+
+        let exception = JvmException {
+            ty: "kj".into(),
+            module: "".into(),
+        };
+
+        let mapping = ProguardMapping::new(proguard_source);
+        let mut cache = Vec::new();
+        ProguardCache::write(&mapping, &mut cache).unwrap();
+        let cache = ProguardCache::parse(&cache).unwrap();
+        cache.test();
+
+        let exception = ProguardService::map_exception(&[&cache], &exception).unwrap();
+
+        assert_eq!(exception.ty, "DiagnosticComposeException");
+        assert_eq!(exception.module, "androidx.compose.runtime.tooling");
     }
 
     // based on the Python test `test_resolving_inline`
