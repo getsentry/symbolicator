@@ -55,8 +55,6 @@ pub async fn symbolicate_any(
     extract::Query(params): extract::Query<RequestQueryParams>,
     extract::Json(body): extract::Json<SymbolicateAnyRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let request_id = match body.symbolicate {

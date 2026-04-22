@@ -117,8 +117,6 @@ pub fn execute() -> Result<()> {
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release,
-        session_mode: sentry::SessionMode::Request,
-        auto_session_tracking: false,
         attach_stacktrace: config.logging.enable_backtraces,
         traces_sampler: Some(Arc::new(move |ctx| {
             if Some(true) == ctx.sampled() && config.propagate_traces {
