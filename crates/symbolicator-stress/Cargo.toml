@@ -10,7 +10,7 @@ axum = { workspace = true }
 clap = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
-sentry = { workspace = true, features = ["logs"] }
+sentry = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

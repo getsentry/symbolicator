@@ -113,6 +113,7 @@ sentry = { version = "0.42.0", default-features = false, features = [
     "debug-images",
     "panic",
     "transport",
+    "logs",
     # additional features
     "anyhow",
     "tracing",

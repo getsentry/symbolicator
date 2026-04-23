@@ -58,8 +58,6 @@ pub async fn symbolicate_frames(
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     extract::Json(body): extract::Json<SymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let sources = match body.sources {
