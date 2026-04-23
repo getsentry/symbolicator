@@ -2896,9 +2896,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.7.5"
+version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "memmap2"
@@ -4846,9 +4846,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e832005e6261d508717815bac8e2c096161b33b713a032861b3a13ae4cd60ed"
+checksum = "67c7526b00fdc496287b9ff5cd97c172686ae56183c2ed605d0777d28638a318"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4862,9 +4862,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8d7ae026fdd9ac37fa77d956aabb60d8cc306bd4f5a38eafc28ad2a003e14cf"
+checksum = "49725178e1bbc274015f78346a29b9d6d7e0c25653bfaa9389f30dc5c58bc66d"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4873,9 +4873,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bbc8b4f883265fb2207a0d6ce67095f4bd6cf13e5f9183eb8b3e73fa1b2466a"
+checksum = "332615d90111d8eeaf86a84dc9bbe9f65d0d8c5cf11b4caccedc37754eb0dcfd"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4886,9 +4886,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e74486a57b6787aa1bfb15bf7c33860ca6a99e527f2f235bc5f56903e5eeb10"
+checksum = "a2e38e9396ca549244e6da7e3ccbe9bf7650afcdd6e32538f2dc0c77d17ce89b"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4897,6 +4897,7 @@ dependencies = [
  "flate2",
  "gimli 0.32.3",
  "goblin",
+ "memchr",
  "nom",
  "nom-supreme",
  "once_cell",
@@ -4918,9 +4919,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-demangle"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8eda470a26ea40eb5cafc35487718e23a2f19153d3a589affb9e8f7fa1aa73b3"
+checksum = "912017718eb4d21930546245af9a3475c9dccf15675a5c215664e76621afc471"
 dependencies = [
  "cc",
  "cpp_demangle",
@@ -4931,9 +4932,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f778868fd508fe3755a91ef86fccb03d7367d387d4740f00878580c15fd97b5b"
+checksum = "f5a3604a90acbad6e99286fa0cbe77eaed59a891de396f8c0b6675a4a51cadce"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4943,9 +4944,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3da362b081085011db092a89e975156a468529ae67eef17d8a157825e23ecce"
+checksum = "7df93324d740d1d12256b8ddcd69c6e37ceeb511f3a37cd063b596fd768756e0"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4959,9 +4960,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ab4163228ac397e485aa156ca5b36a13443c2423cb042ec00b01a6d4b5553ed"
+checksum = "8e93d15ea73608a4142b904c7781e012bc0e6efe71f2b587c7169291350948b6"
 dependencies = [
  "itertools 0.14.0",
  "js-source-scopes",
@@ -4974,9 +4975,9 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "12.18.2"
+version = "12.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fabe9ca4c65401e4031059c6149625ac759bda2e6595c32fd206147193ee106"
+checksum = "fc4211e63147427a554ebd4bb461cfdaf34f8860a230f2f9878fb3a766dae828"
 dependencies = [
  "indexmap",
  "symbolic-common",
