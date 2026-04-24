@@ -8,3 +8,4 @@ mod native;
 mod process_minidump;
 mod source_context;
 pub mod symbolicate;
+pub(crate) mod variables;

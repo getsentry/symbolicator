@@ -164,6 +164,7 @@ async fn main() -> Result<()> {
                     sources: dsym_sources,
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
+                    extract_variables: false,
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -604,6 +605,8 @@ mod event {
             // we manually reversed the frames when we created the stacktraces, so this is
             // "callee first"
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
+            memory_snapshot: None,
         })
     }
 
@@ -762,6 +765,7 @@ mod event {
             post_context: value.post_context,
             source_link: value.source_link,
             in_app: value.in_app,
+            vars: None,
             trust: value.trust,
         })
     }

@@ -115,7 +115,8 @@ pub struct ModuleLookup {
     original_first_debug_file: Option<String>,
 }
 
-type DebugSessions<'a> = HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a>)>>;
+pub(crate) type DebugSessions<'a> =
+    HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a>)>>;
 
 impl ModuleLookup {
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
@@ -389,6 +390,99 @@ impl ModuleLookup {
         }
     }
 
+    /// Fetches actual debug object files (dSYM, ELF debug, PDB) for modules referenced
+    /// by the `stacktraces`. This overwrites `source_object` with the full debug file,
+    /// which is needed for variable extraction (DWARF/PDB variable info is not in source bundles).
+    ///
+    /// Must be called **after** `apply_source_context` so that source context is already resolved.
+    #[tracing::instrument(skip_all)]
+    pub async fn fetch_debug_files(
+        &mut self,
+        objects: ObjectsActor,
+        stacktraces: &[CompleteStacktrace],
+    ) {
+        let mut referenced_objects = HashSet::new();
+        for stacktrace in stacktraces {
+            for frame in &stacktrace.frames {
+                if let Some(entry) =
+                    self.get_module_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                {
+                    referenced_objects.insert(entry.module_index);
+                }
+            }
+        }
+
+        tracing::debug!(
+            "Fetching debug files for variable extraction, {} referenced modules",
+            referenced_objects.len()
+        );
+
+        let futures = self
+            .modules
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                let is_used = referenced_objects.contains(&entry.module_index);
+                if !is_used {
+                    return None;
+                }
+
+                let object_type = entry.object_info.raw.ty;
+                let objects = objects.clone();
+                let identifier = object_id_from_object_info(&entry.object_info.raw);
+                tracing::debug!(
+                    "Requesting debug file for module {} (type: {:?}, id: {:?})",
+                    idx,
+                    object_type,
+                    identifier.debug_id,
+                );
+                let find_request = FindObject {
+                    filetypes: FileType::from_object_type(object_type),
+                    purpose: ObjectPurpose::Debug,
+                    identifier,
+                    sources: self.sources.clone(),
+                    scope: self.scope.clone(),
+                };
+
+                let fut = async move {
+                    let FindResult { meta, candidates } = objects.find(find_request).await;
+
+                    let debug_object = match meta {
+                        Some(meta) => match meta.handle {
+                            Ok(handle) => objects.fetch(handle).await,
+                            Err(err) => {
+                                tracing::warn!("Failed to fetch debug object for module {idx}: {err}");
+                                Err(err)
+                            }
+                        },
+                        None => {
+                            tracing::debug!("No debug object found for module {idx}");
+                            Err(CacheError::NotFound)
+                        }
+                    };
+
+                    (idx, debug_object, candidates)
+                };
+
+                Some(fut.bind_hub(Hub::new_from_top(Hub::current())))
+            });
+
+        for (idx, debug_object, candidates) in future::join_all(futures).await {
+            if let Some(entry) = self.modules.get_mut(idx) {
+                if debug_object.is_ok() {
+                    tracing::debug!(
+                        "Got debug object for module {}, overwriting source_object for variable extraction",
+                        idx
+                    );
+                }
+                // Overwrite source_object with the debug file so that
+                // prepare_debug_sessions() creates sessions with full DWARF/PDB info.
+                entry.source_object = debug_object;
+                entry.object_info.candidates.merge(&candidates);
+            }
+        }
+    }
+
     /// Look up the corresponding SymCache based on the instruction `addr`.
     pub fn lookup_cache(&self, addr: u64, addr_mode: AddrMode) -> Option<CacheLookupResult<'_>> {
         self.get_module_by_addr(addr, addr_mode).map(|entry| {
@@ -403,6 +497,22 @@ impl ModuleLookup {
                 relative_addr,
             }
         })
+    }
+
+    /// Returns the module index and relative address for the given instruction address.
+    ///
+    /// This is used by variable extraction to find the debug session for a frame.
+    pub(crate) fn get_module_addr(
+        &self,
+        addr: u64,
+        addr_mode: AddrMode,
+    ) -> Option<(usize, u64)> {
+        let entry = self.get_module_by_addr(addr, addr_mode)?;
+        let relative_addr = match addr_mode {
+            AddrMode::Abs => entry.object_info.abs_to_rel_addr(addr)?,
+            AddrMode::Rel(_) => addr,
+        };
+        Some((entry.module_index, relative_addr))
     }
 
     /// Creates a [`ObjectDebugSession`] for each module that has a

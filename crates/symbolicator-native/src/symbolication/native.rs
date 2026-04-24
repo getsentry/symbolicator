@@ -74,6 +74,7 @@ pub fn symbolicate_native_frame(
                     language => Some(language),
                 },
                 in_app: None,
+                vars: None,
                 trust: frame.trust,
             },
         });

@@ -90,6 +90,8 @@ pub fn prepare_payload(
                 modules,
                 rewrite_first_module: Default::default(),
                 frame_order: FrameOrder::CallerFirst,
+                extract_variables: false,
+                memory_snapshot: None,
             })
         }
         Payload::Js { source, event } => {
@@ -169,6 +171,7 @@ pub async fn process_payload(
                     sources: Arc::clone(sources),
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
+                    extract_variables: false,
                 })
                 .await
                 .unwrap();

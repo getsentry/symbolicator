@@ -87,6 +87,8 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
+            memory_snapshot: None,
         };
 
         let mut system_info = SystemInfo {

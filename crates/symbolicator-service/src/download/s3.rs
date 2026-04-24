@@ -26,7 +26,7 @@ type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 /// In practice this value does not matter for Symbolicator as the pre signed URL
 /// is immediately used. Even with very slow downloads lasting longer than
 /// this duration are fine.
-const PRE_SIGN_EXPIRY: Duration = Duration::from_mins(15);
+const PRE_SIGN_EXPIRY: Duration = Duration::from_secs(15 * 60);
 
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {

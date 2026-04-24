@@ -75,6 +75,7 @@ pub async fn symbolicate_any(
                 sources: body.sources,
                 scraping: body.scraping,
                 rewrite_first_module,
+                extract_variables: body.options.extract_variables,
             },
             body.options,
         )?,

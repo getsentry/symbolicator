@@ -7,7 +7,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use minidump::system_info::Os;
-use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
+use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo, MinidumpThreadList};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::ProcessState;
 use minidump_unwind::{
@@ -45,6 +45,10 @@ struct StackWalkMinidumpResult {
     stacktraces: Vec<RawStacktrace>,
     minidump_state: MinidumpState,
     duration: std::time::Duration,
+    /// Per-thread, per-frame register state for variable extraction.
+    /// Outer vec = threads (matching `stacktraces`), inner vec = frames.
+    #[serde(skip)]
+    frame_registers: Vec<Vec<HashMap<String, u64>>>,
 }
 
 /// Contains some meta-data about a minidump.
@@ -487,11 +491,27 @@ async fn stackwalk(
     let requesting_thread_index: Option<usize> = process_state.requesting_thread;
     let threads = process_state.threads;
     let mut stacktraces = Vec::with_capacity(threads.len());
+    let mut all_frame_registers: Vec<Vec<HashMap<String, u64>>> = Vec::with_capacity(threads.len());
     for (index, thread) in threads.into_iter().enumerate() {
         let registers = match thread.frames.first() {
             Some(frame) => map_symbolic_registers(&frame.context),
             None => Registers::new(),
         };
+
+        // Collect per-frame register state for variable extraction.
+        let per_frame_regs: Vec<HashMap<String, u64>> = thread
+            .frames
+            .iter()
+            .take(256)
+            .map(|frame| {
+                frame
+                    .context
+                    .valid_registers()
+                    .map(|(name, val)| (name.to_owned(), val))
+                    .collect()
+            })
+            .collect();
+        all_frame_registers.push(per_frame_regs);
 
         // We trim stack traces to 256 frames from the top. A similar limit is also in place in
         // relay / store normalization, so any excess frames will be thrown away by Sentry anyway.
@@ -573,6 +593,7 @@ async fn stackwalk(
         stacktraces,
         minidump_state,
         duration,
+        frame_registers: all_frame_registers,
     })
 }
 
@@ -610,6 +631,7 @@ impl SymbolicationActor {
             sources,
             scraping,
             rewrite_first_module,
+            extract_variables,
         } = request;
         let minidump_file = download_attachment(&self.download_svc, minidump_file).await?;
         let len = minidump_file.metadata()?.len();
@@ -624,6 +646,7 @@ impl SymbolicationActor {
             mut stacktraces,
             minidump_state,
             duration,
+            frame_registers,
         } = stackwalk(
             self.cficaches.clone(),
             self.symcaches.clone(),
@@ -635,6 +658,17 @@ impl SymbolicationActor {
         .await?;
 
         metric!(timer("minidump.stackwalk.duration") = duration);
+
+        // Extract memory snapshot for variable extraction while minidump is still alive.
+        let memory_snapshot = if extract_variables {
+            Some(extract_memory_snapshot(
+                &minidump,
+                frame_registers,
+                minidump_state.system_info.cpu_arch,
+            ))
+        } else {
+            None
+        };
 
         match parse_stacktraces_from_minidump(&minidump) {
             Ok(Some(client_stacktraces)) => {
@@ -656,6 +690,8 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables,
+            memory_snapshot,
         };
 
         Ok((request, minidump_state))
@@ -711,6 +747,72 @@ fn normalize_minidump_os_name(os: Os) -> &'static str {
         Os::Ps3 => "PS3",
         Os::NaCl => "NaCl",
         Os::Unknown(_) => "",
+    }
+}
+
+/// Extract memory regions and register state from a minidump for variable extraction.
+fn extract_memory_snapshot(
+    minidump: &Minidump,
+    frame_registers: Vec<Vec<HashMap<String, u64>>>,
+    arch: Arch,
+) -> super::variables::MinidumpMemorySnapshot {
+    use super::variables::{MemoryRegion, MinidumpMemorySnapshot};
+
+    let mut regions = Vec::new();
+
+    // 1. Extract thread stack memory from the thread list.
+    //    Thread stacks are the primary source of local variable data — they contain
+    //    the stack frames where SP-relative variables live.
+    let memory_list = minidump.get_memory();
+    if let Ok(thread_list) = minidump.get_stream::<MinidumpThreadList>() {
+        if let Some(ref mem) = memory_list {
+            for thread in &thread_list.threads {
+                if let Some(stack) = thread.stack_memory(mem) {
+                    let base = stack.base_address();
+                    let bytes = stack.bytes();
+                    if !bytes.is_empty() && bytes.len() <= 2 * 1024 * 1024 {
+                        tracing::debug!(
+                            "Extracted thread stack: base=0x{:x}, size={}",
+                            base,
+                            bytes.len(),
+                        );
+                        regions.push(MemoryRegion {
+                            start_addr: base,
+                            data: bytes.to_vec(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Also include standalone memory regions from the memory list.
+    //    These may contain heap data or other mapped memory.
+    if let Some(ref memory_list) = memory_list {
+        for region in memory_list.iter() {
+            let base = region.base_address();
+            let bytes = region.bytes();
+            // Skip if already added from thread stacks, and limit to 1MB.
+            let already_have = regions.iter().any(|r| r.start_addr == base);
+            if !already_have && !bytes.is_empty() && bytes.len() <= 1024 * 1024 {
+                regions.push(MemoryRegion {
+                    start_addr: base,
+                    data: bytes.to_vec(),
+                });
+            }
+        }
+    }
+
+    tracing::debug!(
+        "Memory snapshot: {} total regions, total size: {} bytes",
+        regions.len(),
+        regions.iter().map(|r| r.data.len()).sum::<usize>(),
+    );
+
+    MinidumpMemorySnapshot {
+        regions,
+        thread_frame_registers: frame_registers,
+        arch,
     }
 }
 

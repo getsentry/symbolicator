@@ -66,6 +66,11 @@ pub struct SymbolicateStacktraces {
     pub rewrite_first_module: RewriteRules,
     /// The order of frames within stacktraces (innermost frame first or last).
     pub frame_order: FrameOrder,
+    /// Whether to extract local variable info from debug data.
+    pub extract_variables: bool,
+    /// Captured minidump memory + per-frame registers for variable value extraction.
+    /// Only populated for minidump processing when `extract_variables` is true.
+    pub memory_snapshot: Option<super::symbolication::variables::MinidumpMemorySnapshot>,
 }
 
 /// Location of an attachment file, such as a minidump.
@@ -98,6 +103,8 @@ pub struct ProcessMinidump {
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
+    /// Whether to extract local variable info from debug data.
+    pub extract_variables: bool,
 }
 
 /// The symbolicated crash data.
@@ -331,6 +338,10 @@ pub struct RawFrame {
     /// Whether the frame is related to app-code (rather than libraries/dependencies).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_app: Option<bool>,
+
+    /// Local variable values at this frame, extracted from minidump memory + debug info.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vars: Option<serde_json::Value>,
 
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]

@@ -138,6 +138,9 @@ pub struct RequestOptions {
 
     /// The order in which stack frames are received by Symbolicator and returned to the caller.
     pub frame_order: FrameOrder,
+
+    /// Whether to extract local variable info from debug data.
+    pub extract_variables: bool,
 }
 
 impl Default for RequestOptions {
@@ -146,6 +149,7 @@ impl Default for RequestOptions {
             dif_candidates: false,
             apply_source_context: true,
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
         }
     }
 }
@@ -634,6 +638,8 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
+            memory_snapshot: None,
         };
 
         let request_id = service
@@ -678,6 +684,8 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
+            memory_snapshot: None,
         }
     }
 

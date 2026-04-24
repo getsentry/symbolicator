@@ -82,6 +82,7 @@ pub async fn handle_minidump_request(
             sources,
             scraping,
             rewrite_first_module,
+            extract_variables: options.extract_variables,
         },
         options,
     )?;
