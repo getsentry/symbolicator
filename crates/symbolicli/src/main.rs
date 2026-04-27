@@ -29,6 +29,7 @@ use tracing_subscriber::prelude::*;
 use crate::output::CompletedResponse;
 
 mod event;
+mod js_local_source;
 mod output;
 mod settings;
 

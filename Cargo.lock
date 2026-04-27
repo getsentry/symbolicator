@@ -5038,6 +5038,8 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
+ "walkdir",
+ "zip 5.1.0",
 ]
 
 [[package]]
