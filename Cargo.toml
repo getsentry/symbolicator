@@ -35,7 +35,7 @@ codegen-units = 256
 
 [patch.crates-io]
 # This patch adds an `ip_filter` able to filter out internal IP addresses in DNS resolution
-reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/update-restricted-connector" }
+reqwest = { git = "https://github.com/getsentry/reqwest", branch = "restricted-connector" }
 
 # This patch adds limited "templated lambdas" demangling support
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches" }
@@ -104,7 +104,7 @@ proguard = "5.10.3"
 rand = "0.9.4"
 rayon = "1.10.0"
 regex = "1.5.5"
-reqwest = "0.12.15"
+reqwest = {version = "0.13.3", features = [ "blocking", "form" ] }
 rustls = { version = "0.23.31", features = ["ring"] }
 sentry = { version = "0.42.0", default-features = false, features = [
     # default features, except `release-health` is disabled
