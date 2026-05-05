@@ -697,9 +697,12 @@ impl<'a> SymRequest<'a> {
         let header = reqwest::header::HeaderValue::from_str(&range.to_string())
             .expect("the range header to be a always valid");
 
-        self.request
-            .headers_mut()
-            .insert(reqwest::header::RANGE, header);
+        let headers = self.request.headers_mut();
+        headers.insert(reqwest::header::RANGE, header);
+        headers.insert(
+            reqwest::header::ACCEPT_ENCODING,
+            reqwest::header::HeaderValue::from_static("identity"),
+        );
 
         self
     }
