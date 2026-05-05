@@ -113,8 +113,16 @@ impl FetchFileMetaRequest {
 
         // Extract SRCSRV VCS name for PDB files and convert to enum
         let srcsrv_vcs = if let symbolic::debuginfo::Object::Pdb(pdb) = object {
-            pdb.srcsrv_vcs_name()
-                .map(|vcs_name| SrcSrvVcs::from_vcs_name(&vcs_name))
+            pdb.debug_session()
+                .inspect_err(|err| {
+                    tracing::error!(?err, "Failed to open pdb debug session");
+                })
+                .ok()
+                .and_then(|session| {
+                    session
+                        .srcsrv_vcs_name()
+                        .map(|vcs_name| SrcSrvVcs::from_vcs_name(&vcs_name))
+                })
         } else {
             None
         };
