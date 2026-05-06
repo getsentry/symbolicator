@@ -19,12 +19,12 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
+    // TODO: maybe its worth using the actual `DownloadService` instead of straight going to the `trusted_client`.
+    // Doing so would in theory allow us to have retries and error report, as well as being able to
+    // download files in multiple chunks concurrently, but I don’t think our `objecstore` server currently
+    // supports range requests, and those would also mess with streaming decompression.
+    // Not to mention that using the `DownloadService` is not that straight forward.
     download::retry(|| async {
-        // TODO: maybe its worth using the actual `DownloadService` instead of straight going to the `trusted_client`.
-        // Doing so would in theory allow us to have retries and error report, as well as being able to
-        // download files in multiple chunks concurrently, but I don’t think our `objecstore` server currently
-        // supports range requests, and those would also mess with streaming decompression.
-        // Not to mention that using the `DownloadService` is not that straight forward.
         let mut request = download_svc.trusted_client.get(&storage_url);
         if let Some(token) = storage_token.as_ref() {
             request = request.bearer_auth(token);
