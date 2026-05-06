@@ -1,12 +1,46 @@
 # Changelog
 
-## Unreleased
+## 26.4.2
+
+### New Features ✨
+
+- Enable source server support in symcaches by @loewenheim in [#1943](https://github.com/getsentry/symbolicator/pull/1943)
+
+### Bug Fixes 🐛
+
+- (download) Force identity encoding on range requests by @Dav1dde in [#1944](https://github.com/getsentry/symbolicator/pull/1944)
+- (proguard) Remap root-package exception classes by @romtsn in [#1933](https://github.com/getsentry/symbolicator/pull/1933)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump time from 0.3.43 to 0.3.47 by @dependabot in [#1938](https://github.com/getsentry/symbolicator/pull/1938)
+- Bump proguard to 5.10.3 by @romtsn in [#1937](https://github.com/getsentry/symbolicator/pull/1937)
+- Bump symbolic to 12.8.3 for more lenient JS magic comments by @Dav1dde in [#1936](https://github.com/getsentry/symbolicator/pull/1936)
+- Bump openssl from 0.10.73 to 0.10.78 by @dependabot in [#1935](https://github.com/getsentry/symbolicator/pull/1935)
+
+#### Other
+
+- (sentry) Remove release health integration by @Dav1dde in [#1934](https://github.com/getsentry/symbolicator/pull/1934)
+
+### Other
+
+- dep: Update reqwest fork by @loewenheim in [#1942](https://github.com/getsentry/symbolicator/pull/1942)
+
+## 26.4.1
+
+- fix(js): Improve scope name resolution by @loewenheim in [#1929](https://github.com/getsentry/symbolicator/pull/1929)
+
+## 26.4.0
 
 ### Bug Fixes
 
 - fix(stackwalking): Use debug info to inform scanning by @loewenheim in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+- fix(apple): Rewind objectstore downloads so they are parsed properly by @jjbayer in [#1924](https://github.com/getsentry/symbolicator/pull/1924)
 
 ### Deps
+
 - Bump Native SDK from 0.11.2 to 0.13.5 by @loewenheim in [#1917](https://github.com/getsentry/symbolicator/pull/1917)
   - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0135)
   - [diff](https://github.com/getsentry/sentry-native/compare/0.11.2...0.13.5)

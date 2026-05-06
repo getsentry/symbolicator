@@ -20,7 +20,6 @@ use anyhow::Result;
 use futures::future;
 use futures::{FutureExt as _, channel::oneshot};
 use sentry::SentryFutureExt;
-use sentry::protocol::SessionStatus;
 use serde::{Deserialize, Deserializer, Serialize};
 use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
@@ -432,12 +431,8 @@ impl RequestService {
             .unwrap()
             .insert(request_id, receiver.shared());
         current_requests.fetch_add(1, Ordering::Relaxed);
-        let drop_hub = hub.clone();
         let token = CallOnDrop::new(move || {
             requests.lock().unwrap().remove(&request_id);
-            // we consider every premature drop of the future as fatal crash, which works fine
-            // since ending a session consumes it and its not possible to double-end.
-            drop_hub.end_session_with_status(SessionStatus::Crashed);
         });
 
         let spawn_time = Instant::now();
@@ -469,7 +464,6 @@ impl RequestService {
                     {
                         clear_dif_candidates(res)
                     }
-                    sentry::end_session_with_status(SessionStatus::Exited);
                     SymbolicationResponse::Completed(Box::new(response))
                 }
                 Ok(Err(err)) => {
@@ -481,15 +475,12 @@ impl RequestService {
                     let error: &dyn std::error::Error = err.as_ref();
                     tracing::warn!(error, "Symbolication failed");
 
-                    sentry::end_session_with_status(SessionStatus::Crashed);
                     SymbolicationResponse::Failed {
                         message: err.to_string(),
                     }
                 }
                 Err(_) => {
                     tracing::error!("Symbolication timed out after {timeout:?}");
-                    // a timeout is an abnormal session exit, all other errors are considered "crashed"
-                    sentry::end_session_with_status(SessionStatus::Abnormal);
                     SymbolicationResponse::Timeout
                 }
             };

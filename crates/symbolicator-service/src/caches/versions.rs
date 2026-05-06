@@ -109,6 +109,8 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 
 /// SymCache, with the following versions:
 ///
+/// - `12`: Updates the symcache format to V9, which has support for source server information (<https://github.com/getsentry/symbolic/pull/943>)
+///
 /// - `11`: Fixes symcache generations for DWARF files with unusual tombstone addresses (<https://github.com/getsentry/symbolic/pull/937>)
 ///
 /// - `10`: Fixes symcache generation for functions with no lines (<https://github.com/getsentry/symbolic/pull/930>)
@@ -141,8 +143,9 @@ static_assert!(symbolic::cfi::CFICACHE_LATEST_VERSION == 2);
 ///
 /// - `0`: Initial version.
 pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(11, CachePathFormat::V2),
+    current: CacheVersion::new(12, CachePathFormat::V2),
     fallbacks: &[
+        CacheVersion::new(11, CachePathFormat::V2),
         CacheVersion::new(10, CachePathFormat::V2),
         CacheVersion::new(9, CachePathFormat::V2),
         CacheVersion::new(8, CachePathFormat::V2),
@@ -160,9 +163,10 @@ pub const SYMCACHE_VERSIONS: CacheVersions = CacheVersions {
         CacheVersion::new(8, CachePathFormat::V2),
         CacheVersion::new(9, CachePathFormat::V2),
         CacheVersion::new(10, CachePathFormat::V2),
+        CacheVersion::new(11, CachePathFormat::V2),
     ],
 };
-static_assert!(symbolic::symcache::SYMCACHE_VERSION == 8);
+static_assert!(symbolic::symcache::SYMCACHE_VERSION == 9);
 
 /// Data / Objects cache, with the following versions:
 ///
@@ -214,13 +218,23 @@ pub const PPDB_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// SourceMapCache, with the following versions:
 ///
+/// - `3`: Improved name resolution during cache generation. See
+///   <https://github.com/getsentry/js-source-scopes/pull/35> and
+///   <https://github.com/getsentry/symbolic/pull/970>.
+///
 /// - `2`: Restructuring the cache directory format.
 ///
 /// - `1`: Initial version.
 pub const SOURCEMAP_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(2, CachePathFormat::V2),
-    fallbacks: &[CacheVersion::new(1, CachePathFormat::V1)],
-    previous: &[CacheVersion::new(1, CachePathFormat::V1)],
+    current: CacheVersion::new(3, CachePathFormat::V2),
+    fallbacks: &[
+        CacheVersion::new(2, CachePathFormat::V2),
+        CacheVersion::new(1, CachePathFormat::V1),
+    ],
+    previous: &[
+        CacheVersion::new(1, CachePathFormat::V1),
+        CacheVersion::new(2, CachePathFormat::V2),
+    ],
 };
 
 /// Il2cpp cache, with the following versions:
@@ -273,6 +287,9 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 
 /// Proguard Cache, with the following versions:
 ///
+/// - `7`: Caches now support Compose
+///   mappings with two-space indentation.
+///
 /// - `6`: Information about whether a method has rewrite rules is now part
 ///   of the cache format.
 ///
@@ -288,14 +305,15 @@ pub const BUNDLE_INDEX_CACHE_VERSIONS: CacheVersions = CacheVersions {
 ///
 /// - `1`: Initial version.
 pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
-    current: CacheVersion::new(6, CachePathFormat::V2),
-    fallbacks: &[],
+    current: CacheVersion::new(7, CachePathFormat::V2),
+    fallbacks: &[CacheVersion::new(6, CachePathFormat::V2)],
     previous: &[
         CacheVersion::new(1, CachePathFormat::V1),
         CacheVersion::new(2, CachePathFormat::V1),
         CacheVersion::new(3, CachePathFormat::V2),
         CacheVersion::new(4, CachePathFormat::V2),
         CacheVersion::new(5, CachePathFormat::V2),
+        CacheVersion::new(6, CachePathFormat::V2),
     ],
 };
 static_assert!(proguard::PRGCACHE_VERSION == 4);

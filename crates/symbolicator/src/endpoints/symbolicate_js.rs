@@ -63,8 +63,6 @@ pub async fn handle_symbolication_request(
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     extract::Json(body): extract::Json<JsSymbolicationRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let JsSymbolicationRequestBody {

@@ -603,3 +603,57 @@ async fn test_no_line_info_mapping() {
 
     assert_snapshot!(response);
 }
+
+#[tokio::test]
+async fn test_compose_stacktrace_group_keys() {
+    symbolicator_test::setup();
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = proguard_server("compose_stacktrace_group_keys", |_url, _query| {
+        json!([{
+            "id":"proguard.txt",
+            "uuid":"246fb328-fc4e-406a-87ff-fc35f6149d8f",
+            "debugId":"246fb328-fc4e-406a-87ff-fc35f6149d8f",
+            "codeId":null,
+            "cpuName":"any",
+            "objectName":"proguard-mapping",
+            "symbolType":"proguard",
+            "headers": {
+                "Content-Type":"text/x-proguard+plain"
+            },
+            "size":1000,
+            "sha1":"0000000000000000000000000000000000000000",
+            "dateCreated":"2024-02-14T10:49:38.770116Z",
+            "data":{
+                "features":["mapping"]
+            }
+        }])
+    });
+
+    let source = SourceConfig::Sentry(Arc::new(source));
+
+    let frames = r#"[{
+        "function": "m$1125598679",
+        "module": "$$compose",
+        "filename": "SourceFile",
+        "lineno": 1,
+        "index": 0
+    }, {
+        "function": "m$1125708605",
+        "module": "$$compose",
+        "filename": "SourceFile",
+        "lineno": 1,
+        "index": 1
+    }]"#;
+
+    let request = make_jvm_request(
+        source,
+        r#"{"type": "DiagnosticComposeException", "module": "androidx.compose.runtime.tooling"}"#,
+        frames,
+        r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
+        None,
+    );
+
+    let response = symbolication.symbolicate_jvm(request).await;
+
+    assert_snapshot!(response);
+}
