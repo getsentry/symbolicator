@@ -29,7 +29,14 @@ pub async fn download_attachment(
         if let Some(token) = storage_token.as_ref() {
             request = request.bearer_auth(token);
         }
-        let mut stream = request.send().await?.error_for_status()?.bytes_stream();
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(
+                download::GenericErrorHandler::handle_response(&storage_url, response).await,
+            );
+        }
+
+        let mut stream = response.bytes_stream();
 
         let file = tempfile::tempfile()?;
         let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
