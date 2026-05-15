@@ -1,6 +1,6 @@
 [package]
 name = "symbolicli"
-version = "26.4.2"
+version = "26.5.0"
 edition = "2024"
 authors = ["Sentry <hello@getsentry.com>"]
 license-file = "../../LICENSE.md"
