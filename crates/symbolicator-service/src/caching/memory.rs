@@ -491,6 +491,22 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
+    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
+        let name = self.config.name();
+        metric!(counter("caches.access") += 1, "cache" => name.as_str());
+
+        let entry = self
+            .cache
+            .entry_by_ref(&cache_key)
+            .or_insert_with(Box::pin(self.lookup_or_compute(request, &cache_key)))
+            .await;
+
+        if !entry.is_fresh() {
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_str());
+        }
+        entry.into_value().data
+    }
+
     /// Persists a pre-computed [`NamedTempFile`] directly into the on-disk cache for the given
     /// `cache_key`, bypassing the normal [`CacheItemRequest::compute`] flow.
     ///
@@ -522,22 +538,6 @@ impl<T: CacheItemRequest> Cacher<T> {
         }
 
         Ok(())
-    }
-
-    pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
-        let name = self.config.name();
-        metric!(counter("caches.access") += 1, "cache" => name.as_str());
-
-        let entry = self
-            .cache
-            .entry_by_ref(&cache_key)
-            .or_insert_with(Box::pin(self.lookup_or_compute(request, &cache_key)))
-            .await;
-
-        if !entry.is_fresh() {
-            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_str());
-        }
-        entry.into_value().data
     }
 
     /// Looks a cache entry up or computes it.

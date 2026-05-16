@@ -170,7 +170,7 @@ impl ObjectsActor {
     ///
     /// Resolution order:
     ///
-    /// 1. If [`Self::compressed_proxy`] is `false`, returns [`CacheError::NotFound`].
+    /// 1. If the `compressed_proxy` feature is disabled, returns [`CacheError::NotFound`].
     /// 2. Otherwise, ensures the underlying object has been downloaded (which populates the
     ///    `raw_compressed` cache as a side effect when the upstream payload was compressed).
     /// 3. Looks up the `raw_compressed` mirror; on hit, returns those bytes byte-identically.

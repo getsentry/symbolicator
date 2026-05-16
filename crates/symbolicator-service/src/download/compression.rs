@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 
 /// The compression format that was detected on a downloaded file.
 ///
-/// Returned by [`maybe_decompress_file`] so callers know whether (and how) the
+/// Returned by `maybe_decompress_file` so callers know whether (and how) the
 /// original bytes were compressed before decompression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CompressionKind {
@@ -17,7 +17,7 @@ pub enum CompressionKind {
     Cab,
 }
 
-/// Outcome of a [`maybe_decompress_file`] call.
+/// Outcome of a `maybe_decompress_file` call.
 #[derive(Debug, Default)]
 pub struct DecompressOutcome {
     /// The detected compression kind, or `None` if the file was already uncompressed.
