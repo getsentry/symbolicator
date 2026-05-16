@@ -318,6 +318,28 @@ pub const PROGUARD_CACHE_VERSIONS: CacheVersions = CacheVersions {
 };
 static_assert!(proguard::PRGCACHE_VERSION == 4);
 
+/// Raw-compressed object mirror, with the following versions:
+///
+/// - `1`: Initial version. Stores upstream-compressed bytes (CAB / gzip / zstd / zlib / zip)
+///   tee'd during download, used to serve `.pd_` / `.dl_` / `.ex_` byte-identical responses
+///   on the proxy endpoint.
+pub const RAW_COMPRESSED_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: CacheVersion::new(1, CachePathFormat::V2),
+    fallbacks: &[],
+    previous: &[],
+};
+
+/// Synthesized CAB cache, with the following versions:
+///
+/// - `1`: Initial version. CAB (MSZIP) envelopes built on demand from decompressed objects
+///   when no upstream raw-compressed copy is available, used as fallback for `.pd_`/`.dl_`
+///   /`.ex_` proxy responses.
+pub const CAB_SYNTH_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: CacheVersion::new(1, CachePathFormat::V2),
+    fallbacks: &[],
+    previous: &[],
+};
+
 /// Symstore index cache, with the following versions:
 ///
 /// - `1`: Initial version.

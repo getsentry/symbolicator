@@ -20,12 +20,13 @@ use symbolic::debuginfo::{Archive, Object};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
-use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey};
-use crate::download::{DownloadService, fetch_file, tempfile_in_parent};
+use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher};
+use crate::download::{DownloadService, fetch_file_with_raw_sink, tempfile_in_parent};
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
+use super::raw_compressed_cache::{RawCompressedRequest, raw_compressed_cache_key};
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
@@ -110,22 +111,49 @@ impl fmt::Display for ObjectHandle {
 /// debug ID of our request is extracted first.  Finally the object is parsed with
 /// symbolic to ensure it is not malformed.
 ///
+/// When `raw_compressed_cache` is provided (compressed-proxy mode), the upstream
+/// payload -- if it was actually compressed -- is tee'd into the raw-compressed mirror so
+/// the `/proxy` endpoint can later serve `.pd_` / `.dl_` / `.ex_` byte-identically.
+///
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
 /// code.
-#[tracing::instrument(skip(downloader, temp_file), fields(object_id, %file_id))]
+#[tracing::instrument(
+    skip(downloader, temp_file, scope, raw_compressed_cache),
+    fields(object_id, %file_id),
+)]
 async fn fetch_object_file(
     object_id: &ObjectId,
     file_id: RemoteFile,
     downloader: Arc<DownloadService>,
     temp_file: &mut NamedTempFile,
+    scope: &Scope,
+    raw_compressed_cache: Option<Arc<Cacher<RawCompressedRequest>>>,
 ) -> CacheContents {
     sentry::configure_scope(|scope| {
         file_id.to_scope(scope);
         object_id.to_scope(scope);
     });
 
-    fetch_file(downloader, file_id, temp_file).await?;
+    // The sink is allocated lazily inside `maybe_decompress_file` only when a compressed
+    // magic is actually detected -- see `compression::allocate_raw_sink`.
+    let want_raw_sink = raw_compressed_cache.is_some();
+    let outcome =
+        fetch_file_with_raw_sink(downloader, file_id.clone(), temp_file, want_raw_sink).await?;
+
+    // If the upstream payload was compressed, persist the tee'd raw bytes into the mirror
+    // cache so subsequent `.pd_` / `.dl_` / `.ex_` proxy requests can be answered
+    // byte-identically.
+    if let (Some(cache), Some(sink)) = (raw_compressed_cache, outcome.raw_sink) {
+        let key = raw_compressed_cache_key(scope, &file_id);
+        if let Err(e) = cache.store_externally(&key, sink) {
+            tracing::warn!(
+                error = &e as &dyn std::error::Error,
+                "failed to persist raw-compressed mirror entry; proxy will fall back to CAB synthesis",
+            );
+        }
+    }
+
 
     // Since objects in Sentry (and potentially also other sources) might be
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
@@ -209,6 +237,8 @@ impl CacheItemRequest for FetchFileDataRequest {
             self.0.file_source.clone(),
             self.0.download_svc.clone(),
             temp_file,
+            &self.0.scope,
+            self.0.raw_compressed_cache.clone(),
         ))
     }
 
@@ -280,6 +310,24 @@ mod tests {
         )
         .unwrap();
 
+        let raw_compressed_cache = Cache::from_config(
+            CacheName::RawCompressed,
+            &config,
+            CacheConfig::from(CacheConfigs::default().downloaded),
+            Default::default(),
+            1024,
+        )
+        .unwrap();
+
+        let cab_synth_cache = Cache::from_config(
+            CacheName::CabSynth,
+            &config,
+            CacheConfig::from(CacheConfigs::default().derived),
+            Default::default(),
+            1024,
+        )
+        .unwrap();
+
         let source_index_cache = Cache::from_config(
             CacheName::SourceIndex,
             &config,
@@ -299,6 +347,9 @@ mod tests {
         ObjectsActor::new(
             meta_cache,
             data_cache,
+            raw_compressed_cache,
+            cab_synth_cache,
+            false,
             Default::default(),
             download_svc,
             source_index_svc,

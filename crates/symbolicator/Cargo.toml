@@ -40,6 +40,7 @@ uuid = { workspace = true }
 reqwest = { workspace = true }
 
 [dev-dependencies]
+cab = { workspace = true }
 insta = { workspace = true }
 reqwest = { workspace = true, features = ["multipart"] }
 symbolicator-test = { workspace = true }

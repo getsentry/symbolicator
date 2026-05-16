@@ -4,22 +4,43 @@ use std::sync::Arc;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
+use symbolic::common::ByteView;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
-use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
+use crate::caching::{Cache, CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher, SharedCacheRef};
 use crate::download::{self, DownloadService, SourceIndexService};
 use crate::types::Scope;
 
+mod cab_synth_cache;
 mod candidates;
 mod data_cache;
 mod meta_cache;
+mod raw_compressed_cache;
 
+use cab_synth_cache::{CabSynthRequest, cab_synth_cache_key};
 use data_cache::FetchFileDataRequest;
 use meta_cache::FetchFileMetaRequest;
+use raw_compressed_cache::{RawCompressedRequest, raw_compressed_cache_key};
 
 pub use candidates::*;
 pub use data_cache::ObjectHandle;
 pub use meta_cache::ObjectMetaHandle;
+
+/// Builds a [`CacheKeyBuilder`] scoped to `(scope, file_source)` with a trailing
+/// `discriminator` line, used to namespace per-role caches that share an underlying
+/// `RemoteFile` identity with the primary `objects` cache (raw-compressed mirror,
+/// synthesized CAB envelopes, etc.).
+fn role_scoped_cache_key(
+    scope: &Scope,
+    file_source: &RemoteFile,
+    discriminator: &str,
+) -> CacheKeyBuilder {
+    use std::fmt::Write as _;
+    let mut builder = CacheKey::scoped_builder(scope);
+    builder.write_file_meta(file_source).unwrap();
+    builder.write_str(discriminator).unwrap();
+    builder
+}
 
 /// Wrapper around [`CacheError`] to also pass the file information along.
 ///
@@ -83,14 +104,28 @@ pub struct ObjectsActor {
     // appropriate at some point.
     meta_cache: Arc<Cacher<FetchFileMetaRequest>>,
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
+    /// Mirror of the upstream-compressed payload tee'd during downloads. Populated as a side
+    /// effect of `data_cache` compute when `compressed_proxy` is on; used by the proxy to
+    /// serve `.pd_`/`.dl_`/`.ex_` byte-identically.
+    raw_compressed_cache: Arc<Cacher<RawCompressedRequest>>,
+    /// On-demand CAB (MSZIP) envelopes built from the decompressed object. Fallback for the
+    /// compressed-proxy mode when no upstream raw copy is available.
+    cab_synth_cache: Arc<Cacher<CabSynthRequest>>,
+    /// Whether the compressed-proxy feature is enabled. Gates raw-bytes tee'ing during
+    /// downloads and the proxy's compressed lookup path.
+    compressed_proxy: bool,
     download_svc: Arc<DownloadService>,
     source_index_svc: Arc<SourceIndexService>,
 }
 
 impl ObjectsActor {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         meta_cache: Cache,
         data_cache: Cache,
+        raw_compressed_cache: Cache,
+        cab_synth_cache: Cache,
+        compressed_proxy: bool,
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
         source_index_svc: Arc<SourceIndexService>,
@@ -98,6 +133,12 @@ impl ObjectsActor {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
             data_cache: Arc::new(Cacher::new(data_cache, Arc::clone(&shared_cache))),
+            raw_compressed_cache: Arc::new(Cacher::new(
+                raw_compressed_cache,
+                Arc::clone(&shared_cache),
+            )),
+            cab_synth_cache: Arc::new(Cacher::new(cab_synth_cache, Arc::clone(&shared_cache))),
+            compressed_proxy,
             download_svc,
             source_index_svc,
         }
@@ -113,18 +154,101 @@ impl ObjectsActor {
         file_handle: Arc<ObjectMetaHandle>,
     ) -> CacheContents<Arc<ObjectHandle>> {
         let cache_key = CacheKey::from_scoped_file(&file_handle.scope, &file_handle.file_source);
-        let request = FetchFileDataRequest(FetchFileMetaRequest {
-            scope: file_handle.scope.clone(),
-            file_source: file_handle.file_source.clone(),
-            object_id: file_handle.object_id.clone(),
-            data_cache: self.data_cache.clone(),
-            download_svc: self.download_svc.clone(),
-        });
+        let request = FetchFileDataRequest(self.make_meta_request(
+            file_handle.scope.clone(),
+            file_handle.file_source.clone(),
+            file_handle.object_id.clone(),
+        ));
 
         self.data_cache
             .compute_memoized(request, cache_key)
             .await
             .into_contents()
+    }
+
+    /// Returns a compressed (CAB-wrapped) form of the requested object file.
+    ///
+    /// Resolution order:
+    ///
+    /// 1. If [`Self::compressed_proxy`] is `false`, returns [`CacheError::NotFound`].
+    /// 2. Otherwise, ensures the underlying object has been downloaded (which populates the
+    ///    `raw_compressed` cache as a side effect when the upstream payload was compressed).
+    /// 3. Looks up the `raw_compressed` mirror; on hit, returns those bytes byte-identically.
+    /// 4. On miss, falls back to synthesizing a CAB envelope around the cached decompressed
+    ///    object, caching it under `cab_synth` for subsequent requests.
+    ///
+    /// `inner_filename` is what tools extracting the CAB will see (must be the
+    /// uncompressed name like `foo.pdb`).
+    #[tracing::instrument(skip_all, fields(file_source = ?file_handle.file_source, inner_filename))]
+    pub async fn fetch_compressed(
+        &self,
+        file_handle: Arc<ObjectMetaHandle>,
+        inner_filename: &str,
+    ) -> CacheContents<ByteView<'static>> {
+        if !self.compressed_proxy {
+            return Err(CacheError::NotFound);
+        }
+
+        // Ensure the underlying object has been fetched so that, if the source delivered a
+        // compressed payload, it has been tee'd into the raw_compressed cache. Errors here
+        // propagate so callers see the same NotFound the regular proxy path would return.
+        self.fetch(file_handle.clone()).await?;
+
+        // Try the upstream-bytes mirror first (cheap + byte-identical).
+        let raw_key = raw_compressed_cache_key(&file_handle.scope, &file_handle.file_source);
+        match self
+            .raw_compressed_cache
+            .compute_memoized(RawCompressedRequest, raw_key)
+            .await
+            .into_contents()
+        {
+            Ok(bytes) => return Ok(bytes),
+            Err(CacheError::NotFound) => {
+                // fall through to CAB synthesis
+            }
+            Err(other) => return Err(other),
+        }
+
+        // Fallback: synthesize a CAB envelope from the decompressed object.
+        let synth_key = cab_synth_cache_key(
+            &file_handle.scope,
+            &file_handle.file_source,
+            inner_filename,
+        );
+        let synth_request = CabSynthRequest {
+            scope: file_handle.scope.clone(),
+            file_source: file_handle.file_source.clone(),
+            object_id: file_handle.object_id.clone(),
+            inner_filename: inner_filename.to_owned(),
+            data_cache: self.data_cache.clone(),
+            download_svc: self.download_svc.clone(),
+        };
+        self.cab_synth_cache
+            .compute_memoized(synth_request, synth_key)
+            .await
+            .into_contents()
+    }
+
+    /// Builds a [`FetchFileMetaRequest`] with this actor's shared state plumbed in.
+    fn make_meta_request(
+        &self,
+        scope: Scope,
+        file_source: RemoteFile,
+        object_id: ObjectId,
+    ) -> FetchFileMetaRequest {
+        let raw_compressed_cache = if self.compressed_proxy {
+            Some(self.raw_compressed_cache.clone())
+        } else {
+            None
+        };
+        FetchFileMetaRequest {
+            scope,
+            file_source,
+            object_id,
+            data_cache: self.data_cache.clone(),
+            download_svc: self.download_svc.clone(),
+            raw_compressed_cache,
+        }
     }
 
     /// Fetches matching objects and returns the metadata of the most suitable object.
@@ -180,13 +304,7 @@ impl ObjectsActor {
                 scope.clone()
             };
             let cache_key = CacheKey::from_scoped_file(&scope, &file_source);
-            let request = FetchFileMetaRequest {
-                scope,
-                file_source: file_source.clone(),
-                object_id: identifier.clone(),
-                data_cache: self.data_cache.clone(),
-                download_svc: self.download_svc.clone(),
-            };
+            let request = self.make_meta_request(scope, file_source.clone(), identifier.clone());
 
             async move {
                 let handle = self

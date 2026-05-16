@@ -43,9 +43,9 @@ mod partial;
 mod s3;
 pub mod sentry;
 
-pub use self::compression::tempfile_in_parent;
+pub use self::compression::{CompressionKind, DecompressOutcome, tempfile_in_parent};
 pub use self::destination::{Destination, MultiStreamDestination, WriteStream};
-pub use self::fetch_file::fetch_file;
+pub use self::fetch_file::{fetch_file, fetch_file_with_raw_sink};
 pub use index::SourceIndexService;
 
 impl ConfigureScope for RemoteFile {

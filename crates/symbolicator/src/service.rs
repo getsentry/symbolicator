@@ -277,6 +277,31 @@ impl RequestService {
         self.inner.objects.fetch(handle).await
     }
 
+    /// Fetches the object given by the [`ObjectMetaHandle`] in a Microsoft-style compressed
+    /// (CAB-wrapped) form, suitable for direct return on `.pd_` / `.dl_` / `.ex_` proxy
+    /// requests.
+    ///
+    /// Returns the upstream-compressed bytes byte-identically when available
+    /// (`raw_compressed` cache), otherwise synthesizes a fresh CAB (MSZIP) envelope around
+    /// the cached decompressed object (`cab_synth` cache). Returns
+    /// [`CacheError::NotFound`] when the `compressed_proxy` feature is not enabled or
+    /// when the underlying object can't be located.
+    ///
+    /// `inner_filename` is the uncompressed filename embedded in the CAB header (e.g.
+    /// `foo.pdb`).
+    ///
+    /// [`CacheError::NotFound`]: symbolicator_service::caching::CacheError::NotFound
+    pub async fn fetch_compressed_object(
+        &self,
+        handle: Arc<ObjectMetaHandle>,
+        inner_filename: &str,
+    ) -> CacheContents<symbolic::common::ByteView<'static>> {
+        self.inner
+            .objects
+            .fetch_compressed(handle, inner_filename)
+            .await
+    }
+
     /// Creates a new request to symbolicate stacktraces.
     ///
     /// Returns an `Err` if the [`RequestService`] is already processing the

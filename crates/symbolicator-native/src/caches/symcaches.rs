@@ -331,6 +331,9 @@ mod tests {
         let objects = ObjectsActor::new(
             caches.object_meta,
             caches.objects,
+            caches.raw_compressed,
+            caches.cab_synth,
+            false,
             shared_cache.clone(),
             downloader.clone(),
             source_index_svc.clone(),

@@ -23,6 +23,7 @@ use crate::types::Scope;
 
 use super::FetchFileDataRequest;
 use super::candidates::{ObjectFeatures, SrcSrvVcs};
+use super::raw_compressed_cache::RawCompressedRequest;
 
 /// This requests metadata of a single file at a specific path/url.
 #[derive(Clone, Debug)]
@@ -38,6 +39,9 @@ pub(super) struct FetchFileMetaRequest {
     // state for computing.
     pub(super) data_cache: Arc<Cacher<FetchFileDataRequest>>,
     pub(super) download_svc: Arc<DownloadService>,
+    /// `Some` when the compressed-proxy feature is enabled: the data-cache compute will tee
+    /// the upstream-compressed bytes (if any) into this cache during download.
+    pub(super) raw_compressed_cache: Option<Arc<Cacher<RawCompressedRequest>>>,
 }
 
 /// Handle to local metadata file of an object.

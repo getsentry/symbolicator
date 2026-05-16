@@ -449,6 +449,20 @@ pub struct Config {
     /// Enables symbol proxy mode.
     pub symstore_proxy: bool,
 
+    /// Enables compressed symbol output on the symstore proxy.
+    ///
+    /// When enabled, the `/proxy` endpoint will additionally answer requests for
+    /// Microsoft-style compressed symbol filenames (`.pd_`, `.dl_`, `.ex_`) by either:
+    ///
+    /// * returning the upstream-compressed bytes byte-identically, when the source delivered
+    ///   the file as a CAB/gzip/zstd/zlib/zip payload (these are tee'd into the
+    ///   `raw_compressed` cache during download); or
+    /// * synthesizing a fresh CAB (MSZIP) on demand from the decompressed cached object
+    ///   when no upstream compressed copy is available (cached in `cab_synth`).
+    ///
+    /// Off by default -- existing deployments are bit-for-bit unchanged.
+    pub compressed_proxy: bool,
+
     /// Default list of sources and the sources used for proxy mode.
     pub sources: Arc<[SourceConfig]>,
 
@@ -594,6 +608,7 @@ impl Default for Config {
             enable_cache_cleanup: false,
             cache_cleanup_interval: Duration::from_secs(900),
             symstore_proxy: true,
+            compressed_proxy: false,
             sources: Arc::from(vec![]),
             connect_to_reserved_ips: false,
             deny_list_enabled: true,

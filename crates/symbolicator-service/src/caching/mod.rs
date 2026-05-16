@@ -202,6 +202,12 @@ pub struct Caches {
     pub proguard: Cache,
     /// Source index files.
     pub source_index: Cache,
+    /// Upstream-compressed object bytes preserved during download, used by the
+    /// compressed-proxy mode.
+    pub raw_compressed: Cache,
+    /// CAB envelopes synthesized on demand from decompressed objects, used as the
+    /// compressed-proxy fallback when no raw upstream copy is available.
+    pub cab_synth: Cache,
 }
 
 impl Caches {
@@ -278,7 +284,7 @@ impl Caches {
                 CacheName::SourceMapCaches,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations,
+                max_lazy_recomputations.clone(),
                 default_cap,
             )?,
             sourcefiles: Cache::from_config(
@@ -306,8 +312,22 @@ impl Caches {
                 CacheName::SourceIndex,
                 config,
                 config.caches.index.into(),
-                max_lazy_redownloads,
+                max_lazy_redownloads.clone(),
                 in_memory.source_index_capacity,
+            )?,
+            raw_compressed: Cache::from_config(
+                CacheName::RawCompressed,
+                config,
+                config.caches.downloaded.into(),
+                max_lazy_redownloads,
+                default_cap,
+            )?,
+            cab_synth: Cache::from_config(
+                CacheName::CabSynth,
+                config,
+                config.caches.derived.into(),
+                max_lazy_recomputations,
+                default_cap,
             )?,
         })
     }

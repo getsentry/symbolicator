@@ -491,6 +491,39 @@ impl<T: CacheItemRequest> Cacher<T> {
     ///
     /// Cache computation can fail, in which case [`T::compute`](CacheItemRequest::compute)
     /// will return an `Err`. This err may be persisted in the cache for a time.
+    /// Persists a pre-computed [`NamedTempFile`] directly into the on-disk cache for the given
+    /// `cache_key`, bypassing the normal [`CacheItemRequest::compute`] flow.
+    ///
+    /// This is used for caches that are populated as a side effect of other work -- for
+    /// example, the `raw_compressed` cache that tee's upstream-compressed bytes during a
+    /// download of the corresponding decompressed object.
+    ///
+    /// If no cache directory is configured (e.g. in some test setups), this is a no-op.
+    /// The in-memory cache is *not* updated; subsequent calls to [`Self::compute_memoized`]
+    /// will discover the newly persisted file via the on-disk lookup path.
+    pub fn store_externally(
+        &self,
+        cache_key: &CacheKey,
+        temp_file: NamedTempFile,
+    ) -> std::io::Result<()> {
+        let Some(cache_dir) = self.config.cache_dir() else {
+            return Ok(());
+        };
+        let cache_path = cache_dir.join(cache_key.cache_path(T::VERSIONS.current));
+        persist_tempfile(temp_file, &cache_path)?;
+
+        let metadata = Metadata::from_key(cache_key);
+        if let Err(e) = super::fs::write_metadata(&cache_path, &metadata) {
+            tracing::error!(
+                error = &e as &dyn std::error::Error,
+                path = %cache_path.display(),
+                "Failed to write metadata file for externally-stored cache entry",
+            );
+        }
+
+        Ok(())
+    }
+
     pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
         metric!(counter("caches.access") += 1, "cache" => name.as_str());

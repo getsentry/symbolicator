@@ -52,6 +52,9 @@ impl SharedServices {
         let objects = ObjectsActor::new(
             caches.object_meta.clone(),
             caches.objects.clone(),
+            caches.raw_compressed.clone(),
+            caches.cab_synth.clone(),
+            config.compressed_proxy,
             shared_cache.clone(),
             download_svc.clone(),
             source_index_svc.clone(),

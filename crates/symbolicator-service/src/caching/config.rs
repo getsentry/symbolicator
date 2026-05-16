@@ -15,6 +15,13 @@ pub enum CacheName {
     Diagnostics,
     Proguard,
     SourceIndex,
+    /// Mirror of upstream-compressed object bytes (CAB/gzip/zstd/...), tee'd during download
+    /// so the `/proxy` endpoint can serve `.pd_`/`.dl_`/`.ex_` byte-identically when the
+    /// upstream source delivered a compressed payload.
+    RawCompressed,
+    /// CAB (MSZIP) envelopes synthesized from cached decompressed objects, used as the
+    /// fallback for compressed-proxy responses when no upstream raw copy is available.
+    CabSynth,
 }
 
 impl CacheName {
@@ -32,6 +39,8 @@ impl CacheName {
             Self::Diagnostics => "diagnostics",
             Self::Proguard => "proguard",
             Self::SourceIndex => "source_index",
+            Self::RawCompressed => "raw_compressed",
+            Self::CabSynth => "cab_synth",
         }
     }
 }

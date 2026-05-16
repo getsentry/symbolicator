@@ -4788,6 +4788,7 @@ dependencies = [
  "anyhow",
  "axum",
  "axum-server",
+ "cab",
  "clap",
  "console 0.16.1",
  "futures",

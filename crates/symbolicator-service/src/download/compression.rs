@@ -4,11 +4,61 @@ use cab::Cabinet;
 use flate2::read::{MultiGzDecoder, ZlibDecoder};
 use tempfile::NamedTempFile;
 
+/// The compression format that was detected on a downloaded file.
+///
+/// Returned by [`maybe_decompress_file`] so callers know whether (and how) the
+/// original bytes were compressed before decompression.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompressionKind {
+    Zstd,
+    Gzip,
+    Zlib,
+    Zip,
+    Cab,
+}
+
+/// Outcome of a [`maybe_decompress_file`] call.
+#[derive(Debug, Default)]
+pub struct DecompressOutcome {
+    /// The detected compression kind, or `None` if the file was already uncompressed.
+    pub kind: Option<CompressionKind>,
+    /// The original (still-compressed) payload. `Some` only when the caller requested
+    /// preservation via `want_raw_sink` *and* a compressed magic was actually detected.
+    pub raw_sink: Option<NamedTempFile>,
+}
+
+/// Creates a sibling tempfile and copies the still-compressed contents of `src` into it,
+/// rewinding both. Returns the populated sink.
+///
+/// Called from each decompression branch *before* the source tempfile is swapped, so the
+/// caller can preserve the upstream-compressed payload (used by the `raw_compressed` cache
+/// to answer `.pd_` / `.dl_` / `.ex_` proxy requests byte-identically).
+fn allocate_raw_sink(src: &NamedTempFile) -> io::Result<NamedTempFile> {
+    let mut sink = tempfile_in_parent(src)?;
+    let mut reader = src.as_file();
+    reader.rewind()?;
+    io::copy(&mut reader, sink.as_file_mut())?;
+    sink.as_file_mut().sync_all()?;
+    sink.as_file_mut().rewind()?;
+    // Leave `src` rewound so the subsequent decompressor reads from the start.
+    src.as_file().rewind()?;
+    Ok(sink)
+}
+
 /// Decompresses a downloaded file.
 ///
 /// The passed [`NamedTempFile`] might be swapped with a fresh one in case decompression happens.
 /// That new temp file will be created in the same directory as the original one.
-pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
+///
+/// When `want_raw_sink` is `true` and the file is detected as compressed, the original
+/// (still-compressed) bytes are copied into a fresh sibling tempfile and returned as
+/// [`DecompressOutcome::raw_sink`]. This lets callers preserve the upstream-compressed
+/// payload without paying for the allocation when no compression is detected (e.g. raw PDB
+/// downloads, which are the common case).
+pub fn maybe_decompress_file(
+    src: &mut NamedTempFile,
+    want_raw_sink: bool,
+) -> io::Result<DecompressOutcome> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
     let mut file = src.as_file();
@@ -22,12 +72,23 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
     file.rewind()?;
     if metadata.len() < 4 {
         // we don’t want to error for empty files here
-        return Ok(());
+        return Ok(DecompressOutcome::default());
     }
 
     let mut magic_bytes: [u8; 4] = [0, 0, 0, 0];
     file.read_exact(&mut magic_bytes)?;
     file.rewind()?;
+
+    let mut raw_sink: Option<NamedTempFile> = None;
+    // Allocate the tee sink lazily -- only when we know a compressed magic was matched.
+    // This avoids creating a sibling tempfile on every uncompressed download (the common
+    // case) even when `compressed_proxy` is enabled.
+    let mut tee = |src: &NamedTempFile| -> io::Result<()> {
+        if want_raw_sink {
+            raw_sink = Some(allocate_raw_sink(src)?);
+        }
+        Ok(())
+    };
 
     // For a comprehensive list also refer to
     // https://en.wikipedia.org/wiki/List_of_file_signatures
@@ -36,21 +97,24 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
     // wrapper around a Write. Only zstd doesn't. If we can get this into
     // zstd we could save one tempfile and especially avoid the io::copy
     // for downloads that were not compressed.
-    match magic_bytes {
+    let kind = match magic_bytes {
         // Magic bytes for zstd
         // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
+            tee(src)?;
 
             let mut dst = tempfile_in_parent(src)?;
             zstd::stream::copy_decode(file, &mut dst)?;
 
             std::mem::swap(src, &mut dst);
+            Some(CompressionKind::Zstd)
         }
         // Magic bytes for gzip
         // https://tools.ietf.org/html/rfc1952#section-2.3.1
         [0x1f, 0x8b, _, _] => {
             metric!(counter("compression") += 1, "type" => "gz");
+            tee(src)?;
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
@@ -59,22 +123,26 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
             io::copy(&mut reader, &mut dst)?;
 
             std::mem::swap(src, &mut dst);
+            Some(CompressionKind::Gzip)
         }
         // Magic bytes for zlib
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
+            tee(src)?;
 
             let mut dst = tempfile_in_parent(src)?;
             let mut reader = ZlibDecoder::new(file);
             io::copy(&mut reader, &mut dst)?;
 
             std::mem::swap(src, &mut dst);
+            Some(CompressionKind::Zlib)
         }
         // Magic bytes for ZipArchive
         // https://pkware.cachefly.net/webdocs/APPNOTE/APPNOTE-6.3.10.TXT
         // Section: 4.3.7  Local file header
         [0x50, 0x4b, 0x03, 0x04] => {
             metric!(counter("compression") += 1, "type" => "zip");
+            tee(src)?;
 
             let mut dst = {
                 let mut archive = zip::ZipArchive::new(file)?;
@@ -94,10 +162,12 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
             };
 
             std::mem::swap(src, &mut dst);
+            Some(CompressionKind::Zip)
         }
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
+            tee(src)?;
 
             let mut cab_file = Cabinet::new(file)?;
 
@@ -125,14 +195,17 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile) -> io::Result<()> {
             let mut reader = cab_file.read_file(&first_file)?;
             std::io::copy(&mut reader, &mut dst)?;
             std::mem::swap(src, &mut dst);
+            Some(CompressionKind::Cab)
         }
         // Probably not compressed
         _ => {
             metric!(counter("compression") += 1, "type" => "none");
+            None
         }
-    }
+    };
+    drop(tee);
 
-    Ok(())
+    Ok(DecompressOutcome { kind, raw_sink })
 }
 
 // FIXME(swatinem): this fn needs a better place
@@ -142,4 +215,71 @@ pub fn tempfile_in_parent(file: &NamedTempFile) -> io::Result<NamedTempFile> {
         .parent()
         .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
     NamedTempFile::new_in(dir)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    use super::*;
+
+    fn tempfile_with(contents: &[u8]) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(contents).unwrap();
+        f.as_file_mut().sync_all().unwrap();
+        f.as_file_mut().rewind().unwrap();
+        f
+    }
+
+    fn read_to_vec(f: &mut NamedTempFile) -> Vec<u8> {
+        f.as_file_mut().rewind().unwrap();
+        let mut out = Vec::new();
+        f.as_file_mut().read_to_end(&mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn test_uncompressed_returns_none() {
+        let mut src = tempfile_with(b"hello world, not compressed at all");
+        let outcome = maybe_decompress_file(&mut src, true).unwrap();
+        assert_eq!(outcome.kind, None);
+        // No tee allocation for uncompressed input -- this is the lazy-allocation contract.
+        assert!(outcome.raw_sink.is_none());
+        assert_eq!(read_to_vec(&mut src), b"hello world, not compressed at all");
+    }
+
+    #[test]
+    fn test_gzip_decompresses_and_tees_raw() {
+        let payload = b"the original symbol bytes";
+        let mut gz = Vec::new();
+        {
+            let mut enc = flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+            enc.write_all(payload).unwrap();
+            enc.finish().unwrap();
+        }
+
+        let mut src = tempfile_with(&gz);
+        let outcome = maybe_decompress_file(&mut src, true).unwrap();
+
+        assert_eq!(outcome.kind, Some(CompressionKind::Gzip));
+        assert_eq!(read_to_vec(&mut src), payload);
+        let mut sink = outcome.raw_sink.expect("sink allocated for compressed input");
+        assert_eq!(read_to_vec(&mut sink), gz);
+    }
+
+    #[test]
+    fn test_gzip_no_sink_still_decompresses() {
+        let payload = b"abc";
+        let mut gz = Vec::new();
+        {
+            let mut enc = flate2::write::GzEncoder::new(&mut gz, flate2::Compression::default());
+            enc.write_all(payload).unwrap();
+            enc.finish().unwrap();
+        }
+        let mut src = tempfile_with(&gz);
+        let outcome = maybe_decompress_file(&mut src, false).unwrap();
+        assert_eq!(outcome.kind, Some(CompressionKind::Gzip));
+        assert!(outcome.raw_sink.is_none());
+        assert_eq!(read_to_vec(&mut src), payload);
+    }
 }
