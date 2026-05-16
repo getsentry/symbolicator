@@ -50,11 +50,13 @@ fn allocate_raw_sink(src: &NamedTempFile) -> io::Result<NamedTempFile> {
 /// The passed [`NamedTempFile`] might be swapped with a fresh one in case decompression happens.
 /// That new temp file will be created in the same directory as the original one.
 ///
-/// When `want_raw_sink` is `true` and the file is detected as compressed, the original
-/// (still-compressed) bytes are copied into a fresh sibling tempfile and returned as
-/// [`DecompressOutcome::raw_sink`]. This lets callers preserve the upstream-compressed
-/// payload without paying for the allocation when no compression is detected (e.g. raw PDB
-/// downloads, which are the common case).
+/// When `want_raw_sink` is `true` *and* the file is detected as a **CAB** payload, the
+/// original (still-compressed) bytes are copied into a fresh sibling tempfile and returned
+/// as [`DecompressOutcome::raw_sink`]. Other compression formats (gzip / zstd / zlib / zip)
+/// are decompressed normally but the original bytes are not preserved: the proxy serves
+/// the raw-compressed mirror under `Content-Type: application/vnd.ms-cab-compressed`, so
+/// it would be incorrect to return non-CAB bytes from it. For those formats the fallback
+/// path synthesizes a fresh CAB on demand instead.
 pub fn maybe_decompress_file(
     src: &mut NamedTempFile,
     want_raw_sink: bool,
@@ -80,10 +82,11 @@ pub fn maybe_decompress_file(
     file.rewind()?;
 
     let mut raw_sink: Option<NamedTempFile> = None;
-    // Allocate the tee sink lazily -- only when we know a compressed magic was matched.
-    // This avoids creating a sibling tempfile on every uncompressed download (the common
-    // case) even when `compressed_proxy` is enabled.
-    let mut tee = |src: &NamedTempFile| -> io::Result<()> {
+    // Allocate the tee sink lazily -- only when we know a CAB magic was matched. Other
+    // compression formats are decompressed normally but their original bytes are
+    // discarded because the proxy serves the mirror under `vnd.ms-cab-compressed` and
+    // cannot honestly label a gzip / zstd / zlib / zip body as CAB.
+    let mut tee_cab = |src: &NamedTempFile| -> io::Result<()> {
         if want_raw_sink {
             raw_sink = Some(allocate_raw_sink(src)?);
         }
@@ -102,7 +105,6 @@ pub fn maybe_decompress_file(
         // https://tools.ietf.org/id/draft-kucherawy-dispatch-zstd-00.html#rfc.section.2.1.1
         [0x28, 0xb5, 0x2f, 0xfd] => {
             metric!(counter("compression") += 1, "type" => "zstd");
-            tee(src)?;
 
             let mut dst = tempfile_in_parent(src)?;
             zstd::stream::copy_decode(file, &mut dst)?;
@@ -114,7 +116,6 @@ pub fn maybe_decompress_file(
         // https://tools.ietf.org/html/rfc1952#section-2.3.1
         [0x1f, 0x8b, _, _] => {
             metric!(counter("compression") += 1, "type" => "gz");
-            tee(src)?;
 
             // We assume MultiGzDecoder accepts a strict superset of input
             // values compared to GzDecoder.
@@ -128,7 +129,6 @@ pub fn maybe_decompress_file(
         // Magic bytes for zlib
         [0x78, 0x01, _, _] | [0x78, 0x9c, _, _] | [0x78, 0xda, _, _] => {
             metric!(counter("compression") += 1, "type" => "zlib");
-            tee(src)?;
 
             let mut dst = tempfile_in_parent(src)?;
             let mut reader = ZlibDecoder::new(file);
@@ -142,7 +142,6 @@ pub fn maybe_decompress_file(
         // Section: 4.3.7  Local file header
         [0x50, 0x4b, 0x03, 0x04] => {
             metric!(counter("compression") += 1, "type" => "zip");
-            tee(src)?;
 
             let mut dst = {
                 let mut archive = zip::ZipArchive::new(file)?;
@@ -167,7 +166,7 @@ pub fn maybe_decompress_file(
         // Magic bytes for CAB
         [77, 83, 67, 70] => {
             metric!(counter("compression") += 1, "type" => "cab");
-            tee(src)?;
+            tee_cab(src)?;
 
             let mut cab_file = Cabinet::new(file)?;
 
@@ -203,7 +202,7 @@ pub fn maybe_decompress_file(
             None
         }
     };
-    drop(tee);
+    drop(tee_cab);
 
     Ok(DecompressOutcome { kind, raw_sink })
 }
@@ -249,7 +248,10 @@ mod tests {
     }
 
     #[test]
-    fn test_gzip_decompresses_and_tees_raw() {
+    fn test_gzip_decompresses_but_does_not_tee() {
+        // Non-CAB compression must NOT populate `raw_sink` even when `want_raw_sink: true`.
+        // The proxy serves the mirror as `vnd.ms-cab-compressed`; returning gzip bytes
+        // under that content-type would break clients (WinDbg etc.).
         let payload = b"the original symbol bytes";
         let mut gz = Vec::new();
         {
@@ -262,9 +264,8 @@ mod tests {
         let outcome = maybe_decompress_file(&mut src, true).unwrap();
 
         assert_eq!(outcome.kind, Some(CompressionKind::Gzip));
+        assert!(outcome.raw_sink.is_none(), "gzip bytes must not enter the CAB mirror");
         assert_eq!(read_to_vec(&mut src), payload);
-        let mut sink = outcome.raw_sink.expect("sink allocated for compressed input");
-        assert_eq!(read_to_vec(&mut sink), gz);
     }
 
     #[test]
@@ -280,6 +281,34 @@ mod tests {
         let outcome = maybe_decompress_file(&mut src, false).unwrap();
         assert_eq!(outcome.kind, Some(CompressionKind::Gzip));
         assert!(outcome.raw_sink.is_none());
+        assert_eq!(read_to_vec(&mut src), payload);
+    }
+
+    #[test]
+    fn test_cab_decompresses_and_tees_raw() {
+        // CAB is the only format whose original bytes are preserved -- those bytes ARE
+        // valid `vnd.ms-cab-compressed` content and can be served verbatim by the proxy.
+        let payload = b"hello world, fake PDB bytes inside a CAB";
+        let mut cab_bytes = Vec::new();
+        {
+            let mut builder = cab::CabinetBuilder::new();
+            builder
+                .add_folder(cab::CompressionType::MsZip)
+                .add_file("foo.pdb".to_owned());
+            let mut w = builder.build(std::io::Cursor::new(&mut cab_bytes)).unwrap();
+            while let Some(mut fw) = w.next_file().unwrap() {
+                let mut src = std::io::Cursor::new(payload);
+                io::copy(&mut src, &mut fw).unwrap();
+            }
+            w.finish().unwrap();
+        }
+
+        let mut src = tempfile_with(&cab_bytes);
+        let outcome = maybe_decompress_file(&mut src, true).unwrap();
+
+        assert_eq!(outcome.kind, Some(CompressionKind::Cab));
+        let mut sink = outcome.raw_sink.expect("CAB tee must populate raw_sink");
+        assert_eq!(read_to_vec(&mut sink), cab_bytes);
         assert_eq!(read_to_vec(&mut src), payload);
     }
 }

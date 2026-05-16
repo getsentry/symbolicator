@@ -454,11 +454,11 @@ pub struct Config {
     /// When enabled, the `/proxy` endpoint will additionally answer requests for
     /// Microsoft-style compressed symbol filenames (`.pd_`, `.dl_`, `.ex_`) by either:
     ///
-    /// * returning the upstream-compressed bytes byte-identically, when the source delivered
-    ///   the file as a CAB/gzip/zstd/zlib/zip payload (these are tee'd into the
-    ///   `raw_compressed` cache during download); or
+    /// * returning the upstream CAB payload byte-identically, when the source delivered
+    ///   the file as a CAB (tee'd into the `raw_compressed` cache during download); or
     /// * synthesizing a fresh CAB (MSZIP) on demand from the decompressed cached object
-    ///   when no upstream compressed copy is available (cached in `cab_synth`).
+    ///   in all other cases (gzip/zstd/zlib/zip upstreams, plain uncompressed uploads).
+    ///   Results are cached in `cab_synth`.
     ///
     /// Off by default -- existing deployments are bit-for-bit unchanged.
     pub compressed_proxy: bool,

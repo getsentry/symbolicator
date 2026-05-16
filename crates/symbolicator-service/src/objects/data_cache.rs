@@ -112,8 +112,11 @@ impl fmt::Display for ObjectHandle {
 /// symbolic to ensure it is not malformed.
 ///
 /// When `raw_compressed_cache` is provided (compressed-proxy mode), the upstream
-/// payload -- if it was actually compressed -- is tee'd into the raw-compressed mirror so
-/// the `/proxy` endpoint can later serve `.pd_` / `.dl_` / `.ex_` byte-identically.
+/// payload -- if it was an actual CAB -- is tee'd into the raw-compressed mirror so the
+/// `/proxy` endpoint can later serve `.pd_` / `.dl_` / `.ex_` byte-identically. Other
+/// compression formats (gzip, zstd, zlib, zip) are decompressed normally and the
+/// raw-compressed mirror is left empty for those entries; the proxy falls back to CAB
+/// synthesis instead.
 ///
 /// This is the actual implementation of [`CacheItemRequest::compute`] for
 /// [`FetchFileDataRequest`] but outside of the trait so it can be written as async/await
