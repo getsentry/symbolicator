@@ -40,7 +40,12 @@ fn uncompress_leaf(leaf: &str) -> Option<String> {
         .find(|(suffix, _)| suffix.eq_ignore_ascii_case(ext))?;
 
     let mut out = leaf[..leaf.len() - 1].to_owned();
-    if ext.chars().any(|c| c.is_ascii_uppercase()) {
+    // Match Microsoft's case convention: uppercase only when the entire extension is
+    // uppercase (`EX_` -> `EXE`). Mixed-case stays canonical lowercase to match the
+    // form Microsoft uses on the symbol server (`Cmd.Ex_` -> `Cmd.Exe`).
+    let ext_letters = ext.trim_end_matches('_');
+    let all_upper = !ext_letters.is_empty() && ext_letters.chars().all(|c| c.is_ascii_uppercase());
+    if all_upper {
         out.push(replacement.to_ascii_uppercase());
     } else {
         out.push(*replacement);
@@ -213,7 +218,11 @@ mod tests {
             ),
             (
                 "Cmd.Ex_/FOO/Cmd.Ex_",
-                Some(("Cmd.ExE/FOO/Cmd.ExE", "Cmd.ExE")),
+                Some(("Cmd.Exe/FOO/Cmd.Exe", "Cmd.Exe")),
+            ),
+            (
+                "KERNEL32.DL_/AAA/KERNEL32.DL_",
+                Some(("KERNEL32.DLL/AAA/KERNEL32.DLL", "KERNEL32.DLL")),
             ),
             ("integration.pdb/abc/integration.pdb", None),
             ("integration.bin/abc/integration.bin", None),
