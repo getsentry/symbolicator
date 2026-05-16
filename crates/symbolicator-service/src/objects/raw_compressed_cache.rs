@@ -28,12 +28,13 @@ pub(super) fn raw_compressed_cache_key(scope: &Scope, file_source: &RemoteFile) 
 
 /// [`CacheItemRequest`] for the raw-compressed mirror.
 ///
-/// Carries no state — all cache identity lives in the [`CacheKey`] built by
-/// [`raw_compressed_cache_key`]. `compute` always returns [`CacheError::NotFound`]: this
-/// cache is populated as a side effect of downloading the corresponding decompressed object
-/// (see [`Cacher::store_externally`]), never on demand. A miss signals the caller to fall
-/// back to CAB synthesis.
+/// Carries no state -- all cache identity lives in the [`CacheKey`] built by
+/// [`raw_compressed_cache_key`]. This cache is queried only via
+/// [`Cacher::lookup_only`], which never invokes `compute`; it is populated as a side
+/// effect of downloading the corresponding decompressed object (see
+/// [`Cacher::store_externally`]).
 ///
+/// [`Cacher::lookup_only`]: crate::caching::Cacher::lookup_only
 /// [`Cacher::store_externally`]: crate::caching::Cacher::store_externally
 #[derive(Clone, Debug)]
 pub(crate) struct RawCompressedRequest;
@@ -47,8 +48,9 @@ impl CacheItemRequest for RawCompressedRequest {
         &'a self,
         _temp_file: &'a mut tempfile::NamedTempFile,
     ) -> BoxFuture<'a, CacheContents> {
-        // Populated as a side effect of the data-cache download. On a true miss, signal the
-        // caller to fall back to CAB synthesis rather than caching a negative result.
+        // Unreachable: we only access this cache via `Cacher::lookup_only`. If anyone
+        // ever calls `compute_memoized` on us, returning NotFound is the right
+        // defensive behaviour -- the caller's fallback handles it.
         Box::pin(async { Err(CacheError::NotFound) })
     }
 

@@ -194,11 +194,14 @@ impl ObjectsActor {
         // propagate so callers see the same NotFound the regular proxy path would return.
         self.fetch(file_handle.clone()).await?;
 
-        // Try the upstream-bytes mirror first (cheap + byte-identical).
+        // Try the upstream-bytes mirror first (cheap + byte-identical). Use `lookup_only`
+        // rather than `compute_memoized` so a miss does not get cached: this cache is
+        // populated as a side effect of the data-cache tee, and the next request might
+        // find the entry on disk even when an earlier request did not.
         let raw_key = raw_compressed_cache_key(&file_handle.scope, &file_handle.file_source);
         match self
             .raw_compressed_cache
-            .compute_memoized(RawCompressedRequest, raw_key)
+            .lookup_only(RawCompressedRequest, raw_key)
             .await
             .into_contents()
         {

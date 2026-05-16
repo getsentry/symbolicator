@@ -507,6 +507,38 @@ impl<T: CacheItemRequest> Cacher<T> {
         entry.into_value().data
     }
 
+    /// Looks up a cache entry without ever running [`CacheItemRequest::compute`].
+    ///
+    /// Checks the in-memory cache first, then the on-disk cache. A true miss returns
+    /// [`CacheError::NotFound`] but is NOT inserted into the in-memory cache, so a
+    /// subsequent call will re-check disk. This is the right primitive for caches that
+    /// are populated by external side effects (e.g. the `raw_compressed` mirror written
+    /// from the data-cache download): a stale negative would otherwise mask a legitimate
+    /// later population for the duration of `retry_misses_after`.
+    ///
+    /// Positive disk hits ARE inserted into the in-memory cache with the normal TTL, so
+    /// hot symbols don't re-stat the filesystem on every request.
+    pub async fn lookup_only(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
+        let name = self.config.name();
+        metric!(counter("caches.access") += 1, "cache" => name.as_str());
+
+        if let Some(item) = self.cache.get(&cache_key).await {
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_str());
+            return item.data;
+        }
+
+        match self.lookup_local_cache(request, &cache_key) {
+            Some(item) => {
+                self.cache.insert(cache_key, item.clone()).await;
+                item.data
+            }
+            None => {
+                metric!(counter("caches.file.miss") += 1, "cache" => name.as_str());
+                CacheEntry::from_err(CacheError::NotFound)
+            }
+        }
+    }
+
     /// Persists a pre-computed [`NamedTempFile`] directly into the on-disk cache for the given
     /// `cache_key`, bypassing the normal [`CacheItemRequest::compute`] flow.
     ///

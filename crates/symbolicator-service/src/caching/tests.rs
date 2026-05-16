@@ -1264,3 +1264,61 @@ async fn test_failing_cache_write() {
         .join(key.cache_path(FailingTestCacheItem::VERSIONS.current));
     assert!(fs::exists(cache_file_path).unwrap());
 }
+
+/// Regression test for the `raw_compressed` stale-negative caching bug.
+///
+/// `lookup_only` must NOT cache a `NotFound` result in the in-memory cache, so an entry
+/// that is populated externally between two lookups is picked up by the second one.
+#[tokio::test]
+async fn test_lookup_only_does_not_cache_negatives() {
+    test::setup();
+    let cache_dir = test::tempdir();
+
+    let request = TestCacheItem::new();
+    let key = CacheKey::for_testing(Scope::Global, "global/raw-compressed-key");
+
+    let config = Config {
+        cache_dir: Some(cache_dir.path().to_path_buf()),
+        ..Default::default()
+    };
+    let cache = Cache::from_config(
+        CacheName::Objects,
+        &config,
+        CacheConfig::from(CacheConfigs::default().downloaded),
+        Arc::new(AtomicIsize::new(1)),
+        1024,
+    )
+    .unwrap();
+    let cacher = Cacher::new(cache, Default::default());
+
+    // 1. Cold cache: lookup_only returns NotFound.
+    let entry = cacher
+        .lookup_only(request.clone(), key.clone())
+        .await
+        .into_contents();
+    assert_eq!(entry, Err(CacheError::NotFound));
+    // No `compute` was invoked.
+    assert_eq!(request.computations.load(Ordering::SeqCst), 0);
+
+    // 2. Simulate a side-effect population: write the cache file directly to disk,
+    //    bypassing `compute`. This mimics what `store_externally` does after a
+    //    successful data-cache tee.
+    let cache_path = cache_dir
+        .path()
+        .join("objects")
+        .join(key.cache_path(TestCacheItem::VERSIONS.current));
+    fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+    fs::write(&cache_path, "externally populated bytes").unwrap();
+
+    // 3. Second lookup_only finds the freshly persisted file. If the first call had
+    //    cached the NotFound in moka, this would also return NotFound and the bug
+    //    would manifest as expensive fallback on every request for `retry_misses_after`.
+    let entry = cacher
+        .lookup_only(request.clone(), key)
+        .await
+        .into_contents()
+        .unwrap();
+    assert_eq!(entry, "externally populated bytes");
+    // Still no `compute` invocations.
+    assert_eq!(request.computations.load(Ordering::SeqCst), 0);
+}
