@@ -1,5 +1,23 @@
 # Changelog
 
+## 26.5.0
+
+### Bug Fixes 🐛
+
+- (objectstore) Retry attachment downloads by @Dav1dde in [#1946](https://github.com/getsentry/symbolicator/pull/1946)
+- Revert "dep: Update reqwest fork (#1942)" by @loewenheim in [#1947](https://github.com/getsentry/symbolicator/pull/1947)
+
+### Documentation 📚
+
+- (symbolicator-service) Fix 'succesful' -> 'successful' typos in download index doc comments by @SAY-5 in [#1949](https://github.com/getsentry/symbolicator/pull/1949)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump urllib3 from 2.6.3 to 2.7.0 by @dependabot in [#1950](https://github.com/getsentry/symbolicator/pull/1950)
+- Bump openssl from 0.10.78 to 0.10.79 by @dependabot in [#1948](https://github.com/getsentry/symbolicator/pull/1948)
+
 ## 26.4.2
 
 ### New Features ✨
