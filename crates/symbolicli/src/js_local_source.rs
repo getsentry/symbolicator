@@ -237,27 +237,33 @@ async fn lookup(
     Json(out.into())
 }
 
-#[tokio::test]
-async fn test_existing_bundle() {
-    let source = start_server("/Users/sebastian/code/symbolicator/tests/fixtures/").unwrap();
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let mut lookup_url = source.url.clone();
-    lookup_url.set_query(Some("debug_id=2f259f80-58b7-44cb-d7cd-de1505e7e718"));
+    #[tokio::test]
+    async fn test_existing_bundle() {
+        let source =
+            start_server(concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures")).unwrap();
 
-    let results: Box<[LookupResult]> = reqwest::get(lookup_url)
-        .await
-        .unwrap()
-        .json()
-        .await
-        .unwrap();
+        let mut lookup_url = source.url.clone();
+        lookup_url.set_query(Some("debug_id=2f259f80-58b7-44cb-d7cd-de1505e7e718"));
 
-    let LookupResult::Bundle { url, .. } = &results[0];
-
-    assert!(
-        reqwest::get(url.clone())
+        let results: Box<[LookupResult]> = reqwest::get(lookup_url)
             .await
             .unwrap()
-            .status()
-            .is_success()
-    );
+            .json()
+            .await
+            .unwrap();
+
+        let LookupResult::Bundle { url, .. } = &results[0];
+
+        assert!(
+            reqwest::get(url.clone())
+                .await
+                .unwrap()
+                .status()
+                .is_success()
+        );
+    }
 }
