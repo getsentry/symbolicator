@@ -40,7 +40,6 @@ pub enum Mode {
         project: String,
         auth_token: String,
         base_url: reqwest::Url,
-        scraping_enabled: bool,
     },
 }
 
@@ -190,6 +189,7 @@ pub struct Settings {
     pub log_level: LevelFilter,
     pub mode: Mode,
     pub symbols: Option<SymbolsPath>,
+    pub scraping_enabled: bool,
 }
 
 impl Settings {
@@ -252,7 +252,6 @@ impl Settings {
                 org,
                 project,
                 auth_token,
-                scraping_enabled: !cli.no_scrape,
             }
         };
 
@@ -288,6 +287,7 @@ impl Settings {
             log_level: cli.log_level,
             mode,
             symbols: cli.symbols,
+            scraping_enabled: !cli.no_scrape,
         };
 
         Ok(args)

@@ -175,8 +175,8 @@ struct DebugMeta {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum Module {
-    Object(RawObjectInfo),
     Sourcemap(JsModule),
+    Object(RawObjectInfo),
 }
 
 #[derive(Debug, Deserialize)]

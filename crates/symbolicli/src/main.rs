@@ -42,6 +42,7 @@ async fn main() -> Result<()> {
         log_level,
         mode,
         symbols,
+        scraping_enabled,
     } = settings::Settings::get()?;
 
     // We depend on `rustls` with both the `aws-lc-rs` and
@@ -118,25 +119,7 @@ async fn main() -> Result<()> {
 
     let res = match payload {
         Payload::Event(event) if event.platform.is_js() => {
-            let Mode::Online {
-                ref org,
-                ref project,
-                ref base_url,
-                ref auth_token,
-                scraping_enabled,
-            } = mode
-            else {
-                anyhow::bail!("JavaScript symbolication is not supported in offline mode.");
-            };
-
-            let source = Arc::new(SentrySourceConfig {
-                id: SourceId::new("sentry:project"),
-                token: SentryToken(auth_token.clone()),
-                url: base_url
-                    .join(&format!("projects/{org}/{project}/artifact-lookup/"))
-                    .unwrap(),
-            });
-
+            let source = prepare_sourcemap_source(mode, symbols)?;
             let request = create_js_symbolication_request(scope, source, event, scraping_enabled)
                 .context("Event cannot be symbolicated")?;
 
@@ -155,6 +138,7 @@ async fn main() -> Result<()> {
             let res = native.symbolicate(request).await?;
             CompletedResponse::NativeSymbolication(res)
         }
+
         Payload::Minidump(minidump_file) => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating minidump");
@@ -170,6 +154,7 @@ async fn main() -> Result<()> {
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }
+
         Payload::AppleCrashReport(file) => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating apple crash report");
@@ -184,6 +169,7 @@ async fn main() -> Result<()> {
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }
+
         Payload::Event(event) => anyhow::bail!(
             "Cannot symbolicate event: invalid platform {}",
             event.platform
@@ -249,6 +235,45 @@ fn prepare_dsym_sources(
         dsym_sources.push(SourceConfig::Filesystem(local_source.into()));
     }
     Arc::from(dsym_sources.into_boxed_slice())
+}
+
+fn prepare_sourcemap_source(
+    mode: Mode,
+    local_symbols: Option<SymbolsPath>,
+) -> Result<Arc<SentrySourceConfig>> {
+    match mode {
+        Mode::Online {
+            ref org,
+            ref project,
+            ref base_url,
+            ref auth_token,
+        } => {
+            if local_symbols.is_some() {
+                tracing::warn!("Local symbol source will not be used in online mode");
+            }
+
+            Ok(Arc::new(SentrySourceConfig {
+                id: SourceId::new("sentry:project"),
+                token: SentryToken(auth_token.clone()),
+                url: base_url
+                    .join(&format!("projects/{org}/{project}/artifact-lookup/"))
+                    .unwrap(),
+            }))
+        }
+
+        Mode::Offline => {
+            let Some(SymbolsPath { path, .. }) = local_symbols else {
+                anyhow::bail!(
+                    "In JS offline mode, you must provide a local symbol directory with --symbols"
+                );
+            };
+
+            let source = js_local_source::start_server(&path)
+                .context("Failed to start local symbol server")?;
+
+            Ok(Arc::new(source))
+        }
+    }
 }
 
 #[derive(Debug)]
