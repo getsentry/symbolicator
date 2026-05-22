@@ -69,9 +69,12 @@ struct LookupKey {
 /// path-based lookups.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ReleaseDistUrl {
-    release: Option<Arc<str>>,
-    dist: Option<Arc<str>>,
+    /// A URL is mandatory for path-based lookups.
     url: Arc<str>,
+    /// A release is mandatory for path-based lookups.
+    release: Arc<str>,
+    /// A dist is optional for path-based lookups.
+    dist: Option<Arc<str>>,
 }
 
 /// Simple representation of the manifest of a sourcebundle (including artifact bundles.).
@@ -129,22 +132,29 @@ impl Index {
             let dist = manifest.attributes.get("dist").cloned();
 
             for file in manifest.files.values() {
-                if file.ty() != Some(SourceFileType::MinifiedSource) {
+                if !matches!(
+                    file.ty(),
+                    Some(SourceFileType::MinifiedSource | SourceFileType::Source),
+                ) {
                     continue;
                 }
 
-                let Some(url) = file.url() else {
-                    continue;
-                };
+                if let Some(release) = release.as_ref() {
+                    let Some(url) = file.url() else {
+                        continue;
+                    };
 
-                out.by_url
-                    .entry(ReleaseDistUrl {
-                        release: release.clone(),
-                        dist: dist.clone(),
-                        url: url.into(),
-                    })
-                    .or_default()
-                    .insert(Arc::clone(&relative_path));
+                    let url = symbolicator_js::extract_file_stem(url);
+
+                    out.by_url
+                        .entry(ReleaseDistUrl {
+                            release: release.clone(),
+                            dist: dist.clone(),
+                            url: url.into(),
+                        })
+                        .or_default()
+                        .insert(Arc::clone(&relative_path));
+                }
 
                 if let Some(debug_id) = file.debug_id() {
                     out.by_debug_id
@@ -185,12 +195,17 @@ enum LookupResult {
 
 async fn lookup(
     extract::State(index): extract::State<Arc<Index>>,
-    extract::Query(key): extract::Query<LookupKey>,
+    extract::Query(LookupKey {
+        release,
+        dist,
+        url,
+        debug_id,
+    }): extract::Query<LookupKey>,
 ) -> Json<Box<[LookupResult]>> {
     let mut out = Vec::new();
     let mut found_bundles = HashSet::new();
 
-    if let Some(debug_id) = key.debug_id {
+    if let Some(debug_id) = debug_id {
         for path in index
             .by_debug_id
             .get(&debug_id)
@@ -210,12 +225,14 @@ async fn lookup(
         }
     }
 
-    if let Some(url) = key.url {
+    if let Some(url) = url
+        && let Some(release) = release
+    {
         for path in index
             .by_url
             .get(&ReleaseDistUrl {
-                release: key.release.clone(),
-                dist: key.dist.clone(),
+                release: release.clone(),
+                dist: dist.clone(),
                 url: url.clone(),
             })
             .into_iter()
