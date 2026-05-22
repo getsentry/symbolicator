@@ -34,12 +34,10 @@ pub fn start_server(path: impl AsRef<Path> + Clone) -> anyhow::Result<SentrySour
         .layer(TraceLayer::new_for_http())
         .with_state(index);
 
-    let handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         let listener = tokio::net::TcpListener::from_std(listener).unwrap();
         axum::serve(listener, router).await.unwrap();
     });
-
-    std::mem::forget(handle);
 
     Ok(SentrySourceConfig {
         id: SourceId::new("local"),
