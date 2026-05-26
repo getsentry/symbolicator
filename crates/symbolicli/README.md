@@ -50,4 +50,4 @@ Available levels are `off`, `error`, `warn`, `info`, `debug`, `trace`. The defau
 # Local Symbols
 The `--symbols` option allows you to supply local debug information.
 - For native events, pass a local directory containing debug files to use in addition to the configured sources. The directory must be sorted according to the `unified` layout. The easiest way to accomplish that is using `symsorter`.
-- For JS events, pass a directory containing artifact bundles (individual files are not supported right now). Note that this only works in offline mode; in online mode, only files from Sentry will be used.
+- For JS events, pass a directory containing artifact bundles (individual files are not supported right now). Note that this only works in offline mode; in online mode, only files from Sentry are used.
