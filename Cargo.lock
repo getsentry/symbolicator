@@ -5021,6 +5021,7 @@ name = "symbolicli"
 version = "26.5.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "dirs",
  "prettytable-rs",
@@ -5036,8 +5037,13 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "walkdir",
+ "zip 5.1.0",
 ]
 
 [[package]]

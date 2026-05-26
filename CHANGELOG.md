@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- (symbolicli) Support local JavaScript symbolication by @loewenheim in [#1956](https://github.com/getsentry/symbolicator/pull/1956)
+
 ## 26.5.0
 
 ### Bug Fixes 🐛
