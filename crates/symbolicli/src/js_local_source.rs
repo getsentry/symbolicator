@@ -21,9 +21,9 @@ use zip::ZipArchive;
 /// bundles from the given directory.
 pub fn start_server(path: impl AsRef<Path> + Clone) -> anyhow::Result<SentrySourceConfig> {
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-    let listener = TcpListener::bind(addr).unwrap();
-    listener.set_nonblocking(true).unwrap();
-    let socket = listener.local_addr().unwrap();
+    let listener = TcpListener::bind(addr).context("Failed to bind listener")?;
+    listener.set_nonblocking(true)?;
+    let socket = listener.local_addr()?;
     let index = Index::new(path.clone(), socket)?;
     let index = Arc::new(index);
     let source_url = index.url("lookup");
