@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump symbolic to 13.1.1 for arm64 window pe unwinding support
+
 ## 26.5.1
 
 ### Features
