@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 26.5.2
 
 ### Internal Changes 🔧
 
