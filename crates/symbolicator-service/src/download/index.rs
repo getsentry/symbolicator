@@ -197,7 +197,7 @@ async fn download_index_segment(
 ///
 /// If one segment file can't be fetched or read, the whole index
 /// computation aborts. This guarantees that we don't cache incomplete
-/// indexes as "succesful", but instead recompute them as soon as possible.
+/// indexes as "successful", but instead recompute them as soon as possible.
 #[tracing::instrument(skip(cache, downloader, source, file), fields(source.id = %source.id()))]
 async fn download_full_index(
     cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
@@ -355,7 +355,7 @@ impl SourceIndexService {
     ///
     /// The last ID is locally cached for an hour, and download failures
     /// are cached for 10 minutes. If downloading a new last ID fails but there
-    /// is an existing succesful download, it will be reused for another hour.
+    /// is an existing successful download, it will be reused for another hour.
     #[tracing::instrument(skip(self, source), fields(source.id = %source.id()))]
     async fn fetch_symstore_last_id_memoized(
         &self,

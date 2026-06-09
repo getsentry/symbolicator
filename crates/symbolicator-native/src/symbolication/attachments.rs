@@ -10,7 +10,7 @@ use crate::interface::AttachmentFile;
 pub async fn download_attachment(
     download_svc: Arc<DownloadService>,
     file: AttachmentFile,
-) -> anyhow::Result<File> {
+) -> Result<File, CacheError> {
     let (storage_url, storage_token) = match file {
         AttachmentFile::Local(file) => return Ok(file),
         AttachmentFile::Remote {
