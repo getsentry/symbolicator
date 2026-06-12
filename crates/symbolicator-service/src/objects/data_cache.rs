@@ -9,14 +9,14 @@
 use std::cmp;
 use std::fmt;
 use std::io;
-use std::sync::Arc;
+use std::sync::{LazyLock, Arc};
 
 use futures::future::BoxFuture;
 use symbolic::common::SelfCell;
 use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
-use symbolic::debuginfo::{Archive, Object};
+use symbolic::debuginfo::{Archive, Object, ParseObjectOptions};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
@@ -26,6 +26,13 @@ use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 
 use super::meta_cache::FetchFileMetaRequest;
+
+static PARSE_OBJECT_OPTIONS: LazyLock<ParseObjectOptions> = LazyLock::new(|| {
+    let mut options = ParseObjectOptions::default();
+    // Limit decompressed debug file section size to 4GiB.
+    options.max_decompressed_section_size = Some(4 << 30);
+    options
+});
 
 /// This requests the file content of a single file at a specific path/url.
 /// The attributes for this are the same as for `FetchFileMetaRequest`, hence the newtype
@@ -38,7 +45,7 @@ pub struct OwnedObject(SelfCell<ByteView<'static>, Object<'static>>);
 impl OwnedObject {
     fn parse(byteview: ByteView<'static>) -> CacheContents<OwnedObject> {
         let obj = SelfCell::try_new(byteview, |p| unsafe {
-            Object::parse(&*p).map_err(CacheError::from_std_error)
+            Object::parse_with_opts(&*p, *PARSE_OBJECT_OPTIONS).map_err(CacheError::from_std_error)
         })?;
         Ok(OwnedObject(obj))
     }
@@ -131,7 +138,7 @@ async fn fetch_object_file(
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
     // extract the wanted file.
     let view = ByteView::map_file_ref(temp_file.as_file())?;
-    let archive = match Archive::parse(&view) {
+    let archive = match Archive::parse_with_opts(&view, *PARSE_OBJECT_OPTIONS) {
         Ok(archive) => archive,
         Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
