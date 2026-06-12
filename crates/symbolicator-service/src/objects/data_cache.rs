@@ -40,13 +40,10 @@ pub struct OwnedObject {
 
 impl OwnedObject {
     fn parse(byteview: ByteView<'static>, opts: ParseObjectOptions) -> CacheContents<OwnedObject> {
-        let object = SelfCell::try_new(byteview, |p| unsafe {
+        let inner = SelfCell::try_new(byteview, |p| unsafe {
             Object::parse_with_opts(&*p, opts).map_err(CacheError::from_std_error)
         })?;
-        Ok(OwnedObject {
-            inner: object,
-            opts,
-        })
+        Ok(OwnedObject { inner, opts })
     }
 }
 
