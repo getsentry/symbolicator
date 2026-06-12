@@ -55,6 +55,7 @@ impl SharedServices {
             shared_cache.clone(),
             download_svc.clone(),
             source_index_svc.clone(),
+            config.parse_object_options(),
         );
 
         Ok(Self {
