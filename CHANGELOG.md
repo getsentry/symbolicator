@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_section_size` to limit
+  the decompressed sizes of compressed sections during debug file parsing. The default
+  value is 4GiB. ([#1965](https://github.com/getsentry/symbolicator/pull/1965))
+
 ## 26.5.2
 
 ### Internal Changes 🔧

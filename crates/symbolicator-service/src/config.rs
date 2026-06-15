@@ -10,6 +10,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use sentry::types::Dsn;
 use serde::{Deserialize, Deserializer, de};
+use symbolic::debuginfo::ParseObjectOptions;
 use tracing::level_filters::LevelFilter;
 
 use symbolicator_sources::SourceConfig;
@@ -532,6 +533,11 @@ pub struct Config {
     /// This applies to the `/symbolicate`, `/symbolicate-any`, `/symbolicate-js`,
     /// and `/symbolicate-jvm` endpoints.
     pub symbolicate_body_max_bytes: usize,
+
+    /// Maximum decompressed size of compressed sections in debug files.
+    ///
+    /// Defaults to 4GiB
+    pub object_file_max_decompressed_section_size: Option<usize>,
 }
 
 impl Config {
@@ -548,6 +554,12 @@ impl Config {
 
     pub fn default_sources(&self) -> Arc<[SourceConfig]> {
         self.sources.clone()
+    }
+
+    pub fn parse_object_options(&self) -> ParseObjectOptions {
+        let mut opts = ParseObjectOptions::default();
+        opts.max_decompressed_section_size = self.object_file_max_decompressed_section_size;
+        opts
     }
 }
 
@@ -624,6 +636,7 @@ impl Default for Config {
             // We allow profiles up to 50MiB in through Relay, This allows for that size
             // plus some extra for the rest of the request.
             symbolicate_body_max_bytes: 55 * 1024 * 1024,
+            object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
         }
     }
 }

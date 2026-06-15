@@ -334,6 +334,7 @@ mod tests {
             shared_cache.clone(),
             downloader.clone(),
             source_index_svc.clone(),
+            Default::default(),
         );
         let bitcode = BitcodeService::new(
             caches.auxdifs,

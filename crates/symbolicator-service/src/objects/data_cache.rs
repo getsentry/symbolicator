@@ -16,7 +16,7 @@ use symbolic::common::SelfCell;
 use tempfile::NamedTempFile;
 
 use symbolic::common::ByteView;
-use symbolic::debuginfo::{Archive, Object};
+use symbolic::debuginfo::{Archive, Object, ParseObjectOptions};
 use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
@@ -33,21 +33,24 @@ use super::meta_cache::FetchFileMetaRequest;
 pub(super) struct FetchFileDataRequest(pub(super) FetchFileMetaRequest);
 
 #[derive(Debug)]
-pub struct OwnedObject(SelfCell<ByteView<'static>, Object<'static>>);
+pub struct OwnedObject {
+    inner: SelfCell<ByteView<'static>, Object<'static>>,
+    opts: ParseObjectOptions,
+}
 
 impl OwnedObject {
-    fn parse(byteview: ByteView<'static>) -> CacheContents<OwnedObject> {
-        let obj = SelfCell::try_new(byteview, |p| unsafe {
-            Object::parse(&*p).map_err(CacheError::from_std_error)
+    fn parse(byteview: ByteView<'static>, opts: ParseObjectOptions) -> CacheContents<OwnedObject> {
+        let inner = SelfCell::try_new(byteview, |p| unsafe {
+            Object::parse_with_opts(&*p, opts).map_err(CacheError::from_std_error)
         })?;
-        Ok(OwnedObject(obj))
+        Ok(OwnedObject { inner, opts })
     }
 }
 
 impl Clone for OwnedObject {
     fn clone(&self) -> Self {
-        let byteview = self.0.owner().clone();
-        Self::parse(byteview).unwrap()
+        let byteview = self.inner.owner().clone();
+        Self::parse(byteview, self.opts).unwrap()
     }
 }
 
@@ -70,12 +73,12 @@ pub struct ObjectHandle {
 impl ObjectHandle {
     /// Get a reference to the parsed [`Object`].
     pub fn object(&self) -> &Object<'_> {
-        self.object.0.get()
+        self.object.inner.get()
     }
 
     /// Get a reference to the underlying data.
     pub fn data(&self) -> &ByteView<'static> {
-        self.object.0.owner()
+        self.object.inner.owner()
     }
 }
 
@@ -118,6 +121,7 @@ async fn fetch_object_file(
     object_id: &ObjectId,
     file_id: RemoteFile,
     downloader: Arc<DownloadService>,
+    opts: ParseObjectOptions,
     temp_file: &mut NamedTempFile,
 ) -> CacheContents {
     sentry::configure_scope(|scope| {
@@ -131,7 +135,7 @@ async fn fetch_object_file(
     // multi-arch files (e.g. FatMach), we parse as Archive and try to
     // extract the wanted file.
     let view = ByteView::map_file_ref(temp_file.as_file())?;
-    let archive = match Archive::parse(&view) {
+    let archive = match Archive::parse_with_opts(&view, opts) {
         Ok(archive) => archive,
         Err(e) => return Err(CacheError::Malformed(e.to_string())),
     };
@@ -200,26 +204,45 @@ impl CacheItemRequest for FetchFileDataRequest {
     const VERSIONS: CacheVersions = OBJECTS_CACHE_VERSIONS;
 
     fn compute<'a>(&'a self, temp_file: &'a mut NamedTempFile) -> BoxFuture<'a, CacheContents> {
+        let Self(FetchFileMetaRequest {
+            scope,
+            file_source,
+            object_id,
+            opts,
+            data_cache: _,
+            download_svc,
+        }) = self;
+
         tracing::trace!(
             "Fetching file data for {}",
-            CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source)
+            CacheKey::from_scoped_file(scope, file_source)
         );
         Box::pin(fetch_object_file(
-            &self.0.object_id,
-            self.0.file_source.clone(),
-            self.0.download_svc.clone(),
+            object_id,
+            file_source.clone(),
+            download_svc.clone(),
+            *opts,
             temp_file,
         ))
     }
 
     fn load(&self, data: ByteView<'static>) -> CacheContents<Self::Item> {
-        let object = OwnedObject::parse(data)?;
+        let Self(FetchFileMetaRequest {
+            scope,
+            file_source,
+            object_id,
+            opts,
+            data_cache: _,
+            download_svc: _,
+        }) = self;
+
+        let object = OwnedObject::parse(data, *opts)?;
         let object_handle = ObjectHandle {
-            object_id: self.0.object_id.clone(),
+            object_id: object_id.clone(),
             object,
 
-            scope: self.0.scope.clone(),
-            cache_key: CacheKey::from_scoped_file(&self.0.scope, &self.0.file_source),
+            scope: scope.clone(),
+            cache_key: CacheKey::from_scoped_file(scope, file_source),
         };
 
         // FIXME(swatinem): This `configure_scope` call happens in a spawned/deduplicated
@@ -302,6 +325,7 @@ mod tests {
             Default::default(),
             download_svc,
             source_index_svc,
+            Default::default(),
         )
     }
 
