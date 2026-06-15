@@ -1,5 +1,19 @@
 # Changelog
 
+## 26.5.2
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump symbolic to 13.1.1 for arm64 pe unwinding support by @klochek in [#1958](https://github.com/getsentry/symbolicator/pull/1958)
+
+## 26.5.1
+
+### Features
+
+- (symbolicli) Support local JavaScript symbolication by @loewenheim in [#1956](https://github.com/getsentry/symbolicator/pull/1956)
+
 ## 26.5.0
 
 ### Bug Fixes 🐛
