@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator"
-version = "26.4.0"
+version = "26.5.2"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
@@ -16,7 +16,7 @@ futures = { workspace = true}
 hostname = { workspace = true}
 humantime =  { workspace = true }
 rustls = { workspace = true }
-sentry = { workspace = true, features = ["release-health", "tower", "tower-http"] }
+sentry = { workspace = true, features = ["tower", "tower-http"] }
 serde = { workspace = true }
 serde_json = { workspace = true}
 symbolic = { workspace = true }

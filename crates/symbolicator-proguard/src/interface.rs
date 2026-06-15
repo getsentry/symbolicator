@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::{collections::HashMap, fmt};
 
@@ -123,6 +124,20 @@ pub struct JvmException {
     pub ty: String,
     /// The module in which the exception is defined.
     pub module: String,
+}
+
+impl JvmException {
+    /// Returns the exception's fully-qualified class name.
+    ///
+    /// R8 aggressive mode can rename classes into the root package, in which
+    /// case `module` is empty and the bare `ty` is the full name.
+    pub fn full_class_name(&self) -> Cow<'_, str> {
+        if self.module.is_empty() {
+            Cow::Borrowed(&self.ty)
+        } else {
+            Cow::Owned(format!("{}.{}", self.module, self.ty))
+        }
+    }
 }
 
 /// A JVM stacktrace.

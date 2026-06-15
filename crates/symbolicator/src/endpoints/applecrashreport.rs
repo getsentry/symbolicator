@@ -16,8 +16,6 @@ pub async fn handle_apple_crash_report_request(
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let mut report = None;

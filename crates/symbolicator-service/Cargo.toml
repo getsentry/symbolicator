@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator-service"
-version = "26.4.0"
+version = "26.5.2"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
@@ -40,7 +40,7 @@ reqwest = { workspace = true, features = [
     "hickory-dns",
     "socks",
 ] }
-sentry = { workspace = true, features = ["logs"] }
+sentry = { workspace = true }
 serde = { workspace = true }
 serde-vars = { workspace = true }
 serde_json = { workspace = true }

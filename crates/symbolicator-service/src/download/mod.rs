@@ -633,14 +633,15 @@ async fn do_download_reqwest(
 ///
 /// This error handler uses the HTTP status code to infer the [`CacheError`],
 /// this works for any HTTP request, but does not consider API specific responses.
-struct GenericErrorHandler;
+pub struct GenericErrorHandler;
 
-impl ErrorHandler for GenericErrorHandler {
-    async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
+impl GenericErrorHandler {
+    /// Converts an unsuccessful HTTP response to a [`CacheError`].
+    pub async fn handle_response(source: &str, response: reqwest::Response) -> CacheError {
         let status = response.status();
         debug_assert!(!status.is_success());
 
-        if let Ok(details) = response.response.text().await {
+        if let Ok(details) = response.text().await {
             ::sentry::configure_scope(|scope| {
                 scope.set_extra(
                     "reqwest_response_body",
@@ -677,6 +678,12 @@ impl ErrorHandler for GenericErrorHandler {
     }
 }
 
+impl ErrorHandler for GenericErrorHandler {
+    async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
+        Self::handle_response(source, response.response).await
+    }
+}
+
 /// A HTTP request Symbolicator wants to make.
 struct SymRequest<'a> {
     source_name: &'a str,
@@ -697,9 +704,12 @@ impl<'a> SymRequest<'a> {
         let header = reqwest::header::HeaderValue::from_str(&range.to_string())
             .expect("the range header to be a always valid");
 
-        self.request
-            .headers_mut()
-            .insert(reqwest::header::RANGE, header);
+        let headers = self.request.headers_mut();
+        headers.insert(reqwest::header::RANGE, header);
+        headers.insert(
+            reqwest::header::ACCEPT_ENCODING,
+            reqwest::header::HeaderValue::from_static("identity"),
+        );
 
         self
     }
