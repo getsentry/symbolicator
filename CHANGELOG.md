@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 26.6.0
 
 ### Features
 
