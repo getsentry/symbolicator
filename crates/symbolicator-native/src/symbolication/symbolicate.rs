@@ -155,7 +155,10 @@ impl SymbolicationActor {
         }
 
         if extract_variables {
-            tracing::debug!("Variable extraction requested, memory_snapshot present: {}", memory_snapshot.is_some());
+            tracing::debug!(
+                "Variable extraction requested, memory_snapshot present: {}",
+                memory_snapshot.is_some()
+            );
             if let Some(ref memory) = memory_snapshot {
                 tracing::debug!(
                     "Memory snapshot: {} memory regions, {} thread frame register sets, arch={:?}",
@@ -182,8 +185,6 @@ impl SymbolicationActor {
                     5, // max frames to extract variables from
                 );
             }
-        } else {
-            tracing::debug!("Variable extraction not requested");
         }
 
         // bring modules back into the original order

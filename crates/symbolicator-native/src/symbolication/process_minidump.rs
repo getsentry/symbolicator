@@ -452,6 +452,7 @@ async fn stackwalk(
     scope: Scope,
     sources: Arc<[SourceConfig]>,
     rewrite_first_module: RewriteRules,
+    extract_variables: bool,
 ) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
@@ -499,19 +500,21 @@ async fn stackwalk(
         };
 
         // Collect per-frame register state for variable extraction.
-        let per_frame_regs: Vec<HashMap<String, u64>> = thread
-            .frames
-            .iter()
-            .take(256)
-            .map(|frame| {
-                frame
-                    .context
-                    .valid_registers()
-                    .map(|(name, val)| (name.to_owned(), val))
-                    .collect()
-            })
-            .collect();
-        all_frame_registers.push(per_frame_regs);
+        if extract_variables {
+            let per_frame_regs: Vec<HashMap<String, u64>> = thread
+                .frames
+                .iter()
+                .take(256)
+                .map(|frame| {
+                    frame
+                        .context
+                        .valid_registers()
+                        .map(|(name, val)| (name.to_owned(), val))
+                        .collect()
+                })
+                .collect();
+            all_frame_registers.push(per_frame_regs);
+        }
 
         // We trim stack traces to 256 frames from the top. A similar limit is also in place in
         // relay / store normalization, so any excess frames will be thrown away by Sentry anyway.
@@ -654,6 +657,7 @@ impl SymbolicationActor {
             scope.clone(),
             sources.clone(),
             rewrite_first_module.clone(),
+            extract_variables,
         )
         .await?;
 
