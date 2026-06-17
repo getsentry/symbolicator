@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload gocd deployment assets
         run: |
-          gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
+          gcloud storage cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   prepare-self-hosted-end-to-end:
     needs: [build-binaries]
