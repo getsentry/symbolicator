@@ -723,8 +723,11 @@ fn extract_frame_variables(
     }
 
     let mut vars = serde_json::Map::new();
-    for var_info in &variables {
-        let value = evaluate_variable(var_info, registers, memory, relative_addr);
+    for (order, var_info) in variables.iter().enumerate() {
+        let mut value = evaluate_variable(var_info, registers, memory, relative_addr);
+        if let JsonValue::Object(ref mut map) = value {
+            map.insert("__order".to_string(), JsonValue::Number(order.into()));
+        }
         tracing::debug!("    evaluated {:?} = {}", var_info.name, value);
         vars.insert(var_info.name.clone(), value);
     }
