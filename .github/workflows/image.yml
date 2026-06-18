@@ -195,6 +195,10 @@ jobs:
           merge-multiple: true
 
       - name: Upload gocd deployment assets
+        env:
+          # the upload SA has no delete perms; disable parallel composite uploads
+          # since their chunk cleanup would fail on delete
+          CLOUDSDK_STORAGE_PARALLEL_COMPOSITE_UPLOAD_ENABLED: false
         run: |
           gcloud storage cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
