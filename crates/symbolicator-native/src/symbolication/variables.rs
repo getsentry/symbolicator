@@ -472,7 +472,7 @@ fn interpret_primitive(encoding: PrimitiveEncoding, byte_size: u16, bytes: &[u8]
 }
 
 fn interpret_pointer(
-    _pointee_type_name: &str,
+    pointee_type_name: &str,
     byte_size: u16,
     bytes: &[u8],
     memory: &MinidumpMemorySnapshot,
@@ -488,11 +488,13 @@ fn interpret_pointer(
     let hex_val = format!("0x{:x}", ptr_val);
     let annotations = check_pointer_annotations(ptr_val, memory);
 
-    // Try to read a C string if it's a char* and not corrupt.
     let mut result = json!({ "__value": hex_val });
     if annotations.is_empty() && ptr_val != 0 {
-        if let Some(s) = try_read_c_string(memory, ptr_val, 128) {
-            result["__string_value"] = json!(s);
+        let is_char_ptr = matches!(pointee_type_name, "char" | "signed char" | "unsigned char");
+        if is_char_ptr {
+            if let Some(s) = try_read_c_string(memory, ptr_val, 128) {
+                result["__string_value"] = json!(s);
+            }
         }
     }
     if !annotations.is_empty() {
@@ -525,13 +527,33 @@ fn interpret_struct(
 /// the depth limit, turning `{"__string_value": "Alice"}` into
 /// `"{\"__string_value\":\"Alice\"}"`. To avoid this, struct field values
 /// are flattened to simple JSON scalars before being returned.
+///
+/// The flattening preserves key diagnostic info that would otherwise be lost:
+/// - Pointer address alongside string values: `"Alice" (0x16fb02790)`
+/// - Annotation types alongside pointer values: `0x0 [null_pointer]`
 fn flatten_to_display(value: JsonValue) -> JsonValue {
     match &value {
         JsonValue::Object(map) => {
             if let Some(JsonValue::String(s)) = map.get("__string_value") {
-                return JsonValue::String(format!("\"{}\"", s));
+                if let Some(JsonValue::String(ptr)) = map.get("__value") {
+                    return JsonValue::String(format!("{} ({})", s, ptr));
+                }
+                return JsonValue::String(s.clone());
             }
             if let Some(v) = map.get("__value") {
+                if let Some(JsonValue::Array(anns)) = map.get("__annotations") {
+                    let ann_types: Vec<&str> = anns
+                        .iter()
+                        .filter_map(|a| a.get("type").and_then(|t| t.as_str()))
+                        .collect();
+                    if !ann_types.is_empty() {
+                        return JsonValue::String(format!(
+                            "{} [{}]",
+                            display_json_value(v),
+                            ann_types.join(", "),
+                        ));
+                    }
+                }
                 return v.clone();
             }
             // Nested struct without metadata keys: format as {.field1 = val, ...}
