@@ -418,8 +418,8 @@ fn interpret_value(
         VariableType::Primitive { encoding, byte_size } => {
             interpret_primitive(*encoding, *byte_size, bytes)
         }
-        VariableType::Pointer { pointee_type_name, byte_size } => {
-            interpret_pointer(pointee_type_name, *byte_size, bytes, memory)
+        VariableType::Pointer { pointee_type_name, pointee_type, byte_size } => {
+            interpret_pointer(pointee_type_name, pointee_type, *byte_size, bytes, memory, depth)
         }
         VariableType::Struct { fields, .. } if depth < MAX_EVAL_DEPTH => {
             interpret_struct(fields, bytes, memory, depth)
@@ -473,9 +473,11 @@ fn interpret_primitive(encoding: PrimitiveEncoding, byte_size: u16, bytes: &[u8]
 
 fn interpret_pointer(
     pointee_type_name: &str,
+    pointee_type: &VariableType,
     byte_size: u16,
     bytes: &[u8],
     memory: &MinidumpMemorySnapshot,
+    depth: usize,
 ) -> JsonValue {
     let ptr_val = if byte_size == 4 && bytes.len() >= 4 {
         u32::from_le_bytes(bytes[..4].try_into().unwrap()) as u64
@@ -494,6 +496,21 @@ fn interpret_pointer(
         if is_char_ptr {
             if let Some(s) = try_read_c_string(memory, ptr_val, 128) {
                 result["__string_value"] = json!(s);
+            }
+        }
+
+        // Dereference typed pointers when we have the pointee type
+        // and enough depth budget remaining.
+        if !is_char_ptr && depth < MAX_EVAL_DEPTH {
+            if let Some(pointee_size) = pointee_type.byte_size() {
+                if pointee_size > 0 && pointee_size <= 4096 {
+                    if let Some(target_bytes) = memory.read_bytes(ptr_val, pointee_size as usize) {
+                        let deref = interpret_value(pointee_type, &target_bytes, memory, depth + 1);
+                        if !deref.is_null() {
+                            result["__deref"] = deref;
+                        }
+                    }
+                }
             }
         }
     }
