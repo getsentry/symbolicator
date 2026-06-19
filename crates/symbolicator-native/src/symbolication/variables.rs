@@ -427,8 +427,8 @@ fn interpret_value(
         VariableType::Enum { variants, byte_size, .. } => {
             interpret_enum(variants, *byte_size, bytes)
         }
-        VariableType::Array { element_type_name, count, byte_size } => {
-            interpret_array(element_type_name, *count, *byte_size, bytes, depth)
+        VariableType::Array { element_type_name, element_type, count, byte_size } => {
+            interpret_array(element_type_name, element_type, *count, *byte_size, bytes, memory, depth)
         }
         _ => {
             // Struct at max depth, Unknown, etc.
@@ -513,10 +513,47 @@ fn interpret_struct(
         let end = start + field.byte_size as usize;
         if end <= bytes.len() {
             let field_value = interpret_value(&field.type_info, &bytes[start..end], memory, depth + 1);
-            obj.insert(field.name.clone(), field_value);
+            obj.insert(field.name.clone(), flatten_to_display(field_value));
         }
     }
     JsonValue::Object(obj)
+}
+
+/// Collapse a rich metadata object into a simple display value.
+///
+/// Relay's event normalization stringifies nested objects when they exceed
+/// the depth limit, turning `{"__string_value": "Alice"}` into
+/// `"{\"__string_value\":\"Alice\"}"`. To avoid this, struct field values
+/// are flattened to simple JSON scalars before being returned.
+fn flatten_to_display(value: JsonValue) -> JsonValue {
+    match &value {
+        JsonValue::Object(map) => {
+            if let Some(JsonValue::String(s)) = map.get("__string_value") {
+                return JsonValue::String(format!("\"{}\"", s));
+            }
+            if let Some(v) = map.get("__value") {
+                return v.clone();
+            }
+            // Nested struct without metadata keys: format as {.field1 = val, ...}
+            let parts: Vec<String> = map
+                .iter()
+                .filter(|(k, _)| !k.starts_with("__"))
+                .map(|(k, v)| format!(".{} = {}", k, display_json_value(v)))
+                .collect();
+            JsonValue::String(format!("{{{}}}", parts.join(", ")))
+        }
+        _ => value,
+    }
+}
+
+fn display_json_value(v: &JsonValue) -> String {
+    match v {
+        JsonValue::String(s) => s.clone(),
+        JsonValue::Number(n) => n.to_string(),
+        JsonValue::Bool(b) => b.to_string(),
+        JsonValue::Null => "null".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn interpret_enum(variants: &[(String, i64)], byte_size: u16, bytes: &[u8]) -> JsonValue {
@@ -536,23 +573,40 @@ fn interpret_enum(variants: &[(String, i64)], byte_size: u16, bytes: &[u8]) -> J
 }
 
 fn interpret_array(
-    _element_type_name: &str,
+    element_type_name: &str,
+    element_type: &VariableType,
     count: u64,
     byte_size: u32,
     bytes: &[u8],
-    _depth: usize,
+    memory: &MinidumpMemorySnapshot,
+    depth: usize,
 ) -> JsonValue {
     if count == 0 || byte_size == 0 {
         return json!([]);
     }
     let elem_size = byte_size as u64 / count;
+
+    // char arrays: try to interpret as a NUL-terminated C string.
+    if elem_size == 1
+        && matches!(element_type_name, "char" | "signed char" | "unsigned char")
+    {
+        let len = bytes.len().min(count as usize);
+        let str_bytes = &bytes[..len];
+        let end = str_bytes.iter().position(|&b| b == 0).unwrap_or(len);
+        if let Ok(s) = std::str::from_utf8(&str_bytes[..end]) {
+            if !s.is_empty() {
+                return json!({ "__string_value": s });
+            }
+        }
+    }
+
     let show = (count as usize).min(MAX_ARRAY_ELEMENTS);
     let mut arr = Vec::with_capacity(show);
     for i in 0..show {
         let start = i * elem_size as usize;
         let end = start + elem_size as usize;
         if end <= bytes.len() {
-            arr.push(json!(format!("0x{}", bytes_to_hex(&bytes[start..end]))));
+            arr.push(interpret_value(element_type, &bytes[start..end], memory, depth + 1));
         }
     }
     if count as usize > MAX_ARRAY_ELEMENTS {
