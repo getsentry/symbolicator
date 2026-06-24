@@ -1,6 +1,7 @@
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
@@ -16,6 +17,7 @@ use crate::caches::{CachePathFormat, CacheVersion, CacheVersions};
 use crate::config::{CacheConfig, CacheConfigs, DerivedCacheConfig, DownloadedCacheConfig};
 use crate::test;
 use crate::types::Scope;
+use crate::utils::defer::MaxDeferCounter;
 
 use super::cache_error::cache_contents_from_bytes;
 use super::fs::metadata_path;
@@ -1045,7 +1047,7 @@ async fn test_cache_fallback() {
         CacheName::Objects,
         &config,
         CacheConfig::from(CacheConfigs::default().derived),
-        Arc::new(AtomicIsize::new(1)),
+        MaxDeferCounter::new(Some(1)),
         1024,
     )
     .unwrap();
@@ -1107,7 +1109,7 @@ async fn test_cache_fallback_notfound() {
         CacheName::Objects,
         &config,
         CacheConfig::from(CacheConfigs::default().derived),
-        Arc::new(AtomicIsize::new(1)),
+        MaxDeferCounter::new(Some(1)),
         1024,
     )
     .unwrap();
@@ -1133,7 +1135,7 @@ async fn test_lazy_computation_limit() {
         CacheName::Objects,
         &config,
         CacheConfig::from(CacheConfigs::default().derived),
-        Arc::new(AtomicIsize::new(1)),
+        MaxDeferCounter::new(Some(1)),
         1024,
     )
     .unwrap();
@@ -1220,7 +1222,7 @@ async fn test_failing_cache_write() {
         CacheName::Objects,
         &config,
         CacheConfig::from(CacheConfigs::default().derived),
-        Arc::new(AtomicIsize::new(1)),
+        MaxDeferCounter::new(Some(1)),
         1024,
     )
     .unwrap();

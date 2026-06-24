@@ -12,7 +12,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -37,7 +36,7 @@ use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::{FrameOrder, Platform};
-use symbolicator_service::utils::defer::defer;
+use symbolicator_service::utils::defer::{MaxDeferCounter, defer};
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_service::utils::sentry::ConfigureScope;
 use symbolicator_sources::SourceConfig;
@@ -199,8 +198,7 @@ struct RequestServiceInner {
 
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
-    max_concurrent_requests: Option<usize>,
-    current_requests: Arc<AtomicUsize>,
+    current_requests: MaxDeferCounter,
     symbolication_taskmon: tokio_metrics::TaskMonitor,
 }
 
@@ -249,8 +247,7 @@ impl RequestService {
 
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
-            max_concurrent_requests,
-            current_requests: Arc::new(AtomicUsize::new(0)),
+            current_requests: MaxDeferCounter::new(max_concurrent_requests),
             symbolication_taskmon,
         };
 
@@ -408,18 +405,15 @@ impl RequestService {
 
         // Assume that there are no UUID4 collisions in practice.
         let requests = Arc::clone(&self.inner.requests);
-        let current_requests = Arc::clone(&self.inner.current_requests);
 
-        let num_requests = current_requests.load(Ordering::Relaxed);
+        let num_requests = self.inner.current_requests.value();
         metric!(gauge("requests.in_flight") = num_requests as f64);
 
-        // Reject the request if `requests` already contains `max_concurrent_requests` elements.
-        if let Some(max_concurrent_requests) = self.inner.max_concurrent_requests
-            && num_requests >= max_concurrent_requests
-        {
+        // Reject the request if `max_concurrent_requests` in-flight requests are already running.
+        let current_request = self.inner.current_requests.try_incr().ok_or_else(|| {
             metric!(counter("requests.rejected") += 1);
-            return Err(MaxRequestsError);
-        }
+            MaxRequestsError
+        })?;
 
         // Using `task_name` as the tag should be fine, there is only a small
         // fixed number of them.
@@ -430,7 +424,7 @@ impl RequestService {
             .lock()
             .unwrap()
             .insert(request_id, receiver.shared());
-        current_requests.fetch_add(1, Ordering::Relaxed);
+
         let token = defer(move || {
             requests.lock().unwrap().remove(&request_id);
         });
@@ -489,7 +483,7 @@ impl RequestService {
 
             // We stop counting the request as an in-flight request at this point, even though
             // it will stay in the `requests` map for another 90s.
-            current_requests.fetch_sub(1, Ordering::Relaxed);
+            drop(current_request);
 
             // Using `task_name` as the tag should be fine, there is only a small
             // fixed number of them.
