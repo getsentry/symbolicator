@@ -14,7 +14,7 @@ use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::caches::CacheVersions;
 use crate::caching::Metadata;
-use crate::utils::futures::CallOnDrop;
+use crate::utils::defer::defer;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
@@ -561,7 +561,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let done_token = {
             let key = cache_key.clone();
             let refreshes = Arc::clone(&self.refreshes);
-            CallOnDrop::new(move || {
+            defer(move || {
                 max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
                 refreshes.lock().unwrap().remove(&key);
             })

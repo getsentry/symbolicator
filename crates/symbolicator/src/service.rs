@@ -37,7 +37,7 @@ use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::{FrameOrder, Platform};
-use symbolicator_service::utils::futures::CallOnDrop;
+use symbolicator_service::utils::defer::defer;
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_service::utils::sentry::ConfigureScope;
 use symbolicator_sources::SourceConfig;
@@ -431,7 +431,7 @@ impl RequestService {
             .unwrap()
             .insert(request_id, receiver.shared());
         current_requests.fetch_add(1, Ordering::Relaxed);
-        let token = CallOnDrop::new(move || {
+        let token = defer(move || {
             requests.lock().unwrap().remove(&request_id);
         });
 
@@ -443,7 +443,7 @@ impl RequestService {
             let ctx = sentry::TransactionContext::continue_from_span(task_name, task_name, span);
             let transaction = sentry::start_transaction(ctx);
             sentry::configure_scope(|scope| scope.set_span(Some(transaction.clone().into())));
-            let transaction_guard = CallOnDrop::new(move || {
+            let transaction_guard = defer(move || {
                 transaction.finish();
             });
 

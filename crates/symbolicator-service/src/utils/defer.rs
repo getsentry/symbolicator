@@ -1,4 +1,7 @@
 /// Guard that runs a closure when dropped.
+///
+/// The closure must not panic under any circumstance. Since it is called while dropping an item,
+/// this might result in aborting program execution.
 pub struct DeferGuard<F: FnOnce()>(Option<F>);
 
 impl<F: FnOnce()> Drop for DeferGuard<F> {
