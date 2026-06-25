@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_source_size` to limit
+  the decompressed sizes of compressed embedded sources during debug file parsing. The default
+  value is 100MiB. ([#1972](https://github.com/getsentry/symbolicator/pull/1972))
+
 ## 26.6.0
 
 ### Features
