@@ -538,6 +538,11 @@ pub struct Config {
     ///
     /// Defaults to 4GiB
     pub object_file_max_decompressed_section_size: Option<usize>,
+
+    /// Maximum decompressed size of compressed source files embedded in debug files.
+    ///
+    /// Defaults to 100MiB.
+    pub object_file_max_decompressed_source_size: Option<usize>,
 }
 
 impl Config {
@@ -559,6 +564,7 @@ impl Config {
     pub fn parse_object_options(&self) -> ParseObjectOptions {
         let mut opts = ParseObjectOptions::default();
         opts.max_decompressed_section_size = self.object_file_max_decompressed_section_size;
+        opts.max_decompressed_embedded_source_size = self.object_file_max_decompressed_source_size;
         opts
     }
 }
@@ -637,6 +643,7 @@ impl Default for Config {
             // plus some extra for the rest of the request.
             symbolicate_body_max_bytes: 55 * 1024 * 1024,
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
+            object_file_max_decompressed_source_size: Some(100 * 1024 * 1024),
         }
     }
 }
