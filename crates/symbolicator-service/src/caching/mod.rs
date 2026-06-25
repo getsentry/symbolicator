@@ -151,10 +151,9 @@
 //! the cache item itself is being computed / loaded.
 
 use std::io;
-use std::sync::Arc;
-use std::sync::atomic::AtomicIsize;
 
 use crate::config::Config;
+use crate::utils::defer::MaxDeferCounter;
 
 mod cache_error;
 mod cache_key;
@@ -209,12 +208,10 @@ impl Caches {
         // The minimum value here is clamped to 1, as it would otherwise completely disable lazy
         // re-generation. We might as well decide to hard `panic!` on startup if users have
         // misconfigured this instead of silently correcting it to a value that actually makes sense.
-        let max_lazy_redownloads = Arc::new(AtomicIsize::new(
-            config.caches.downloaded.max_lazy_redownloads.max(1),
-        ));
-        let max_lazy_recomputations = Arc::new(AtomicIsize::new(
-            config.caches.derived.max_lazy_recomputations.max(1),
-        ));
+        let max_lazy_redownloads = config.caches.downloaded.max_lazy_redownloads.max(1) as usize;
+        let max_lazy_recomputations = config.caches.derived.max_lazy_recomputations.max(1) as usize;
+        let lazy_redownloads = MaxDeferCounter::new(Some(max_lazy_redownloads));
+        let lazy_recomputations = MaxDeferCounter::new(Some(max_lazy_recomputations));
 
         // NOTE: A small cache item with all its structures is around ~100 bytes, which gives us an
         // approximate upper bound of items in the cache.
@@ -229,84 +226,84 @@ impl Caches {
                 CacheName::Objects,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
+                lazy_redownloads.clone(),
                 default_cap,
             )?,
             object_meta: Cache::from_config(
                 CacheName::ObjectMeta,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations.clone(),
+                lazy_recomputations.clone(),
                 in_memory.object_meta_capacity,
             )?,
             auxdifs: Cache::from_config(
                 CacheName::Auxdifs,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
+                lazy_redownloads.clone(),
                 default_cap,
             )?,
             il2cpp: Cache::from_config(
                 CacheName::Il2cpp,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
+                lazy_redownloads.clone(),
                 default_cap,
             )?,
             symcaches: Cache::from_config(
                 CacheName::Symcaches,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations.clone(),
+                lazy_recomputations.clone(),
                 default_cap,
             )?,
             cficaches: Cache::from_config(
                 CacheName::Cficaches,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations.clone(),
+                lazy_recomputations.clone(),
                 in_memory.cficaches_capacity,
             )?,
             ppdb_caches: Cache::from_config(
                 CacheName::PpdbCaches,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations.clone(),
+                lazy_recomputations.clone(),
                 default_cap,
             )?,
             sourcemap_caches: Cache::from_config(
                 CacheName::SourceMapCaches,
                 config,
                 config.caches.derived.into(),
-                max_lazy_recomputations,
+                lazy_recomputations,
                 default_cap,
             )?,
             sourcefiles: Cache::from_config(
                 CacheName::SourceFiles,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
+                lazy_redownloads.clone(),
                 default_cap,
             )?,
             diagnostics: Cache::from_config(
                 CacheName::Diagnostics,
                 config,
                 config.caches.diagnostics.into(),
-                Default::default(),
+                MaxDeferCounter::new(Some(0)),
                 default_cap,
             )?,
             proguard: Cache::from_config(
                 CacheName::Proguard,
                 config,
                 config.caches.downloaded.into(),
-                max_lazy_redownloads.clone(),
+                lazy_redownloads.clone(),
                 default_cap,
             )?,
             source_index: Cache::from_config(
                 CacheName::SourceIndex,
                 config,
                 config.caches.index.into(),
-                max_lazy_redownloads,
+                lazy_redownloads,
                 in_memory.source_index_capacity,
             )?,
         })

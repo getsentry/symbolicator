@@ -1,8 +1,6 @@
 use std::fs::File;
 use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::atomic::AtomicIsize;
 use std::time::{Duration, Instant, SystemTime};
 
 use filetime::FileTime;
@@ -11,6 +9,7 @@ use tempfile::NamedTempFile;
 
 use crate::config::{CacheConfig, Config};
 use crate::types::Scope;
+use crate::utils::defer::MaxDeferCounter;
 
 use super::cache_error::cache_contents_from_bytes;
 use super::{CacheContents, CacheEntry, CacheError, CacheName, Metadata};
@@ -55,8 +54,8 @@ pub struct Cache {
     /// Options intended to be user-configurable.
     cache_config: CacheConfig,
 
-    /// The maximum number of lazy refreshes of this cache.
-    max_lazy_refreshes: Arc<AtomicIsize>,
+    /// Limits the maximum number of concurrent lazy refreshes of this cache.
+    lazy_refreshes: MaxDeferCounter,
 
     /// The capacity (in bytes) of the in-memory cache.
     pub(super) in_memory_capacity: u64,
@@ -67,7 +66,7 @@ impl Cache {
         name: CacheName,
         config: &Config,
         cache_config: CacheConfig,
-        max_lazy_refreshes: Arc<AtomicIsize>,
+        lazy_refreshes: MaxDeferCounter,
         in_memory_capacity: u64,
     ) -> io::Result<Self> {
         let tmp_dir = config.cache_dir("tmp");
@@ -83,7 +82,7 @@ impl Cache {
             tmp_dir,
             start_time: SystemTime::now(),
             cache_config,
-            max_lazy_refreshes,
+            lazy_refreshes,
             in_memory_capacity,
         })
     }
@@ -96,8 +95,8 @@ impl Cache {
         self.cache_dir.as_deref()
     }
 
-    pub fn max_lazy_refreshes(&self) -> Arc<AtomicIsize> {
-        self.max_lazy_refreshes.clone()
+    pub fn lazy_refresh(&self) -> &MaxDeferCounter {
+        &self.lazy_refreshes
     }
 
     /// Validate cache expiration of path.
