@@ -143,7 +143,7 @@ impl SentryLookupApi {
 
         let query = SearchQuery {
             index_url: lookup_url,
-            token: source.token.clone(),
+            credentials: source.credentials.clone(),
         };
 
         metric!(counter("source.sentry.js_lookup.access") += 1);
