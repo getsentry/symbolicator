@@ -47,7 +47,7 @@ pub enum Mode {
 
 /// A utility that provides local symbolication of Sentry events.
 ///
-/// Provide either a valid auth token or an existing Sentry admin session via
+/// Provide either a valid auth token or an existing Sentry session via
 /// `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`,
 /// `SENTRY_AUTH_COOKIES`, or `~/.symboliclirc`.
 ///
@@ -219,7 +219,7 @@ impl Settings {
             let Some(auth) = get_sentry_auth(&cli, &project_config_file, &global_config_file)
             else {
                 bail!(
-                    "No auth token or admin session provided. Pass `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`, or `SENTRY_AUTH_COOKIES`."
+                    "No auth token or cookies provided. Pass `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`, or `SENTRY_AUTH_COOKIES`."
                 );
             };
 

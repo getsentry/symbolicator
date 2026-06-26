@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    fn test_sentry_source_credentialsoken_cookies() {
+    fn test_sentry_source_credentials() {
         let c: SentrySourceConfig = serde_json::from_str(
             r#"{
             "id": "foobar",
