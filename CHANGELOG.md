@@ -8,6 +8,10 @@
   the decompressed sizes of compressed embedded sources during debug file parsing. The default
   value is 100MiB. ([#1972](https://github.com/getsentry/symbolicator/pull/1972))
 
+
+### Internal changes
+- Replaced `sentry-native` with `minidumper-child` for crash reporting by @loewenheim in [#1978](https://github.com/getsentry/symbolicator/pull/1978)
+
 ## 26.6.0
 
 ### Features
