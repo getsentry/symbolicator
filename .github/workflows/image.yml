@@ -75,7 +75,7 @@ jobs:
           rustup toolchain install stable --profile minimal --target "${RUST_TARGET}" --no-self-update
 
       - name: Install sentry-cli
-        run: curl -sL https://sentry.io/get-cli/ | bash
+        uses: getsentry/action-setup-sentry-cli@v2
 
       - uses: swatinem/rust-cache@7939da402645ba29a2df566723491a2c856e8f8a # v2
         if: ${{ !startsWith(github.ref_name, 'release/') }}
