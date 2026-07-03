@@ -23,7 +23,7 @@ pub fn init(crash_db: PathBuf, client: sentry::Client) {
             #[cfg(unix)]
             {
                 use std::os::unix::process::CommandExt;
-                command.arg0("relay-crash");
+                command.arg0("symbolicator-crash");
             }
             // Skip arg0, the process name.
             command.args(std::env::args().skip(1));
