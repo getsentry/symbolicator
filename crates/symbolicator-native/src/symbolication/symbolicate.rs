@@ -74,6 +74,7 @@ impl SymbolicationActor {
             caches.cficaches.clone(),
             shared_cache.clone(),
             objects.clone(),
+            services.config.from_object_options(),
         );
 
         let ppdb_caches =
