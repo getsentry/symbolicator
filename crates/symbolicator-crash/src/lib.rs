@@ -83,6 +83,16 @@ pub fn init(crash_db: PathBuf, client: sentry::Client) {
             // Dropping the handle would detach the crash handler not catching any crashes.
             std::mem::forget(handle);
         }
+        Err(err) if is_crash_reporter_process() => {
+            tracing::warn!(
+                error = &err as &dyn std::error::Error,
+                "Failed to initialize crash reporter"
+            );
+            // In this case we need to manually abort the process,
+            // otherwise the forked process will continue to act as
+            // another Symbolicator.
+            std::process::exit(1);
+        }
         Err(err) => {
             tracing::warn!(
                 error = &err as &dyn std::error::Error,
