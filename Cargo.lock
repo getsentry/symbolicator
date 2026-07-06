@@ -2943,9 +2943,9 @@ dependencies = [
 
 [[package]]
 name = "minidumper-child"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7615d83d636600b331883635f136665b4a75cf8031e29be1521bb271325dfc3"
+checksum = "8a3d61b83164dfe719396921156c6bb01fe59e7cf03a3176322d334cbaea2509"
 dependencies = [
  "crash-handler",
  "minidumper",
