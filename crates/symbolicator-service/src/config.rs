@@ -10,6 +10,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use sentry::types::Dsn;
 use serde::{Deserialize, Deserializer, de};
+use symbolic::cfi::FromObjectOptions;
 use symbolic::debuginfo::ParseObjectOptions;
 use tracing::level_filters::LevelFilter;
 
@@ -543,6 +544,11 @@ pub struct Config {
     ///
     /// Defaults to 100MiB.
     pub object_file_max_decompressed_source_size: Option<usize>,
+
+    /// Maximum length of the CFI unwind chain.
+    ///
+    /// Defaults to 128.
+    pub max_unwind_chain_len: Option<usize>,
 }
 
 impl Config {
@@ -565,6 +571,12 @@ impl Config {
         let mut opts = ParseObjectOptions::default();
         opts.max_decompressed_section_size = self.object_file_max_decompressed_section_size;
         opts.max_decompressed_embedded_source_size = self.object_file_max_decompressed_source_size;
+        opts
+    }
+
+    pub fn from_object_options(&self) -> FromObjectOptions {
+        let mut opts = FromObjectOptions::default();
+        opts.max_unwind_chain_len = self.max_unwind_chain_len;
         opts
     }
 }
@@ -644,6 +656,7 @@ impl Default for Config {
             symbolicate_body_max_bytes: 55 * 1024 * 1024,
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
             object_file_max_decompressed_source_size: Some(100 * 1024 * 1024),
+            max_unwind_chain_len: Some(128),
         }
     }
 }
