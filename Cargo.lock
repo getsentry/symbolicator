@@ -4866,7 +4866,7 @@ version = "13.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6cad904b0202151337e3dca9187593aadf6b70ca1e495a2ff420b5bf287f1b3b"
 dependencies = [
- "bitflags 2.9.4",
+ "bitflags 2.13.0",
  "cc",
  "cpp_demangle",
  "itoa",
