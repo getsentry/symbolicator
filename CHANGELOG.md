@@ -10,7 +10,7 @@
 
 ### Other
 
-- (symbolicator-service) Increase default download timeout. ([#1980](https://github.com/getsentry/symbolicator/pull/1980))
+- (symbolicator-service) Increase default connect and head timeouts. ([#1980](https://github.com/getsentry/symbolicator/pull/1980))
 
 ## 26.6.0
 
