@@ -122,6 +122,11 @@ impl MaxDeferCounter {
     pub fn try_incr(&self) -> Option<DeferCounterToken> {
         self.counter.try_incr(self.max)
     }
+
+    /// Returns the configured `max`.
+    pub fn max(&self) -> Option<usize> {
+        self.max
+    }
 }
 
 impl Default for MaxDeferCounter {
