@@ -98,22 +98,6 @@ pub fn execute() -> Result<()> {
 
     let release = Some(env!("SYMBOLICATOR_RELEASE").into());
 
-    #[cfg(feature = "symbolicator-crash")]
-    {
-        let dsn = config.sentry_dsn.as_ref().map(|d| d.to_string());
-        let db = config._crash_db.clone().or_else(|| {
-            config
-                .cache_dir
-                .as_ref()
-                .map(|cache_dir| cache_dir.join(".sentry-native"))
-        });
-        if let (Some(dsn), Some(db)) = (dsn, db) {
-            symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
-                .transport(capture_native_envelope)
-                .release(release.as_deref())
-                .install();
-        }
-    }
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release,
@@ -134,6 +118,20 @@ pub fn execute() -> Result<()> {
     // SAFETY: We are definitely single-threaded right now, so `init_logging`
     // is safe to call.
     unsafe { logging::init_logging(&config) };
+
+    #[cfg(feature = "symbolicator-crash")]
+    {
+        let crash_db = config._crash_db.clone().or_else(|| {
+            config
+                .cache_dir
+                .as_ref()
+                .map(|cache_dir| cache_dir.join(".sentry-native"))
+        });
+
+        if let Some(crash_db) = crash_db {
+            symbolicator_crash::init(crash_db, (*sentry).clone());
+        }
+    }
 
     // We depend on `rustls` with both the `aws-lc-rs` and
     // `ring` features enabled. This means that `rustls` can't automatically
@@ -213,20 +211,4 @@ pub fn execute() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Captures an envelope from the native crash reporter using the main Sentry SDK.
-#[cfg(feature = "symbolicator-crash")]
-fn capture_native_envelope(data: &[u8]) {
-    if let Some(client) = sentry::Hub::main().client() {
-        match sentry::Envelope::from_bytes_raw(data.to_owned()) {
-            Ok(envelope) => client.send_envelope(envelope),
-            Err(error) => {
-                let error = &error as &dyn std::error::Error;
-                tracing::error!(error, "failed to capture crash")
-            }
-        }
-    } else {
-        tracing::error!("failed to capture crash: no sentry client registered");
-    }
 }

@@ -6,6 +6,10 @@ edition = "2024"
 license-file = "../../LICENSE.md"
 default-run = "symbolicator"
 
+
+[features]
+symbolicator-crash = ["dep:symbolicator-crash"]
+
 [dependencies]
 anyhow = { workspace = true }
 axum = { workspace = true, features = ["multipart"] }
