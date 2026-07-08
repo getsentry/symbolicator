@@ -237,6 +237,10 @@ impl RequestService {
 
         let max_concurrent_requests = config.max_concurrent_requests;
 
+        if let Some(max) = max_concurrent_requests {
+            metric!(gauge("requests.max_in_flight") = max as f64);
+        }
+
         let inner = RequestServiceInner {
             config,
 
@@ -408,10 +412,6 @@ impl RequestService {
 
         let num_requests = self.inner.current_requests.value();
         metric!(gauge("requests.in_flight") = num_requests as f64);
-
-        if let Some(max) = self.inner.current_requests.max() {
-            metric!(gauge("requests.max_in_flight") = max as f64);
-        }
 
         // Reject the request if `max_concurrent_requests` in-flight requests are already running.
         let current_request = self.inner.current_requests.try_incr().ok_or_else(|| {
