@@ -716,8 +716,8 @@ pub struct DownloadTimeouts {
 impl Default for DownloadTimeouts {
     fn default() -> Self {
         Self {
-            connect: Duration::from_secs(1),
-            head: Duration::from_secs(5),
+            connect: Duration::from_secs(5),
+            head: Duration::from_secs(10),
             // We want to have a hard download timeout of 5 minutes.
             // This means a download connection needs to sustain ~6.7MB/s to download a 2GB file.
             max_download: Duration::from_mins(5),
