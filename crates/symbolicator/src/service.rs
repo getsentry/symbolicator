@@ -237,6 +237,10 @@ impl RequestService {
 
         let max_concurrent_requests = config.max_concurrent_requests;
 
+        if let Some(max) = max_concurrent_requests {
+            metric!(gauge("requests.max_in_flight") = max as f64);
+        }
+
         let inner = RequestServiceInner {
             config,
 
