@@ -623,6 +623,7 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            minidump: None,
         };
 
         let request_id = service
@@ -667,6 +668,7 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            minidump: None,
         }
     }
 

@@ -75,6 +75,9 @@ pub fn symbolicate_native_frame(
                 },
                 in_app: None,
                 trust: frame.trust,
+                registers: frame.registers.clone(),
+                arguments: Vec::new(),
+                local_variables: Vec::new(),
             },
         });
     }

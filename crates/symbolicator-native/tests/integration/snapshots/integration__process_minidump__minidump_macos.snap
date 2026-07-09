@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-native/tests/integration/process_minidump.rs
+assertion_line: 48
 expression: res
 ---
 timestamp: 1521713398
@@ -39,21 +40,50 @@ stacktraces:
         instruction_addr: "0x109ba8c15"
         package: /Users/travis/build/getsentry/breakpad-tools/macos/build/./crash
         trust: context
+        registers:
+          r10: "0x2e"
+          r11: "0x7fffe8105171"
+          r12: "0x0"
+          r13: "0x0"
+          r14: "0x0"
+          r15: "0x0"
+          r8: "0xc0008ff"
+          r9: "0x0"
+          rax: "0x1"
+          rbp: "0x7fff56064258"
+          rbx: "0x7fff56064120"
+          rcx: "0x0"
+          rdi: "0x7fff56064120"
+          rdx: "0x0"
+          rip: "0x109ba8c15"
+          rsi: "0x7fff56064140"
+          rsp: "0x7fff56064110"
       - status: missing
         original_index: 1
         instruction_addr: "0x109ba8c70"
         package: /Users/travis/build/getsentry/breakpad-tools/macos/build/./crash
         trust: scan
+        registers:
+          rbp: "0x7fff56064258"
+          rip: "0x109ba8c70"
+          rsp: "0x7fff560641b0"
       - status: missing
         original_index: 2
         instruction_addr: "0x7fffe7eeb235"
         package: /usr/lib/system/libdyld.dylib
         trust: scan
+        registers:
+          rbp: "0x7fff56064258"
+          rip: "0x7fffe7eeb235"
+          rsp: "0x7fff56064250"
       - status: missing
         original_index: 3
         instruction_addr: "0x7fffe7eeb235"
         package: /usr/lib/system/libdyld.dylib
         trust: scan
+        registers:
+          rip: "0x7fffe7eeb235"
+          rsp: "0x7fff56064258"
 modules:
   - debug_status: missing
     unwind_status: missing

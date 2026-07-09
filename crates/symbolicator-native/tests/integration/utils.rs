@@ -63,6 +63,7 @@ pub fn make_symbolication_request(
         scraping: Default::default(),
         rewrite_first_module: Default::default(),
         frame_order: FrameOrder::CalleeFirst,
+        minidump: None,
     }
 }
 

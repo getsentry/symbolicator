@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-native/tests/integration/process_minidump.rs
+assertion_line: 42
 expression: res
 ---
 timestamp: 1521713273
@@ -38,6 +39,17 @@ stacktraces:
         abs_path: "c:\\projects\\breakpad-tools\\windows\\crash\\main.cpp"
         lineno: 35
         trust: context
+        registers:
+          eax: "0x0"
+          ebp: "0x10ff670"
+          ebx: "0xfe5000"
+          ecx: "0x10ff670"
+          edi: "0x13bfd78"
+          edx: "0x7"
+          eflags: "0x10246"
+          eip: "0x2a2a3d"
+          esi: "0x759c6314"
+          esp: "0x10ff644"
       - status: symbolicated
         original_index: 1
         instruction_addr: "0x2a2d96"
@@ -49,21 +61,43 @@ stacktraces:
         abs_path: "f:\\dd\\vctools\\crt\\vcstartup\\src\\startup\\exe_common.inl"
         lineno: 283
         trust: cfi
+        registers:
+          ebp: "0x10ff784"
+          ebx: "0xfe5000"
+          edi: "0x13bfd78"
+          eip: "0x2a2d97"
+          esi: "0x759c6314"
+          esp: "0x10ff744"
       - status: missing
         original_index: 2
         instruction_addr: "0x750662c4"
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: cfi
+        registers:
+          ebp: "0x10ff798"
+          ebx: "0xfe5000"
+          edi: "0x13bfd78"
+          eip: "0x750662c4"
+          esi: "0x759c6314"
+          esp: "0x10ff78c"
       - status: missing
         original_index: 3
         instruction_addr: "0x771d0f79"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x10ff7e0"
+          eip: "0x771d0f79"
+          esp: "0x10ff7a0"
       - status: missing
         original_index: 4
         instruction_addr: "0x771d0f44"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x10ff7f0"
+          eip: "0x771d0f44"
+          esp: "0x10ff7e8"
   - thread_id: 3580
     is_requesting: false
     registers:
@@ -83,21 +117,44 @@ stacktraces:
         instruction_addr: "0x771e016c"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
+        registers:
+          eax: "0x0"
+          ebp: "0x159faa4"
+          ebx: "0x13b0990"
+          ecx: "0x0"
+          edi: "0x13b4af0"
+          edx: "0x0"
+          eflags: "0x216"
+          eip: "0x771e016c"
+          esi: "0x13b4930"
+          esp: "0x159f900"
       - status: missing
         original_index: 1
         instruction_addr: "0x750662c4"
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: fp
+        registers:
+          ebp: "0x159fab8"
+          eip: "0x750662c4"
+          esp: "0x159faac"
       - status: missing
         original_index: 2
         instruction_addr: "0x771d0f79"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x159fb00"
+          eip: "0x771d0f79"
+          esp: "0x159fac0"
       - status: missing
         original_index: 3
         instruction_addr: "0x771d0f44"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x159fb10"
+          eip: "0x771d0f44"
+          esp: "0x159fb08"
   - thread_id: 2600
     is_requesting: false
     registers:
@@ -117,21 +174,44 @@ stacktraces:
         instruction_addr: "0x771e016c"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
+        registers:
+          eax: "0x0"
+          ebp: "0x169fb98"
+          ebx: "0x13b0990"
+          ecx: "0x0"
+          edi: "0x13b7c28"
+          edx: "0x0"
+          eflags: "0x202"
+          eip: "0x771e016c"
+          esi: "0x13b7a68"
+          esp: "0x169f9f4"
       - status: missing
         original_index: 1
         instruction_addr: "0x750662c4"
         package: "C:\\Windows\\System32\\kernel32.dll"
         trust: fp
+        registers:
+          ebp: "0x169fbac"
+          eip: "0x750662c4"
+          esp: "0x169fba0"
       - status: missing
         original_index: 2
         instruction_addr: "0x771d0f79"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x169fbf4"
+          eip: "0x771d0f79"
+          esp: "0x169fbb4"
       - status: missing
         original_index: 3
         instruction_addr: "0x771d0f44"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: fp
+        registers:
+          ebp: "0x169fc04"
+          eip: "0x771d0f44"
+          esp: "0x169fbfc"
   - thread_id: 2920
     is_requesting: false
     registers:
@@ -151,6 +231,17 @@ stacktraces:
         instruction_addr: "0x771df3dc"
         package: "C:\\Windows\\System32\\ntdll.dll"
         trust: context
+        registers:
+          eax: "0x0"
+          ebp: "0x179f2b8"
+          ebx: "0x17b1aa0"
+          ecx: "0x0"
+          edi: "0x17b1a90"
+          edx: "0x0"
+          eflags: "0x206"
+          eip: "0x771df3dc"
+          esi: "0x2cc"
+          esp: "0x179f2ac"
 modules:
   - debug_status: found
     unwind_status: found

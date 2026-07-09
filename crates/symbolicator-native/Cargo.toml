@@ -13,6 +13,8 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 futures = { workspace = true }
 minidump = { workspace = true }
+gimli = "0.31.1"
+object = "0.36"
 minidump-processor = { workspace = true }
 minidump-unwind = { workspace = true }
 moka = { workspace = true }

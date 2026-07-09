@@ -507,6 +507,7 @@ async fn stackwalk(
                     instruction_addr: HexValue(frame.resume_address),
                     package,
                     trust: frame.trust.into(),
+                    registers: Some(map_symbolic_registers(&frame.context)),
                     ..RawFrame::default()
                 }
             })
@@ -617,7 +618,7 @@ impl SymbolicationActor {
         metric!(distribution("minidump.upload.size") = len as f64);
 
         let bv = ByteView::map_file(minidump_file)?;
-        let minidump = Minidump::read(bv)?;
+        let minidump = Arc::new(Minidump::read(bv)?);
 
         let StackWalkMinidumpResult {
             modules,
@@ -656,6 +657,7 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
+            minidump: Some(minidump),
         };
 
         Ok((request, minidump_state))

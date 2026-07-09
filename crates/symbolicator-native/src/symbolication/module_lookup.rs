@@ -106,6 +106,7 @@ struct ModuleEntry {
     object_info: CompleteObjectInfo,
     cache: CacheContents<CacheFileEntry>,
     source_object: CacheContents<Arc<ObjectHandle>>,
+    debug_object: CacheContents<Arc<ObjectHandle>>,
 }
 
 pub struct ModuleLookup {
@@ -118,6 +119,23 @@ pub struct ModuleLookup {
 type DebugSessions<'a> = HashMap<usize, Option<(&'a Scope, ObjectDebugSession<'a>)>>;
 
 impl ModuleLookup {
+    /// Retrieves the cached full debug object handle (`ObjectHandle`) for a given module index,
+    /// if available. Populated by [`Self::fetch_debug_objects`].
+    ///
+    /// This is deliberately independent of [`Self::fetch_sources`]/`source_object`: that path is
+    /// gated on the object having the `has_sources` feature (i.e. resolvable embedded source
+    /// *text*, used for showing source-code context lines), which most real-world binaries don't
+    /// have even when they have perfectly good DWARF `.debug_info`. Consumers that just need the
+    /// object's debug info itself (e.g. DWARF variable/argument extraction) should use this
+    /// instead, since it's fetched with `ObjectPurpose::Debug` — the same purpose used for symcache
+    /// generation, which only requires `has_debug_info`.
+    pub fn get_debug_object(&self, module_index: usize) -> Option<Arc<ObjectHandle>> {
+        self.modules
+            .iter()
+            .find(|entry| entry.module_index == module_index)
+            .and_then(|entry| entry.debug_object.as_ref().ok().cloned())
+    }
+
     /// Creates a new [`ModuleLookup`] out of the given module iterator.
     ///
     /// The rules in `rewrite_first_module` will be used to rewrite the debug file name
@@ -141,6 +159,7 @@ impl ModuleLookup {
                 object_info,
                 cache: Err(CacheError::NotFound),
                 source_object: Err(CacheError::NotFound),
+                debug_object: Err(CacheError::NotFound),
             })
             .collect();
 
@@ -385,6 +404,66 @@ impl ModuleLookup {
                 if entry.source_object.is_ok() {
                     entry.object_info.features.has_sources = true;
                 }
+            }
+        }
+    }
+
+    /// Fetches the full debug objects (not just symcaches) for the modules referenced by
+    /// `stacktraces`, so DWARF debug info is available for e.g. variable/argument extraction.
+    ///
+    /// Uses `ObjectPurpose::Debug` (the same purpose used for symcache generation), which only
+    /// requires `has_debug_info` — unlike [`Self::fetch_sources`], which is gated on the
+    /// unrelated `has_sources` (embedded source *text*) feature and so fails to find an object
+    /// for most real-world binaries even when their DWARF debug info is perfectly usable.
+    #[tracing::instrument(skip_all)]
+    pub async fn fetch_debug_objects(&mut self, objects: ObjectsActor, stacktraces: &[CompleteStacktrace]) {
+        let mut referenced_objects = HashSet::new();
+        for stacktrace in stacktraces {
+            for frame in &stacktrace.frames {
+                if let Some(entry) =
+                    self.get_module_by_addr(frame.raw.instruction_addr.0, frame.raw.addr_mode)
+                {
+                    referenced_objects.insert(entry.module_index);
+                }
+            }
+        }
+
+        let futures = self
+            .modules
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, entry)| {
+                if !referenced_objects.contains(&entry.module_index) {
+                    return None;
+                }
+
+                let objects = objects.clone();
+                let find_request = FindObject {
+                    filetypes: FileType::from_object_type(entry.object_info.raw.ty),
+                    purpose: ObjectPurpose::Debug,
+                    identifier: object_id_from_object_info(&entry.object_info.raw),
+                    sources: self.sources.clone(),
+                    scope: self.scope.clone(),
+                };
+
+                let fut = async move {
+                    let FindResult { meta, .. } = objects.find(find_request).await;
+                    let debug_object = match meta {
+                        Some(meta) => match meta.handle {
+                            Ok(handle) => objects.fetch(handle).await,
+                            Err(err) => Err(err),
+                        },
+                        None => Err(CacheError::NotFound),
+                    };
+                    (idx, debug_object)
+                };
+
+                Some(fut.bind_hub(Hub::new_from_top(Hub::current())))
+            });
+
+        for (idx, debug_object) in future::join_all(futures).await {
+            if let Some(entry) = self.modules.get_mut(idx) {
+                entry.debug_object = debug_object;
             }
         }
     }

@@ -90,6 +90,7 @@ pub fn prepare_payload(
                 modules,
                 rewrite_first_module: Default::default(),
                 frame_order: FrameOrder::CallerFirst,
+                minidump: None,
             })
         }
         Payload::Js { source, event } => {

@@ -25,12 +25,14 @@ use super::demangle::{DEMANGLE_OPTIONS, DemangleCache};
 use super::dotnet::symbolicate_dotnet_frame;
 use super::module_lookup::{CacheFileEntry, ModuleLookup};
 use super::native::{get_relative_caller_addr, symbolicate_native_frame};
+use super::variables;
 
 // we should really rename this here to the `SymbolicatorService`, as it does a lot more
 // than just symbolication ;-)
 #[derive(Clone, Debug)]
 pub struct SymbolicationActor {
     demangle_cache: DemangleCache,
+    dwarf_cache: variables::ModuleDwarfCache,
     pub(crate) objects: ObjectsActor,
     pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
@@ -85,8 +87,11 @@ impl SymbolicationActor {
             .weigher(|k, v| (k.0.len() + v.len()).try_into().unwrap_or(u32::MAX))
             .build();
 
+        let dwarf_cache = variables::new_module_dwarf_cache();
+
         SymbolicationActor {
             demangle_cache,
+            dwarf_cache,
             objects,
             symcaches,
             cficaches,
@@ -113,6 +118,7 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order,
+            minidump,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -151,6 +157,21 @@ impl SymbolicationActor {
         if apply_source_context {
             self.apply_source_context(&mut module_lookup, &mut stacktraces, &scraping)
                 .await
+        }
+
+        // Post-process to extract local variables and function arguments using DWARF.
+        // Only worth the DWARF-parsing cost when we actually have a minidump to evaluate
+        // register- and stack-based locations against.
+        if let Some(minidump) = minidump.as_deref() {
+            module_lookup
+                .fetch_debug_objects(self.objects.clone(), &stacktraces)
+                .await;
+            let mut extractor = variables::VariableExtractor::new(minidump, &self.dwarf_cache);
+            for trace in &mut stacktraces {
+                for frame in &mut trace.frames {
+                    extractor.extract_for_frame(&mut frame.raw, &module_lookup);
+                }
+            }
         }
 
         // bring modules back into the original order

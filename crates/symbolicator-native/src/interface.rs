@@ -66,6 +66,9 @@ pub struct SymbolicateStacktraces {
     pub rewrite_first_module: RewriteRules,
     /// The order of frames within stacktraces (innermost frame first or last).
     pub frame_order: FrameOrder,
+
+    /// A parsed minidump associated with this request, if any.
+    pub minidump: Option<Arc<minidump::Minidump<'static, symbolic::common::ByteView<'static>>>>,
 }
 
 /// Location of an attachment file, such as a minidump.
@@ -226,6 +229,22 @@ pub struct CompleteStacktrace {
 /// A map of register values.
 pub type Registers = BTreeMap<String, HexValue>;
 
+/// An extracted function argument or local variable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Variable {
+    /// The name of the variable.
+    pub name: String,
+    /// The declared type of the variable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub type_name: Option<String>,
+    /// The evaluated value of the variable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    /// The status of evaluating the variable's location.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_status: Option<String>,
+}
+
 fn is_default_value<T: Default + PartialEq>(value: &T) -> bool {
     *value == T::default()
 }
@@ -335,6 +354,18 @@ pub struct RawFrame {
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
+
+    /// Reconstructed register context for this frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registers: Option<Registers>,
+
+    /// Extracted function arguments.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<Variable>,
+
+    /// Extracted local variables.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_variables: Vec<Variable>,
 }
 
 /// How trustworth the instruction pointer of the frame is.

@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-native/tests/integration/process_minidump.rs
+assertion_line: 54
 expression: res
 ---
 timestamp: 1522061032
@@ -39,76 +40,140 @@ stacktraces:
         instruction_addr: "0x401d72"
         package: /work/linux/build/crash
         trust: context
+        registers:
+          r10: "0x131"
+          r11: "0x7f5140aca4c0"
+          r12: "0x401dc0"
+          r13: "0x7fff5ae4ac90"
+          r14: "0x7fff5ae4aab0"
+          r15: "0x0"
+          r8: "0x0"
+          r9: "0x0"
+          rax: "0xffffffffffffffff"
+          rbp: "0x7fff5ae4abb0"
+          rbx: "0x7fff5ae4aa20"
+          rcx: "0x7f5140521b20"
+          rdi: "0x7fff5ae4aab0"
+          rdx: "0x7f5140efc000"
+          rip: "0x401d72"
+          rsi: "0x0"
+          rsp: "0x7fff5ae4aa20"
       - status: missing
         original_index: 1
         instruction_addr: "0x7f514025002e"
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
+        registers:
+          rbp: "0x7fff5ae4abb0"
+          rip: "0x7f514025002e"
+          rsp: "0x7fff5ae4aa40"
       - status: missing
         original_index: 2
         instruction_addr: "0x7f51401e4800"
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
+        registers:
+          rbp: "0x7fff5ae4abb0"
+          rip: "0x7f51401e4800"
+          rsp: "0x7fff5ae4aa60"
       - status: missing
         original_index: 3
         instruction_addr: "0x7f5140cebac6"
         package: /lib/x86_64-linux-gnu/ld-2.23.so
         trust: scan
+        registers:
+          rbp: "0x7fff5ae4abb0"
+          rip: "0x7f5140cebac6"
+          rsp: "0x7fff5ae4aab0"
       - status: missing
         original_index: 4
         instruction_addr: "0x401ec0"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rbp: "0x7fff5ae4abb0"
+          rip: "0x401ec0"
+          rsp: "0x7fff5ae4aac0"
       - status: missing
         original_index: 5
         instruction_addr: "0x414c30"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x414c30"
+          rsp: "0x7fff5ae4abb8"
       - status: missing
         original_index: 6
         instruction_addr: "0x7f514017d830"
         package: /lib/x86_64-linux-gnu/libc-2.23.so
         trust: scan
+        registers:
+          rip: "0x7f514017d830"
+          rsp: "0x7fff5ae4abc0"
       - status: missing
         original_index: 7
         instruction_addr: "0x401c70"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401c70"
+          rsp: "0x7fff5ae4abe0"
       - status: missing
         original_index: 8
         instruction_addr: "0x401dc0"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401dc0"
+          rsp: "0x7fff5ae4abf8"
       - status: missing
         original_index: 9
         instruction_addr: "0x401c70"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401c70"
+          rsp: "0x7fff5ae4ac48"
       - status: missing
         original_index: 10
         instruction_addr: "0x414ca0"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x414ca0"
+          rsp: "0x7fff5ae4ac50"
       - status: missing
         original_index: 11
         instruction_addr: "0x401dc0"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401dc0"
+          rsp: "0x7fff5ae4ac68"
       - status: missing
         original_index: 12
         instruction_addr: "0x401de9"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401de9"
+          rsp: "0x7fff5ae4ac80"
       - status: missing
         original_index: 13
         instruction_addr: "0x400040"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x400040"
+          rsp: "0x7fff5ae4ad48"
       - status: missing
         original_index: 14
         instruction_addr: "0x401dc0"
         package: /work/linux/build/crash
         trust: scan
+        registers:
+          rip: "0x401dc0"
+          rsp: "0x7fff5ae4ad98"
 modules:
   - debug_status: missing
     unwind_status: missing

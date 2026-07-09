@@ -151,6 +151,7 @@ pub fn create_native_symbolication_request(
         // we manually reversed the frames when we created the stacktraces, so this is
         // "callee first"
         frame_order: FrameOrder::CalleeFirst,
+        minidump: None,
     })
 }
 
@@ -310,6 +311,9 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         source_link: value.source_link,
         in_app: value.in_app,
         trust: value.trust,
+        registers: None,
+        arguments: Vec::new(),
+        local_variables: Vec::new(),
     })
 }
 
