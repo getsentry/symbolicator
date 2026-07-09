@@ -810,6 +810,22 @@ dependencies = [
 [[package]]
 name = "breakpad-symbols"
 version = "0.26.1"
+dependencies = [
+ "async-trait",
+ "cachemap2",
+ "circular",
+ "debugid",
+ "futures-util",
+ "minidump-common",
+ "nom",
+ "range-map",
+ "thiserror 2.0.17",
+ "tracing",
+]
+
+[[package]]
+name = "breakpad-symbols"
+version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b544545512b213899840bb26f72cd13f9fb4c3de3dd5f8dc7219688f54aebe9"
 dependencies = [
@@ -2829,8 +2845,6 @@ dependencies = [
 [[package]]
 name = "minidump"
 version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a902ca21d9772a66d3d1b050b3436dcadb192694be01409e0219902dcf4bc1e8"
 dependencies = [
  "debugid",
  "encoding_rs",
@@ -2850,8 +2864,6 @@ dependencies = [
 [[package]]
 name = "minidump-common"
 version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e16d10087ae9e375bad7a40e8ef5504bc08e808ccc6019067ff9de42a84570f"
 dependencies = [
  "bitflags 2.13.0",
  "debugid",
@@ -2869,7 +2881,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee81ed67b9b37e3e1e47b3677bebe739499b12dcec7cdc74440990fde64e232b"
 dependencies = [
  "async-trait",
- "breakpad-symbols",
+ "breakpad-symbols 0.26.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "debugid",
  "futures-util",
  "minidump",
@@ -2886,11 +2898,9 @@ dependencies = [
 [[package]]
 name = "minidump-unwind"
 version = "0.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aa8b7212f59c525f93c62457c54f9f9ac550316ee0e41f129b4b19165d5acd1"
 dependencies = [
  "async-trait",
- "breakpad-symbols",
+ "breakpad-symbols 0.26.1",
  "minidump",
  "minidump-common",
  "scroll 0.12.0",

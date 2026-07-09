@@ -7,7 +7,7 @@ use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
-use symbolicator_service::types::FrameOrder;
+use symbolicator_service::types::{FrameOrder, UnwindStrategy};
 
 use crate::caches::bitcode::BitcodeService;
 use crate::caches::cficaches::CfiCacheActor;
@@ -37,6 +37,7 @@ pub struct SymbolicationActor {
     ppdb_caches: PortablePdbCacheActor,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
     pub(crate) download_svc: Arc<DownloadService>,
+    pub(crate) unwind_strategy: UnwindStrategy,
 }
 
 impl SymbolicationActor {
@@ -47,6 +48,7 @@ impl SymbolicationActor {
         let download_svc = services.download_svc.clone();
         let source_index_svc = services.source_index_svc.clone();
         let sourcefiles_cache = services.sourcefiles_cache.clone();
+        let unwind_strategy = services.config.unwind_strategy;
 
         let bitcode = BitcodeService::new(
             caches.auxdifs.clone(),
@@ -93,6 +95,7 @@ impl SymbolicationActor {
             ppdb_caches,
             sourcefiles_cache,
             download_svc,
+            unwind_strategy,
         }
     }
 

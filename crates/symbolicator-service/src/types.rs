@@ -327,3 +327,23 @@ pub enum FrameOrder {
     /// how stacktraces are stored in Sentry events.
     CallerFirst,
 }
+
+/// Controls the order in which native stack unwinding methods are attempted
+/// while stackwalking a minidump.
+///
+/// Stack scanning is always tried last regardless of this setting; it is only
+/// used when neither CFI nor the frame pointer chain produce a usable frame.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UnwindStrategy {
+    /// Use CFI (call frame information, from `.eh_frame`/`.debug_frame`) first,
+    /// falling back to the frame pointer chain. This is Symbolicator's
+    /// historical/default behavior.
+    #[default]
+    CfiFirst,
+    /// Use the frame pointer chain first, falling back to CFI. This mirrors
+    /// what debuggers like GDB do by default, and can produce more reliable
+    /// unwinds for binaries built with frame pointers preserved
+    /// (e.g. `-fno-omit-frame-pointer`) when CFI is present but inaccurate.
+    FramePointerFirst,
+}

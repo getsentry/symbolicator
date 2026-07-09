@@ -11,12 +11,20 @@ use tempfile::tempfile;
 use symbolicator_native::interface::{
     AttachmentFile, CompletedSymbolicationResponse, ProcessMinidump,
 };
-use symbolicator_service::types::Scope;
+use symbolicator_service::types::{Scope, UnwindStrategy};
 
 use crate::{assert_snapshot, read_fixture, setup_service, symbol_server};
 
 async fn stackwalk_minidump(path: &str) -> CompletedSymbolicationResponse {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
+    stackwalk_minidump_with_unwind_strategy(path, UnwindStrategy::CfiFirst).await
+}
+
+async fn stackwalk_minidump_with_unwind_strategy(
+    path: &str,
+    unwind_strategy: UnwindStrategy,
+) -> CompletedSymbolicationResponse {
+    let (symbolication, _cache_dir) =
+        setup_service(|cfg| cfg.unwind_strategy = unwind_strategy);
     let (_symsrv, source) = symbol_server();
 
     let minidump = read_fixture(path);
@@ -45,6 +53,47 @@ async fn test_minidump_windows() {
 #[tokio::test]
 async fn test_minidump_macos() {
     let res = stackwalk_minidump("macos.dmp").await;
+    assert_snapshot!(res);
+}
+
+/// Verifies that `UnwindStrategy::FramePointerFirst` doesn't regress stackwalking
+/// for minidumps that have intact frame pointer chains throughout: the two unwind
+/// methods should agree, producing identical stacktraces to the default
+/// `CfiFirst` strategy.
+///
+/// `windows.dmp` is deliberately excluded here: it's a 32-bit release build with
+/// frame pointer omission (FPO) in some system DLLs, so the two strategies are
+/// *expected* to diverge for it (see `test_minidump_windows_frame_pointer_first`).
+#[tokio::test]
+async fn test_minidump_frame_pointer_first_matches_cfi_first() {
+    for fixture in ["macos.dmp", "linux.dmp"] {
+        let cfi_first = stackwalk_minidump_with_unwind_strategy(fixture, UnwindStrategy::CfiFirst)
+            .await
+            .stacktraces;
+        let fp_first =
+            stackwalk_minidump_with_unwind_strategy(fixture, UnwindStrategy::FramePointerFirst)
+                .await
+                .stacktraces;
+        assert_eq!(
+            format!("{cfi_first:#?}"),
+            format!("{fp_first:#?}"),
+            "mismatch for fixture {fixture}"
+        );
+    }
+}
+
+/// Demonstrates the tradeoff `UnwindStrategy::FramePointerFirst` is documented to
+/// have: `windows.dmp` is a 32-bit release build where some system DLLs (e.g.
+/// `rpcrt4.dll`) omit frame pointers (FPO). Walking the (unreliable) `ebp` chain
+/// first there produces a spurious extra frame that the accurate PDB-derived CFI
+/// (used by the default `CfiFirst` strategy, see `test_minidump_windows`) does not.
+/// This confirms the `unwind_strategy` config option is wired up end-to-end and
+/// actually changes stackwalking behavior, not just that it's accepted/parsed.
+#[tokio::test]
+async fn test_minidump_windows_frame_pointer_first() {
+    let res =
+        stackwalk_minidump_with_unwind_strategy("windows.dmp", UnwindStrategy::FramePointerFirst)
+            .await;
     assert_snapshot!(res);
 }
 

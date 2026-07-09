@@ -12,13 +12,16 @@ use minidump::{MinidumpModule, Module};
 use minidump_processor::ProcessState;
 use minidump_unwind::{
     FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider,
+    UnwindStrategy as MinidumpUnwindStrategy,
 };
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
 use symbolicator_service::metric;
-use symbolicator_service::types::{FrameOrder, ObjectFileStatus, RawObjectInfo, Scope};
+use symbolicator_service::types::{
+    FrameOrder, ObjectFileStatus, RawObjectInfo, Scope, UnwindStrategy,
+};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectId, ObjectType, SourceConfig};
 use tokio::sync::Notify;
@@ -179,9 +182,12 @@ struct SymbolicatorSymbolProvider {
     rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
+    /// Which unwind method to try first (CFI vs. frame pointer chain).
+    unwind_strategy: UnwindStrategy,
 }
 
 impl SymbolicatorSymbolProvider {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         scope: Scope,
         sources: Arc<[SourceConfig]>,
@@ -190,6 +196,7 @@ impl SymbolicatorSymbolProvider {
         object_type: ObjectType,
         first_module_debug_id: Option<DebugId>,
         rewrite_first_module: RewriteRules,
+        unwind_strategy: UnwindStrategy,
     ) -> Self {
         Self {
             scope,
@@ -197,6 +204,7 @@ impl SymbolicatorSymbolProvider {
             cficache_actor,
             symcache_actor,
             object_type,
+            unwind_strategy,
             first_module_debug_id,
             rewrite_first_module,
             cficaches: Default::default(),
@@ -413,6 +421,13 @@ impl SymbolProvider for SymbolicatorSymbolProvider {
     ) -> Result<PathBuf, FileError> {
         Err(FileError::NotFound)
     }
+
+    fn unwind_strategy(&self) -> MinidumpUnwindStrategy {
+        match self.unwind_strategy {
+            UnwindStrategy::CfiFirst => MinidumpUnwindStrategy::CfiFirst,
+            UnwindStrategy::FramePointerFirst => MinidumpUnwindStrategy::FramePointerFirst,
+        }
+    }
 }
 
 fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> CompleteObjectInfo {
@@ -441,6 +456,7 @@ fn object_info_from_minidump_module(ty: ObjectType, module: &MinidumpModule) -> 
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn stackwalk(
     cficaches: CfiCacheActor,
     symcaches: SymCacheActor,
@@ -448,6 +464,7 @@ async fn stackwalk(
     scope: Scope,
     sources: Arc<[SourceConfig]>,
     rewrite_first_module: RewriteRules,
+    unwind_strategy: UnwindStrategy,
 ) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
@@ -476,6 +493,7 @@ async fn stackwalk(
         ty,
         first_module_debug_id,
         rewrite_first_module,
+        unwind_strategy,
     );
     let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
@@ -631,6 +649,7 @@ impl SymbolicationActor {
             scope.clone(),
             sources.clone(),
             rewrite_first_module.clone(),
+            self.unwind_strategy,
         )
         .await?;
 

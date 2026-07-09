@@ -17,6 +17,7 @@ use tracing::level_filters::LevelFilter;
 use symbolicator_sources::SourceConfig;
 
 use crate::caching::SharedCacheConfig;
+use crate::types::UnwindStrategy;
 
 /// Controls the log format
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
@@ -549,6 +550,22 @@ pub struct Config {
     ///
     /// Defaults to 128.
     pub max_unwind_chain_len: Option<usize>,
+
+    /// Which native stack unwinding method to try first when stackwalking a
+    /// minidump, `cfi_first` (the default) or `frame_pointer_first`.
+    ///
+    /// Symbolicator has historically relied on CFI (call frame information,
+    /// derived from `.eh_frame`/`.debug_frame`) as the primary unwind method,
+    /// falling back to the frame pointer chain when CFI is unavailable.
+    /// Debuggers like GDB do the opposite by default: walk the frame pointer
+    /// chain first, falling back to DWARF CFI. Setting this to
+    /// `frame_pointer_first` matches that behavior, which can produce more
+    /// reliable stacktraces for binaries built with frame pointers preserved
+    /// (e.g. `-fno-omit-frame-pointer`) whose CFI is present but inaccurate.
+    ///
+    /// Stack scanning remains the last-resort fallback either way.
+    #[serde(default)]
+    pub unwind_strategy: UnwindStrategy,
 }
 
 impl Config {
@@ -657,6 +674,7 @@ impl Default for Config {
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
             object_file_max_decompressed_source_size: Some(100 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
+            unwind_strategy: UnwindStrategy::default(),
         }
     }
 }

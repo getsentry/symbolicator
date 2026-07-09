@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use symbolicator_service::config::{CacheConfigs, Config};
+use symbolicator_service::types::UnwindStrategy;
 use symbolicator_sources::{
     DirectoryLayoutType, SentryCookies, SentryCredentials, SentryToken, SourceConfig,
 };
@@ -31,6 +32,28 @@ pub enum OutputFormat {
     Pretty,
     /// Outputs the crashed thread as a table.
     Compact,
+}
+
+/// CLI-facing mirror of [`UnwindStrategy`], since that type lives in
+/// `symbolicator-service`, which doesn't depend on `clap`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, ValueEnum)]
+pub enum UnwindStrategyArg {
+    /// Use CFI first, falling back to the frame pointer chain (Symbolicator's
+    /// historical default).
+    #[default]
+    CfiFirst,
+    /// Use the frame pointer chain first, falling back to CFI (matches GDB's
+    /// default unwinding behavior).
+    FramePointerFirst,
+}
+
+impl From<UnwindStrategyArg> for UnwindStrategy {
+    fn from(arg: UnwindStrategyArg) -> Self {
+        match arg {
+            UnwindStrategyArg::CfiFirst => UnwindStrategy::CfiFirst,
+            UnwindStrategyArg::FramePointerFirst => UnwindStrategy::FramePointerFirst,
+        }
+    }
 }
 
 /// Controls whether `symbolicli` will attempt to access a Sentry server.
@@ -124,6 +147,11 @@ struct Cli {
     /// debuginfod, unified, slashsymbols.
     #[arg(long)]
     symbols: Option<SymbolsPath>,
+
+    /// Which native stack unwinding method to try first when stackwalking a
+    /// minidump.
+    #[arg(long, value_enum, default_value = "cfi-first")]
+    unwind_strategy: UnwindStrategyArg,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -282,6 +310,7 @@ impl Settings {
                 cache_dir,
                 connect_to_reserved_ips: true,
                 caches,
+                unwind_strategy: cli.unwind_strategy.into(),
                 ..Default::default()
             }
         };
