@@ -42,14 +42,15 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 
 # This patch adds a configurable `UnwindStrategy` (CFI-first, the historical
 # default, vs. frame-pointer-first with CFI fallback) to `SymbolProvider`, used
-# by the `unwind_strategy` config option. Local checkout for now; point this at
-# a pushed fork branch (e.g. getsentry/rust-minidump) once one exists.
-# `minidump`/`minidump-common` must be patched to the same checkout so their
+# by the `unwind_strategy` config option. Pending upstream review/release,
+# pinned to a fork branch; switch back to a plain crates-io version once
+# https://github.com/rust-minidump/rust-minidump has released it.
+# `minidump`/`minidump-common` must be patched to the same branch so their
 # types unify with `minidump-processor`'s (unpatched, crates-io) dependency on
 # them.
-minidump = { path = "../rust-minidump/minidump" }
-minidump-common = { path = "../rust-minidump/minidump-common" }
-minidump-unwind = { path = "../rust-minidump/minidump-unwind" }
+minidump = { git = "https://github.com/aholza/rust-minidump", branch = "symbolicator-fp-first-unwind" }
+minidump-common = { git = "https://github.com/aholza/rust-minidump", branch = "symbolicator-fp-first-unwind" }
+minidump-unwind = { git = "https://github.com/aholza/rust-minidump", branch = "symbolicator-fp-first-unwind" }
 
 # For local development: uncomment the following three lines (and adjust the path if necessary)
 # to use a local symbolic checkout everywhere.
