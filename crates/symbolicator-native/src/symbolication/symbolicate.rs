@@ -168,8 +168,16 @@ impl SymbolicationActor {
                 .await;
             let mut extractor = variables::VariableExtractor::new(minidump, &self.dwarf_cache);
             for trace in &mut stacktraces {
-                for frame in &mut trace.frames {
-                    extractor.extract_for_frame(&mut frame.raw, &module_lookup);
+                // A single physical frame can expand into several consecutive
+                // `SymbolicatedFrame`s sharing one `instruction_addr` -- one per inline depth,
+                // innermost first (see `symbolicate_native_frame`). `original_index` is shared
+                // across exactly that group and nothing else (unlike the address, which
+                // recursion can also duplicate), so grouping on it gives each frame the right
+                // depth to look up its own DWARF scope instead of every one of them getting the
+                // innermost scope's variables.
+                let original_indices: Vec<_> = trace.frames.iter().map(|f| f.original_index).collect();
+                for (frame, depth) in trace.frames.iter_mut().zip(inline_group_depths(&original_indices)) {
+                    extractor.extract_for_frame(&mut frame.raw, &module_lookup, depth);
                 }
             }
         }
@@ -192,6 +200,28 @@ impl SymbolicationActor {
             ..Default::default()
         })
     }
+}
+
+/// Computes each frame's position (0 = innermost) within its run of consecutive, equal, `Some`
+/// `original_index` values -- i.e. its depth within the group of `SymbolicatedFrame`s that one
+/// physical stack frame expanded into via inlining (see `symbolicate_native_frame`).
+///
+/// `None` (or a value that differs from the previous frame's) always resets to depth 0, since
+/// only a run of matching `Some` values represents one inline-expansion group; a `None` doesn't
+/// group with anything, including another `None` right before it.
+fn inline_group_depths(original_indices: &[Option<usize>]) -> Vec<usize> {
+    let mut depths = Vec::with_capacity(original_indices.len());
+    let mut depth = 0usize;
+    let mut prev: Option<Option<usize>> = None;
+    for &idx in original_indices {
+        depth = match prev {
+            Some(p) if p == idx && idx.is_some() => depth + 1,
+            _ => 0,
+        };
+        depths.push(depth);
+        prev = Some(idx);
+    }
+    depths
 }
 
 fn symbolicate_stacktrace(
@@ -401,4 +431,37 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_group_depths_increments_within_a_run_of_equal_indices() {
+        // Two physical frames: the first expands into 3 inline levels (original_index 0), the
+        // second into 1 (original_index 1) -- innermost first, matching
+        // `symbolicate_native_frame`'s push order.
+        let indices = [Some(0), Some(0), Some(0), Some(1)];
+        assert_eq!(inline_group_depths(&indices), vec![0, 1, 2, 0]);
+    }
+
+    #[test]
+    fn inline_group_depths_resets_on_none() {
+        // Regression test for the "every inlined frame gets the innermost scope's variables"
+        // bug: consecutive `None`s (frames symbolication didn't attach an original_index to)
+        // must NOT be treated as one group just because they're adjacent and equal.
+        let indices = [None, None, Some(2), Some(2)];
+        assert_eq!(inline_group_depths(&indices), vec![0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn inline_group_depths_handles_recursion_correctly() {
+        // Recursion can produce distinct physical frames with the same original_index only if
+        // they're the SAME expansion group (adjacent); genuinely different physical frames
+        // always get different, non-adjacent original_index values, so this isn't a case this
+        // function needs to special-case -- included to document that assumption explicitly.
+        let indices = [Some(0), Some(1), Some(1), Some(2)];
+        assert_eq!(inline_group_depths(&indices), vec![0, 0, 1, 0]);
+    }
 }

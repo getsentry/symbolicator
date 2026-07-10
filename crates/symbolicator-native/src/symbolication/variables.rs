@@ -115,15 +115,22 @@ fn get_register_name(arch: object::Architecture, reg: gimli::Register) -> Option
             _ => None,
         },
         object::Architecture::Aarch64 => match reg.0 {
-            0..=29 => Some(match reg.0 {
+            0..=28 => Some(match reg.0 {
                 0 => "x0", 1 => "x1", 2 => "x2", 3 => "x3", 4 => "x4",
                 5 => "x5", 6 => "x6", 7 => "x7", 8 => "x8", 9 => "x9",
                 10 => "x10", 11 => "x11", 12 => "x12", 13 => "x13", 14 => "x14",
                 15 => "x15", 16 => "x16", 17 => "x17", 18 => "x18", 19 => "x19",
                 20 => "x20", 21 => "x21", 22 => "x22", 23 => "x23", 24 => "x24",
-                25 => "x25", 26 => "x26", 27 => "x27", 28 => "x28", 29 => "x29",
+                25 => "x25", 26 => "x26", 27 => "x27", 28 => "x28",
                 _ => unreachable!(),
             }),
+            // rust-minidump's `valid_registers()` names x29 "fp" (its canonical AArch64
+            // frame-pointer register), not "x29" -- see `CONTEXT_ARM64::REGISTERS` in
+            // minidump/src/context.rs. `frame.registers` is keyed by that canonical name, so
+            // returning "x29" here would make every `frame.registers.get(reg_name)` lookup for
+            // this (extremely common, since it's the DWARF frame-base register on AArch64) miss
+            // and silently report the variable as optimized out.
+            29 => Some("fp"),
             30 => Some("lr"),
             31 => Some("sp"),
             32 => Some("pc"),
@@ -383,6 +390,30 @@ fn evaluate_frame_base(
     }
 }
 
+/// Resolves the DIE that `die`'s `DW_AT_type` points to, following `DW_AT_abstract_origin`/
+/// `DW_AT_specification` (via [`resolve_origin`]) when `die` itself has no `DW_AT_type`.
+///
+/// Mirrors [`get_type_name_impl`]'s origin-following: the concrete DIE for an inlined
+/// parameter/variable commonly carries only `DW_AT_location` (call-site-specific) plus a
+/// reference to the abstract DIE that actually has `DW_AT_type`. Without this,
+/// [`format_piece_value`] would resolve the correct `type_name` *string* (since
+/// `evaluate_variable` calls `get_type_name`, which already follows the origin) but then fail
+/// to find any type DIE for its own formatting decision, silently falling back to raw
+/// hex/decimal values for every inlined variable regardless of its actual type.
+fn resolve_variable_type_die<'u>(
+    unit: &'u Unit,
+    die: &gimli::DebuggingInformationEntry<R>,
+) -> Option<gimli::DebuggingInformationEntry<'u, 'u, R>> {
+    let mut current = die.clone();
+    for _ in 0..MAX_TYPE_FORMATTING_DEPTH {
+        if let Some(gimli::AttributeValue::UnitRef(offset)) = current.attr_value(gimli::DW_AT_type).ok().flatten() {
+            return unit.entry(offset).ok();
+        }
+        current = resolve_origin(unit, &current)?;
+    }
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 fn format_piece_value(
     dwarf: &Dwarf,
@@ -399,16 +430,7 @@ fn format_piece_value(
         return "<max_depth_exceeded>".to_string();
     }
 
-    let type_die_offset = die
-        .attr_value(gimli::DW_AT_type)
-        .ok()
-        .flatten()
-        .and_then(|attr| match attr {
-            gimli::AttributeValue::UnitRef(offset) => Some(offset),
-            _ => None,
-        });
-
-    let mut resolved_die = type_die_offset.and_then(|offset| unit.entry(offset).ok());
+    let mut resolved_die = resolve_variable_type_die(unit, die);
     for _ in 0..MAX_TYPE_FORMATTING_DEPTH {
         let Some(ref die) = resolved_die else { break };
         if matches!(
@@ -846,7 +868,15 @@ pub(crate) struct ModuleDwarf {
 }
 
 impl ModuleDwarf {
-    /// Finds the smallest (innermost) indexed range containing `addr`.
+    /// Finds every indexed range containing `addr` -- i.e. the full DWARF inline-scope chain
+    /// at that address -- ordered from innermost (smallest) to outermost (largest).
+    ///
+    /// Ranges strictly nest for well-formed DWARF (a `DW_TAG_inlined_subroutine`'s PC range is
+    /// always a subset of its enclosing scope's), so sorting all matches by size reconstructs
+    /// the same innermost-to-outermost chain SymCache's own inline expansion produces: one
+    /// entry per depth, from the innermost inlined call site out to the top-level
+    /// `DW_TAG_subprogram`. See [`VariableExtractor::extract_for_frame`], which zips this
+    /// against the group of `SymbolicatedFrame`s a single physical frame expanded into.
     ///
     /// Ranges are sorted by `low_pc`; candidates are all entries at or before the first one
     /// whose `low_pc` exceeds `addr`. Scanning backward from there stops as soon as
@@ -855,25 +885,41 @@ impl ModuleDwarf {
     /// properly nested DWARF this terminates after a handful of steps (bounded by inlining
     /// depth), turning what used to be an O(all DIEs in the unit) scan per frame into an
     /// O(log n + nesting depth) lookup.
-    fn find_range(&self, addr: u64) -> Option<&FunctionRange> {
+    fn find_range_chain(&self, addr: u64) -> Vec<&FunctionRange> {
         let end = self.ranges.partition_point(|r| r.low_pc <= addr);
-        let mut best: Option<&FunctionRange> = None;
+        let mut matches: Vec<&FunctionRange> = Vec::new();
         for r in self.ranges[..end].iter().rev() {
             if r.max_high_pc_prefix <= addr {
                 break;
             }
             if addr < r.high_pc {
-                let is_smaller = match best {
-                    None => true,
-                    Some(b) => (r.high_pc - r.low_pc) < (b.high_pc - b.low_pc),
-                };
-                if is_smaller {
-                    best = Some(r);
-                }
+                matches.push(r);
             }
         }
-        best
+        matches.sort_by_key(|r| r.high_pc - r.low_pc);
+        matches
     }
+}
+
+/// Advances a per-depth "current enclosing scope value" tracker by one DFS step and returns the
+/// value in effect for the DIE just visited.
+///
+/// `by_depth[d]` holds the value in effect for a DIE at absolute depth `d`: `own` if `is_scope`
+/// (this DIE defines a new scope, e.g. `DW_TAG_subprogram`), otherwise inherited from the
+/// nearest enclosing scope. Truncating to `depth` before reading/pushing -- rather than just
+/// pushing -- is what makes leaving a nested scope's subtree correctly restore the enclosing
+/// scope's value for later siblings, instead of leaking the nested one to them.
+///
+/// Generic over `T` so this can be unit-tested with plain markers instead of real DWARF
+/// attribute values: a compiled fixture can't reliably demonstrate a bug here, since e.g. GCC's
+/// default `DW_OP_call_frame_cfa` frame_base is byte-identical across every function regardless
+/// of nesting, which would make an end-to-end test pass even with the restoration missing.
+fn track_by_depth<T: Clone>(by_depth: &mut Vec<Option<T>>, depth: usize, is_scope: bool, own: Option<T>) -> Option<T> {
+    by_depth.truncate(depth);
+    let inherited = by_depth.last().cloned().flatten();
+    let current = if is_scope { own } else { inherited };
+    by_depth.push(current.clone());
+    current
 }
 
 /// Parses an object file's DWARF sections into an owned, cacheable `Dwarf` value, and builds
@@ -910,12 +956,31 @@ fn load_module_dwarf(data: &[u8]) -> Option<ModuleDwarf> {
         };
         let unit_index = units.len();
 
-        let mut current_subprogram_frame_base = None;
+        // frame_base_by_depth[d] holds the DW_AT_frame_base in effect for a DIE at absolute
+        // depth `d`: either that DIE's own value if it's a DW_TAG_subprogram, or its parent's
+        // (inherited) value otherwise. Restoring it via `track_by_depth` (mirroring
+        // `collect_variables_in_scope`'s `active_by_depth`) as the DFS walk leaves a nested
+        // DW_TAG_subprogram's subtree (a local function or lambda emitted as its own
+        // subprogram DIE) is what keeps the outer function's frame base for later siblings,
+        // instead of leaking the inner one to them.
+        let mut frame_base_by_depth: Vec<Option<AttrValue>> = Vec::new();
+        let mut abs_depth: i64 = 0;
         let mut entries = unit.entries();
-        while let Ok(Some((_delta, entry))) = entries.next_dfs() {
-            if entry.tag() == gimli::DW_TAG_subprogram {
-                current_subprogram_frame_base = entry.attr_value(gimli::DW_AT_frame_base).ok().flatten();
+        while let Ok(Some((delta, entry))) = entries.next_dfs() {
+            abs_depth += delta as i64;
+            if abs_depth < 0 {
+                break;
             }
+            let depth = abs_depth as usize;
+            let is_subprogram = entry.tag() == gimli::DW_TAG_subprogram;
+            let own_frame_base = if is_subprogram {
+                entry.attr_value(gimli::DW_AT_frame_base).ok().flatten()
+            } else {
+                None
+            };
+            let current_subprogram_frame_base =
+                track_by_depth(&mut frame_base_by_depth, depth, is_subprogram, own_frame_base);
+
             if entry.tag() == gimli::DW_TAG_subprogram || entry.tag() == gimli::DW_TAG_inlined_subroutine {
                 for (low, high) in die_ranges(&dwarf, &unit, entry) {
                     if high > low {
@@ -997,7 +1062,14 @@ impl<'a, 'md> VariableExtractor<'a, 'md> {
 
     /// Populates `frame.arguments` and `frame.local_variables` in place, if DWARF debug info
     /// and a matching scope can be found for the frame's address.
-    pub fn extract_for_frame(&mut self, frame: &mut RawFrame, module_lookup: &ModuleLookup) {
+    ///
+    /// `depth` is this frame's position (0 = innermost) within the group of
+    /// `SymbolicatedFrame`s that a single physical stack frame expanded into via inlining --
+    /// all of which share the same `instruction_addr`. Callers must pass the right depth for
+    /// each (see the caller in `symbolicate.rs`, which groups consecutive frames by
+    /// `original_index`); passing 0 unconditionally would give every inlined frame the
+    /// innermost scope's variables instead of the one matching its own depth.
+    pub fn extract_for_frame(&mut self, frame: &mut RawFrame, module_lookup: &ModuleLookup, depth: usize) {
         let Some(lookup_result) = module_lookup.lookup_cache(frame.instruction_addr.0, frame.addr_mode) else {
             return;
         };
@@ -1017,7 +1089,11 @@ impl<'a, 'md> VariableExtractor<'a, 'md> {
             return;
         };
 
-        let Some(range) = module_dwarf.find_range(relative_addr) else {
+        let ranges = module_dwarf.find_range_chain(relative_addr);
+        // Clamp to the outermost known range rather than bailing if `depth` runs past the
+        // DWARF-inferred chain (e.g. SymCache found deeper inline info than our own DWARF
+        // walk did) -- degrading to the closest available scope beats extracting nothing.
+        let Some(&range) = ranges.get(depth).or_else(|| ranges.last()) else {
             return;
         };
         let unit = &module_dwarf.units[range.unit_index];
@@ -1092,6 +1168,51 @@ int main(void) {
         assert!(status.success(), "cc failed to compile the test fixture");
 
         std::fs::read(&bin_path).expect("failed to read compiled fixture")
+    }
+
+    /// Compiles a fixture whose `inc` is force-inlined into `caller` even at `-O0`, so it
+    /// reliably produces a real `DW_TAG_inlined_subroutine` -- unlike ordinary calls, which
+    /// aren't inlined at `-O0` and so never emit one, meaning `collect_variables_in_scope`'s
+    /// scope-gating logic and `find_range_chain`'s scope-nesting logic would otherwise go
+    /// completely untested against real (rather than hand-assembled) DWARF.
+    ///
+    /// Confirmed with `readelf --debug-dump=info` on this fixture that GCC emits `inc`'s
+    /// `DW_TAG_formal_parameter x` with only `DW_AT_abstract_origin` + `DW_AT_location`, no
+    /// `DW_AT_type` of its own -- the shape `format_piece_value` needs to follow the origin for.
+    fn compile_inline_fixture() -> Vec<u8> {
+        let dir = std::env::temp_dir();
+        let src_path = dir.join("symbolicator_variables_test_inline_fixture.c");
+        let bin_path = dir.join("symbolicator_variables_test_inline_fixture_bin");
+        std::fs::write(
+            &src_path,
+            r#"
+static inline __attribute__((always_inline)) int inc(int x) {
+    return x + 1;
+}
+
+int caller(int a) {
+    int r = inc(a);
+    return r;
+}
+
+int main(void) {
+    return caller(1);
+}
+"#,
+        )
+        .expect("failed to write inline fixture source");
+
+        let status = Command::new("cc")
+            .arg("-g")
+            .arg("-O0")
+            .arg("-o")
+            .arg(&bin_path)
+            .arg(&src_path)
+            .status()
+            .expect("failed to invoke cc; a C compiler is required to run this test");
+        assert!(status.success(), "cc failed to compile the inline test fixture");
+
+        std::fs::read(&bin_path).expect("failed to read compiled inline fixture")
     }
 
     #[test]
@@ -1266,5 +1387,164 @@ int main(void) {
         }
 
         assert!(found, "did not find formal_parameter 'a' in the compiled fixture");
+    }
+
+    #[test]
+    fn aarch64_frame_pointer_register_is_named_fp_not_x29() {
+        // Regression test: rust-minidump's `valid_registers()` names AArch64 register 29 "fp"
+        // (its canonical frame-pointer register, per `CONTEXT_ARM64::REGISTERS` in
+        // rust-minidump's context.rs), not "x29". `frame.registers` is keyed by that canonical
+        // name, so returning "x29" here made every lookup for this DWARF register -- used
+        // constantly as the frame-base register on AArch64 -- silently miss and report the
+        // variable as optimized out.
+        assert_eq!(get_register_name(object::Architecture::Aarch64, gimli::Register(29)), Some("fp"));
+        assert_eq!(get_register_name(object::Architecture::Aarch64, gimli::Register(30)), Some("lr"));
+        assert_eq!(get_register_name(object::Architecture::Aarch64, gimli::Register(28)), Some("x28"));
+    }
+
+    #[test]
+    fn frame_base_restored_after_leaving_nested_subprogram_subtree() {
+        // Simulates a DFS walk: CU root (depth 0) -> outer subprogram (depth 1, frame_base=A)
+        // -> nested inner subprogram (depth 2, frame_base=B) -> a sibling of `inner`, still a
+        // direct child of `outer` (back to depth 2, no own frame_base).
+        //
+        // Regression test for the bug where `current_subprogram_frame_base` was overwritten on
+        // every DW_TAG_subprogram and never restored: the depth-2 sibling must inherit
+        // `outer`'s frame_base (A), not `inner`'s leaked one (B).
+        let mut by_depth: Vec<Option<&str>> = Vec::new();
+        assert_eq!(track_by_depth(&mut by_depth, 0, false, None), None); // CU root
+        assert_eq!(track_by_depth(&mut by_depth, 1, true, Some("A")), Some("A")); // outer
+        assert_eq!(track_by_depth(&mut by_depth, 2, true, Some("B")), Some("B")); // inner (nested)
+        assert_eq!(track_by_depth(&mut by_depth, 2, false, None), Some("A")); // sibling of inner
+    }
+
+    #[test]
+    fn find_range_chain_orders_innermost_inline_scope_first() {
+        let bytes = compile_inline_fixture();
+        let module = load_module_dwarf(&bytes).expect("failed to parse DWARF from inline fixture");
+
+        let mut inline_pc = None;
+        for unit in &module.units {
+            let mut entries = unit.entries();
+            while let Ok(Some((_, entry))) = entries.next_dfs() {
+                if entry.tag() == gimli::DW_TAG_inlined_subroutine {
+                    inline_pc = get_low_pc(entry);
+                }
+            }
+        }
+        let pc = inline_pc.expect("fixture should contain an inlined_subroutine for `inc`");
+
+        let chain = module.find_range_chain(pc);
+        assert!(
+            chain.len() >= 2,
+            "expected at least [inlined_subroutine, subprogram] at an inlined pc, got {chain:?}"
+        );
+
+        // Innermost (smallest) first.
+        for pair in chain.windows(2) {
+            let inner_size = pair[0].high_pc - pair[0].low_pc;
+            let outer_size = pair[1].high_pc - pair[1].low_pc;
+            assert!(inner_size <= outer_size, "chain not ordered innermost-first: {chain:?}");
+        }
+
+        // The innermost entry must actually be the inlined_subroutine, not `caller` itself --
+        // this is the exact bug: extraction always landing on the smallest range is correct
+        // for depth 0, but every deeper physical frame in the same group needs the outer ones.
+        let unit = &module.units[chain[0].unit_index];
+        let innermost_die = unit.entry(chain[0].die_offset).expect("valid die offset");
+        assert_eq!(innermost_die.tag(), gimli::DW_TAG_inlined_subroutine);
+
+        let outermost = chain.last().unwrap();
+        let outer_unit = &module.units[outermost.unit_index];
+        let outer_die = outer_unit.entry(outermost.die_offset).expect("valid die offset");
+        assert_eq!(outer_die.tag(), gimli::DW_TAG_subprogram);
+        assert_eq!(get_die_name(&module.dwarf, outer_unit, &outer_die).as_deref(), Some("caller"));
+    }
+
+    #[test]
+    fn inlined_parameter_value_follows_abstract_origin_for_type() {
+        let bytes = compile_inline_fixture();
+        let module = load_module_dwarf(&bytes).expect("failed to parse DWARF from inline fixture");
+        let dwarf = &module.dwarf;
+        assert_eq!(module.arch, object::Architecture::X86_64, "test assumes host is x86_64");
+        let endian = module.endian;
+
+        let mut found = false;
+        for unit in &module.units {
+            let mut entries = unit.entries();
+            while let Ok(Some((_, entry))) = entries.next_dfs() {
+                if entry.tag() != gimli::DW_TAG_inlined_subroutine {
+                    continue;
+                }
+                let mut param_tree = unit.entries_at_offset(entry.offset()).expect("valid offset");
+                param_tree.next_dfs().expect("consume the inlined_subroutine itself");
+                let Ok(Some((_, param))) = param_tree.next_dfs() else {
+                    continue;
+                };
+                if param.tag() != gimli::DW_TAG_formal_parameter {
+                    continue;
+                }
+                // Confirm the fixture still has the shape this test exists to cover, so a
+                // future toolchain/flag change that starts emitting DW_AT_type directly on the
+                // concrete DIE doesn't leave this test silently exercising nothing.
+                assert!(
+                    param.attr_value(gimli::DW_AT_type).ok().flatten().is_none(),
+                    "fixture assumption changed: inlined formal_parameter now has its own DW_AT_type"
+                );
+                found = true;
+
+                let low_pc = get_low_pc(entry).expect("inlined_subroutine should have a low_pc");
+
+                // `DW_OP_fbreg 0` (frame_base + 0), with frame_base = DW_OP_reg6 ("rbp") --
+                // synthetic locations, independent of whatever real stack offset GCC picked, so
+                // we fully control the raw bytes read back. 0xFFFFFFFF only formats as the
+                // sensible `int` value -1 if type resolution actually succeeds; the old bug
+                // (no DW_AT_type on the concrete DIE, no abstract-origin fallback) instead fell
+                // back to an untyped hex dump of the address.
+                let stack_expr = gimli::Expression(gimli::EndianArcSlice::new(Arc::from(vec![0x91u8, 0x00]), endian));
+                let frame_base_expr = gimli::AttributeValue::Exprloc(gimli::Expression(gimli::EndianArcSlice::new(
+                    Arc::from(vec![0x56u8]),
+                    endian,
+                )));
+
+                let mut frame = RawFrame::default();
+                let mut regs = crate::interface::Registers::default();
+                regs.insert("rbp".to_string(), symbolicator_service::utils::hex::HexValue(0x2000));
+                frame.registers = Some(regs);
+
+                let region = minidump::MinidumpMemory {
+                    desc: Default::default(),
+                    base_address: 0x2000,
+                    size: 4,
+                    bytes: &[0xFF, 0xFF, 0xFF, 0xFF],
+                    endian: minidump::Endian::Little,
+                };
+                let memory_list = minidump::MinidumpMemoryList::from_regions(vec![region]);
+                let memory = MemoryReader {
+                    memory_list: Some(&memory_list),
+                    memory64_list: None,
+                };
+
+                let (value, status) = evaluate_location(
+                    dwarf,
+                    unit,
+                    gimli::AttributeValue::Exprloc(stack_expr),
+                    low_pc,
+                    &frame,
+                    memory,
+                    module.arch,
+                    endian,
+                    param,
+                    Some(frame_base_expr),
+                );
+                assert_eq!(status, "stack");
+                assert_eq!(
+                    value, "-1",
+                    "inlined parameter's raw 0xFFFFFFFF should format as signed int -1 via the \
+                     abstract origin's type, not fall back to an untyped hex dump (got {value:?})"
+                );
+            }
+        }
+        assert!(found, "did not find an inlined_subroutine formal_parameter without its own DW_AT_type");
     }
 }
