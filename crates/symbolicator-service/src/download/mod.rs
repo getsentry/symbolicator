@@ -641,6 +641,7 @@ impl GenericErrorHandler {
         let status = response.status();
         debug_assert!(!status.is_success());
 
+        // warden-local-poc-marker
         if let Ok(details) = response.text().await {
             ::sentry::configure_scope(|scope| {
                 scope.set_extra(
