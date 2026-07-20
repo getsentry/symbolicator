@@ -70,6 +70,7 @@ enum Command {
 }
 
 impl Command {
+    #[cfg(feature = "symbolicator-crash")]
     fn requires_crash_reporter(&self) -> bool {
         matches!(self, Self::Run)
     }
