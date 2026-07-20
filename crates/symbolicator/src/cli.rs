@@ -69,6 +69,12 @@ enum Command {
     },
 }
 
+impl Command {
+    fn requires_crash_reporter(&self) -> bool {
+        matches!(self, Self::Run)
+    }
+}
+
 /// Command line interface parser.
 #[derive(Parser)]
 #[command(
@@ -128,7 +134,10 @@ pub fn execute() -> Result<()> {
                 .map(|cache_dir| cache_dir.join(".sentry-native"))
         });
 
-        if let Some(crash_db) = crash_db {
+        if let Some(crash_db) = crash_db
+            && cli.command.requires_crash_reporter()
+            && config.sentry_dsn.is_some()
+        {
             symbolicator_crash::init(crash_db, (*sentry).clone());
         }
     }
