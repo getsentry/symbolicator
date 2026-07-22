@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes 🐛
+
+- (crash reporter) Don't start the crash reporting process if there is no Sentry DSN
+  or if the CLI command is anything other than `run` by @loewenheim in [#1988](https://github.com/getsentry/symbolicator/pull/1988)
+
 ## 26.7.0
 
 ### Features
