@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 26.7.1
 
 ### Bug Fixes 🐛
 
