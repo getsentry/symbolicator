@@ -77,7 +77,7 @@ pub fn measure_download_time<'a, F, T, E>(
 where
     F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new(metric_prefix, source_name);
+    let guard = MeasureSourceDownloadGuard::new(metric_prefix, source_name, u64::MAX);
     async move {
         let output = f.await;
         guard.done(&output);

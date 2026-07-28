@@ -27,7 +27,7 @@ pub async fn fetch_file(
 
     // Treat decompression errors as malformed files. It is more likely that
     // the error comes from a corrupt file than a local file system error.
-    maybe_decompress_file(temp_file).map_err(|e| CacheError::Malformed(e.to_string()))?;
+    maybe_decompress_file(temp_file, u64::MAX).map_err(|e| CacheError::Malformed(e.to_string()))?;
 
     Ok(temp_file.as_file().rewind()?)
 }

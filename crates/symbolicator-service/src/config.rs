@@ -549,6 +549,11 @@ pub struct Config {
     ///
     /// Defaults to 128.
     pub max_unwind_chain_len: Option<usize>,
+
+    /// Maximum size, in bytes, for downloaded files.
+    ///
+    /// Defaults to 15GiB.
+    pub max_download_size: Option<u64>,
 }
 
 impl Config {
@@ -657,6 +662,7 @@ impl Default for Config {
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
             object_file_max_decompressed_source_size: Some(100 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
+            max_download_size: Some(15 * 1024 * 1024 * 1024),
         }
     }
 }
