@@ -78,7 +78,7 @@ impl CacheError {
     }
 
     fn size_exceeded() -> Self {
-        Self::DownloadError("Maximum file size exceeded".to_owned())
+        Self::Malformed("Maximum file size exceeded".to_owned())
     }
 }
 
@@ -875,7 +875,7 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
     /// A checked add to the amount of bytes transferred during the download.
     ///
     /// If the added bytes would cause the download to exceed the configured maximum
-    /// size, this returns `CacheError::DownloadError.`
+    /// size, this returns `CacheError::Malformed.`
     ///
     /// This value will be emitted when the download's future is completed or cancelled.
     pub fn add_bytes_transferred(&self, additional_bytes: u64) -> CacheContents {
