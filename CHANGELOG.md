@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Features
+- Added a config setting `max_download_size` to restrict the size of downloaded files.
+  For compressed files, this limit applies to the _decompressed_ size.
+  The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
+
 ## 26.7.1
 
 ### Bug Fixes 🐛
