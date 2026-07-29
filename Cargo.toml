@@ -105,7 +105,7 @@ minidump-unwind = "0.26.1"
 minidumper-child = "0.5.0"
 moka = { version = "0.12.8", features = ["future", "sync"] }
 prettytable-rs = "0.10.0"
-proguard = "5.10.3"
+proguard = "5.10.4"
 rand = "0.9.4"
 rayon = "1.10.0"
 regex = "1.5.5"
