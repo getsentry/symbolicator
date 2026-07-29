@@ -3,28 +3,15 @@ use std::io::{self, Read, Seek};
 use cab::Cabinet;
 use flate2::read::{MultiGzDecoder, ZlibDecoder};
 use tempfile::NamedTempFile;
-use zip::result::ZipError;
-
-use crate::caching::{CacheContents, CacheError};
-
-impl From<ZipError> for CacheError {
-    fn from(value: ZipError) -> Self {
-        match value {
-            ZipError::Io(error) => error.into(),
-            ZipError::InvalidArchive(e) => Self::Malformed(format!("Invalid zip archive: {e}")),
-            ZipError::UnsupportedArchive(e) => {
-                Self::Malformed(format!("Unsupported zip archive: {e}"))
-            }
-            ZipError::FileNotFound | ZipError::InvalidPassword | _ => Self::from_std_error(value),
-        }
-    }
-}
 
 /// Decompresses a downloaded file.
 ///
 /// The passed [`NamedTempFile`] might be swapped with a fresh one in case decompression happens.
 /// That new temp file will be created in the same directory as the original one.
-pub fn maybe_decompress_file(src: &mut NamedTempFile, max_uncompressed_size: u64) -> CacheContents {
+pub fn maybe_decompress_file(
+    src: &mut NamedTempFile,
+    max_uncompressed_size: u64,
+) -> io::Result<()> {
     // Ensure that both meta data and file contents are available to the
     // subsequent reads of the file metadata and reads from other threads.
     let mut file = src.as_file();
@@ -101,8 +88,9 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile, max_uncompressed_size: u64
                 let mut archive = zip::ZipArchive::new(file)?;
 
                 if archive.len() != 1 {
-                    return Err(CacheError::Malformed(
-                        "Zip file contains more than one symbol file".to_owned(),
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "ZipArchive contains more than one symbol file",
                     ));
                 }
 
@@ -129,11 +117,15 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile, max_uncompressed_size: u64
             let first_file = contained_files
                 .next()
                 .map(String::from)
-                .ok_or(CacheError::Malformed("CAB file is empty".to_owned()))?;
+                .ok_or(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "cab file is empty",
+                ))?;
 
             if contained_files.next().is_some() {
-                return Err(CacheError::Malformed(
-                    "CAB file contains more than 1 symbol file".to_owned(),
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "cab file contains more than 1 symbol file",
                 ));
             }
 
@@ -150,7 +142,10 @@ pub fn maybe_decompress_file(src: &mut NamedTempFile, max_uncompressed_size: u64
     }
 
     if src.as_file().metadata()?.len() > max_uncompressed_size {
-        return Err(CacheError::size_exceeded());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Maximum file size exceeded",
+        ));
     }
 
     Ok(())
