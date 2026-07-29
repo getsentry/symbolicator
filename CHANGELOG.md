@@ -7,6 +7,12 @@
   For compressed files, this limit applies to the _decompressed_ size.
   The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
 
+## 26.7.2
+
+### Internal Changes 🔧
+
+- (deps) Bump gocd-jsonnet to v3.0.7 by @dmajere in [#1991](https://github.com/getsentry/symbolicator/pull/1991)
+
 ## 26.7.1
 
 ### Bug Fixes 🐛
