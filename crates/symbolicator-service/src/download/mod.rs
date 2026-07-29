@@ -76,6 +76,10 @@ impl CacheError {
 
         Self::DownloadError(error_string)
     }
+
+    fn size_exceeded() -> Self {
+        Self::Malformed("Maximum file size exceeded".to_owned())
+    }
 }
 
 impl From<reqwest::Error> for CacheError {
@@ -90,6 +94,12 @@ impl From<GcsError> for CacheError {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DownloadLimits {
+    pub timeouts: DownloadTimeouts,
+    pub max_download_size: Option<u64>,
+}
+
 /// A service which can download files from a [`SourceConfig`].
 ///
 /// The service is rather simple on the outside but will one day control
@@ -97,7 +107,7 @@ impl From<GcsError> for CacheError {
 #[derive(Debug)]
 pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
-    pub timeouts: DownloadTimeouts,
+    pub limits: DownloadLimits,
     pub trusted_client: reqwest::Client,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
@@ -111,7 +121,10 @@ pub struct DownloadService {
 impl DownloadService {
     /// Creates a new downloader that runs all downloads in the given remote thread.
     pub fn new(config: &Config, runtime: tokio::runtime::Handle) -> Arc<Self> {
-        let timeouts = config.timeouts;
+        let limits = DownloadLimits {
+            timeouts: config.timeouts,
+            max_download_size: config.max_download_size,
+        };
 
         // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
         // | ----------| ----------------------------|---------------------------|-------------|
@@ -121,7 +134,7 @@ impl DownloadService {
         // |    s3     | according to config setting |             no            |     no      |
         // |    gcs    | according to config setting |             no            |     yes     |
         let restricted_settings = ClientSettings {
-            timeouts,
+            timeouts: limits.timeouts,
             connect_to_reserved_ips: config.connect_to_reserved_ips,
             accept_invalid_certs: false,
             compression: true,
@@ -151,18 +164,18 @@ impl DownloadService {
 
         Arc::new(Self {
             runtime: runtime.clone(),
-            timeouts,
+            limits,
             trusted_client: trusted_client.clone(),
             sentry: sentry::SentryDownloader::new(
                 trusted_client,
                 runtime,
-                timeouts,
+                limits,
                 in_memory,
                 config.propagate_traces,
             ),
-            http: http::HttpDownloader::new(http_restricted_client, http_no_ssl_client, timeouts),
-            s3: s3::S3Downloader::new(s3_client, timeouts, in_memory.s3_client_capacity),
-            gcs: gcs::GcsDownloader::new(gcs_client, timeouts, in_memory.gcs_token_capacity),
+            http: http::HttpDownloader::new(http_restricted_client, http_no_ssl_client, limits),
+            s3: s3::S3Downloader::new(s3_client, limits, in_memory.s3_client_capacity),
+            gcs: gcs::GcsDownloader::new(gcs_client, limits, in_memory.gcs_token_capacity),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
                 .deny_list_enabled
@@ -248,7 +261,7 @@ impl DownloadService {
             return Err(deny_list.format_error(&host, &reason));
         }
 
-        let timeout = self.timeouts.max_download;
+        let timeout = self.limits.timeouts.max_download;
         let slf = self.clone();
         let job = async move { slf.dispatch_download(&source, &destination).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
@@ -423,7 +436,7 @@ trait ErrorHandler: Sync {
 async fn download_reqwest(
     source_name: &str,
     builder: reqwest::RequestBuilder,
-    timeouts: &DownloadTimeouts,
+    limits: &DownloadLimits,
     destination: impl Destination,
     error_handler: &impl ErrorHandler,
 ) -> CacheContents {
@@ -436,12 +449,16 @@ async fn download_reqwest(
         false => Err(destination),
     };
 
-    let measure = MeasureSourceDownloadGuard::new("source.download.body", source_name);
+    let measure = MeasureSourceDownloadGuard::new(
+        "source.download.body",
+        source_name,
+        limits.max_download_size.unwrap_or(u64::MAX),
+    );
     let request = SymRequest {
         source_name,
         request,
         client,
-        timeouts,
+        limits,
         measure: &measure,
     };
 
@@ -516,6 +533,12 @@ async fn do_download_reqwest_range(
                 "Success hitting `{source}`, but server does not support range requests"
             );
 
+            if let Some(content_length) = response.response.content_length()
+                && content_length > response.measure.max_bytes_transferred
+            {
+                return Err(CacheError::size_exceeded());
+            }
+
             let destination = std::pin::pin!(destination.into_write());
             response.download(destination).await
         }
@@ -581,6 +604,10 @@ async fn do_download_reqwest_range(
                 return Ok(());
             }
 
+            if content_range.total_size > response.measure.max_bytes_transferred {
+                return Err(CacheError::size_exceeded());
+            }
+
             destination.set_size(content_range.total_size).await?;
 
             let mut futures = FuturesUnordered::new();
@@ -623,6 +650,13 @@ async fn do_download_reqwest(
     let status = response.status();
     if status.is_success() {
         tracing::trace!("Success hitting `{source}`");
+
+        if let Some(content_length) = response.response.content_length()
+            && content_length > response.measure.max_bytes_transferred
+        {
+            return Err(CacheError::size_exceeded());
+        }
+
         response.download(destination).await
     } else {
         Err(error_handler.handle(&source, response).await)
@@ -689,7 +723,7 @@ struct SymRequest<'a> {
     source_name: &'a str,
     request: reqwest::Request,
     client: reqwest::Client,
-    timeouts: &'a DownloadTimeouts,
+    limits: &'a DownloadLimits,
     measure: &'a MeasureSourceDownloadGuard<'a>,
 }
 
@@ -723,7 +757,7 @@ impl<'a> SymRequest<'a> {
             source_name: self.source_name,
             request: self.request.try_clone()?,
             client: self.client.clone(),
-            timeouts: self.timeouts,
+            limits: self.limits,
             measure: self.measure,
         })
     }
@@ -731,16 +765,16 @@ impl<'a> SymRequest<'a> {
     /// Executes the request and returns the corresponding [`SymResponse`].
     async fn execute(self) -> CacheContents<SymResponse<'a>> {
         let request = self.client.execute(self.request);
-        let request = tokio::time::timeout(self.timeouts.head, request);
+        let request = tokio::time::timeout(self.limits.timeouts.head, request);
         // Use a separate measure for the head request.
         //
         // We're only interested in the total combined throughput of all concurrent requests.
         // The head requests can still be tracked individually.
-        let request = measure_download_time(self.source_name, request);
+        let request = measure_connect_time(self.source_name, request);
 
         let response = request
             .await
-            .map_err(|_| CacheError::Timeout(self.timeouts.head))??;
+            .map_err(|_| CacheError::Timeout(self.limits.timeouts.head))??;
 
         let headers: ::sentry::protocol::value::Map<_, ::sentry::protocol::Value> = response
             .headers()
@@ -786,7 +820,7 @@ impl SymResponse<'_> {
         let mut stream = self.response.bytes_stream().map_err(CacheError::from);
         // Transfer the contents, into the destination and track progress.
         while let Some(chunk) = stream.next().await.transpose()? {
-            self.measure.add_bytes_transferred(chunk.len() as u64);
+            self.measure.add_bytes_transferred(chunk.len() as u64)?;
             destination.write_buf(chunk).await?;
         }
 
@@ -803,8 +837,8 @@ enum MeasureState {
     Done(&'static str),
 }
 
-/// A guard to [`measure`] the amount of time it takes to download a source. This guard is also
-/// capable of calculating and reporting the throughput of the connection. Two metrics are
+/// A guard to [`measure`] the amount of time it takes to download a source and limit the download size.
+/// This guard is also capable of calculating and reporting the throughput of the connection. Two metrics are
 /// emitted if `bytes_transferred` is set:
 ///
 /// 1. Amount of time taken to complete the measurement
@@ -818,17 +852,19 @@ pub struct MeasureSourceDownloadGuard<'a> {
     source_name: &'a str,
     creation_time: Instant,
     bytes_transferred: AtomicU64,
+    max_bytes_transferred: u64,
     streams: AtomicUsize,
 }
 
 impl<'a> MeasureSourceDownloadGuard<'a> {
     /// Creates a new measure guard for downloading a source.
-    pub fn new(task_name: &'a str, source_name: &'a str) -> Self {
+    pub fn new(task_name: &'a str, source_name: &'a str, max_bytes_transferred: u64) -> Self {
         Self {
             state: MeasureState::Pending,
             task_name,
             source_name,
             bytes_transferred: AtomicU64::new(0),
+            max_bytes_transferred,
             creation_time: Instant::now(),
             streams: AtomicUsize::new(0),
         }
@@ -844,10 +880,23 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
 
     /// A checked add to the amount of bytes transferred during the download.
     ///
+    /// If the added bytes would cause the download to exceed the configured maximum
+    /// size, this returns `CacheError::Malformed.`
+    ///
     /// This value will be emitted when the download's future is completed or cancelled.
-    pub fn add_bytes_transferred(&self, additional_bytes: u64) {
+    pub fn add_bytes_transferred(&self, additional_bytes: u64) -> CacheContents {
         self.bytes_transferred
             .fetch_add(additional_bytes, std::sync::atomic::Ordering::Relaxed);
+
+        if self
+            .bytes_transferred
+            .load(std::sync::atomic::Ordering::Relaxed)
+            > self.max_bytes_transferred
+        {
+            return Err(CacheError::size_exceeded());
+        }
+
+        Ok(())
     }
 
     /// Marks the download as terminated.
@@ -904,23 +953,23 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
     }
 }
 
-/// Measures the timing of a download-related future and reports metrics as a distribution.
+/// Measures the timing of a download-connection attempt and reports metrics as a distribution.
 ///
 /// This function reports a single metric corresponding to the task name. This metric is reported
 /// regardless of the future's return value.
 ///
 /// A tag with the source name is also added to the metric, in addition to a tag recording the
 /// status of the future.
-pub fn measure_download_time<'a, F, T, E>(
+pub fn measure_connect_time<'a, F, T, E>(
     source_name: &'a str,
-    f: F,
+    request: F,
 ) -> impl Future<Output = F::Output> + 'a
 where
     F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new("source.download.connect", source_name);
+    let guard = MeasureSourceDownloadGuard::new("source.download.connect", source_name, u64::MAX);
     async move {
-        let output = f.await;
+        let output = request.await;
         guard.done(&output);
         output
     }

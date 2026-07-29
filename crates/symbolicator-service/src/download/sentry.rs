@@ -18,7 +18,8 @@ use symbolicator_sources::{
 
 use super::{Destination, FileType};
 use crate::caching::{CacheContents, CacheError};
-use crate::config::{DownloadTimeouts, InMemoryCacheConfig};
+use crate::config::InMemoryCacheConfig;
+use crate::download::DownloadLimits;
 use crate::utils::futures::{CancelOnDrop, m, measure};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -88,7 +89,7 @@ pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
     dif_cache: SentryDifCache,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
     propagate_traces: bool,
 }
 
@@ -96,7 +97,7 @@ impl fmt::Debug for SentryDownloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SentryDownloader")
             .field("dif_cache", &self.dif_cache.entry_count())
-            .field("timeouts", &self.timeouts)
+            .field("timeouts", &self.limits)
             .field("propagate_traces", &self.propagate_traces)
             .finish()
     }
@@ -106,7 +107,7 @@ impl SentryDownloader {
     pub fn new(
         client: reqwest::Client,
         runtime: tokio::runtime::Handle,
-        timeouts: DownloadTimeouts,
+        limits: DownloadLimits,
         in_memory: &InMemoryCacheConfig,
         propagate_traces: bool,
     ) -> Self {
@@ -118,7 +119,7 @@ impl SentryDownloader {
             client,
             runtime,
             dif_cache,
-            timeouts,
+            limits,
             propagate_traces,
         }
     }
@@ -267,7 +268,7 @@ impl SentryDownloader {
         super::download_reqwest(
             source_name,
             builder,
-            &self.timeouts,
+            &self.limits,
             destination,
             &super::GenericErrorHandler,
         )

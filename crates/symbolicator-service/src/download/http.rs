@@ -6,7 +6,7 @@ use symbolicator_sources::HttpRemoteFile;
 
 use crate::{
     caching::{CacheContents, CacheError},
-    config::DownloadTimeouts,
+    download::DownloadLimits,
 };
 
 use super::Destination;
@@ -16,15 +16,15 @@ use super::Destination;
 pub struct HttpDownloader {
     client: Client,
     no_ssl_client: Client,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client, no_ssl_client: Client, timeouts: DownloadTimeouts) -> Self {
+    pub fn new(client: Client, no_ssl_client: Client, limits: DownloadLimits) -> Self {
         Self {
             client,
             no_ssl_client,
-            timeouts,
+            limits,
         }
     }
 
@@ -61,7 +61,7 @@ impl HttpDownloader {
         super::download_reqwest(
             source_name,
             builder,
-            &self.timeouts,
+            &self.limits,
             destination,
             &super::GenericErrorHandler,
         )

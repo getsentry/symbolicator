@@ -15,7 +15,7 @@ use reqwest::StatusCode;
 use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3SourceKey};
 
 use crate::caching::{CacheContents, CacheError};
-use crate::config::DownloadTimeouts;
+use crate::download::DownloadLimits;
 
 use super::{Destination, ErrorHandler, SymResponse};
 
@@ -32,13 +32,13 @@ const PRE_SIGN_EXPIRY: Duration = Duration::from_mins(15);
 pub struct S3Downloader {
     client_cache: ClientCache,
     http_client: reqwest::Client,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
 }
 
 impl fmt::Debug for S3Downloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("S3Downloader")
-            .field("timeouts", &self.timeouts)
+            .field("limits", &self.limits)
             .finish()
     }
 }
@@ -46,13 +46,13 @@ impl fmt::Debug for S3Downloader {
 impl S3Downloader {
     pub fn new(
         http_client: reqwest::Client,
-        timeouts: DownloadTimeouts,
+        limits: DownloadLimits,
         s3_client_capacity: u64,
     ) -> Self {
         Self {
             client_cache: ClientCache::new(s3_client_capacity),
             http_client,
-            timeouts,
+            limits,
         }
     }
 
@@ -158,7 +158,7 @@ impl S3Downloader {
         super::download_reqwest(
             source_name,
             builder,
-            &self.timeouts,
+            &self.limits,
             destination,
             &S3ErrorHandler,
         )
