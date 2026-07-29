@@ -831,8 +831,8 @@ enum MeasureState {
     Done(&'static str),
 }
 
-/// A guard to [`measure`] the amount of time it takes to download a source. This guard is also
-/// capable of calculating and reporting the throughput of the connection. Two metrics are
+/// A guard to [`measure`] the amount of time it takes to download a source and limit the download size.
+/// This guard is also capable of calculating and reporting the throughput of the connection. Two metrics are
 /// emitted if `bytes_transferred` is set:
 ///
 /// 1. Amount of time taken to complete the measurement
