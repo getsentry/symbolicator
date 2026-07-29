@@ -533,6 +533,12 @@ async fn do_download_reqwest_range(
                 "Success hitting `{source}`, but server does not support range requests"
             );
 
+            if let Some(content_length) = response.response.content_length()
+                && content_length > response.measure.max_bytes_transferred
+            {
+                return Err(CacheError::size_exceeded());
+            }
+
             let destination = std::pin::pin!(destination.into_write());
             response.download(destination).await
         }
