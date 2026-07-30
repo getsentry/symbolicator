@@ -128,10 +128,15 @@ impl Cache {
     /// If `dry_run` is `true`, no files will actually be deleted.
     #[tracing::instrument(skip(self), fields(cache = %self.name))]
     pub fn cleanup(&self, dry_run: bool) -> Result<()> {
-        tracing::info!("Cleaning up `{}` cache", self.name);
         let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
+
+        tracing::info!("Cleaning up `{}` cache", self.name);
+
+        metric!(gauge("caches.size.bytes") = 0.0, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.metadata_bytes") = 0.0, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.files") = 0.0, "cache" => self.name.as_str());
 
         self.cleanup_directory_recursive(cache_dir, dry_run)?;
 
@@ -235,9 +240,9 @@ impl Cache {
 
             Ok(true)
         } else {
-            metric!(counter("caches.size.bytes") += size, "cache" => self.name.as_str());
-            metric!(counter("caches.size.metadata_bytes") += metadata_size, "cache" => self.name.as_str());
-            metric!(counter("caches.size.files") += 1, "cache" => self.name.as_str());
+            metric!(gauge("caches.size.bytes") += size as f64, "cache" => self.name.as_str());
+            metric!(gauge("caches.size.metadata_bytes") += metadata_size as f64, "cache" => self.name.as_str());
+            metric!(gauge("caches.size.files") += 1, "cache" => self.name.as_str());
 
             Ok(false)
         }

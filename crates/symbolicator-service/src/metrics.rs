@@ -45,6 +45,14 @@ macro_rules! metric {
         $crate::metrics::_metrics::gauge!($($id)* $(, $($tt)*)?).set($value)
     }};
 
+    (gauge($($id:tt)+) += $value:expr $(, $($tt:tt)*)?) => {{
+        $crate::metrics::_metrics::gauge!($($id)* $(, $($tt)*)?).increment($value)
+    }};
+
+    (gauge($($id:tt)+) -= $value:expr $(, $($tt:tt)*)?) => {{
+        $crate::metrics::_metrics::gauge!($($id)* $(, $($tt)*)?).decrement($value)
+    }};
+
     // timers
     (timer($($id:tt)+) = $value:expr $(, $($tt:tt)*)?) => {{ $crate::metrics::_metrics::histogram!($($id)* $(, $($tt)*)?).record($value.as_nanos() as f64 / 1e6) }};
 
