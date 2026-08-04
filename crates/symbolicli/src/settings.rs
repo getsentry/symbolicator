@@ -204,7 +204,19 @@ pub struct Settings {
 
 impl Settings {
     pub fn get() -> Result<Self> {
-        let cli = Cli::parse();
+        let Cli {
+            event,
+            org,
+            project,
+            url,
+            auth_token,
+            auth_cookies,
+            format,
+            offline,
+            log_level,
+            no_scrape,
+            symbols,
+        } = Cli::parse();
 
         let global_config_path = find_global_config_file()?;
         let mut global_config_file = ConfigFile::parse(&global_config_path)?;
@@ -213,18 +225,21 @@ impl Settings {
             _ => ConfigFile::default(),
         };
 
-        let mode = if cli.offline {
+        let mode = if offline {
             Mode::Offline
         } else {
-            let Some(auth) = get_sentry_auth(&cli, &project_config_file, &global_config_file)
-            else {
+            let Some(auth) = get_sentry_auth(
+                auth_token,
+                auth_cookies,
+                &project_config_file,
+                &global_config_file,
+            ) else {
                 bail!(
                     "No auth token or cookies provided. Pass `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`, or `SENTRY_AUTH_COOKIES`."
                 );
             };
 
-            let sentry_url = cli
-                .url
+            let sentry_url = url
                 .as_deref()
                 .or(project_config_file.url.as_deref())
                 .or(global_config_file.url.as_deref())
@@ -233,8 +248,7 @@ impl Settings {
             let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
             let url = sentry_url.join("/api/0/").unwrap();
 
-            let Some(org) = cli
-                .org
+            let Some(org) = org
                 .or_else(|| project_config_file.org.take())
                 .or_else(|| global_config_file.org.take())
             else {
@@ -243,8 +257,7 @@ impl Settings {
                 );
             };
 
-            let Some(project) = cli
-                .project
+            let Some(project) = project
                 .or_else(|| project_config_file.project.take())
                 .or_else(|| global_config_file.project.take())
             else {
@@ -287,13 +300,13 @@ impl Settings {
         };
 
         let args = Settings {
-            event_id: cli.event,
+            event_id: event,
             symbolicator_config,
-            output_format: cli.format,
-            log_level: cli.log_level,
+            output_format: format,
+            log_level,
             mode,
-            symbols: cli.symbols,
-            scraping_enabled: !cli.no_scrape,
+            symbols,
+            scraping_enabled: !no_scrape,
         };
 
         Ok(args)
@@ -301,18 +314,17 @@ impl Settings {
 }
 
 fn get_sentry_auth(
-    cli: &Cli,
+    auth_token: Option<String>,
+    auth_cookies: Option<String>,
     project_config_file: &ConfigFile,
     global_config_file: &ConfigFile,
 ) -> Option<SentryCredentials> {
     {
-        let token = cli
-            .auth_token
+        let token = auth_token
             .clone()
             .map(SentryToken)
             .map(SentryCredentials::Token);
-        let cookies = cli
-            .auth_cookies
+        let cookies = auth_cookies
             .clone()
             .map(SentryCookies)
             .map(SentryCredentials::Cookies);
