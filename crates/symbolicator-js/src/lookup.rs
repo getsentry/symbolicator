@@ -866,6 +866,42 @@ impl ArtifactFetcher {
                 })
             }
             Err(e) => {
+                // Temporary logging for source map scraping 403s
+                if let CacheError::PermissionDenied(ref details) = e {
+                    let scope_hash = {
+                        let mut hasher = Sha256::new();
+                        hasher.update(self.scope.as_ref().as_bytes());
+                        format!("{:.16}", hex::encode(hasher.finalize()))
+                    };
+
+                    let token_entry = self.scraping.headers.0.iter().find(|(key, _)| {
+                        let key = key.to_ascii_lowercase();
+                        key.contains("auth") || key.contains("token")
+                    });
+                    let token_is_empty =
+                        token_entry.is_none_or(|(_, value)| value.trim().is_empty());
+                    let token_hash = token_entry.map(|(key, value)| {
+                        let mut hasher = Sha256::new();
+                        hasher.update(value.as_bytes());
+                        format!("{key}={:.16}", hex::encode(hasher.finalize()))
+                    });
+
+                    tracing::info!(
+                        scraping_url = %abs_path,
+                        // 1) which project/scope this was for, hashed
+                        scope_hash = %scope_hash,
+                        // 2) did we have headers at all
+                        scraping_header_count = self.scraping.headers.0.len(),
+                        // 3) was the token empty
+                        token_is_empty,
+                        // 3) fingerprint of the token we sent, if any
+                        token_hash = ?token_hash,
+                        // 4) what the server actually replied
+                        error_details = %details,
+                        "scraping: 403/permission denied fetching file"
+                    );
+                }
+
                 self.scraping_attempts.push(JsScrapingAttempt {
                     url: abs_path.to_owned(),
                     result: e.clone().into(),

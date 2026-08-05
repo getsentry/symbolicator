@@ -24,6 +24,7 @@ reqwest = { workspace = true, features = [
 sentry = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+hex = { workspace = true }
 sha2 = { workspace = true }
 symbolic = { workspace = true, features = ["common-serde", "sourcemapcache"] }
 symbolicator-service = { workspace = true }

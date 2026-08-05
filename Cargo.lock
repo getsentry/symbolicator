@@ -4834,6 +4834,7 @@ version = "26.6.0"
 dependencies = [
  "data-url",
  "futures",
+ "hex",
  "humantime",
  "insta",
  "moka",
