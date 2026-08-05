@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Bug Fixes
+
+- (sentry) Disable transparent decompression when downloading debug files.
+
 ### Features
 - Added a config setting `max_download_size` to restrict the size of downloaded files.
   For compressed files, this limit applies to the _decompressed_ size.

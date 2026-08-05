@@ -128,7 +128,7 @@ impl DownloadService {
 
         // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
         // | ----------| ----------------------------|---------------------------|-------------|
-        // |  trusted  |             yes             |             no            |     yes     |
+        // |  trusted  |             yes             |             no            |     no      |
         // | restrcted | according to config setting |             no            |     yes     |
         // |  no ssl   | according to config setting |             yes           |     yes     |
         // |    s3     | according to config setting |             no            |     no      |
@@ -141,6 +141,9 @@ impl DownloadService {
         };
         let trusted_settings = ClientSettings {
             connect_to_reserved_ips: true,
+            // Sentry debug files can be downloaded in ranges. Receiving compressed partial
+            // responses breaks the individual range streams.
+            compression: false,
             ..restricted_settings
         };
         let no_ssl_settings = ClientSettings {
