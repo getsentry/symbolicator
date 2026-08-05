@@ -679,10 +679,12 @@ impl ArtifactFetcher {
             if let Some(debug_id) = debug_id
                 && rand::random::<f64>() < 0.0001
             {
+                let cache_error = sourcemap.entry.as_ref().err();
                 tracing::error!(
                     source_url = %self.source.url,
                     abs_path,
                     %debug_id,
+                    ?cache_error,
                     "Failed to fetch sourcemap with debug id"
                 );
             }
