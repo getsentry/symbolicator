@@ -868,6 +868,11 @@ impl ArtifactFetcher {
             Err(e) => {
                 // Temporary logging for source map scraping 403s
                 if let CacheError::PermissionDenied(ref details) = e {
+                    let url_hash = {
+                        let mut hasher = Sha256::new();
+                        hasher.update(abs_path.as_bytes());
+                        format!("{:.16}", hex::encode(hasher.finalize()))
+                    };
                     let scope_hash = {
                         let mut hasher = Sha256::new();
                         hasher.update(self.scope.as_ref().as_bytes());
@@ -887,7 +892,8 @@ impl ArtifactFetcher {
                     });
 
                     tracing::info!(
-                        scraping_url = %abs_path,
+                        // 1) url, hashed
+                        scraping_url = %url_hash,
                         // 1) which project/scope this was for, hashed
                         scope_hash = %scope_hash,
                         // 2) did we have headers at all
