@@ -1,16 +1,16 @@
 use std::fs::File;
+use std::sync::Arc;
 
-use futures::TryStreamExt;
-use symbolicator_service::caching::CacheError;
-use symbolicator_service::download::{self, DownloadService};
-use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
+use symbolicator_service::download::{DownloadService, fetch_file};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile};
+use url::Url;
 
 use crate::interface::AttachmentFile;
 
 pub async fn download_attachment(
-    download_svc: &DownloadService,
+    download_svc: Arc<DownloadService>,
     file: AttachmentFile,
-) -> Result<File, CacheError> {
+) -> anyhow::Result<File> {
     let (storage_url, storage_token) = match file {
         AttachmentFile::Local(file) => return Ok(file),
         AttachmentFile::Remote {
@@ -19,37 +19,20 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
-    // TODO: maybe its worth using the actual `DownloadService` instead of straight going to the `trusted_client`.
-    // Doing so would in theory allow us to have retries and error report, as well as being able to
-    // download files in multiple chunks concurrently, but I don’t think our `objecstore` server currently
-    // supports range requests, and those would also mess with streaming decompression.
-    // Not to mention that using the `DownloadService` is not that straight forward.
-    download::retry(|| async {
-        let mut request = download_svc.trusted_client.get(&storage_url);
-        if let Some(token) = storage_token.as_ref() {
-            request = request.bearer_auth(token);
-        }
-        let response = request.send().await?;
-        if !response.status().is_success() {
-            return Err(
-                download::GenericErrorHandler::handle_response(&storage_url, response).await,
-            );
-        }
+    let mut http_remote_file = HttpRemoteFile::from_url(Url::parse(&storage_url)?, true);
 
-        let mut stream = response.bytes_stream();
+    if let Some(token) = storage_token {
+        http_remote_file = http_remote_file.bearer_auth(&token);
+    }
 
-        let file = tempfile::tempfile()?;
-        let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
-        while let Some(chunk) = stream.try_next().await? {
-            writer.write_all(&chunk).await?;
-        }
-        writer.flush().await?;
-        let mut file = writer.into_inner();
-        file.sync_data().await?;
+    let mut temp_file = tempfile::NamedTempFile::new()?;
 
-        file.rewind().await?;
+    fetch_file(
+        download_svc,
+        RemoteFile::Http(http_remote_file),
+        &mut temp_file,
+    )
+    .await?;
 
-        Ok(file.into_std().await)
-    })
-    .await
+    Ok(temp_file.into_file())
 }
