@@ -7,6 +7,11 @@
   For compressed files, this limit applies to the _decompressed_ size.
   The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
 
+- Introduced a `sentry` download client used for Sentry file downloads, which is
+  analogous to the `trusted` client, but disables automatic decompression.
+  This allows Symbolicator to support compressed files served by Sentry.
+  ([#1999](https://github.com/getsentry/symbolicator/pull/1999))
+
 ## 26.7.2
 
 ### Internal Changes 🔧
