@@ -128,7 +128,8 @@ impl DownloadService {
 
         // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
         // | ----------| ----------------------------|---------------------------|-------------|
-        // |  trusted  |             yes             |             no            |     no      |
+        // |  trusted  |             yes             |             no            |     yes     |
+        // |   sentry  |             yes             |             no            |     no      |
         // | restrcted | according to config setting |             no            |     yes     |
         // |  no ssl   | according to config setting |             yes           |     yes     |
         // |    s3     | according to config setting |             no            |     no      |
@@ -141,10 +142,13 @@ impl DownloadService {
         };
         let trusted_settings = ClientSettings {
             connect_to_reserved_ips: true,
+            ..restricted_settings
+        };
+        let sentry_settings = ClientSettings {
             // Sentry can return the raw byte stream on range requests, which might be part of a
             // compressed stream, so transparent decompression would fail on those individual parts.
             compression: false,
-            ..restricted_settings
+            ..trusted_settings
         };
         let no_ssl_settings = ClientSettings {
             accept_invalid_certs: true,
@@ -158,6 +162,7 @@ impl DownloadService {
         };
 
         let trusted_client = crate::utils::http::create_client(&trusted_settings);
+        let sentry_client = crate::utils::http::create_client(&sentry_settings);
         let http_restricted_client = crate::utils::http::create_client(&restricted_settings);
         let http_no_ssl_client = crate::utils::http::create_client(&no_ssl_settings);
         let s3_client = crate::utils::http::create_client(&no_compression_settings);
@@ -170,7 +175,7 @@ impl DownloadService {
             limits,
             trusted_client: trusted_client.clone(),
             sentry: sentry::SentryDownloader::new(
-                trusted_client,
+                sentry_client,
                 runtime,
                 limits,
                 in_memory,
