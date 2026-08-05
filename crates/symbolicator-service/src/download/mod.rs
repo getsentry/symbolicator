@@ -141,8 +141,8 @@ impl DownloadService {
         };
         let trusted_settings = ClientSettings {
             connect_to_reserved_ips: true,
-            // Sentry debug files can be downloaded in ranges. Receiving compressed partial
-            // responses breaks the individual range streams.
+            // Sentry can return the raw byte stream on range requests, which might be part of a
+            // compressed stream, so transparent decompression would fail on those individual parts.
             compression: false,
             ..restricted_settings
         };
