@@ -671,7 +671,7 @@ impl ArtifactFetcher {
 
         if matches!(sourcemap.uri, CachedFileUri::Embedded) {
             self.metrics.record_sourcemap_not_needed();
-        } else if sourcemap.entry.is_err() {
+        } else if let Err(err) = &sourcemap.entry {
             self.metrics
                 .record_not_found(SourceFileType::SourceMap, debug_id.is_some());
 
@@ -679,12 +679,11 @@ impl ArtifactFetcher {
             if let Some(debug_id) = debug_id
                 && rand::random::<f64>() < 0.0001
             {
-                let cache_error = sourcemap.entry.as_ref().err();
                 tracing::error!(
+                    error = err as &dyn std::error::Error,
                     source_url = %self.source.url,
                     abs_path,
                     %debug_id,
-                    ?cache_error,
                     "Failed to fetch sourcemap with debug id"
                 );
             }
