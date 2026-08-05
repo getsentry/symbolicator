@@ -66,6 +66,8 @@ pub struct SymbolicateStacktraces {
     pub rewrite_first_module: RewriteRules,
     /// The order of frames within stacktraces (innermost frame first or last).
     pub frame_order: FrameOrder,
+    /// Whether we extract variables.
+    pub extract_variables: bool,
 }
 
 /// Location of an attachment file, such as a minidump.
@@ -98,6 +100,8 @@ pub struct ProcessMinidump {
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
+    /// Whether to extract varialbes.
+    pub extract_variables: bool,
 }
 
 /// The symbolicated crash data.

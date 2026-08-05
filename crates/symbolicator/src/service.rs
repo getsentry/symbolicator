@@ -136,6 +136,9 @@ pub struct RequestOptions {
 
     /// The order in which stack frames are received by Symbolicator and returned to the caller.
     pub frame_order: FrameOrder,
+
+    /// Whether to extract variables. Only applies to some symbolication requests
+    pub extract_variables: bool,
 }
 
 impl Default for RequestOptions {
@@ -144,6 +147,7 @@ impl Default for RequestOptions {
             dif_candidates: false,
             apply_source_context: true,
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
         }
     }
 }
@@ -354,9 +358,17 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
+        let extract_variables = options.extract_variables;
         self.create_symbolication_request("parse_apple_crash_report", options, async move {
             slf.native
-                .process_apple_crash_report(platform, scope, apple_crash_report, sources, scraping)
+                .process_apple_crash_report(
+                    platform,
+                    scope,
+                    apple_crash_report,
+                    sources,
+                    scraping,
+                    extract_variables,
+                )
                 .await
                 .map(CompletedResponse::Native)
         })
@@ -623,6 +635,7 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
         };
 
         let request_id = service
@@ -667,6 +680,7 @@ mod tests {
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: false,
         }
     }
 

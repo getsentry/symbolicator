@@ -89,6 +89,7 @@ pub fn create_native_symbolication_request(
     scope: Scope,
     sources: Arc<[SourceConfig]>,
     event: Event,
+    extract_variables: bool,
 ) -> anyhow::Result<SymbolicateStacktraces> {
     let Event {
         debug_meta,
@@ -151,6 +152,7 @@ pub fn create_native_symbolication_request(
         // we manually reversed the frames when we created the stacktraces, so this is
         // "callee first"
         frame_order: FrameOrder::CalleeFirst,
+        extract_variables,
     })
 }
 

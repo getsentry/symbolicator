@@ -124,6 +124,10 @@ struct Cli {
     /// debuginfod, unified, slashsymbols.
     #[arg(long)]
     symbols: Option<SymbolsPath>,
+
+    /// Whether to extract variables from the minidump.
+    #[arg(long)]
+    extract_variables: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -200,6 +204,7 @@ pub struct Settings {
     pub mode: Mode,
     pub symbols: Option<SymbolsPath>,
     pub scraping_enabled: bool,
+    pub extract_variables: bool,
 }
 
 impl Settings {
@@ -216,6 +221,7 @@ impl Settings {
             log_level,
             no_scrape,
             symbols,
+            extract_variables,
         } = Cli::parse();
 
         let global_config_path = find_global_config_file()?;
@@ -307,6 +313,7 @@ impl Settings {
             mode,
             symbols,
             scraping_enabled: !no_scrape,
+            extract_variables,
         };
 
         Ok(args)
