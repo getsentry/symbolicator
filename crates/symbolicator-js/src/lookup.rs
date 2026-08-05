@@ -885,11 +885,7 @@ impl ArtifactFetcher {
                     });
                     let token_is_empty =
                         token_entry.is_none_or(|(_, value)| value.trim().is_empty());
-                    let token_hash = token_entry.map(|(key, value)| {
-                        let mut hasher = Sha256::new();
-                        hasher.update(value.as_bytes());
-                        format!("{key}={:.16}", hex::encode(hasher.finalize()))
-                    });
+                    let token_length = token_entry.map(|(_, value)| value.len());
 
                     tracing::info!(
                         // 1) url, hashed
@@ -900,8 +896,8 @@ impl ArtifactFetcher {
                         scraping_header_count = self.scraping.headers.0.len(),
                         // 3) was the token empty
                         token_is_empty,
-                        // 3) fingerprint of the token we sent, if any
-                        token_hash = ?token_hash,
+                        // 3) token length
+                        token_length = ?token_length,
                         // 4) what the server actually replied
                         error_details = %details,
                         "scraping: 403/permission denied fetching file"
