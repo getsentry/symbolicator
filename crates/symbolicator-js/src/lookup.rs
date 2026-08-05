@@ -889,13 +889,13 @@ impl ArtifactFetcher {
 
                     tracing::info!(
                         // 1) url, hashed
-                        scraping_url = %url_hash,
+                        url_hash = %url_hash,
                         // 1) which project/scope this was for, hashed
                         scope_hash = %scope_hash,
                         // 2) did we have headers at all
                         scraping_header_count = self.scraping.headers.0.len(),
                         // 3) was the token empty
-                        token_is_empty,
+                        token_is_empty= token_is_empty,
                         // 3) token length
                         token_length = ?token_length,
                         // 4) what the server actually replied
