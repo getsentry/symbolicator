@@ -113,6 +113,7 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order,
+            extract_variables,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -131,6 +132,7 @@ impl SymbolicationActor {
                 self.symcaches.clone(),
                 self.ppdb_caches.clone(),
                 &stacktraces,
+                extract_variables,
             )
             .await;
 
