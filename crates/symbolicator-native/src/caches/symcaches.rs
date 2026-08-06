@@ -73,11 +73,16 @@ async fn compute_symcache(
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
     secondary_sources: &SecondarySymCacheSources,
-    #[expect(unused_variables)] extract_varialbes: bool,
+    extract_varialbes: bool,
 ) -> CacheContents {
     let object_handle = objects_actor.fetch(object_meta).await?;
 
-    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
+    write_symcache(
+        temp_file.as_file_mut(),
+        &object_handle,
+        secondary_sources,
+        extract_varialbes,
+    )
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -227,6 +232,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: &SecondarySymCacheSources,
+    extract_varialbes: bool,
 ) -> CacheContents {
     object_handle.configure_scope();
 
@@ -265,6 +271,7 @@ fn write_symcache(
     tracing::debug!("Converting symcache for {}", object_handle.cache_key);
 
     let mut converter = SymCacheConverter::new();
+    converter.set_collect_variables(extract_varialbes);
 
     if let Some(bcsymbolmap) = bcsymbolmap_transformer {
         converter.add_transformer(bcsymbolmap);
