@@ -211,7 +211,9 @@ impl WriteStream for OffsetFileWriteStream {
 
         debug_assert!(
             offset + length < self.end,
-            "attempt to write past end of stream"
+            "attempt to write past end of stream {offset}+{length} ({}) < {}",
+            offset + length,
+            self.end
         );
 
         let file = Arc::clone(&self.file);

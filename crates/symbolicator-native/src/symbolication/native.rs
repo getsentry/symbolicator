@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
+
 use symbolic::common::{InstructionInfo, Language, split_path};
-use symbolic::symcache::SymCache;
+use symbolic::symcache::{SourceLocation, SymCache, Type};
 use symbolicator_service::metric;
 use symbolicator_service::utils::hex::HexValue;
 
@@ -17,6 +19,7 @@ pub fn symbolicate_native_frame(
     relative_addr: u64,
     frame: &RawFrame,
     index: usize,
+    extract_variables: bool,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
@@ -45,6 +48,12 @@ pub fn symbolicate_native_frame(
         } else {
             frame.filename.clone()
         };
+
+        let mut vars = None;
+        if extract_variables {
+            vars = do_extract_variables(&source_location, symcache);
+        }
+
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
             original_index: Some(index),
@@ -74,6 +83,7 @@ pub fn symbolicate_native_frame(
                     language => Some(language),
                 },
                 in_app: None,
+                vars,
                 trust: frame.trust,
             },
         });
@@ -146,5 +156,59 @@ pub fn get_relative_caller_addr(
         );
         metric!(counter("relative_addr.underflow") += 1);
         Err(FrameStatus::MissingSymbol)
+    }
+}
+
+fn do_extract_variables<'data, 'cache>(
+    source_location: &SourceLocation<'data, 'cache>,
+    cache: &SymCache<'cache>,
+) -> Option<BTreeMap<String, serde_json::Value>> {
+    let mut result = BTreeMap::new();
+
+    for variable in source_location.variables() {
+        let Some(name) = variable.name() else {
+            continue;
+        };
+
+        let mut ty = String::new();
+        resolve_type_name(&mut ty, cache, variable.ty(), 0);
+
+        // This doesn't handle name collisions currently.
+        result.insert(name.to_owned(), ty.into());
+    }
+
+    match result.is_empty() {
+        false => Some(result),
+        true => None,
+    }
+}
+
+fn resolve_type_name(
+    result: &mut String,
+    cache: &SymCache<'_>,
+    ty: Option<Type<'_>>,
+    depth: usize,
+) {
+    let Some(ty) = ty else {
+        result.push_str("<unknown>");
+        return;
+    };
+
+    // This really is just temporary and not even necessary, the current depth limit in symbolic is 5.
+    // With more changes we'll have to solve this properly. As we're also going to have to resolve
+    // the variable contents, not just a type name.
+    if depth > 10 {
+        return;
+    }
+
+    match ty {
+        Type::Primitive(primitive) => result.push_str(primitive.name().unwrap_or("")),
+        Type::Pointer(pointer) if pointer.pointee().is_none() => result.push_str("void*"),
+        Type::Pointer(pointer) => {
+            let ty = pointer.pointee().and_then(|p| cache.lookup_type(p));
+            resolve_type_name(result, cache, ty, depth);
+            result.push('*');
+        }
+        _ => result.push_str("<not implemented>"),
     }
 }

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::bail;
@@ -245,48 +246,30 @@ struct Frame {
     platform: Option<Platform>,
     #[serde(default)]
     addr_mode: AddrMode,
-
     instruction_addr: Option<HexValue>,
-
     #[serde(default)]
     function_id: Option<HexValue>,
-
     #[serde(default)]
     package: Option<String>,
-
     lang: Option<Language>,
-
     symbol: Option<String>,
-
     sym_addr: Option<HexValue>,
-
     function: Option<String>,
-
     filename: Option<String>,
-
     abs_path: Option<String>,
-
     lineno: Option<u32>,
-
     colno: Option<u32>,
-
     #[serde(default)]
     pre_context: Vec<String>,
-
     context_line: Option<String>,
-
     #[serde(default)]
     post_context: Vec<String>,
-
     module: Option<String>,
-
     source_link: Option<String>,
-
     in_app: Option<bool>,
-
+    vars: Option<BTreeMap<String, serde_json::Value>>,
     #[serde(default)]
     trust: FrameTrust,
-
     #[serde(default)]
     data: JsFrameData,
 }
@@ -311,6 +294,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         post_context: value.post_context,
         source_link: value.source_link,
         in_app: value.in_app,
+        vars: value.vars,
         trust: value.trust,
     })
 }

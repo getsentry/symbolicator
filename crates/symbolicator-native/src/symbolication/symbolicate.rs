@@ -146,6 +146,7 @@ impl SymbolicationActor {
                     &module_lookup,
                     &mut metrics,
                     signal,
+                    extract_variables,
                 )
             })
             .collect();
@@ -181,6 +182,7 @@ fn symbolicate_stacktrace(
     caches: &ModuleLookup,
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
+    extract_variables: bool,
 ) -> CompleteStacktrace {
     let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
@@ -196,6 +198,7 @@ fn symbolicate_stacktrace(
             &mut frame,
             index,
             adjustment,
+            extract_variables,
         ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
@@ -307,6 +310,10 @@ fn symbolicate_stacktrace(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "https://github.com/getsentry/symbolicator/issues/2002"
+)]
 fn symbolicate_frame(
     demangle_cache: &DemangleCache,
     caches: &ModuleLookup,
@@ -315,6 +322,7 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
     adjustment: AdjustInstructionAddr,
+    extract_variables: bool,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -342,6 +350,7 @@ fn symbolicate_frame(
                 relative_addr,
                 frame,
                 index,
+                extract_variables,
             )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {

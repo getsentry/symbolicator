@@ -336,6 +336,12 @@ pub struct RawFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub in_app: Option<bool>,
 
+    /// Mapping of local variables and expression names that were available in this frame.
+    ///
+    /// Current format is heavily work in progress.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vars: Option<BTreeMap<String, serde_json::Value>>,
+
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
