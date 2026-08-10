@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Error, Result, anyhow};
@@ -298,6 +299,14 @@ impl GcsState {
         let stream = std::io::Cursor::new(content);
         let stream = async_compression::tokio::bufread::ZstdEncoder::new(stream);
         let stream = ReaderStream::new(stream);
+        let compressed_bytes = Arc::new(AtomicU64::new(0));
+        let stream = {
+            let compressed_bytes = Arc::clone(&compressed_bytes);
+            stream.inspect_ok(move |b| {
+                compressed_bytes.fetch_add(b.len() as u64, Ordering::Relaxed);
+            })
+        };
+
         let body = Body::wrap_stream(stream);
 
         let request = self
@@ -315,7 +324,10 @@ impl GcsState {
                 match status {
                     successful if successful.is_success() => {
                         tracing::trace!("Success hitting shared_cache GCS {}", key);
-                        Ok(SharedCacheStoreResult::Written(total_bytes))
+                        Ok(SharedCacheStoreResult::Written {
+                            raw: total_bytes,
+                            stored: compressed_bytes.load(Ordering::Relaxed),
+                        })
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN => Err(anyhow!(
@@ -396,7 +408,10 @@ impl FilesystemSharedCacheConfig {
         temp_file
             .persist(abspath)
             .context("Failed to save file in shared cache")?;
-        Ok(SharedCacheStoreResult::Written(bytes))
+        Ok(SharedCacheStoreResult::Written {
+            raw: bytes,
+            stored: bytes,
+        })
     }
 }
 
@@ -404,7 +419,12 @@ impl FilesystemSharedCacheConfig {
 #[derive(Debug, Clone, Copy)]
 enum SharedCacheStoreResult {
     /// Successfully written to the cache as a new entry, contains number of bytes written.
-    Written(u64),
+    Written {
+        /// Raw amount of bytes as given to the cache.
+        raw: u64,
+        /// Amount of bytes written after compression.
+        stored: u64,
+    },
     /// Skipped writing the item as it was already on the cache.
     Skipped,
 }
@@ -412,7 +432,7 @@ enum SharedCacheStoreResult {
 impl SharedCacheStoreResult {
     fn as_str(&self) -> &'static str {
         match self {
-            Self::Written(_) => "written",
+            Self::Written { .. } => "written",
             Self::Skipped => "skipped",
         }
     }
@@ -607,9 +627,17 @@ impl SharedCacheService {
                     "status" => "ok",
                     "reason" => reason.as_str(),
                 );
-                if let SharedCacheStoreResult::Written(bytes) = op {
+                if let SharedCacheStoreResult::Written {
+                    raw,
+                    stored: compressed,
+                } = op
+                {
                     metric!(
-                        counter("services.shared_cache.store.bytes") += bytes,
+                        counter("services.shared_cache.store.bytes") += compressed,
+                        "cache" => cache.as_str(),
+                    );
+                    metric!(
+                        counter("services.shared_cache.store.bytes.raw") += raw,
                         "cache" => cache.as_str(),
                     );
                 }
@@ -1011,23 +1039,29 @@ mod tests {
             .await
             .unwrap();
 
+        let data = b"cache data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
             .unwrap();
 
-        assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
+        let SharedCacheStoreResult::Written { raw, stored } = ret else {
+            unreachable!()
+        };
+        assert_eq!(raw, data.len() as u64);
+        assert!(stored < raw);
 
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
