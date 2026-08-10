@@ -20,6 +20,7 @@ use super::{Destination, FileType};
 use crate::caching::{CacheContents, CacheError};
 use crate::config::InMemoryCacheConfig;
 use crate::download::DownloadLimits;
+use crate::download::compression::Compression;
 use crate::utils::futures::{CancelOnDrop, m, measure};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -256,7 +257,7 @@ impl SentryDownloader {
         source_name: &str,
         file_source: &SentryRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);
 

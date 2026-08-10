@@ -4,13 +4,15 @@
 //! <https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/>
 
 use std::error::Error;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize};
 use std::time::{Duration, Instant};
 
 use ::sentry::SentryFutureExt;
-use futures::{future::Either, prelude::*};
+use futures::future::Either;
+use futures::prelude::*;
+use futures::stream::FuturesUnordered;
 use reqwest::StatusCode;
 
 use crate::caching::{CacheContents, CacheError};
@@ -21,7 +23,6 @@ use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::ClientSettings;
 use crate::utils::sentry::ConfigureScope;
-use stream::FuturesUnordered;
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
@@ -42,10 +43,11 @@ mod index;
 mod partial;
 mod s3;
 pub mod sentry;
+mod stream;
 
-pub use self::compression::tempfile_in_parent;
 pub use self::destination::{Destination, MultiStreamDestination, WriteStream};
 pub use self::fetch_file::fetch_file;
+pub use self::stream::Download;
 pub use index::SourceIndexService;
 
 impl ConfigureScope for RemoteFile {
@@ -108,6 +110,9 @@ pub struct DownloadLimits {
 pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
     pub limits: DownloadLimits,
+    // This client ideally would not accept and all users used the download service to download files.
+    //
+    // See also: <https://github.com/getsentry/symbolicator/pull/1928>.
     pub trusted_client: reqwest::Client,
     sentry: sentry::SentryDownloader,
     http: http::HttpDownloader,
@@ -116,6 +121,7 @@ pub struct DownloadService {
     fs: filesystem::FilesystemDownloader,
     host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
+    tmp_dir: Option<PathBuf>,
 }
 
 impl DownloadService {
@@ -126,46 +132,37 @@ impl DownloadService {
             max_download_size: config.max_download_size,
         };
 
-        // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression |
-        // | ----------| ----------------------------|---------------------------|-------------|
-        // |  trusted  |             yes             |             no            |     yes     |
-        // |   sentry  |             yes             |             no            |     no      |
-        // | restrcted | according to config setting |             no            |     yes     |
-        // |  no ssl   | according to config setting |             yes           |     yes     |
-        // |    s3     | according to config setting |             no            |     no      |
-        // |    gcs    | according to config setting |             no            |     yes     |
+        // |   client  | can connect to reserved IPs | accepts invalid SSL certs
+        // | ----------| ----------------------------|---------------------------
+        // |  trusted  |             yes             |             no
+        // |   sentry  |             yes             |             no
+        // | restrcted | according to config setting |             no
+        // |  no ssl   | according to config setting |             yes
         let restricted_settings = ClientSettings {
             timeouts: limits.timeouts,
             connect_to_reserved_ips: config.connect_to_reserved_ips,
             accept_invalid_certs: false,
-            compression: true,
+            compression: false,
         };
-        let trusted_settings = ClientSettings {
+        let trusted_client = ClientSettings {
             connect_to_reserved_ips: true,
+            compression: true,
             ..restricted_settings
         };
         let sentry_settings = ClientSettings {
-            // Sentry can return the raw byte stream on range requests, which might be part of a
-            // compressed stream, so transparent decompression would fail on those individual parts.
-            compression: false,
-            ..trusted_settings
+            connect_to_reserved_ips: true,
+            ..restricted_settings
         };
         let no_ssl_settings = ClientSettings {
             accept_invalid_certs: true,
             ..restricted_settings
         };
-        let no_compression_settings = ClientSettings {
-            // S3 returns the raw byte stream on range requests, with transparent decompression
-            // enabled this breaks for individual parts.
-            compression: false,
-            ..restricted_settings
-        };
 
-        let trusted_client = crate::utils::http::create_client(&trusted_settings);
+        let trusted_client = crate::utils::http::create_client(&trusted_client);
         let sentry_client = crate::utils::http::create_client(&sentry_settings);
         let http_restricted_client = crate::utils::http::create_client(&restricted_settings);
         let http_no_ssl_client = crate::utils::http::create_client(&no_ssl_settings);
-        let s3_client = crate::utils::http::create_client(&no_compression_settings);
+        let s3_client = crate::utils::http::create_client(&restricted_settings);
         let gcs_client = crate::utils::http::create_client(&restricted_settings);
 
         let in_memory = &config.caches.in_memory;
@@ -173,7 +170,7 @@ impl DownloadService {
         Arc::new(Self {
             runtime: runtime.clone(),
             limits,
-            trusted_client: trusted_client.clone(),
+            trusted_client,
             sentry: sentry::SentryDownloader::new(
                 sentry_client,
                 runtime,
@@ -189,16 +186,18 @@ impl DownloadService {
                 .deny_list_enabled
                 .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
+            tmp_dir: config.cache_dir("tmp"),
         })
     }
 
     /// Dispatches downloading of the given file to the appropriate source.
-    async fn dispatch_download(&self, source: &RemoteFile, destination: &Path) -> CacheContents {
+    async fn dispatch_download(&self, source: &RemoteFile) -> CacheContents<Download> {
         let source_name = source.source_metric_key();
         let result = retry(|| async {
             // XXX: we have to create the file here, as doing so outside in `download`
             // would run into borrow checker problems due to the `&mut`.
-            let mut destination = tokio::fs::File::create(destination).await?;
+            let temp = crate::utils::fs::tempfile(self.tmp_dir.as_deref())?;
+            let mut destination = tokio::fs::File::from_std(temp.reopen()?);
             let result = match source {
                 RemoteFile::Sentry(source) => {
                     self.sentry
@@ -225,7 +224,8 @@ impl DownloadService {
                 }
             };
             let _ = destination.flush().await;
-            result
+
+            result.map(|compression| Download::new(temp, compression, self.limits))
         })
         .await;
 
@@ -238,18 +238,12 @@ impl DownloadService {
         result
     }
 
-    /// Download a file from a source and store it on the local filesystem.
+    /// Download a file from a source.
     ///
     /// This does not do any deduplication of requests, every requested file is freshly downloaded.
     ///
-    /// The downloaded file is saved into `destination`. The file will be created if it does not
-    /// exist and truncated if it does. In case of any error, the file's contents is considered
-    /// garbage.
-    pub async fn download(
-        self: &Arc<Self>,
-        source: RemoteFile,
-        destination: PathBuf,
-    ) -> CacheContents {
+    /// The downloaded file is returned as a stream.
+    pub async fn download(self: &Arc<Self>, source: RemoteFile) -> CacheContents<Download> {
         let host = source.host();
 
         let is_builtin_source = source.is_builtin();
@@ -271,7 +265,7 @@ impl DownloadService {
 
         let timeout = self.limits.timeouts.max_download;
         let slf = self.clone();
-        let job = async move { slf.dispatch_download(&source, &destination).await };
+        let job = async move { slf.dispatch_download(&source).await };
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(timeout, job);
         let job = measure("service.download", m::timed_result, job);
@@ -447,7 +441,7 @@ async fn download_reqwest(
     limits: &DownloadLimits,
     destination: impl Destination,
     error_handler: &impl ErrorHandler,
-) -> CacheContents {
+) -> CacheContents<compression::Compression> {
     let (client, request) = builder.build_split();
     let request = request?;
 
@@ -478,7 +472,7 @@ async fn download_reqwest(
         }
         Err(destination) => {
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination, error_handler)
+            do_download_reqwest(request, true, destination, error_handler)
                 .send()
                 .await
         }
@@ -507,7 +501,7 @@ async fn do_download_reqwest_range(
     request: SymRequest<'_>,
     mut destination: impl MultiStreamDestination,
     error_handler: &impl ErrorHandler,
-) -> CacheContents {
+) -> CacheContents<compression::Compression> {
     let source = request.to_source();
 
     let response = request
@@ -548,7 +542,7 @@ async fn do_download_reqwest_range(
             }
 
             let destination = std::pin::pin!(destination.into_write());
-            response.download(destination).await
+            response.download(true, destination).await
         }
         None if response.status() == StatusCode::RANGE_NOT_SATISFIABLE => {
             incr!("range_not_satisfiable");
@@ -562,7 +556,7 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination, error_handler).await
+            do_download_reqwest(request, true, destination, error_handler).await
         }
         // Server returned some generic error, we need to bubble it up.
         None => {
@@ -586,7 +580,7 @@ async fn do_download_reqwest_range(
             drop(response);
 
             let destination = std::pin::pin!(destination.into_write());
-            do_download_reqwest(request, destination, error_handler).await
+            do_download_reqwest(request, true, destination, error_handler).await
         }
         // Server indicates it supports ranges.
         Some(Ok(content_range)) => {
@@ -609,7 +603,7 @@ async fn do_download_reqwest_range(
             //  - https://github.com/seanmonstar/reqwest/issues/1559
             //  - https://github.com/tower-rs/tower-http/pull/556
             if content_range.total_size == 0 {
-                return Ok(());
+                return Ok(compression::Compression::Identity);
             }
 
             if content_range.total_size > response.measure.max_bytes_transferred {
@@ -620,7 +614,10 @@ async fn do_download_reqwest_range(
 
             let mut futures = FuturesUnordered::new();
 
-            let head = response.download(destination.stream(0, content_range.range().size()));
+            let compression = response.compression()?;
+            let head =
+                response.download(false, destination.stream(0, content_range.range().size()));
+
             futures.push(Either::Left(head.send()));
 
             for range in partial::split(content_range) {
@@ -630,7 +627,8 @@ async fn do_download_reqwest_range(
                     .with_range(range);
 
                 let destination = destination.stream(range.start, range.size());
-                let partial = do_download_reqwest(request, destination, error_handler).send();
+                let partial =
+                    do_download_reqwest(request, false, destination, error_handler).send();
                 futures.push(Either::Right(partial));
             }
 
@@ -641,7 +639,7 @@ async fn do_download_reqwest_range(
 
             let _ = destination.flush().await;
 
-            Ok(())
+            Ok(compression)
         }
     }
 }
@@ -649,9 +647,10 @@ async fn do_download_reqwest_range(
 /// Downloads the requested resource with a single download request into the `destination`.
 async fn do_download_reqwest(
     request: SymRequest<'_>,
+    should_decompress: bool,
     destination: impl WriteStream,
     error_handler: &impl ErrorHandler,
-) -> CacheContents {
+) -> CacheContents<compression::Compression> {
     let source = request.to_source();
     let response = request.execute().await?;
 
@@ -665,7 +664,7 @@ async fn do_download_reqwest(
             return Err(CacheError::size_exceeded());
         }
 
-        response.download(destination).await
+        response.download(should_decompress, destination).await
     } else {
         Err(error_handler.handle(&source, response).await)
     }
@@ -748,10 +747,6 @@ impl<'a> SymRequest<'a> {
 
         let headers = self.request.headers_mut();
         headers.insert(reqwest::header::RANGE, header);
-        headers.insert(
-            reqwest::header::ACCEPT_ENCODING,
-            reqwest::header::HeaderValue::from_static("identity"),
-        );
 
         self
     }
@@ -771,7 +766,15 @@ impl<'a> SymRequest<'a> {
     }
 
     /// Executes the request and returns the corresponding [`SymResponse`].
-    async fn execute(self) -> CacheContents<SymResponse<'a>> {
+    async fn execute(mut self) -> CacheContents<SymResponse<'a>> {
+        use reqwest::header::ACCEPT_ENCODING;
+
+        if !self.request.headers().contains_key(ACCEPT_ENCODING) {
+            self.request
+                .headers_mut()
+                .insert(ACCEPT_ENCODING, compression::Compression::accept_encoding());
+        }
+
         let request = self.client.execute(self.request);
         let request = tokio::time::timeout(self.limits.timeouts.head, request);
         // Use a separate measure for the head request.
@@ -823,16 +826,59 @@ impl SymResponse<'_> {
         partial::BytesContentRange::from_response(&self.response)
     }
 
+    fn compression(&self) -> CacheContents<compression::Compression> {
+        compression::Compression::from_headers(self.response.headers()).map_err(Into::into)
+    }
+
     /// Downloads the resource into `destination`, applying timeouts.
-    async fn download(self, mut destination: impl WriteStream) -> CacheContents {
-        let mut stream = self.response.bytes_stream().map_err(CacheError::from);
+    ///
+    /// If `should_decompress` is `true` the response body is decompressed before being
+    /// written to `destination`.
+    ///
+    /// Returns the decompression the bytes written to `destination` are compressed with.
+    /// When `should_decompress` is `true`, this is always the identity compression,
+    /// otherwise returns the compression as contained in the HTTP response.
+    async fn download(
+        self,
+        should_decompress: bool,
+        mut destination: impl WriteStream,
+    ) -> CacheContents<compression::Compression> {
+        let (final_compression, decompress_with) = {
+            let compression = self.compression()?;
+            // Now this will overwrite the compression set on the measure guard if it was already
+            // set for concurrent range requests, but that's okay, in this case the compression
+            // must be the same for all individual requests.
+            //
+            // It is also much less error prone to track the compression in a central place here
+            // instead of trying to capture it on the caller side.
+            self.measure.set_compression(compression);
+
+            match should_decompress {
+                true => (compression::Compression::Identity, compression),
+                false => (compression, compression::Compression::Identity),
+            }
+        };
+
+        let body = self.response.bytes_stream().map_err(std::io::Error::other);
+        let mut body = match decompress_with {
+            // No compression -> no need to go through the decompression layer dance.
+            compression::Compression::Identity => Either::Left(body),
+            _ => {
+                let body = tokio_util::io::StreamReader::new(body);
+                let body = decompress_with.decompress(body);
+                // Unfortunately we need to convert back to a `Stream` here, because `WriteStream`
+                // requires an owned `Buf`. This is roughly equivalent to what reqwest does internally.
+                Either::Right(tokio_util::io::ReaderStream::new(body))
+            }
+        };
+
         // Transfer the contents, into the destination and track progress.
-        while let Some(chunk) = stream.next().await.transpose()? {
+        while let Some(chunk) = body.next().await.transpose()? {
             self.measure.add_bytes_transferred(chunk.len() as u64)?;
-            destination.write_buf(chunk).await?;
+            destination.write_all(chunk).await?;
         }
 
-        Ok(())
+        Ok(final_compression)
     }
 }
 
@@ -862,6 +908,7 @@ pub struct MeasureSourceDownloadGuard<'a> {
     bytes_transferred: AtomicU64,
     max_bytes_transferred: u64,
     streams: AtomicUsize,
+    compression: AtomicU8,
 }
 
 impl<'a> MeasureSourceDownloadGuard<'a> {
@@ -875,6 +922,7 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
             max_bytes_transferred,
             creation_time: Instant::now(),
             streams: AtomicUsize::new(0),
+            compression: AtomicU8::new(u8::MAX),
         }
     }
 
@@ -884,6 +932,18 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
     pub fn set_streams(&self, num_streams: usize) {
         self.streams
             .store(num_streams, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn set_compression(&self, compression: compression::Compression) {
+        let compression = match compression {
+            compression::Compression::Identity => 0,
+            compression::Compression::Brotli => 1,
+            compression::Compression::Deflate => 2,
+            compression::Compression::Gzip => 3,
+            compression::Compression::Zstd => 4,
+        };
+        self.compression
+            .store(compression, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// A checked add to the amount of bytes transferred during the download.
@@ -922,6 +982,15 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
 
         let streams = (*self.streams.get_mut()).to_string();
 
+        let compression = match *self.compression.get_mut() {
+            0 => "identity",
+            1 => "brotli",
+            2 => "deflate",
+            3 => "gzip",
+            4 => "zstd",
+            _ => "unknown",
+        };
+
         let duration = self.creation_time.elapsed();
         metric!(
             timer("download_duration") = duration,
@@ -929,6 +998,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
             "status" => status.to_owned(),
             "source" => self.source_name.to_owned(),
             "streams" => streams.clone(),
+            "compression" => compression,
         );
 
         let bytes_transferred = *self.bytes_transferred.get_mut();
@@ -948,6 +1018,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 "status" => status.to_owned(),
                 "source" => self.source_name.to_owned(),
                 "streams" => streams.clone(),
+                "compression" => compression,
             );
 
             metric!(
@@ -956,6 +1027,7 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 "status" => status.to_owned(),
                 "source" => self.source_name.to_owned(),
                 "streams" => streams,
+                "compression" => compression,
             );
         }
     }
@@ -990,6 +1062,7 @@ mod tests {
 
     use symbolicator_sources::{HttpSourceConfig, SourceId};
     use symbolicator_test::fixture;
+    use tokio::io::AsyncReadExt;
 
     use super::*;
 
@@ -1016,9 +1089,12 @@ mod tests {
 
         let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
 
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let mut temp_file = tempfile::NamedTempFile::new().unwrap();
         service
-            .download(file_source, temp_file.path().to_owned())
+            .download(file_source)
+            .await
+            .unwrap()
+            .materialize_into(&mut temp_file)
             .await
             .unwrap();
 
@@ -1070,9 +1146,11 @@ mod tests {
         let file_source = HttpRemoteFile::new(source, SourceLocation::new("hello_world")).into();
 
         let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
-        let file = tempfile::NamedTempFile::new().unwrap();
-        service
-            .download(file_source, file.path().to_owned())
+        let file = service
+            .download(file_source)
+            .await
+            .unwrap()
+            .materialize()
             .await
             .unwrap();
 
@@ -1113,5 +1191,66 @@ mod tests {
         assert!(!file_list.is_empty());
         let item = &file_list[0];
         assert_eq!(item.source_id(), source.id());
+    }
+
+    #[tokio::test]
+    async fn test_download_compressed_ranges() {
+        test::setup();
+
+        use axum::extract::State;
+        use axum::http::{HeaderMap, Response, StatusCode, header};
+        use axum::routing::get;
+
+        let minidump = symbolicator_test::read_fixture("windows.dmp");
+        let compressed = Arc::new(zstd::bulk::compress(&minidump, 0).unwrap());
+        assert!(compressed.len() > partial::initial_range().size() as usize);
+
+        async fn serve_range(
+            State(compressed): State<Arc<Vec<u8>>>,
+            headers: HeaderMap,
+        ) -> Response<axum::body::Body> {
+            let Some(range) = headers.get(header::RANGE) else {
+                unreachable!("range header expected");
+            };
+
+            let range = range.to_str().unwrap().strip_prefix("bytes=").unwrap();
+            let (start, end) = range.split_once('-').unwrap();
+            let start = start.parse::<usize>().unwrap();
+            let end = end.parse::<usize>().unwrap().min(compressed.len() - 1);
+            let body = compressed[start..=end].to_vec();
+
+            Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes {start}-{end}/{}", compressed.len()),
+                )
+                .header(header::CONTENT_ENCODING, "zstd")
+                .body(body.into())
+                .unwrap()
+        }
+
+        let server = test::Server::with_router(
+            axum::Router::new()
+                .route("/file", get(serve_range))
+                .with_state(compressed),
+        );
+
+        let source = Arc::new(HttpSourceConfig {
+            id: SourceId::new("local"),
+            url: server.url("/"),
+            headers: Default::default(),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        });
+        let remote_file = HttpRemoteFile::new(source, SourceLocation::new("file")).into();
+        let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
+
+        let mut downloaded = Vec::new();
+        let mut download = service.download(remote_file).await.unwrap().into_read();
+        download.read_to_end(&mut downloaded).await.unwrap();
+
+        assert_eq!(downloaded, minidump);
+        assert!(server.accesses() > 1);
     }
 }

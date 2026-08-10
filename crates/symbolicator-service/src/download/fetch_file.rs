@@ -21,8 +21,11 @@ pub async fn fetch_file(
     temp_file: &mut NamedTempFile,
 ) -> CacheContents {
     downloader
-        .download(file_id, temp_file.path().to_owned())
+        .download(file_id)
+        .await?
+        .materialize_into(temp_file)
         .await?;
+
     tracing::trace!("Finished download");
 
     // Treat decompression errors as malformed files. It is more likely that

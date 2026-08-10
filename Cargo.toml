@@ -55,6 +55,7 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 anyhow = "1.0.66"
 apple-crash-report-parser = "0.6.0"
 async-trait = "0.1.53"
+async-compression = "0.4.43"
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
 aws-credential-types = { version = "1.2.11", features = [
     "hardcoded-credentials",
@@ -100,6 +101,7 @@ minidump-processor = "0.26.1"
 minidump-unwind = "0.26.1"
 minidumper-child = "0.5.0"
 moka = { version = "0.12.8", features = ["future", "sync"] }
+pin-project-lite = "0.2.17"
 prettytable-rs = "0.10.0"
 proguard = "5.10.4"
 rand = "0.9.4"

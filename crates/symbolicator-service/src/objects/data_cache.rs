@@ -21,7 +21,7 @@ use symbolicator_sources::{ObjectId, RemoteFile};
 
 use crate::caches::versions::{CacheVersions, OBJECTS_CACHE_VERSIONS};
 use crate::caching::{CacheContents, CacheError, CacheItemRequest, CacheKey};
-use crate::download::{DownloadService, fetch_file, tempfile_in_parent};
+use crate::download::{DownloadService, fetch_file};
 use crate::types::Scope;
 use crate::utils::sentry::ConfigureScope;
 
@@ -157,7 +157,7 @@ async fn fetch_object_file(
             }
         };
 
-        let mut dst = tempfile_in_parent(temp_file)?;
+        let mut dst = crate::utils::fs::tempfile_in_parent(temp_file)?;
 
         io::copy(&mut object.data(), dst.as_file_mut())?;
 

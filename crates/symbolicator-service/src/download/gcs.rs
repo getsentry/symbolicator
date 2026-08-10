@@ -5,6 +5,7 @@ use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey, 
 
 use crate::caching::{CacheContents, CacheError};
 use crate::download::DownloadLimits;
+use crate::download::compression::Compression;
 use crate::utils::gcs::{self, CacheableToken};
 
 use super::Destination;
@@ -71,7 +72,7 @@ impl GcsDownloader {
         source_name: &str,
         file_source: &GcsRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
