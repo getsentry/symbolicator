@@ -22,11 +22,10 @@ use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 use tokio_util::io::{ReaderStream, StreamReader};
-use url::Url;
 
 use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
-use crate::utils::gcs::{self, GcsError};
+use crate::utils::gcs;
 
 use super::CacheName;
 
@@ -292,22 +291,15 @@ impl GcsState {
 
         let total_bytes = content.len() as u64;
         let token = self.get_token().await?;
-        let mut url =
-            Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
-                .map_err(|_| GcsError::InvalidUrl)
-                .context("failed to parse url")?;
-        // Append path segments manually for proper encoding
-        url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)
-            .context("failed to build url")?
-            .extend(&[&self.config.bucket, "o"]);
-        url.query_pairs_mut()
-            .append_pair("name", key)
-            // Upload only if it's not already there
-            .append_pair("ifGenerationMatch", "0");
 
-        let stream = ReaderStream::new(std::io::Cursor::new(content));
+        let url = gcs::upload_url(&self.config.bucket, key, true, Some("zstd"))
+            .context("failed to build url")?;
+
+        let stream = std::io::Cursor::new(content);
+        let stream = async_compression::tokio::bufread::ZstdEncoder::new(stream);
+        let stream = ReaderStream::new(stream);
         let body = Body::wrap_stream(stream);
+
         let request = self
             .client
             .post(url.clone())
@@ -1067,5 +1059,38 @@ mod tests {
             .unwrap();
 
         assert!(state.exists(CacheName::Objects, &key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_gcs_fetch_uncompressed() {
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
+
+        let key = format!("{}/some_item", Uuid::new_v4());
+
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
+        let token = state.get_token().await.unwrap();
+
+        let expected = b"cached dataaaaaaaa";
+
+        let url = gcs::upload_url(&state.config.bucket, &key, false, None).unwrap();
+        state
+            .client
+            .post(url)
+            .bearer_auth(token.as_str())
+            .body(expected.to_vec())
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+
+        let mut actual = Vec::new();
+        let ret = state.fetch(&key, &mut actual).await.unwrap();
+
+        assert_eq!(ret, Some(expected.len() as u64));
+        assert_eq!(actual, expected);
     }
 }

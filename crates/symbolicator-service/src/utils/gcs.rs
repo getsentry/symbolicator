@@ -77,6 +77,37 @@ pub fn object_url(bucket: &str, object: &str) -> Result<Url, GcsError> {
     Ok(url)
 }
 
+/// Returns the upload URL for an object.
+///
+/// If `skip_if_exists` is sets, the upload is instructed to be skipped if the file already exists.
+pub fn upload_url(
+    bucket: &str,
+    object: &str,
+    skip_if_exists: bool,
+    content_encoding: Option<&str>,
+) -> Result<Url, GcsError> {
+    let mut url = Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
+        .map_err(|_| GcsError::InvalidUrl)?;
+
+    // Append path segments manually for proper encoding
+    url.path_segments_mut()
+        .map_err(|_| GcsError::InvalidUrl)?
+        .extend(&[bucket, "o"]);
+
+    url.query_pairs_mut().append_pair("name", object);
+
+    if skip_if_exists {
+        url.query_pairs_mut().append_pair("ifGenerationMatch", "0");
+    }
+
+    if let Some(content_encoding) = content_encoding {
+        url.query_pairs_mut()
+            .append_pair("contentEncoding", content_encoding);
+    }
+
+    Ok(url)
+}
+
 /// Returns the download URL for an object.
 pub fn download_url(bucket: &str, object: &str) -> Result<Url, GcsError> {
     let mut url = object_url(bucket, object)?;
