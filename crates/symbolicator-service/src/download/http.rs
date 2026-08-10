@@ -6,7 +6,7 @@ use symbolicator_sources::HttpRemoteFile;
 
 use crate::{
     caching::{CacheContents, CacheError},
-    download::DownloadLimits,
+    download::{DownloadLimits, compression::Compression},
 };
 
 use super::Destination;
@@ -34,7 +34,7 @@ impl HttpDownloader {
         source_name: &str,
         file_source: &HttpRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from `{}`", download_url);

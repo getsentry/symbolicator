@@ -282,43 +282,7 @@ impl Cache {
 
     /// Create a new temporary file to use in the cache.
     pub fn tempfile(&self) -> io::Result<NamedTempFile> {
-        match self.tmp_dir {
-            Some(ref path) => {
-                // The `cleanup` process could potentially remove the parent directories we are
-                // operating in, so be defensive here and retry the fs operations.
-                const MAX_RETRIES: usize = 2;
-                let mut retries = 0;
-                loop {
-                    retries += 1;
-
-                    if let Err(e) = std::fs::create_dir_all(path) {
-                        sentry::with_scope(
-                            |scope| scope.set_extra("path", path.display().to_string().into()),
-                            || tracing::error!("Failed to create cache directory: {:?}", e),
-                        );
-                        if retries > MAX_RETRIES {
-                            return Err(e);
-                        }
-                        continue;
-                    }
-
-                    match tempfile::Builder::new().prefix("tmp").tempfile_in(path) {
-                        Ok(temp_file) => return Ok(temp_file),
-                        Err(e) => {
-                            sentry::with_scope(
-                                |scope| scope.set_extra("path", path.display().to_string().into()),
-                                || tracing::error!("Failed to create cache file: {:?}", e),
-                            );
-                            if retries > MAX_RETRIES {
-                                return Err(e);
-                            }
-                            continue;
-                        }
-                    }
-                }
-            }
-            None => Ok(NamedTempFile::new()?),
-        }
+        crate::utils::fs::tempfile(self.tmp_dir.as_deref())
     }
 }
 

@@ -8,7 +8,10 @@ use tokio::fs::File;
 
 use symbolicator_sources::FilesystemRemoteFile;
 
-use crate::caching::{CacheContents, CacheError};
+use crate::{
+    caching::{CacheContents, CacheError},
+    download::compression::Compression,
+};
 
 use super::Destination;
 
@@ -26,7 +29,7 @@ impl FilesystemDownloader {
         &self,
         file_source: &FilesystemRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let path = file_source.path();
         tracing::debug!("Fetching debug file from {:?}", path);
 
@@ -36,6 +39,6 @@ impl FilesystemDownloader {
         })?;
         let mut destination = std::pin::pin!(destination.into_write());
         tokio::io::copy(&mut file, &mut destination).await?;
-        Ok(())
+        Ok(Compression::Identity)
     }
 }

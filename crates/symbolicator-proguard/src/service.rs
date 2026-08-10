@@ -9,14 +9,13 @@ use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher,
 };
-use symbolicator_service::download::{
-    self, DownloadService, SourceIndexService, fetch_file, tempfile_in_parent,
-};
+use symbolicator_service::download::{self, DownloadService, SourceIndexService, fetch_file};
 use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
+use symbolicator_service::utils::fs::tempfile_in_parent;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 

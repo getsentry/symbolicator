@@ -16,6 +16,7 @@ use symbolicator_sources::{AwsCredentialsProvider, S3Region, S3RemoteFile, S3Sou
 
 use crate::caching::{CacheContents, CacheError};
 use crate::download::DownloadLimits;
+use crate::download::compression::Compression;
 
 use super::{Destination, ErrorHandler, SymResponse};
 
@@ -131,7 +132,7 @@ impl S3Downloader {
         source_name: &str,
         file_source: &S3RemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let key = file_source.key();
         let bucket = file_source.bucket();
         tracing::debug!("Fetching from s3: {} (from {})", &key, &bucket);
