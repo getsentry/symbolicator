@@ -110,7 +110,7 @@ pub struct DownloadLimits {
 pub struct DownloadService {
     pub runtime: tokio::runtime::Handle,
     pub limits: DownloadLimits,
-    // This client ideally would not accept and all users used the download service to download files.
+    // This client ideally would not accept and all users use the download service to download files.
     //
     // See also: <https://github.com/getsentry/symbolicator/pull/1928>.
     pub trusted_client: reqwest::Client,

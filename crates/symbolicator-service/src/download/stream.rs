@@ -41,7 +41,7 @@ impl Download {
 
     /// Materializes the download into the provided `file`.
     ///
-    /// The passed mutable reference to the file may be swapped with a different file.
+    /// The passed mutable reference to the file might be swapped with a different file.
     pub async fn materialize_into(mut self, file: &mut NamedTempFile) -> CacheContents {
         // If the file here has no compression applied, we can just swap the temp file.
         if self.compression == Compression::Identity {
