@@ -50,6 +50,10 @@ impl Download {
         }
 
         let mut destination = tokio::fs::File::from_std(file.reopen()?);
+        // The file is at position zero, through the re-open, but it is possible that the file
+        // already contains some leftover data from a previous download. We truncate the file
+        // to make sure only these new contents are stored in it.
+        destination.set_len(0).await?;
         let mut source = self.into_read();
 
         tokio::io::copy(&mut source, &mut destination).await?;
@@ -158,6 +162,9 @@ fn limit_exceeded(limit: u64) -> io::Error {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{Seek as _, Write as _};
+
+    use flate2::write::GzEncoder;
     use tokio::io::AsyncReadExt;
 
     use super::*;
@@ -213,5 +220,24 @@ mod tests {
         assert!(output.is_empty());
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(error.to_string(), "read limit of 0 bytes exceeded");
+    }
+
+    #[tokio::test]
+    async fn test_materialize_into_truncates_destination() {
+        let expected = b"hello";
+
+        let mut compressed = NamedTempFile::new().unwrap();
+        let mut encoder = GzEncoder::new(compressed.as_file_mut(), flate2::Compression::default());
+        encoder.write_all(expected).unwrap();
+        encoder.finish().unwrap();
+        compressed.as_file_mut().rewind().unwrap();
+
+        let download = Download::new(compressed, Compression::Gzip, DownloadLimits::default());
+        let mut destination = NamedTempFile::new().unwrap();
+        destination.write_all(b"stale contents").unwrap();
+
+        download.materialize_into(&mut destination).await.unwrap();
+
+        assert_eq!(std::fs::read(destination.path()).unwrap(), expected);
     }
 }
