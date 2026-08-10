@@ -243,7 +243,7 @@ pub struct CompressionError(&'static str);
 
 impl From<CompressionError> for CacheError {
     fn from(error: CompressionError) -> Self {
-        Self::Malformed(error.0.to_owned())
+        Self::DownloadError(error.0.to_owned())
     }
 }
 

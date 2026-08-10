@@ -29,6 +29,11 @@ type ClientCache = moka::future::Cache<Arc<S3SourceKey>, Arc<Client>>;
 /// this duration are fine.
 const PRE_SIGN_EXPIRY: Duration = Duration::from_mins(15);
 
+/// Maximum size allowed for an S3 error response.
+///
+/// Responses above this threshold will not be parsed and treated as missing.
+const MAX_ERROR_SIZE: u64 = 64 * 1024;
+
 /// Downloader implementation that supports the S3 source.
 pub struct S3Downloader {
     client_cache: ClientCache,
@@ -174,7 +179,7 @@ impl ErrorHandler for S3ErrorHandler {
         let status = response.status();
         debug_assert!(!status.is_success());
 
-        let body = response.response.bytes().await.ok();
+        let body = response.bytes(MAX_ERROR_SIZE).await.ok();
         let metadata = body.and_then(|body| parse_error_metadata(&body).ok());
 
         if let Some(error) = metadata.as_ref().and_then(error_from_metadata) {

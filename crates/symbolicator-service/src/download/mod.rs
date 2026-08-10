@@ -60,7 +60,18 @@ impl ConfigureScope for RemoteFile {
 }
 
 impl CacheError {
-    fn download_error(mut error: &dyn Error) -> Self {
+    #[track_caller]
+    fn download_error(error: &(dyn Error + 'static)) -> Self {
+        let io_inner = error
+            .downcast_ref::<std::io::Error>()
+            .and_then(|error| error.get_ref())
+            .and_then(|inner| inner.downcast_ref::<Self>());
+
+        if let Some(err) = io_inner {
+            return err.clone();
+        }
+
+        let mut error = error;
         while let Some(src) = error.source() {
             error = src;
         }
@@ -79,18 +90,21 @@ impl CacheError {
         Self::DownloadError(error_string)
     }
 
+    #[track_caller]
     fn size_exceeded() -> Self {
         Self::Malformed("Maximum file size exceeded".to_owned())
     }
 }
 
 impl From<reqwest::Error> for CacheError {
+    #[track_caller]
     fn from(error: reqwest::Error) -> Self {
         Self::download_error(&error)
     }
 }
 
 impl From<GcsError> for CacheError {
+    #[track_caller]
     fn from(error: GcsError) -> Self {
         Self::DownloadError(error.to_string())
     }
@@ -843,6 +857,44 @@ impl SymResponse<'_> {
         should_decompress: bool,
         mut destination: impl WriteStream,
     ) -> CacheContents<compression::Compression> {
+        let measure = self.measure;
+        let (compression, mut body) = self.bytes_stream(should_decompress)?;
+
+        // Transfer the contents, into the destination and track progress.
+        while let Some(chunk) = body.next().await.transpose()? {
+            measure.add_bytes_transferred(chunk.len() as u64)?;
+            destination.write_all(chunk).await?;
+        }
+
+        Ok(compression)
+    }
+
+    /// Get the full response body up to `max_size` bytes.
+    async fn bytes(self, max_size: u64) -> CacheContents<bytes::Bytes> {
+        let (_, mut stream) = self.bytes_stream(true)?;
+        let mut buf = bytes::BytesMut::new();
+
+        while let Some(chunk) = stream.try_next().await? {
+            if chunk.len() as u64 > max_size - buf.len() as u64 {
+                return Err(CacheError::size_exceeded());
+            }
+            buf.extend_from_slice(&chunk);
+        }
+
+        Ok(buf.freeze())
+    }
+
+    /// Returns a bytes stream of the response and its compression.
+    ///
+    /// If `should_decompress` is `true` then the response body is decompressed and the returned compression
+    /// is [`compression::Compression::Identity`].
+    fn bytes_stream(
+        self,
+        should_decompress: bool,
+    ) -> CacheContents<(
+        compression::Compression,
+        impl Stream<Item = CacheContents<bytes::Bytes>>,
+    )> {
         let (final_compression, decompress_with) = {
             let compression = self.compression()?;
             // Now this will overwrite the compression set on the measure guard if it was already
@@ -859,26 +911,26 @@ impl SymResponse<'_> {
             }
         };
 
-        let body = self.response.bytes_stream().map_err(std::io::Error::other);
-        let mut body = match decompress_with {
+        let body = self
+            .response
+            .bytes_stream()
+            .map_err(|err| CacheError::download_error(&err));
+
+        let body = match decompress_with {
             // No compression -> no need to go through the decompression layer dance.
             compression::Compression::Identity => Either::Left(body),
             _ => {
-                let body = tokio_util::io::StreamReader::new(body);
+                let body = tokio_util::io::StreamReader::new(body.map_err(std::io::Error::other));
                 let body = decompress_with.decompress(body);
                 // Unfortunately we need to convert back to a `Stream` here, because `WriteStream`
                 // requires an owned `Buf`. This is roughly equivalent to what reqwest does internally.
-                Either::Right(tokio_util::io::ReaderStream::new(body))
+                let body = tokio_util::io::ReaderStream::new(body)
+                    .map_err(|err| CacheError::download_error(&err));
+                Either::Right(body)
             }
         };
 
-        // Transfer the contents, into the destination and track progress.
-        while let Some(chunk) = body.next().await.transpose()? {
-            self.measure.add_bytes_transferred(chunk.len() as u64)?;
-            destination.write_all(chunk).await?;
-        }
-
-        Ok(final_compression)
+        Ok((final_compression, body))
     }
 }
 

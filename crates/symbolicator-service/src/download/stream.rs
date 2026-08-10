@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::{
-    caching::CacheContents,
+    caching::{CacheContents, CacheError},
     download::{DownloadLimits, compression::Compression},
 };
 
@@ -80,7 +80,12 @@ impl Download {
         let source = tokio::fs::File::from_std(self.inner.into_file());
         let source = tokio::io::BufReader::new(source);
         let source = self.compression.decompress(source);
-        LimitRead::new(source, self.limits.max_download_size)
+        let source = LimitRead::new(source, self.limits.max_download_size);
+        MapError::new(source, |error| {
+            // Wrap all errors in a download error, so that later conversions from io error to cache
+            // error pick up the inner error as a download error instead of internal error.
+            io::Error::other(CacheError::download_error(&error))
+        })
     }
 }
 
@@ -113,7 +118,7 @@ impl<R: AsyncRead + Unpin> AsyncRead for LimitRead<R> {
         let this = self.get_mut();
 
         if this.bytes_read > this.limit {
-            return Poll::Ready(Err(limit_exceeded(this.limit)));
+            return Poll::Ready(Err(io::Error::other(CacheError::size_exceeded())));
         }
         if buf.remaining() == 0 {
             return Poll::Ready(Ok(()));
@@ -142,7 +147,7 @@ impl<R: AsyncRead + Unpin> AsyncRead for LimitRead<R> {
 
             // We rewound back all bytes that were just read, we can error as we filled no bytes.
             if buf.filled().len() == start {
-                return Poll::Ready(Err(limit_exceeded(this.limit)));
+                return Poll::Ready(Err(io::Error::other(CacheError::size_exceeded())));
             }
 
             // Now we did write some bytes, `bytes_read > this.limit` is still true, which means the
@@ -153,11 +158,36 @@ impl<R: AsyncRead + Unpin> AsyncRead for LimitRead<R> {
     }
 }
 
-fn limit_exceeded(limit: u64) -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!("read limit of {limit} bytes exceeded"),
-    )
+pin_project_lite::pin_project! {
+    struct MapError<S, F> {
+        #[pin]
+        inner: S,
+        map: F,
+    }
+}
+
+impl<S, F> MapError<S, F> {
+    fn new(inner: S, map: F) -> Self {
+        Self { inner, map }
+    }
+}
+
+impl<S, F> AsyncRead for MapError<S, F>
+where
+    S: AsyncRead,
+    F: Fn(io::Error) -> io::Error,
+{
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.project();
+        match this.inner.poll_read(cx, buf) {
+            Poll::Ready(res) => Poll::Ready(res.map_err(|err| (this.map)(err))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -206,8 +236,10 @@ mod tests {
         let error = reader.read(&mut buffer).await.unwrap_err();
 
         assert_eq!(output, b"hello");
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(error.to_string(), "read limit of 5 bytes exceeded");
+        assert_eq!(
+            CacheError::from(error),
+            CacheError::Malformed("Maximum file size exceeded".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -218,8 +250,10 @@ mod tests {
         let error = reader.read_to_end(&mut output).await.unwrap_err();
 
         assert!(output.is_empty());
-        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
-        assert_eq!(error.to_string(), "read limit of 0 bytes exceeded");
+        assert_eq!(
+            CacheError::from(error),
+            CacheError::Malformed("Maximum file size exceeded".to_owned())
+        );
     }
 
     #[tokio::test]
@@ -239,5 +273,31 @@ mod tests {
         download.materialize_into(&mut destination).await.unwrap();
 
         assert_eq!(std::fs::read(destination.path()).unwrap(), expected);
+    }
+
+    #[tokio::test]
+    async fn test_materialize_enforces_size_limit() {
+        let input = b"hello world";
+
+        let mut compressed = NamedTempFile::new().unwrap();
+        let mut encoder = GzEncoder::new(compressed.as_file_mut(), flate2::Compression::default());
+        encoder.write_all(input).unwrap();
+        encoder.finish().unwrap();
+        compressed.as_file_mut().rewind().unwrap();
+
+        let download = Download::new(
+            compressed,
+            Compression::Gzip,
+            DownloadLimits {
+                max_download_size: Some(5),
+                ..DownloadLimits::default()
+            },
+        );
+
+        let error = download.materialize().await.unwrap_err();
+        assert_eq!(
+            error,
+            CacheError::Malformed("Maximum file size exceeded".to_owned())
+        );
     }
 }
