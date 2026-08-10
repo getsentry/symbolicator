@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Error, Result, anyhow};
@@ -22,11 +23,10 @@ use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 use tokio_util::io::{ReaderStream, StreamReader};
-use url::Url;
 
 use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
-use crate::utils::gcs::{self, GcsError};
+use crate::utils::gcs;
 
 use super::CacheName;
 
@@ -292,22 +292,23 @@ impl GcsState {
 
         let total_bytes = content.len() as u64;
         let token = self.get_token().await?;
-        let mut url =
-            Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
-                .map_err(|_| GcsError::InvalidUrl)
-                .context("failed to parse url")?;
-        // Append path segments manually for proper encoding
-        url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)
-            .context("failed to build url")?
-            .extend(&[&self.config.bucket, "o"]);
-        url.query_pairs_mut()
-            .append_pair("name", key)
-            // Upload only if it's not already there
-            .append_pair("ifGenerationMatch", "0");
 
-        let stream = ReaderStream::new(std::io::Cursor::new(content));
+        let url = gcs::upload_url(&self.config.bucket, key, true, Some("zstd"))
+            .context("failed to build url")?;
+
+        let stream = std::io::Cursor::new(content);
+        let stream = async_compression::tokio::bufread::ZstdEncoder::new(stream);
+        let stream = ReaderStream::new(stream);
+        let compressed_bytes = Arc::new(AtomicU64::new(0));
+        let stream = {
+            let compressed_bytes = Arc::clone(&compressed_bytes);
+            stream.inspect_ok(move |b| {
+                compressed_bytes.fetch_add(b.len() as u64, Ordering::Relaxed);
+            })
+        };
+
         let body = Body::wrap_stream(stream);
+
         let request = self
             .client
             .post(url.clone())
@@ -323,7 +324,10 @@ impl GcsState {
                 match status {
                     successful if successful.is_success() => {
                         tracing::trace!("Success hitting shared_cache GCS {}", key);
-                        Ok(SharedCacheStoreResult::Written(total_bytes))
+                        Ok(SharedCacheStoreResult::Written {
+                            raw: total_bytes,
+                            stored: compressed_bytes.load(Ordering::Relaxed),
+                        })
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN => Err(anyhow!(
@@ -404,7 +408,10 @@ impl FilesystemSharedCacheConfig {
         temp_file
             .persist(abspath)
             .context("Failed to save file in shared cache")?;
-        Ok(SharedCacheStoreResult::Written(bytes))
+        Ok(SharedCacheStoreResult::Written {
+            raw: bytes,
+            stored: bytes,
+        })
     }
 }
 
@@ -412,7 +419,12 @@ impl FilesystemSharedCacheConfig {
 #[derive(Debug, Clone, Copy)]
 enum SharedCacheStoreResult {
     /// Successfully written to the cache as a new entry, contains number of bytes written.
-    Written(u64),
+    Written {
+        /// Raw amount of bytes as given to the cache.
+        raw: u64,
+        /// Amount of bytes written after compression.
+        stored: u64,
+    },
     /// Skipped writing the item as it was already on the cache.
     Skipped,
 }
@@ -420,7 +432,7 @@ enum SharedCacheStoreResult {
 impl SharedCacheStoreResult {
     fn as_str(&self) -> &'static str {
         match self {
-            Self::Written(_) => "written",
+            Self::Written { .. } => "written",
             Self::Skipped => "skipped",
         }
     }
@@ -615,9 +627,17 @@ impl SharedCacheService {
                     "status" => "ok",
                     "reason" => reason.as_str(),
                 );
-                if let SharedCacheStoreResult::Written(bytes) = op {
+                if let SharedCacheStoreResult::Written {
+                    raw,
+                    stored: compressed,
+                } = op
+                {
                     metric!(
-                        counter("services.shared_cache.store.bytes") += bytes,
+                        counter("services.shared_cache.store.bytes") += compressed,
+                        "cache" => cache.as_str(),
+                    );
+                    metric!(
+                        counter("services.shared_cache.store.bytes.raw") += raw,
                         "cache" => cache.as_str(),
                     );
                 }
@@ -1019,23 +1039,29 @@ mod tests {
             .await
             .unwrap();
 
+        let data = b"cache data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
             .unwrap();
 
-        assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
+        let SharedCacheStoreResult::Written { raw, stored } = ret else {
+            unreachable!()
+        };
+        assert_eq!(raw, data.len() as u64);
+        assert!(stored < raw);
 
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
@@ -1067,5 +1093,38 @@ mod tests {
             .unwrap();
 
         assert!(state.exists(CacheName::Objects, &key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_gcs_fetch_uncompressed() {
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
+
+        let key = format!("{}/some_item", Uuid::new_v4());
+
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
+        let token = state.get_token().await.unwrap();
+
+        let expected = b"cached dataaaaaaaa";
+
+        let url = gcs::upload_url(&state.config.bucket, &key, false, None).unwrap();
+        state
+            .client
+            .post(url)
+            .bearer_auth(token.as_str())
+            .body(expected.to_vec())
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+
+        let mut actual = Vec::new();
+        let ret = state.fetch(&key, &mut actual).await.unwrap();
+
+        assert_eq!(ret, Some(expected.len() as u64));
+        assert_eq!(actual, expected);
     }
 }
