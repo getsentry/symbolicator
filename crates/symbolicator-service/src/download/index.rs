@@ -28,8 +28,13 @@ use super::DownloadService;
 /// log file.
 const LASTID_FILE: &str = "000Admin/lastid.txt";
 
+/// Maximum last id we consider valid.
+///
+/// Symbolicator fetches all index files up to this maximum.
+const LASTID_MAX: u32 = 10_000;
+
 /// Maximum length for a valid id stored in the [`LASTID_FILE`].
-const LASTID_MAX_LENGTH: usize = 200;
+const LASTID_MAX_LENGTH: usize = (u32::MAX.ilog10() as usize + 1) * 2; // Amount of digits + some headroom
 
 /// The time for which a successfully fetched Symstore "last id" should be cached in memory.
 const LASTID_OK_CACHE_TIME: Duration = Duration::from_secs(24 * 60 * 60);
@@ -216,6 +221,13 @@ async fn download_full_index(
     file: &mut File,
 ) -> CacheContents {
     let mut index = SymstoreIndex::default();
+
+    if last_id > LASTID_MAX {
+        return Err(CacheError::Malformed(format!(
+            "Invalid Symstore Id: {last_id}, too large"
+        )));
+    }
+
     // This download is intentionally sequential. Doing it concurrently
     // causes at least the Intel symbol server to rate limit us.
     for i in 1..=last_id {
@@ -483,7 +495,7 @@ impl SourceIndexService {
             .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))?
             .trim()
             .parse()
-            .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))
     }
 
     /// Fetches a Symstore index for the given source.
