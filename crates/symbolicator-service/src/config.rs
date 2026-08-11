@@ -660,7 +660,7 @@ impl Default for Config {
             // plus some extra for the rest of the request.
             symbolicate_body_max_bytes: 55 * 1024 * 1024,
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
-            object_file_max_decompressed_source_size: Some(200 * 1024 * 1024),
+            object_file_max_decompressed_source_size: Some(190 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
             max_download_size: Some(15 * 1024 * 1024 * 1024),
         }
