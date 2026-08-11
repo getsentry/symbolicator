@@ -5,13 +5,12 @@
 ### Features
 
 - Files uploaded to the shared cache are zstd compressed. ([#2006](https://github.com/getsentry/symbolicator/pull/2006))
-
 - Added a config setting `max_download_size` to restrict the size of downloaded files.
   For compressed files, this limit applies to the _decompressed_ size.
   The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
-
 - Support compressed range requests. This allows backends (like S3 and objectstore) to serve partial
   ranges from a compressed file. ([#2004](https://github.com/getsentry/symbolicator/pull/1999))
+- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB. ([#2009](https://github.com/getsentry/symbolicator/pull/2009))
 
 ## 26.7.2
 
