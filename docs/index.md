@@ -87,6 +87,8 @@ metrics:
 - `propagate_traces`: When tracing is enabled, inherit the sample rate from incoming parent traces and if Sentry is used as a symbol source also propagate traces back to Sentry. Defaults to `true`.
 - `max_concurrent_requests`: The maximum number of requests symbolicator will process concurrently. Further requests will result in a 503 status code.
   Set it to `null` to turn off the limit. Defaults to 120.
+- `object_file_max_decompressed_source_size`: The maximum decompressed size of an individual
+  source file read from a source/artifact bundle.
 
 > All time units for the following configuration settings can be either a time
 expression like `1s`.  Units can be `s`, `seconds`, `m`, `minutes`, `h`,

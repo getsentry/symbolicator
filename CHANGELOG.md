@@ -13,6 +13,8 @@
 - Support compressed range requests. This allows backends (like S3 and objectstore) to serve partial
   ranges from a compressed file. ([#2004](https://github.com/getsentry/symbolicator/pull/1999))
 
+- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB.
+
 ## 26.7.2
 
 ### Internal Changes 🔧

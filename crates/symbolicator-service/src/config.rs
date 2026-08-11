@@ -542,7 +542,7 @@ pub struct Config {
 
     /// Maximum decompressed size of compressed source files embedded in debug files.
     ///
-    /// Defaults to 200MiB.
+    /// Defaults to 190MiB.
     pub object_file_max_decompressed_source_size: Option<usize>,
 
     /// Maximum length of the CFI unwind chain.
