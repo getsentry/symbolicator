@@ -10,7 +10,7 @@
   The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
 - Support compressed range requests. This allows backends (like S3 and objectstore) to serve partial
   ranges from a compressed file. ([#2004](https://github.com/getsentry/symbolicator/pull/1999))
-- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB ([#2009]).
+- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB. ([#2009](https://github.com/getsentry/symbolicator/pull/2009))
 
 ## 26.7.2
 
