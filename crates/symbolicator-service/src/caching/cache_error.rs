@@ -57,7 +57,10 @@ pub enum CacheError {
 impl From<std::io::Error> for CacheError {
     #[track_caller]
     fn from(err: std::io::Error) -> Self {
-        Self::from_std_error(err)
+        err.get_ref()
+            .and_then(|inner| inner.downcast_ref::<Self>())
+            .cloned()
+            .unwrap_or_else(|| Self::from_std_error(err))
     }
 }
 

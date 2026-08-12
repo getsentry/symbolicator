@@ -463,14 +463,14 @@ impl SourceIndexService {
     async fn fetch_symstore_last_id(&self, source: &IndexSourceConfig) -> Result<u32, CacheError> {
         let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
 
-        let mut last_id = String::new();
+        let mut last_id = Vec::new();
         let read = self
             .downloader
             .download(remote_file)
             .await?
             .into_read()
             .take(LASTID_MAX_LENGTH as u64 + 1)
-            .read_to_string(&mut last_id)
+            .read_to_end(&mut last_id)
             .await?;
 
         if read > LASTID_MAX_LENGTH {
@@ -479,7 +479,8 @@ impl SourceIndexService {
             ));
         }
 
-        last_id
+        std::str::from_utf8(&last_id)
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))?
             .trim()
             .parse()
             .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))
