@@ -2423,17 +2423,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "io-uring"
-version = "0.7.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d64d8ca234d152948ceaede1f419b6a83983a5ecccaac05fb337a809c96d3aa6"
-dependencies = [
- "bitflags",
- "cfg-if",
- "libc",
-]
-
-[[package]]
 name = "ipconfig"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5431,12 +5420,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "202caea871b69668250d242070849eb495be178ed697a3e98aebce5bc81a0bed"
 dependencies = [
  "bytes",
- "io-uring",
  "libc",
  "mio 1.2.2",
  "pin-project-lite",
  "signal-hook-registry",
- "slab",
  "socket2 0.6.5",
  "tokio-macros",
  "windows-sys 0.61.0",
