@@ -5,9 +5,6 @@ on:
     - cron: "0 0 * * 1" # every monday at 00:00
   workflow_dispatch:
 
-env:
-  RUSTFLAGS: -Dwarnings
-
 jobs:
   weekly-ci:
     strategy:
@@ -32,7 +29,7 @@ jobs:
           rustup toolchain install ${{ matrix.rust }} --profile minimal --component clippy --no-self-update
           rustup default ${{ matrix.rust }}
 
-      - run: cargo clippy --all-features --workspace --tests --examples -- -D clippy::all
+      - run: cargo clippy --all-features --workspace --tests --examples -- -D warnings
 
       - run: cargo test --workspace --all-features
 
