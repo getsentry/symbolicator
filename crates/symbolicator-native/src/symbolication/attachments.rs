@@ -31,9 +31,11 @@ pub async fn download_attachment(
         }
         let response = request.send().await?;
         if !response.status().is_success() {
-            return Err(
-                download::GenericErrorHandler::handle_response(&storage_url, response).await,
-            );
+            return Err(download::GenericErrorHandler::handle_status(
+                &storage_url,
+                response.status(),
+            )
+            .await);
         }
 
         let mut stream = response.bytes_stream();

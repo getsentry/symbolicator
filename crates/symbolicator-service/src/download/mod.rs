@@ -692,18 +692,8 @@ pub struct GenericErrorHandler;
 
 impl GenericErrorHandler {
     /// Converts an unsuccessful HTTP response to a [`CacheError`].
-    pub async fn handle_response(source: &str, response: reqwest::Response) -> CacheError {
-        let status = response.status();
+    pub async fn handle_status(source: &str, status: reqwest::StatusCode) -> CacheError {
         debug_assert!(!status.is_success());
-
-        if let Ok(details) = response.text().await {
-            ::sentry::configure_scope(|scope| {
-                scope.set_extra(
-                    "reqwest_response_body",
-                    ::sentry::protocol::Value::String(details.clone()),
-                );
-            });
-        };
 
         if matches!(status, StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED) {
             tracing::debug!("Insufficient permissions to download `{source}`: {status}",);
@@ -735,7 +725,22 @@ impl GenericErrorHandler {
 
 impl ErrorHandler for GenericErrorHandler {
     async fn handle(&self, source: &str, response: SymResponse<'_>) -> CacheError {
-        Self::handle_response(source, response.response).await
+        let status = response.status();
+
+        // Arbitrary threshold which seems reasonable to download and add to the Sentry context.
+        const MAX_DEBUG_RESPONSE_BODY: u64 = 10 * 1024;
+
+        if let Ok(details) = response.bytes(MAX_DEBUG_RESPONSE_BODY).await {
+            let details = String::from_utf8_lossy(&details);
+            ::sentry::configure_scope(|scope| {
+                scope.set_extra(
+                    "reqwest_response_body",
+                    ::sentry::protocol::Value::String(details.into_owned()),
+                );
+            });
+        };
+
+        Self::handle_status(source, status).await
     }
 }
 
