@@ -209,12 +209,15 @@ impl WriteStream for OffsetFileWriteStream {
         let offset = self.offset;
         let length = buf.len() as u64;
 
-        debug_assert!(
-            offset + length < self.end,
-            "attempt to write past end of stream {offset}+{length} ({}) < {}",
-            offset + length,
-            self.end
-        );
+        if offset + length >= self.end {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "attempt to write past end of stream: {offset}+{length} >= {end}",
+                    end = self.end
+                ),
+            ));
+        }
 
         let file = Arc::clone(&self.file);
         tokio::task::spawn_blocking(move || file.write_all_at(&buf, offset)).await??;
