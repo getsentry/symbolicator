@@ -9,7 +9,7 @@ use crate::interface::{
     AdjustInstructionAddr, FrameStatus, RawFrame, Registers, Signal, SymbolicatedFrame,
 };
 
-use super::demangle::{DemangleCache, demangle_symbol};
+use super::demangle::DemangleCache;
 use super::module_lookup::CacheLookupResult;
 
 pub fn symbolicate_native_frame(
@@ -38,7 +38,7 @@ pub fn symbolicate_native_frame(
         let filename = split_path(&abs_path).1;
 
         let func = source_location.function();
-        let (symbol, function) = demangle_symbol(demangle_cache, &func);
+        let symbol = demangle_cache.demangle_function(&func);
 
         sym_addr = Some(HexValue(
             lookup_result.expose_preferred_addr(func.entry_pc() as u64),
@@ -70,7 +70,7 @@ pub fn symbolicate_native_frame(
                 } else {
                     frame.abs_path.clone()
                 },
-                function: Some(function),
+                function: Some(func.name().to_owned()),
                 filename,
                 lineno: Some(source_location.line()),
                 pre_context: vec![],

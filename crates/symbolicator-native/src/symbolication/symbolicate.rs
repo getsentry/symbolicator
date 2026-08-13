@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use symbolic::common::Name;
-use symbolic::demangle::Demangle;
 use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
@@ -21,7 +20,7 @@ use crate::interface::{
 };
 use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
 
-use super::demangle::{DEMANGLE_OPTIONS, DemangleCache};
+use super::demangle::DemangleCache;
 use super::dotnet::symbolicate_dotnet_frame;
 use super::module_lookup::{CacheFileEntry, ModuleLookup};
 use super::native::{get_relative_caller_addr, symbolicate_native_frame};
@@ -80,10 +79,7 @@ impl SymbolicationActor {
         let ppdb_caches =
             PortablePdbCacheActor::new(caches.ppdb_caches.clone(), shared_cache, objects.clone());
 
-        let demangle_cache = DemangleCache::builder()
-            .max_capacity(10 * 1024 * 1024) // 10 MiB, considering key and value:
-            .weigher(|k, v| (k.0.len() + v.len()).try_into().unwrap_or(u32::MAX))
-            .build();
+        let demangle_cache = DemangleCache::new(10 * 1024 * 1024); // 10 MiB, considering key and value:
 
         SymbolicationActor {
             demangle_cache,
@@ -211,7 +207,8 @@ fn symbolicate_stacktrace(
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
                 let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
-                let demangled = mangled.and_then(|m| Name::from(m).demangle(DEMANGLE_OPTIONS));
+                let demangled = mangled.map(|m| demangle_cache.demangle(&Name::from(m)));
+
                 if let Some(demangled) = demangled
                     && let Some(old_mangled) = frame.function.replace(demangled)
                 {
