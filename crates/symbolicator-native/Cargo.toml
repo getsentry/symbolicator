@@ -17,6 +17,7 @@ minidump-processor = { workspace = true }
 minidump-unwind = { workspace = true }
 moka = { workspace = true }
 regex = { workspace = true }
+scroll = { workspace = true }
 sentry = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

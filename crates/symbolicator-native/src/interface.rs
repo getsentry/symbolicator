@@ -19,6 +19,7 @@ use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
 
+use crate::memory::MemoryAccess;
 pub use crate::metrics::StacktraceOrigin;
 
 #[derive(Debug, Clone)]
@@ -68,6 +69,8 @@ pub struct SymbolicateStacktraces {
     pub frame_order: FrameOrder,
     /// Whether we extract variables.
     pub extract_variables: bool,
+    /// The program memory, if it is available.
+    pub memory: Option<Arc<dyn MemoryAccess>>,
 }
 
 /// Location of an attachment file, such as a minidump.

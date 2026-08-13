@@ -631,6 +631,8 @@ impl SymbolicationActor {
         metric!(distribution("minidump.upload.size") = len as f64);
 
         let bv = ByteView::map_file(minidump_file)?;
+        // let minidump = SelfCell::try_new(bv, |bv| Minidump::read(unsafe { &*bv }))?;
+
         let minidump = Minidump::read(bv)?;
 
         let StackWalkMinidumpResult {
@@ -672,6 +674,7 @@ impl SymbolicationActor {
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: request.extract_variables,
+            memory: Some(Arc::new(minidump)),
         };
 
         Ok((request, minidump_state))

@@ -2,13 +2,16 @@ use std::collections::BTreeMap;
 
 use minidump::CpuContext;
 use symbolic::common::{CpuFamily, InstructionInfo, Language, split_path};
-use symbolic::symcache::{SourceLocation, SymCache, Type, Variable, VariableLocation};
+use symbolic::symcache::{
+    SourceLocation, SymCache, Type, TypeSize, VariableLocation, VariableLocationInfo,
+};
 use symbolicator_service::metric;
 use symbolicator_service::utils::hex::HexValue;
 
 use crate::interface::{
     AdjustInstructionAddr, FrameStatus, RawFrame, Registers, Signal, SymbolicatedFrame,
 };
+use crate::memory::{MemoryAccess, MemoryAccessExt};
 
 use super::demangle::DemangleCache;
 use super::module_lookup::CacheLookupResult;
@@ -20,7 +23,7 @@ pub fn symbolicate_native_frame(
     relative_addr: u64,
     frame: &RawFrame,
     index: usize,
-    extract_variables: bool,
+    memory: Option<&dyn MemoryAccess>,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
@@ -53,8 +56,8 @@ pub fn symbolicate_native_frame(
         };
 
         let mut vars = None;
-        if extract_variables {
-            vars = do_extract_variables(&source_location, symcache, &frame.registers);
+        if let Some(memory) = memory {
+            vars = do_extract_variables(&source_location, symcache, &frame.registers, memory);
         }
 
         rv.push(SymbolicatedFrame {
@@ -167,6 +170,7 @@ fn do_extract_variables<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
     registers: &Registers,
+    memory: &dyn MemoryAccess,
 ) -> Option<BTreeMap<String, serde_json::Value>> {
     let mut result = BTreeMap::new();
 
@@ -178,7 +182,9 @@ fn do_extract_variables<'data, 'cache>(
         let mut ty = String::new();
         resolve_type_name(&mut ty, cache, variable.ty(), 0);
 
-        let value = resolve_variable_value(cache, registers, &variable);
+        let value = variable
+            .locations()
+            .find_map(|loc| resolve_variable_value(cache, registers, memory, loc, variable.ty()));
 
         // This doesn't handle name collisions currently.
         result.insert(
@@ -199,24 +205,59 @@ fn do_extract_variables<'data, 'cache>(
 fn resolve_variable_value(
     cache: &SymCache<'_>,
     registers: &Registers,
-    variable: &Variable<'_, '_>,
-) -> Option<HexValue> {
-    variable.locations().find_map(|location| {
-        let VariableLocation::Register { id } = location.location else {
-            return None;
-        };
+    memory: &dyn MemoryAccess,
+    location: VariableLocationInfo,
+    ty: Option<Type<'_>>,
+) -> Option<String> {
+    let TypeSize::Bytes(size) = match ty? {
+        Type::Primitive(ty) => ty.size(),
+        Type::Pointer(ty) => ty.size(),
+        _ => return None,
+    };
 
-        // Temporary hack, `symbolic` will need an abstraction over registers, which allows
-        // mapping register names to the gimli register ids.
-        match cache.arch().cpu_family() {
-            CpuFamily::Amd64 => minidump::format::CONTEXT_AMD64::REGISTERS,
-            CpuFamily::Arm64 => minidump::format::CONTEXT_ARM64::REGISTERS,
-            _ => &[],
+    match location.location {
+        VariableLocation::Register { id } => {
+            // Temporary hack, `symbolic` will need an abstraction over registers, which allows
+            // mapping register names to the gimli register ids.
+            match cache.arch().cpu_family() {
+                CpuFamily::Amd64 => minidump::format::CONTEXT_AMD64::REGISTERS,
+                CpuFamily::Arm64 => minidump::format::CONTEXT_ARM64::REGISTERS,
+                _ => &[],
+            }
+            .get(id as usize)
+            .and_then(|&reg| registers.get(reg))
+            .map(|v| v.to_string())
         }
-        .get(id as usize)
-        .and_then(|&reg| registers.get(reg))
-        .copied()
-    })
+        VariableLocation::FrameOffset { offset } => {
+            let &HexValue(frame_base) = match cache.arch().cpu_family() {
+                CpuFamily::Amd64 => Some("rbp"),
+                CpuFamily::Arm64 => Some("fp"),
+                _ => None,
+            }
+            .and_then(|reg| registers.get(reg))?;
+
+            let addr = u64::try_from(i64::try_from(frame_base).ok()? + offset).ok()?;
+
+            // This obviously will need to be changed to consider the variable type.
+            match size {
+                1 => memory
+                    .get_value_at_address::<u8>(addr)
+                    .map(|v| HexValue(v.into()).to_string()),
+                2 => memory
+                    .get_value_at_address::<u16>(addr)
+                    .map(|v| HexValue(v.into()).to_string()),
+                4 => memory
+                    .get_value_at_address::<u32>(addr)
+                    .map(|v| HexValue(v.into()).to_string()),
+                8 => memory
+                    .get_value_at_address::<u64>(addr)
+                    .map(|v| HexValue(v).to_string()),
+                s => memory
+                    .get_memory_at_address(addr, s as usize)
+                    .map(|s| format!("{s:?}")),
+            }
+        }
+    }
 }
 
 fn resolve_type_name(

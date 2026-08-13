@@ -1,5 +1,6 @@
 mod caches;
 pub mod interface;
+mod memory;
 mod metrics;
 mod symbolication;
 
