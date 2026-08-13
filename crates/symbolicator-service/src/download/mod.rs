@@ -540,20 +540,26 @@ async fn do_download_reqwest_range(
         }};
     }
 
-    // Server supports range requests and just sent us the first batch.
-    match response.content_range() {
-        // Server does not know about ranges and returns us the full contents.
-        None if response.status().is_success() => {
-            incr!("no_content_range");
-            tracing::trace!(
-                "Success hitting `{source}`, but server does not support range requests"
-            );
+    let content_range = response.content_range();
+    let is_full_response = content_range.as_ref().is_none_or(
+        |content_range| matches!(content_range, Ok(content_range) if content_range.is_full_range()),
+    );
 
-            if let Some(content_length) = response.response.content_length()
-                && content_length > response.measure.max_bytes_transferred
-            {
-                return Err(CacheError::size_exceeded());
-            }
+    match content_range {
+        // Server returned the full contents in a single response, either because it doesn't support
+        // range requests or the returned range contains the full contents already.
+        _ if response.status().is_success() && is_full_response => {
+            match content_range {
+                None => incr!("no_content_range"),
+                Some(_) => incr!("full_range"),
+            };
+            // The no content range case must be handled here, the full range does not necessarily,
+            // this is handled fine by the concurrent range download path, _but_ we've seen that
+            // a small fraction of HTTP servers respond with a range which is too small. The concurrent
+            // range code path must ensure each individual downloaded part matches the advertised
+            // range. Therefor responses from these servers would fail. If we instead use this code-path
+            // to download the entire response, we can ignore the invalid range.
+            tracing::trace!("Success hitting `{source}`, server returned the full contents");
 
             let destination = std::pin::pin!(destination.into_write());
             response.download(true, destination).await
@@ -671,13 +677,6 @@ async fn do_download_reqwest(
     let status = response.status();
     if status.is_success() {
         tracing::trace!("Success hitting `{source}`");
-
-        if let Some(content_length) = response.response.content_length()
-            && content_length > response.measure.max_bytes_transferred
-        {
-            return Err(CacheError::size_exceeded());
-        }
-
         response.download(should_decompress, destination).await
     } else {
         Err(error_handler.handle(&source, response).await)
@@ -1117,6 +1116,9 @@ mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to
     // ensure the service interface works correctly.
 
+    use axum::extract::State;
+    use axum::http::{HeaderMap, Response, StatusCode, header};
+    use axum::routing::get;
     use symbolicator_sources::{HttpSourceConfig, SourceId};
     use symbolicator_test::fixture;
     use tokio::io::AsyncReadExt;
@@ -1254,10 +1256,6 @@ mod tests {
     async fn test_download_compressed_ranges() {
         test::setup();
 
-        use axum::extract::State;
-        use axum::http::{HeaderMap, Response, StatusCode, header};
-        use axum::routing::get;
-
         let minidump = symbolicator_test::read_fixture("windows.dmp");
         let compressed = Arc::new(zstd::bulk::compress(&minidump, 0).unwrap());
         assert!(compressed.len() > partial::initial_range().size() as usize);
@@ -1309,5 +1307,45 @@ mod tests {
 
         assert_eq!(downloaded, minidump);
         assert!(server.accesses() > 1);
+    }
+
+    #[tokio::test]
+    async fn test_download_full_content_range() {
+        test::setup();
+
+        async fn serve_full_range(headers: HeaderMap) -> Response<axum::body::Body> {
+            assert!(headers.contains_key(header::RANGE));
+
+            let contents = b"hello world".to_vec();
+
+            Response::builder()
+                .status(StatusCode::PARTIAL_CONTENT)
+                .header(
+                    header::CONTENT_RANGE,
+                    format!("bytes 0-{}/{}", contents.len() - 1, contents.len()),
+                )
+                .body(contents.into())
+                .unwrap()
+        }
+
+        let server =
+            test::Server::with_router(axum::Router::new().route("/file", get(serve_full_range)));
+
+        let source = Arc::new(HttpSourceConfig {
+            id: SourceId::new("local"),
+            url: server.url("/"),
+            headers: Default::default(),
+            files: Default::default(),
+            accept_invalid_certs: false,
+        });
+        let remote_file = HttpRemoteFile::new(source, SourceLocation::new("file")).into();
+        let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
+
+        let mut downloaded = Vec::new();
+        let mut download = service.download(remote_file).await.unwrap().into_read();
+        download.read_to_end(&mut downloaded).await.unwrap();
+
+        assert_eq!(downloaded, b"hello world");
+        assert_eq!(server.accesses(), 1);
     }
 }
