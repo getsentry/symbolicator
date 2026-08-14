@@ -4781,7 +4781,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4796,7 +4796,7 @@ dependencies = [
 [[package]]
 name = "symbolic-cfi"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4806,7 +4806,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4818,7 +4818,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4849,7 +4849,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "bitflags",
  "cc",
@@ -4862,7 +4862,7 @@ dependencies = [
 [[package]]
 name = "symbolic-il2cpp"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4873,7 +4873,7 @@ dependencies = [
 [[package]]
 name = "symbolic-ppdb"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4888,7 +4888,7 @@ dependencies = [
 [[package]]
 name = "symbolic-sourcemapcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "itertools 0.14.0",
  "js-source-scopes",
@@ -4902,7 +4902,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=d1902eacd7b9e8f8811158a59d6e03d4e2a70df4#d1902eacd7b9e8f8811158a59d6e03d4e2a70df4"
+source = "git+https://github.com/getsentry/symbolic.git?rev=4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8#4c2b5da4e589f8b5182e3ae4201701c45dbd6fd8"
 dependencies = [
  "indexmap",
  "symbolic-common",
