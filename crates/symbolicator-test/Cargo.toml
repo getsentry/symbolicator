@@ -1,6 +1,6 @@
 [package]
 name = "symbolicator-test"
-version = "26.7.2"
+version = "26.8.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
