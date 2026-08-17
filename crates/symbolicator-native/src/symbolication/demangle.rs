@@ -1,54 +1,124 @@
+use moka::Equivalent;
 use symbolic::common::{Language, Name};
 use symbolic::demangle::{Demangle, DemangleOptions};
 use symbolic::symcache::Function;
 
 /// Options for demangling all symbols.
-pub const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
+const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_type(false);
 
-/// A cache for demangled symbols
-pub type DemangleCache = moka::sync::Cache<(String, Language), String>;
-
-/// Demangles the name of the given [`Function`].
-pub fn demangle_symbol(cache: &DemangleCache, func: &Function) -> (String, String) {
-    let symbol = func.name();
-    let language = func.language();
-    let key = (symbol.to_string(), language);
-
-    let init = || {
-        func.name_for_demangling()
-            .demangle(DEMANGLE_OPTIONS)
-            .unwrap_or_else(|| report_demangling_failure(symbol.to_string(), language))
-    };
-
-    let entry = cache.entry_by_ref(&key).or_insert_with(init);
-
-    (key.0, entry.into_value())
+/// A cache for demangled symbols.
+#[derive(Debug, Clone)]
+pub struct DemangleCache {
+    cache: moka::sync::Cache<MangleKey, String>,
 }
 
-#[allow(unused)] // we early return `symbol` here for now, but we might change that in the future
-fn report_demangling_failure(symbol: String, language: Language) -> String {
-    return symbol;
+impl DemangleCache {
+    pub fn new(max_capacity: u64) -> Self {
+        let cache = moka::sync::Cache::builder()
+            .max_capacity(max_capacity) // 10 MiB, considering key and value:
+            .weigher(|k: &MangleKey, v: &String| {
+                (k.symbol.len() + v.len()).try_into().unwrap_or(u32::MAX)
+            })
+            .build();
 
-    // Detect the language from the bare name, ignoring any pre-set language. There are a few
-    // languages that we should always be able to demangle. Only complain about those that we
-    // detect explicitly, but silently ignore the rest. For instance, there are C-identifiers
-    // reported as C++, which are expected not to demangle.
-    let detected_language = Name::from(symbol).detect_language();
-    let should_demangle = match (language, detected_language) {
-        (_, Language::Unknown) => false, // can't demangle what we cannot detect
-        (Language::ObjCpp, Language::Cpp) => true, // C++ demangles even if it was in ObjC++
-        (Language::Unknown, _) => true,  // if there was no language, then rely on detection
-        (lang, detected) => lang == detected, // avoid false-positive detections
-    };
-
-    if should_demangle {
-        sentry::with_scope(
-            |scope| scope.set_extra("identifier", symbol.clone().into()),
-            || {
-                let message = format!("Failed to demangle {language} identifier");
-                sentry::capture_message(&message, sentry::Level::Error);
-            },
-        );
+        Self { cache }
     }
-    symbol
+
+    /// Demangles the name of the given [`Function`].
+    pub fn demangle_function(&self, func: &Function<'_>) -> String {
+        self.demangle(&func.name_for_demangling())
+    }
+
+    /// Demangles the given [`Name`].
+    pub fn demangle(&self, name: &Name<'_>) -> String {
+        let key = MangleKeyRef {
+            symbol: name.as_str(),
+            language: name.language(),
+        };
+
+        if let Some(demangled) = self.cache.get(&key) {
+            return demangled;
+        }
+
+        let demangled = name
+            .demangle(DEMANGLE_OPTIONS)
+            .unwrap_or_else(|| name.as_str().to_owned());
+
+        self.cache.insert(key.to_owned(), demangled.clone());
+
+        demangled
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct MangleKey {
+    symbol: String,
+    language: Language,
+}
+
+impl std::hash::Hash for MangleKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        MangleKeyRef {
+            symbol: &self.symbol,
+            language: self.language,
+        }
+        .hash(state);
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct MangleKeyRef<'a> {
+    symbol: &'a str,
+    language: Language,
+}
+
+impl MangleKeyRef<'_> {
+    fn to_owned(self) -> MangleKey {
+        MangleKey {
+            symbol: self.symbol.to_owned(),
+            language: self.language,
+        }
+    }
+}
+
+impl<'a> Equivalent<MangleKey> for MangleKeyRef<'a> {
+    fn equivalent(&self, key: &MangleKey) -> bool {
+        let MangleKey { symbol, language } = key;
+        self.symbol == symbol && self.language == *language
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_demangle_cache() {
+        let cache = DemangleCache::new(1024);
+
+        let name = Name::from("_ZN4core3fmt9Formatter3pad17h0123456789abcdefE");
+        let result = cache.demangle(&name);
+        assert_eq!(result, "core::fmt::Formatter::pad");
+
+        let result = cache.demangle(&name);
+        assert_eq!(result, "core::fmt::Formatter::pad");
+    }
+
+    #[test]
+    fn test_ref_key_hash_equivalent() {
+        use std::hash::{BuildHasher, RandomState};
+
+        let state = RandomState::new();
+        let owned = MangleKey {
+            symbol: "_ZN4core3fmt9Formatter3pad17h0123456789abcdefE".to_owned(),
+            language: Language::Rust,
+        };
+        let borrowed = MangleKeyRef {
+            symbol: &owned.symbol,
+            language: owned.language,
+        };
+
+        assert_eq!(state.hash_one(&owned), state.hash_one(borrowed));
+        assert!(borrowed.equivalent(&owned));
+    }
 }
