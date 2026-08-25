@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes 🐛
+
+- Temp files are now always created in the configured cache directory. ([#2028](https://github.com/getsentry/symbolicator/pull/2028))
+
 ## 26.8.0
 
 ### Features
