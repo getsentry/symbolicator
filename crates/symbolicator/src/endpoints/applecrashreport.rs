@@ -19,8 +19,6 @@ pub async fn handle_apple_crash_report_request(
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     params.configure_scope();
 
-    let temp_dir = service.config().cache_dir("tmp");
-
     let mut report = None;
     let mut sources = service.config().default_sources();
     let mut scraping = Default::default();
@@ -30,7 +28,7 @@ pub async fn handle_apple_crash_report_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("apple_crash_report") => {
-                let temp_file = fs::tempfile(temp_dir.as_deref())?.into_file();
+                let temp_file = fs::tempfile(service.config().tmp_dir().as_deref())?.into_file();
                 let mut report_file = File::from_std(temp_file);
                 stream_multipart_file(field, &mut report_file).await?;
                 report = Some(report_file.into_std().await)

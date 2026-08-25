@@ -21,8 +21,6 @@ pub async fn handle_minidump_request(
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
     params.configure_scope();
 
-    let temp_dir = service.config().cache_dir("tmp");
-
     let mut minidump = None;
     let mut sources = service.config().default_sources();
     let mut scraping = Default::default();
@@ -33,7 +31,7 @@ pub async fn handle_minidump_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("upload_file_minidump") => {
-                let temp_file = fs::tempfile(temp_dir.as_deref())?.into_file();
+                let temp_file = fs::tempfile(service.config().tmp_dir().as_deref())?.into_file();
                 let mut minidump_file = File::from_std(temp_file);
                 stream_multipart_file(field, &mut minidump_file).await?;
                 minidump = Some(minidump_file.into_std().await)

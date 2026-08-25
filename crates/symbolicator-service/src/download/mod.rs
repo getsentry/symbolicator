@@ -200,7 +200,7 @@ impl DownloadService {
                 .deny_list_enabled
                 .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
-            tmp_dir: config.cache_dir("tmp"),
+            tmp_dir: config.tmp_dir(),
         })
     }
 
