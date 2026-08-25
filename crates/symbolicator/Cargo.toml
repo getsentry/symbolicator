@@ -30,7 +30,6 @@ symbolicator-native = { workspace = true }
 symbolicator-proguard = { workspace = true }
 symbolicator-service = { workspace = true }
 symbolicator-sources = { workspace = true }
-tempfile = { workspace = true }
 thiserror = { workspace = true}
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 tokio-metrics = { workspace = true }
