@@ -135,7 +135,7 @@ pub struct DownloadService {
     fs: filesystem::FilesystemDownloader,
     host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
-    tmp_dir: Option<PathBuf>,
+    pub tmp_dir: Option<PathBuf>,
 }
 
 impl DownloadService {
