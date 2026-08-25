@@ -192,7 +192,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Seek as _, Write as _};
+    use std::io::Write as _;
 
     use flate2::write::GzEncoder;
     use tokio::io::AsyncReadExt;
