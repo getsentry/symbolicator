@@ -3,6 +3,7 @@ use std::fs::File;
 use futures::TryStreamExt;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::{self, DownloadService};
+use symbolicator_service::utils::fs;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
 
 use crate::interface::AttachmentFile;
@@ -40,7 +41,7 @@ pub async fn download_attachment(
 
         let mut stream = response.bytes_stream();
 
-        let file = tempfile::tempfile()?;
+        let file = fs::tempfile(download_svc.tmp_dir.as_deref())?.into_file();
         let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
         while let Some(chunk) = stream.try_next().await? {
             writer.write_all(&chunk).await?;

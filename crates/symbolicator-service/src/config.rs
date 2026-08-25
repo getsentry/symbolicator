@@ -568,6 +568,13 @@ impl Config {
         self.cache_dir.as_ref().map(|base| base.join(dir))
     }
 
+    /// Returns a directory for temporary files within the configured base cache directory.
+    ///
+    /// If there is no base cache directory configured this returns `None`.
+    pub fn tmp_dir(&self) -> Option<PathBuf> {
+        self.cache_dir("tmp")
+    }
+
     pub fn default_sources(&self) -> Arc<[SourceConfig]> {
         self.sources.clone()
     }

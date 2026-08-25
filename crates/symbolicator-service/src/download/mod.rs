@@ -135,7 +135,7 @@ pub struct DownloadService {
     fs: filesystem::FilesystemDownloader,
     host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
-    tmp_dir: Option<PathBuf>,
+    pub tmp_dir: Option<PathBuf>,
 }
 
 impl DownloadService {
@@ -200,7 +200,7 @@ impl DownloadService {
                 .deny_list_enabled
                 .then_some(HostDenyList::from_config(config)),
             connect_to_reserved_ips: config.connect_to_reserved_ips,
-            tmp_dir: config.cache_dir("tmp"),
+            tmp_dir: config.tmp_dir(),
         })
     }
 
