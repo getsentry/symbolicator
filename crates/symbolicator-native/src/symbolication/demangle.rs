@@ -9,15 +9,17 @@ const DEMANGLE_OPTIONS: DemangleOptions = DemangleOptions::complete().return_typ
 /// A cache for demangled symbols.
 #[derive(Debug, Clone)]
 pub struct DemangleCache {
-    cache: moka::sync::Cache<MangleKey, String>,
+    cache: moka::sync::Cache<MangleKey, Option<String>>,
 }
 
 impl DemangleCache {
     pub fn new(max_capacity: u64) -> Self {
         let cache = moka::sync::Cache::builder()
             .max_capacity(max_capacity) // 10 MiB, considering key and value:
-            .weigher(|k: &MangleKey, v: &String| {
-                (k.symbol.len() + v.len()).try_into().unwrap_or(u32::MAX)
+            .weigher(|k: &MangleKey, v: &Option<String>| {
+                (k.symbol.len() + v.as_ref().map_or(0, |v| v.len()))
+                    .try_into()
+                    .unwrap_or(u32::MAX)
             })
             .build();
 
@@ -25,12 +27,16 @@ impl DemangleCache {
     }
 
     /// Demangles the name of the given [`Function`].
-    pub fn demangle_function(&self, func: &Function<'_>) -> String {
+    ///
+    /// Returns `None` if the function can't be de-mangled.
+    pub fn demangle_function(&self, func: &Function<'_>) -> Option<String> {
         self.demangle(&func.name_for_demangling())
     }
 
     /// Demangles the given [`Name`].
-    pub fn demangle(&self, name: &Name<'_>) -> String {
+    ///
+    /// Returns `None` if the symbol can't be de-mangled.
+    pub fn demangle(&self, name: &Name<'_>) -> Option<String> {
         let key = MangleKeyRef {
             symbol: name.as_str(),
             language: name.language(),
@@ -40,10 +46,7 @@ impl DemangleCache {
             return demangled;
         }
 
-        let demangled = name
-            .demangle(DEMANGLE_OPTIONS)
-            .unwrap_or_else(|| name.as_str().to_owned());
-
+        let demangled = name.demangle(DEMANGLE_OPTIONS);
         self.cache.insert(key.to_owned(), demangled.clone());
 
         demangled
@@ -98,10 +101,10 @@ mod test {
 
         let name = Name::from("_ZN4core3fmt9Formatter3pad17h0123456789abcdefE");
         let result = cache.demangle(&name);
-        assert_eq!(result, "core::fmt::Formatter::pad");
+        assert_eq!(result.as_deref(), Some("core::fmt::Formatter::pad"));
 
         let result = cache.demangle(&name);
-        assert_eq!(result, "core::fmt::Formatter::pad");
+        assert_eq!(result.as_deref(), Some("core::fmt::Formatter::pad"));
     }
 
     #[test]

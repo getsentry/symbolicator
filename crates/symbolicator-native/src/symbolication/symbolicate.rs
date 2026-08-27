@@ -207,7 +207,7 @@ fn symbolicate_stacktrace(
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
                 let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
-                let demangled = mangled.map(|m| demangle_cache.demangle(&Name::from(m)));
+                let demangled = mangled.and_then(|m| demangle_cache.demangle(&Name::from(m)));
 
                 if let Some(demangled) = demangled
                     && let Some(old_mangled) = frame.function.replace(demangled)
