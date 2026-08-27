@@ -1205,11 +1205,12 @@ mod tests {
         let file_source = HttpRemoteFile::new(source, SourceLocation::new("hello_world")).into();
 
         let service = DownloadService::new(&config(), tokio::runtime::Handle::current());
-        let file = service
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        service
             .download(file_source)
             .await
             .unwrap()
-            .materialize()
+            .materialize_into(&mut file)
             .await
             .unwrap();
 
