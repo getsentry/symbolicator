@@ -199,26 +199,22 @@ fn resolve_variable_value(
     registers: &Registers,
     variable: &Variable<'_, '_>,
 ) -> Option<HexValue> {
-    for location in variable.locations() {
+    variable.locations().find_map(|location| {
         let VariableLocation::Register { id } = location.location else {
-            continue;
+            return None;
         };
 
         // Temporary hack, `symbolic` will need an abstraction over registers, which allows
         // mapping register names to the gimli register ids.
-        let reg_name = match cache.arch().cpu_family() {
+        match cache.arch().cpu_family() {
             CpuFamily::Amd64 => minidump::format::CONTEXT_AMD64::REGISTERS,
             CpuFamily::Arm64 => minidump::format::CONTEXT_ARM64::REGISTERS,
             _ => &[],
         }
-        .get(id as usize);
-
-        if let Some(&value) = reg_name.and_then(|&r| registers.get(r)) {
-            return Some(value);
-        }
-    }
-
-    None
+        .get(id as usize)
+        .and_then(|&reg| registers.get(reg))
+        .copied()
+    })
 }
 
 fn resolve_type_name(
