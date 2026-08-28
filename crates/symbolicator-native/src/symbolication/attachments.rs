@@ -8,6 +8,7 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
 
 use crate::interface::AttachmentFile;
 
+#[tracing::instrument(skip(download_svc))]
 pub async fn download_attachment(
     download_svc: &DownloadService,
     file: AttachmentFile,
