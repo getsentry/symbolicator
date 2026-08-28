@@ -345,6 +345,10 @@ pub struct RawFrame {
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
+
+    /// Values of CPU registers in this frame.
+    #[serde(skip)]
+    pub registers: Registers,
 }
 
 /// How trustworth the instruction pointer of the frame is.

@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
-use symbolic::common::{InstructionInfo, Language, split_path};
-use symbolic::symcache::{SourceLocation, SymCache, Type};
+use minidump::CpuContext;
+use symbolic::common::{CpuFamily, InstructionInfo, Language, split_path};
+use symbolic::symcache::{SourceLocation, SymCache, Type, Variable, VariableLocation};
 use symbolicator_service::metric;
 use symbolicator_service::utils::hex::HexValue;
 
@@ -51,7 +52,7 @@ pub fn symbolicate_native_frame(
 
         let mut vars = None;
         if extract_variables {
-            vars = do_extract_variables(&source_location, symcache);
+            vars = do_extract_variables(&source_location, symcache, &frame.registers);
         }
 
         rv.push(SymbolicatedFrame {
@@ -85,6 +86,7 @@ pub fn symbolicate_native_frame(
                 in_app: None,
                 vars,
                 trust: frame.trust,
+                registers: Default::default(),
             },
         });
     }
@@ -162,6 +164,7 @@ pub fn get_relative_caller_addr(
 fn do_extract_variables<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
+    registers: &Registers,
 ) -> Option<BTreeMap<String, serde_json::Value>> {
     let mut result = BTreeMap::new();
 
@@ -173,14 +176,49 @@ fn do_extract_variables<'data, 'cache>(
         let mut ty = String::new();
         resolve_type_name(&mut ty, cache, variable.ty(), 0);
 
+        let value = resolve_variable_value(cache, registers, &variable);
+
         // This doesn't handle name collisions currently.
-        result.insert(name.to_owned(), ty.into());
+        result.insert(
+            name.to_owned(),
+            match value {
+                Some(value) => format!("{value} ({ty})").into(),
+                None => ty.into(),
+            },
+        );
     }
 
     match result.is_empty() {
         false => Some(result),
         true => None,
     }
+}
+
+fn resolve_variable_value(
+    cache: &SymCache<'_>,
+    registers: &Registers,
+    variable: &Variable<'_, '_>,
+) -> Option<HexValue> {
+    for location in variable.locations() {
+        let VariableLocation::Register { id } = location.location else {
+            continue;
+        };
+
+        // Temporary hack, `symbolic` will need an abstraction over registers, which allows
+        // mapping register names to the gimli register ids.
+        let reg_name = match cache.arch().cpu_family() {
+            CpuFamily::Amd64 => minidump::format::CONTEXT_AMD64::REGISTERS,
+            CpuFamily::Arm64 => minidump::format::CONTEXT_ARM64::REGISTERS,
+            _ => &[],
+        }
+        .get(id as usize);
+
+        if let Some(&value) = reg_name.and_then(|&r| registers.get(r)) {
+            return Some(value);
+        }
+    }
+
+    None
 }
 
 fn resolve_type_name(

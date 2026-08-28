@@ -296,6 +296,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         in_app: value.in_app,
         vars: value.vars,
         trust: value.trust,
+        registers: Default::default(),
     })
 }
 

@@ -514,10 +514,12 @@ async fn stackwalk(
                 let package = frame
                     .module
                     .and_then(|module| non_empty_file_name(&module.code_file()));
+
                 RawFrame {
                     instruction_addr: HexValue(frame.resume_address),
                     package,
                     trust: frame.trust.into(),
+                    registers: map_symbolic_registers(&frame.context),
                     ..RawFrame::default()
                 }
             })
