@@ -32,7 +32,7 @@ impl MemoryAccess for Minidump<'static, ByteView<'static>> {
 
 /// Extension trait for [`MemoryAccess`].
 pub trait MemoryAccessExt: MemoryAccess {
-    /// Helper which access the memory of a dump and converts the memory to the specified type.
+    /// Helper which accesses the memory of a dump and converts the memory to the specified type.
     fn get_value_at_address<T>(&self, addr: u64) -> Option<T>
     where
         T: SizeWith<scroll::Endian>,
