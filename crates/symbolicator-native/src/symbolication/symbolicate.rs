@@ -18,6 +18,7 @@ use crate::interface::{
     FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
     SymbolicatedFrame,
 };
+use crate::memory::MemoryAccess;
 use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
 
 use super::demangle::DemangleCache;
@@ -110,6 +111,7 @@ impl SymbolicationActor {
             rewrite_first_module,
             frame_order,
             extract_variables,
+            memory,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -142,7 +144,7 @@ impl SymbolicationActor {
                     &module_lookup,
                     &mut metrics,
                     signal,
-                    extract_variables,
+                    memory.as_deref().filter(|_| extract_variables),
                 )
             })
             .collect();
@@ -178,7 +180,7 @@ fn symbolicate_stacktrace(
     caches: &ModuleLookup,
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
-    extract_variables: bool,
+    memory: Option<&dyn MemoryAccess>,
 ) -> CompleteStacktrace {
     let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
@@ -194,7 +196,7 @@ fn symbolicate_stacktrace(
             &mut frame,
             index,
             adjustment,
-            extract_variables,
+            memory,
         ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
@@ -319,7 +321,7 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
     adjustment: AdjustInstructionAddr,
-    extract_variables: bool,
+    memory: Option<&dyn MemoryAccess>,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -347,7 +349,7 @@ fn symbolicate_frame(
                 relative_addr,
                 frame,
                 index,
-                extract_variables,
+                memory,
             )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {

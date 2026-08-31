@@ -109,6 +109,7 @@ rayon = "1.10.0"
 regex = "1.5.5"
 reqwest = "0.12.15"
 rustls = { version = "0.23.31", features = ["ring"] }
+scroll = "0.12.0"
 sentry = { version = "0.42.0", default-features = false, features = [
     # default features, except `release-health` is disabled
     "backtrace",

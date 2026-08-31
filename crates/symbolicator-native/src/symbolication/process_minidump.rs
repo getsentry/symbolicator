@@ -672,6 +672,7 @@ impl SymbolicationActor {
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: request.extract_variables,
+            memory: Some(Arc::new(minidump)),
         };
 
         Ok((request, minidump_state))

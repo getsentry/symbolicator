@@ -89,6 +89,7 @@ impl SymbolicationActor {
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables,
+            memory: None,
         };
 
         let mut system_info = SystemInfo {

@@ -4975,6 +4975,7 @@ dependencies = [
  "minidump-unwind",
  "moka",
  "regex",
+ "scroll 0.12.0",
  "sentry",
  "serde",
  "serde_json",

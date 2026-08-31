@@ -154,6 +154,7 @@ pub fn create_native_symbolication_request(
         // "callee first"
         frame_order: FrameOrder::CalleeFirst,
         extract_variables,
+        memory: None,
     })
 }
 
