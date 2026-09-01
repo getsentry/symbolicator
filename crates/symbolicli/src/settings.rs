@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use symbolicator_service::config::{CacheConfigs, Config};
-use symbolicator_sources::{DirectoryLayoutType, SourceConfig};
+use symbolicator_sources::{
+    DirectoryLayoutType, SentryCookies, SentryCredentials, SentryToken, SourceConfig,
+};
 
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
@@ -38,15 +40,16 @@ pub enum Mode {
     Online {
         org: String,
         project: String,
-        auth_token: String,
+        auth: SentryCredentials,
         base_url: reqwest::Url,
     },
 }
 
 /// A utility that provides local symbolication of Sentry events.
 ///
-/// A valid auth token needs to be provided via the `--auth-token` option,
-/// the `SENTRY_AUTH_TOKEN` environment variable, or `~/.symboliclirc`.
+/// Provide either a valid auth token or an existing Sentry session via
+/// `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`,
+/// `SENTRY_AUTH_COOKIES`, or `~/.symboliclirc`.
 ///
 /// The output format can be controlled with the `--format` option.
 #[derive(Clone, Parser, Debug)]
@@ -78,6 +81,13 @@ struct Cli {
     /// or `~/.symboliclirc`.
     #[arg(long = "auth-token")]
     pub auth_token: Option<String>,
+
+    /// A raw Cookie header value from an existing Sentry session.
+    ///
+    /// This can alternatively be passed via the `SENTRY_AUTH_COOKIES` environment variable
+    /// or `~/.symboliclirc`.
+    #[arg(long = "auth-cookies", conflicts_with = "auth_token")]
+    pub auth_cookies: Option<String>,
 
     /// The output format.
     #[arg(long, value_enum, default_value = "json")]
@@ -114,6 +124,10 @@ struct Cli {
     /// debuginfod, unified, slashsymbols.
     #[arg(long)]
     symbols: Option<SymbolsPath>,
+
+    /// Whether to extract variables from the minidump.
+    #[arg(long)]
+    extract_variables: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -122,7 +136,7 @@ struct ConfigFile {
     pub org: Option<String>,
     pub project: Option<String>,
     pub url: Option<String>,
-    pub auth_token: Option<String>,
+    pub auth: Option<SentryCredentials>,
     pub cache_dir: Option<PathBuf>,
     pub sources: Vec<SourceConfig>,
 }
@@ -190,11 +204,25 @@ pub struct Settings {
     pub mode: Mode,
     pub symbols: Option<SymbolsPath>,
     pub scraping_enabled: bool,
+    pub extract_variables: bool,
 }
 
 impl Settings {
     pub fn get() -> Result<Self> {
-        let cli = Cli::parse();
+        let Cli {
+            event,
+            org,
+            project,
+            url,
+            auth_token,
+            auth_cookies,
+            format,
+            offline,
+            log_level,
+            no_scrape,
+            symbols,
+            extract_variables,
+        } = Cli::parse();
 
         let global_config_path = find_global_config_file()?;
         let mut global_config_file = ConfigFile::parse(&global_config_path)?;
@@ -203,22 +231,21 @@ impl Settings {
             _ => ConfigFile::default(),
         };
 
-        let mode = if cli.offline {
+        let mode = if offline {
             Mode::Offline
         } else {
-            let Some(auth_token) = cli
-                .auth_token
-                .or_else(|| std::env::var("SENTRY_AUTH_TOKEN").ok())
-                .or_else(|| project_config_file.auth_token.take())
-                .or_else(|| global_config_file.auth_token.take())
-            else {
+            let Some(auth) = get_sentry_auth(
+                auth_token,
+                auth_cookies,
+                &project_config_file,
+                &global_config_file,
+            ) else {
                 bail!(
-                    "No auth token provided. Pass it either via the `--auth-token` option or via the `SENTRY_AUTH_TOKEN` environment variable."
+                    "No auth token or cookies provided. Pass `--auth-token`, `--auth-cookies`, `SENTRY_AUTH_TOKEN`, or `SENTRY_AUTH_COOKIES`."
                 );
             };
 
-            let sentry_url = cli
-                .url
+            let sentry_url = url
                 .as_deref()
                 .or(project_config_file.url.as_deref())
                 .or(global_config_file.url.as_deref())
@@ -227,8 +254,7 @@ impl Settings {
             let sentry_url = Url::parse(sentry_url).context("Invalid sentry URL")?;
             let url = sentry_url.join("/api/0/").unwrap();
 
-            let Some(org) = cli
-                .org
+            let Some(org) = org
                 .or_else(|| project_config_file.org.take())
                 .or_else(|| global_config_file.org.take())
             else {
@@ -237,8 +263,7 @@ impl Settings {
                 );
             };
 
-            let Some(project) = cli
-                .project
+            let Some(project) = project
                 .or_else(|| project_config_file.project.take())
                 .or_else(|| global_config_file.project.take())
             else {
@@ -251,7 +276,7 @@ impl Settings {
                 base_url: url,
                 org,
                 project,
-                auth_token,
+                auth,
             }
         };
 
@@ -281,17 +306,52 @@ impl Settings {
         };
 
         let args = Settings {
-            event_id: cli.event,
+            event_id: event,
             symbolicator_config,
-            output_format: cli.format,
-            log_level: cli.log_level,
+            output_format: format,
+            log_level,
             mode,
-            symbols: cli.symbols,
-            scraping_enabled: !cli.no_scrape,
+            symbols,
+            scraping_enabled: !no_scrape,
+            extract_variables,
         };
 
         Ok(args)
     }
+}
+
+fn get_sentry_auth(
+    auth_token: Option<String>,
+    auth_cookies: Option<String>,
+    project_config_file: &ConfigFile,
+    global_config_file: &ConfigFile,
+) -> Option<SentryCredentials> {
+    {
+        let token = auth_token
+            .clone()
+            .map(SentryToken)
+            .map(SentryCredentials::Token);
+        let cookies = auth_cookies
+            .clone()
+            .map(SentryCookies)
+            .map(SentryCredentials::Cookies);
+
+        token.or(cookies)
+    }
+    .or_else(|| {
+        let token = std::env::var("SENTRY_AUTH_TOKEN")
+            .ok()
+            .map(SentryToken)
+            .map(SentryCredentials::Token);
+        let cookies = std::env::var("SENTRY_AUTH_COOKIES")
+            .ok()
+            .map(SentryCookies)
+            .map(SentryCredentials::Cookies);
+
+        token.or(cookies)
+    })
+    .or_else(|| project_config_file.auth.clone())
+    .or_else(|| global_config_file.auth.clone())
 }
 
 fn find_global_config_file() -> Result<PathBuf> {

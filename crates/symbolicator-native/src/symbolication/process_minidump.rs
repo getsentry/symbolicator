@@ -179,9 +179,15 @@ struct SymbolicatorSymbolProvider {
     rewrite_first_module: RewriteRules,
     /// An internal database of loaded CFI.
     cficaches: Mutex<HashMap<LookupKey, LazyCfiCache>>,
+    /// Whether to extract variables
+    extract_variables: bool,
 }
 
 impl SymbolicatorSymbolProvider {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "https://github.com/getsentry/symbolicator/issues/2002"
+    )]
     pub fn new(
         scope: Scope,
         sources: Arc<[SourceConfig]>,
@@ -190,6 +196,7 @@ impl SymbolicatorSymbolProvider {
         object_type: ObjectType,
         first_module_debug_id: Option<DebugId>,
         rewrite_first_module: RewriteRules,
+        extract_variables: bool,
     ) -> Self {
         Self {
             scope,
@@ -200,6 +207,7 @@ impl SymbolicatorSymbolProvider {
             first_module_debug_id,
             rewrite_first_module,
             cficaches: Default::default(),
+            extract_variables,
         }
     }
 
@@ -293,6 +301,7 @@ impl SymbolicatorSymbolProvider {
                 identifier,
                 sources,
                 scope,
+                extract_variables: self.extract_variables,
             })
             // NOTE: this `bind_hub` is important!
             // `load_symcache` is being called concurrently from `rust-minidump` via
@@ -448,6 +457,7 @@ async fn stackwalk(
     scope: Scope,
     sources: Arc<[SourceConfig]>,
     rewrite_first_module: RewriteRules,
+    extract_variables: bool,
 ) -> Result<StackWalkMinidumpResult> {
     // Stackwalk the minidump.
     let duration = Instant::now();
@@ -476,6 +486,7 @@ async fn stackwalk(
         ty,
         first_module_debug_id,
         rewrite_first_module,
+        extract_variables,
     );
     let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
@@ -503,10 +514,12 @@ async fn stackwalk(
                 let package = frame
                     .module
                     .and_then(|module| non_empty_file_name(&module.code_file()));
+
                 RawFrame {
                     instruction_addr: HexValue(frame.resume_address),
                     package,
                     trust: frame.trust.into(),
+                    registers: map_symbolic_registers(&frame.context),
                     ..RawFrame::default()
                 }
             })
@@ -610,6 +623,7 @@ impl SymbolicationActor {
             sources,
             scraping,
             rewrite_first_module,
+            extract_variables,
         } = request;
         let minidump_file = download_attachment(self.download_svc.clone(), minidump_file).await?;
         let len = minidump_file.metadata()?.len();
@@ -631,6 +645,7 @@ impl SymbolicationActor {
             scope.clone(),
             sources.clone(),
             rewrite_first_module.clone(),
+            extract_variables,
         )
         .await?;
 
@@ -656,6 +671,8 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables: request.extract_variables,
+            memory: Some(Arc::new(minidump)),
         };
 
         Ok((request, minidump_state))

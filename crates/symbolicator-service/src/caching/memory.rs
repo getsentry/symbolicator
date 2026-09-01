@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -14,7 +13,7 @@ use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::caches::CacheVersions;
 use crate::caching::Metadata;
-use crate::utils::futures::CallOnDrop;
+use crate::utils::defer::defer;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
@@ -549,20 +548,16 @@ impl<T: CacheItemRequest> Cacher<T> {
             return;
         }
 
-        // We count down towards zero, and if we reach or surpass it, we will stop here.
-        let max_lazy_refreshes = self.config.max_lazy_refreshes();
-        if max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-
+        let Some(lazy_refresh_token) = self.config.lazy_refresh().try_incr() else {
             metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_str());
             return;
-        }
+        };
 
         let done_token = {
             let key = cache_key.clone();
             let refreshes = Arc::clone(&self.refreshes);
-            CallOnDrop::new(move || {
-                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+            defer(move || {
+                drop(lazy_refresh_token);
                 refreshes.lock().unwrap().remove(&key);
             })
         };
@@ -578,7 +573,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let this = self.clone();
         let task = async move {
-            let _done_token = done_token; // move into the future
+            let _done_token = done_token;
 
             let span = sentry::configure_scope(|scope| scope.get_span());
             let ctx = sentry::TransactionContext::continue_from_span(

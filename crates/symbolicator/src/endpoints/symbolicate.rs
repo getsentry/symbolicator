@@ -78,6 +78,8 @@ pub async fn symbolicate_frames(
             scraping: body.scraping,
             rewrite_first_module: Default::default(),
             frame_order: body.options.frame_order,
+            extract_variables: body.options.extract_variables,
+            memory: None,
         },
         body.options,
     )?;

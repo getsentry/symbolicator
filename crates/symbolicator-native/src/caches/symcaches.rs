@@ -62,6 +62,9 @@ struct FetchSymCacheInternal {
 
     /// ObjectMeta handle of the original DIF object to fetch.
     object_meta: Arc<ObjectMetaHandle>,
+
+    /// Whether to extract variables.
+    extract_variables: bool,
 }
 
 #[tracing::instrument(name = "compute_symcache", skip_all)]
@@ -70,10 +73,16 @@ async fn compute_symcache(
     objects_actor: &ObjectsActor,
     object_meta: Arc<ObjectMetaHandle>,
     secondary_sources: &SecondarySymCacheSources,
+    extract_varialbes: bool,
 ) -> CacheContents {
     let object_handle = objects_actor.fetch(object_meta).await?;
 
-    write_symcache(temp_file.as_file_mut(), &object_handle, secondary_sources)
+    write_symcache(
+        temp_file.as_file_mut(),
+        &object_handle,
+        secondary_sources,
+        extract_varialbes,
+    )
 }
 
 impl CacheItemRequest for FetchSymCacheInternal {
@@ -87,6 +96,7 @@ impl CacheItemRequest for FetchSymCacheInternal {
             &self.objects_actor,
             self.object_meta.clone(),
             &self.secondary_sources,
+            self.extract_variables,
         ))
     }
 
@@ -117,6 +127,8 @@ pub struct FetchSymCache {
     pub identifier: ObjectId,
     pub sources: Arc<[SourceConfig]>,
     pub scope: Scope,
+    /// Whether variables should be extracted.
+    pub extract_variables: bool,
 }
 
 impl SymCacheActor {
@@ -193,6 +205,7 @@ impl SymCacheActor {
                 objects_actor: self.objects.clone(),
                 secondary_sources,
                 object_meta: Arc::clone(&handle),
+                extract_variables: request.extract_variables,
             };
             self.symcaches
                 .compute_memoized(request, cache_key)
@@ -219,6 +232,7 @@ fn write_symcache(
     file: &mut File,
     object_handle: &ObjectHandle,
     secondary_sources: &SecondarySymCacheSources,
+    extract_varialbes: bool,
 ) -> CacheContents {
     object_handle.configure_scope();
 
@@ -257,6 +271,7 @@ fn write_symcache(
     tracing::debug!("Converting symcache for {}", object_handle.cache_key);
 
     let mut converter = SymCacheConverter::new();
+    converter.set_collect_variables(extract_varialbes);
 
     if let Some(bcsymbolmap) = bcsymbolmap_transformer {
         converter.add_transformer(bcsymbolmap);
@@ -334,6 +349,7 @@ mod tests {
             shared_cache.clone(),
             downloader.clone(),
             source_index_svc.clone(),
+            Default::default(),
         );
         let bitcode = BitcodeService::new(
             caches.auxdifs,
@@ -404,6 +420,7 @@ mod tests {
             identifier,
             sources: Arc::new([source]),
             scope: Scope::Scoped("12345".into()),
+            extract_variables: false,
         };
 
         let symcache_actor = symcache_actor(cache_dir.path().to_owned(), TIMEOUT).await;

@@ -1,12 +1,13 @@
 [package]
 name = "symbolicator-service"
-version = "26.5.2"
+version = "26.8.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
 
 [dependencies]
 anyhow = { workspace = true }
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip", "zlib", "zstd"] }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
 aws-sdk-s3 = { workspace = true }
@@ -27,6 +28,7 @@ jsonwebtoken = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-dogstatsd = { workspace = true }
 moka = { workspace = true }
+pin-project-lite = { workspace = true }
 proguard = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
@@ -56,7 +58,7 @@ symbolicator-sources = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
-tokio-util = { workspace = true, features = ["io"] }
+tokio-util = { workspace = true, features = ["io", "io-util"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["json"] }
 url = { workspace = true }
@@ -65,6 +67,7 @@ zip = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
 sha-1 = { workspace = true }
 symbolicator-test = { workspace = true }
 insta = { workspace = true }

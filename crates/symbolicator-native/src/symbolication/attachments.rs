@@ -7,6 +7,7 @@ use url::Url;
 
 use crate::interface::AttachmentFile;
 
+#[tracing::instrument(skip(download_svc))]
 pub async fn download_attachment(
     download_svc: Arc<DownloadService>,
     file: AttachmentFile,

@@ -12,6 +12,7 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
+use symbolic::debuginfo::ParseObjectOptions;
 use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
@@ -32,6 +33,7 @@ pub(super) struct FetchFileMetaRequest {
     /// Source-type specific attributes.
     pub(super) file_source: RemoteFile,
     pub(super) object_id: ObjectId,
+    pub(super) opts: ParseObjectOptions,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary

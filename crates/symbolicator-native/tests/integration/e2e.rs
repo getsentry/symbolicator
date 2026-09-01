@@ -158,6 +158,7 @@ async fn test_minidump_symstore_index() {
             sources: Arc::new([source]),
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
+            extract_variables: false,
         })
         .await
         .unwrap();
@@ -408,7 +409,7 @@ async fn test_unreachable_bucket() {
                 SourceConfig::Sentry(Arc::new(SentrySourceConfig {
                     id: SourceId::new(format!("broken-{ty}-{code}")),
                     url: hitcounter.url(&format!("respond_statuscode/{code}")),
-                    token: SentryToken("123abc".to_owned()),
+                    credentials: SentryToken("123abc".to_owned()).into(),
                 }))
             };
 

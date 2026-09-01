@@ -13,6 +13,7 @@ use symbolicator_sources::{
     SourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
 };
 use tempfile::NamedTempFile;
+use tokio::io::AsyncReadExt as _;
 
 use crate::caches::CacheVersions;
 use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
@@ -26,6 +27,17 @@ use super::DownloadService;
 /// The path of the file containing the ID of the most recent upload
 /// log file.
 const LASTID_FILE: &str = "000Admin/lastid.txt";
+
+/// Maximum last id we consider valid.
+///
+/// Symbolicator fetches all index files up to this maximum.
+const LASTID_MAX: u32 = 10_000;
+
+/// Maximum length for a valid id stored in the [`LASTID_FILE`].
+///
+/// Digits in [`LASTID_MAX`], doubled to tolerate whitespace,
+/// newlines, or leading zeros.
+const LASTID_MAX_LENGTH: usize = (u32::MAX.ilog10() as usize + 1) * 2;
 
 /// The time for which a successfully fetched Symstore "last id" should be cached in memory.
 const LASTID_OK_CACHE_TIME: Duration = Duration::from_secs(24 * 60 * 60);
@@ -166,24 +178,28 @@ async fn download_index_segment(
 ) -> CacheContents {
     let loc = SourceLocation::new(format!("000Admin/{segment:0>10}"));
     let remote_file = source.remote_file(loc);
-    let temp_file = NamedTempFile::new()?;
 
     tracing::debug!(segment, "Downloading Symstore index segment");
 
-    if let Err(e) = downloader
-        .download(remote_file, temp_file.path().to_path_buf())
-        .await
-    {
-        tracing::error!(
-            error = &e as &dyn std::error::Error,
-            source_id = %source.id(),
-            segment,
-            "Failed to download Symstore index segment",
-        )
-    }
+    let download = match downloader.download(remote_file).await {
+        Ok(download) => download,
+        Err(err) => {
+            tracing::error!(
+                error = &err as &dyn std::error::Error,
+                source_id = %source.id(),
+                segment,
+                "Failed to download Symstore index segment",
+            );
+            return Err(err);
+        }
+    };
 
-    let buf = BufReader::new(temp_file);
-    let index = SymstoreIndex::parse_from_reader(buf)?;
+    let reader = tokio_util::io::SyncIoBridge::new(download.into_read());
+    let index = tokio::task::spawn_blocking(move || {
+        SymstoreIndex::parse_from_reader(BufReader::new(reader))
+    })
+    .await
+    .map_err(CacheError::from_std_error)??;
 
     index.write(file)?;
 
@@ -208,6 +224,17 @@ async fn download_full_index(
     file: &mut File,
 ) -> CacheContents {
     let mut index = SymstoreIndex::default();
+
+    if last_id > LASTID_MAX {
+        tracing::warn!(
+            source_id = %source.id(),
+            "Symstore Index skipped because the last id is too large {last_id} > {LASTID_MAX}"
+        );
+        return Err(CacheError::Malformed(format!(
+            "Invalid Symstore Id: {last_id}, too large"
+        )));
+    }
+
     // This download is intentionally sequential. Doing it concurrently
     // causes at least the Intel symbol server to rate limit us.
     for i in 1..=last_id {
@@ -453,18 +480,29 @@ impl SourceIndexService {
     /// `000Admin` directory.
     #[tracing::instrument(skip_all, fields(source.id = %source.id()), ret)]
     async fn fetch_symstore_last_id(&self, source: &IndexSourceConfig) -> Result<u32, CacheError> {
-        let temp_file = NamedTempFile::new()?;
         let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
-        self.downloader
-            .download(remote_file, temp_file.path().to_path_buf())
+
+        let mut last_id = Vec::new();
+        let read = self
+            .downloader
+            .download(remote_file)
+            .await?
+            .into_read()
+            .take(LASTID_MAX_LENGTH as u64 + 1)
+            .read_to_end(&mut last_id)
             .await?;
-        let bv = ByteView::map_file(temp_file.into_file())?;
-        let last_id = std::str::from_utf8(&bv)
-            .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
+
+        if read > LASTID_MAX_LENGTH {
+            return Err(CacheError::Malformed(
+                "Invalid Symstore Id (too big)".to_owned(),
+            ));
+        }
+
+        std::str::from_utf8(&last_id)
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))?
             .trim()
             .parse()
-            .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
-        Ok(last_id)
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))
     }
 
     /// Fetches a Symstore index for the given source.

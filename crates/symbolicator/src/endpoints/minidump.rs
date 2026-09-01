@@ -3,6 +3,7 @@ use axum::http::StatusCode;
 use axum::response::Json;
 use symbolic::common::ByteView;
 use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
+use symbolicator_service::utils::fs;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -30,7 +31,8 @@ pub async fn handle_minidump_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("upload_file_minidump") => {
-                let mut minidump_file = File::from_std(tempfile::tempfile()?);
+                let temp_file = fs::tempfile(service.config().tmp_dir().as_deref())?.into_file();
+                let mut minidump_file = File::from_std(temp_file);
                 stream_multipart_file(field, &mut minidump_file).await?;
                 minidump = Some(minidump_file.into_std().await)
             }
@@ -80,6 +82,7 @@ pub async fn handle_minidump_request(
             sources,
             scraping,
             rewrite_first_module,
+            extract_variables: options.extract_variables,
         },
         options,
     )?;

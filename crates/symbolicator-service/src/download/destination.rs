@@ -15,16 +15,16 @@ use std::{io::Write, sync::Arc};
 pub trait WriteStream: Send {
     /// Attempts to write an entire buffer into this writer.
     ///
-    /// See also: [`AsyncWriteExt::write_buf`].
-    fn write_buf(&mut self, buf: Bytes) -> impl Future<Output = io::Result<()>> + Send;
+    /// See also: [`AsyncWriteExt::write_all`].
+    fn write_all(&mut self, buf: Bytes) -> impl Future<Output = io::Result<()>> + Send;
 }
 
 impl<T> WriteStream for T
 where
     T: AsyncWrite + Unpin + Send,
 {
-    async fn write_buf(&mut self, mut buf: Bytes) -> io::Result<()> {
-        AsyncWriteExt::write_buf(self, &mut buf).await.map(|_| ())
+    async fn write_all(&mut self, buf: Bytes) -> io::Result<()> {
+        AsyncWriteExt::write_all(self, &buf).await
     }
 }
 
@@ -200,7 +200,7 @@ pub struct OffsetFileWriteStream {
 
 #[cfg(unix)]
 impl WriteStream for OffsetFileWriteStream {
-    async fn write_buf(&mut self, buf: Bytes) -> io::Result<()>
+    async fn write_all(&mut self, buf: Bytes) -> io::Result<()>
     where
         Self: Unpin,
     {
@@ -209,10 +209,15 @@ impl WriteStream for OffsetFileWriteStream {
         let offset = self.offset;
         let length = buf.len() as u64;
 
-        debug_assert!(
-            offset + length < self.end,
-            "attempt to write past end of stream"
-        );
+        if offset + length >= self.end {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "attempt to write past end of stream: {offset}+{length} >= {end}",
+                    end = self.end
+                ),
+            ));
+        }
 
         let file = Arc::clone(&self.file);
         tokio::task::spawn_blocking(move || file.write_all_at(&buf, offset)).await??;
@@ -256,11 +261,11 @@ mod tests {
         let mut ee = streams.stream(8, 10);
 
         let mut futures = FuturesUnordered::new();
-        futures.push(aa.write_buf(Bytes::from("aa")));
-        futures.push(cc.write_buf(Bytes::from("cc")));
-        futures.push(bb.write_buf(Bytes::from("bb")));
-        futures.push(ee.write_buf(Bytes::from("ee")));
-        futures.push(dd.write_buf(Bytes::from("dd")));
+        futures.push(aa.write_all(Bytes::from("aa")));
+        futures.push(cc.write_all(Bytes::from("cc")));
+        futures.push(bb.write_all(Bytes::from("bb")));
+        futures.push(ee.write_all(Bytes::from("ee")));
+        futures.push(dd.write_all(Bytes::from("dd")));
         while futures.next().await.transpose().unwrap().is_some() {}
 
         streams.flush().await.unwrap();

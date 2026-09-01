@@ -122,103 +122,54 @@ impl Caches {
     }
 }
 
-#[derive(Default)]
-struct CleanupStats {
-    removed_dirs: usize,
-    removed_files: usize,
-    removed_bytes: u64,
-    removed_metadata_bytes: u64,
-
-    retained_dirs: usize,
-    retained_files: usize,
-    retained_bytes: u64,
-    retained_metadata_bytes: u64,
-}
-
-impl std::ops::AddAssign<Self> for CleanupStats {
-    fn add_assign(&mut self, rhs: Self) {
-        self.removed_dirs += rhs.removed_dirs;
-        self.removed_files += rhs.removed_files;
-        self.removed_bytes += rhs.removed_bytes;
-        self.removed_metadata_bytes += rhs.removed_metadata_bytes;
-        self.retained_dirs += rhs.retained_dirs;
-        self.retained_files += rhs.retained_files;
-        self.retained_bytes += rhs.retained_bytes;
-        self.retained_metadata_bytes += rhs.retained_metadata_bytes;
-    }
-}
-
 impl Cache {
     /// Cleans up this cache based on configured cache retention.
     ///
     /// If `dry_run` is `true`, no files will actually be deleted.
     #[tracing::instrument(skip(self), fields(cache = %self.name))]
     pub fn cleanup(&self, dry_run: bool) -> Result<()> {
-        tracing::info!("Cleaning up `{}` cache", self.name);
         let cache_dir = self.cache_dir.as_ref().ok_or_else(|| {
             anyhow!("no caching configured! Did you provide a path to your config file?")
         })?;
 
-        let (_, stats) = self.cleanup_directory_recursive(cache_dir, dry_run)?;
+        tracing::info!("Cleaning up `{}` cache", self.name);
 
-        tracing::info!(
-            retained.dirs = stats.retained_dirs,
-            retained.files = stats.retained_files,
-            retained.bytes = stats.retained_bytes,
-            retained.metadata_bytes = stats.retained_metadata_bytes,
-            removed.dirs = stats.removed_dirs,
-            removed.files = stats.removed_files,
-            removed.bytes = stats.removed_bytes,
-            removed.metadata_bytes = stats.removed_metadata_bytes,
-            "Cleaning up `{}` complete",
-            self.name
-        );
+        metric!(gauge("caches.size.bytes") = 0.0, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.metadata_bytes") = 0.0, "cache" => self.name.as_str());
+        metric!(gauge("caches.size.files") = 0.0, "cache" => self.name.as_str());
 
-        metric!(gauge("caches.size.files") = stats.retained_files as f64, "cache" => self.name.as_str());
-        metric!(gauge("caches.size.bytes") = stats.retained_bytes as f64, "cache" => self.name.as_str());
-        metric!(gauge("caches.size.metadata_bytes") = stats.retained_metadata_bytes as f64, "cache" => self.name.as_str());
-        metric!(counter("caches.size.files_removed") += stats.removed_files as u64, "cache" => self.name.as_str());
-        metric!(counter("caches.size.bytes_removed") += stats.removed_bytes, "cache" => self.name.as_str());
-        metric!(counter("caches.size.metadata_bytes_removed") += stats.removed_metadata_bytes, "cache" => self.name.as_str());
+        self.cleanup_directory_recursive(cache_dir, dry_run)?;
 
         Ok(())
     }
 
     /// Cleans up the directory recursively.
     ///
-    /// Returns a boolean indicating whether the directory is left empty after cleanup,
-    /// as well as statistics about how many directories/files/bytes were removed/retained.
+    /// Returns a boolean indicating whether the directory is left empty after cleanup.
     ///
     /// If `dry_run` is `true`, no files will actually be deleted.
-    fn cleanup_directory_recursive(
-        &self,
-        directory: &Path,
-        dry_run: bool,
-    ) -> Result<(bool, CleanupStats)> {
+    fn cleanup_directory_recursive(&self, directory: &Path, dry_run: bool) -> Result<bool> {
         let entries = match catch_not_found(|| read_dir(directory))? {
             Some(x) => x,
             None => {
                 tracing::warn!("Directory not found: `{}`", directory.display());
-                return Ok((true, CleanupStats::default()));
+                return Ok(true);
             }
         };
         tracing::debug!("Cleaning directory `{}`", directory.display());
 
-        let identity = || (true, CleanupStats::default());
-        let (is_empty, stats) = entries
+        let is_empty = entries
             .par_bridge()
             .try_fold(
-                identity,
-                |(mut is_empty, mut stats), entry| -> Result<(bool, CleanupStats)> {
+                || true,
+                |mut is_empty, entry| -> Result<bool> {
                     let path = entry?.path();
                     // Skip metadata files—they will be handled together with their cache files.
                     if path.extension().and_then(OsStr::to_str) == Some(METADATA_EXTENSION) {
-                        return Ok((is_empty, stats));
+                        return Ok(is_empty);
                     }
                     if path.is_dir() {
-                        let (mut dir_is_empty, dir_stats) =
-                            self.cleanup_directory_recursive(&path, dry_run)?;
-                        stats += dir_stats;
+                        let mut dir_is_empty = self.cleanup_directory_recursive(&path, dry_run)?;
                         if dir_is_empty {
                             tracing::debug!("Removing directory `{}`", directory.display());
                             if !dry_run && let Err(e) = remove_dir_all(&path) {
@@ -231,11 +182,6 @@ impl Cache {
                                 dir_is_empty = false;
                             }
                         }
-                        if dir_is_empty {
-                            stats.removed_dirs += 1;
-                        } else {
-                            stats.retained_dirs += 1;
-                        }
                         is_empty &= dir_is_empty;
                     } else {
                         match self.try_cleanup_path(&path, dry_run) {
@@ -244,42 +190,35 @@ impl Cache {
                                     |scope| {
                                         scope.set_extra("path", path.display().to_string().into())
                                     },
-                                    || tracing::error!("Failed to clean cache file: {:?}", e),
+                                    || tracing::error!("Failed to clean cache file: {e:?}"),
                                 );
                             }
-                            Ok((file_removed, file_stats)) => {
+                            Ok(file_removed) => {
                                 is_empty &= file_removed;
-                                stats += file_stats;
                             }
                         }
                     }
-                    Ok((is_empty, stats))
+                    Ok(is_empty)
                 },
             )
             .try_reduce(
-                identity,
-                |(is_empty_1, mut stats1), (is_empty_2, stats2)| {
-                    stats1 += stats2;
-
-                    Ok((is_empty_1 & is_empty_2, stats1))
-                },
+                || true,
+                |is_empty_1, is_empty_2| Ok(is_empty_1 & is_empty_2),
             )?;
 
-        Ok((is_empty, stats))
+        Ok(is_empty)
     }
 
     /// Tries to clean up the file at `path`.
     ///
-    /// Returns a boolean indicating whether the file was removed,
-    /// as well as statistics about how many files/bytes were removed/retained.
+    /// Returns a boolean indicating whether the file was removed.
     ///
     /// This also removes the file's corresponding metadata file, if it exists.
     /// If `dry_run` is `true`, the file will not actually be deleted.
-    fn try_cleanup_path(&self, path: &Path, dry_run: bool) -> Result<(bool, CleanupStats)> {
+    fn try_cleanup_path(&self, path: &Path, dry_run: bool) -> Result<bool> {
         tracing::trace!("Checking file `{}`", path.display());
-        let mut stats = CleanupStats::default();
         let Some(metadata) = catch_not_found(|| path.metadata())? else {
-            return Ok((true, stats));
+            return Ok(true);
         };
         anyhow::ensure!(metadata.is_file(), "not a file");
         let size = metadata.len();
@@ -295,17 +234,17 @@ impl Cache {
                 catch_not_found(|| remove_file(&metadata_path))?;
             }
 
-            stats.removed_bytes += size;
-            stats.removed_metadata_bytes += metadata_size;
-            stats.removed_files += 1;
+            metric!(counter("caches.size.bytes_removed") += size, "cache" => self.name.as_str());
+            metric!(counter("caches.size.metadata_bytes_removed") += metadata_size, "cache" => self.name.as_str());
+            metric!(counter("caches.size.files_removed") += 1, "cache" => self.name.as_str());
 
-            Ok((true, stats))
+            Ok(true)
         } else {
-            stats.retained_bytes += size;
-            stats.retained_metadata_bytes += metadata_size;
-            stats.retained_files += 1;
+            metric!(gauge("caches.size.bytes") += size as f64, "cache" => self.name.as_str());
+            metric!(gauge("caches.size.metadata_bytes") += metadata_size as f64, "cache" => self.name.as_str());
+            metric!(gauge("caches.size.files") += 1, "cache" => self.name.as_str());
 
-            Ok((false, stats))
+            Ok(false)
         }
     }
 }

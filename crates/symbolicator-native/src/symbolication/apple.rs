@@ -28,6 +28,7 @@ impl SymbolicationActor {
         report: File,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
+        extract_variables: bool,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
         let report =
             AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
@@ -87,6 +88,8 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
+            extract_variables,
+            memory: None,
         };
 
         let mut system_info = SystemInfo {
@@ -133,10 +136,17 @@ impl SymbolicationActor {
         report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         scraping: ScrapingConfig,
+        extract_variables: bool,
     ) -> Result<CompletedSymbolicationResponse> {
-        let report = download_attachment(self.download_svc.clone(), report).await?;
-        let (request, state) =
-            self.parse_apple_crash_report(platform, scope, report, sources, scraping)?;
+        let report = download_attachment(&self.download_svc, report).await?;
+        let (request, state) = self.parse_apple_crash_report(
+            platform,
+            scope,
+            report,
+            sources,
+            scraping,
+            extract_variables,
+        )?;
         let mut response = self.symbolicate(request).await?;
 
         state.merge_into(&mut response);

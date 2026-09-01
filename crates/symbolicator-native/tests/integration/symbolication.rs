@@ -60,6 +60,7 @@ async fn test_apple_crash_report() {
             AttachmentFile::Local(report_file),
             Arc::new([source]),
             Default::default(),
+            false,
         )
         .await;
 

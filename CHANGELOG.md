@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes 🐛
+
+- Temp files are now always created in the configured cache directory. ([#2028](https://github.com/getsentry/symbolicator/pull/2028))
+
+## 26.8.0
+
+### Features
+
+- Files uploaded to the shared cache are zstd compressed. ([#2006](https://github.com/getsentry/symbolicator/pull/2006))
+- Added a config setting `max_download_size` to restrict the size of downloaded files.
+  For compressed files, this limit applies to the _decompressed_ size.
+  The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
+- Support compressed range requests. This allows backends (like S3 and objectstore) to serve partial
+  ranges from a compressed file. ([#2004](https://github.com/getsentry/symbolicator/pull/1999))
+- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB. ([#2009](https://github.com/getsentry/symbolicator/pull/2009))
+
+## 26.7.2
+
+### Internal Changes 🔧
+
+- (deps) Bump gocd-jsonnet to v3.0.7 by @dmajere in [#1991](https://github.com/getsentry/symbolicator/pull/1991)
+
+## 26.7.1
+
+### Bug Fixes 🐛
+
+- (crash reporter) Don't start the crash reporting process if there is no Sentry DSN
+  or if the CLI command is anything other than `run` by @loewenheim in [#1988](https://github.com/getsentry/symbolicator/pull/1988)
+
+## 26.7.0
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_source_size` to limit
+  the decompressed sizes of compressed embedded sources during debug file parsing. The default
+  value is 100MiB. ([#1972](https://github.com/getsentry/symbolicator/pull/1972))
+
+### Internal changes
+
+- Replaced `sentry-native` with `minidumper-child` for crash reporting by @loewenheim in [#1978](https://github.com/getsentry/symbolicator/pull/1978)
+
+### Other
+
+- (symbolicator-service) Increase default connect and head timeouts. ([#1980](https://github.com/getsentry/symbolicator/pull/1980))
+
+## 26.6.0
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_section_size` to limit
+  the decompressed sizes of compressed sections during debug file parsing. The default
+  value is 4GiB. ([#1965](https://github.com/getsentry/symbolicator/pull/1965))
+
 ## 26.5.2
 
 ### Internal Changes 🔧

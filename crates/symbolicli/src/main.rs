@@ -9,6 +9,7 @@ use event::{create_js_symbolication_request, create_native_symbolication_request
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
+use reqwest::header;
 use settings::{Mode, SymbolsPath};
 use symbolicator_js::SourceMapService;
 use symbolicator_native::SymbolicationActor;
@@ -17,12 +18,11 @@ use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
-    CommonSourceConfig, DirectoryLayout, FilesystemSourceConfig, SentrySourceConfig, SentryToken,
-    SourceConfig, SourceId,
+    CommonSourceConfig, DirectoryLayout, FilesystemSourceConfig, SentryCredentials,
+    SentrySourceConfig, SourceConfig, SourceId,
 };
 
 use anyhow::{Context, Result};
-use reqwest::header;
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
@@ -43,6 +43,7 @@ async fn main() -> Result<()> {
         mode,
         symbols,
         scraping_enabled,
+        extract_variables,
     } = settings::Settings::get()?;
 
     // We depend on `rustls` with both the `aws-lc-rs` and
@@ -87,7 +88,7 @@ async fn main() -> Result<()> {
                 ref base_url,
                 ref org,
                 ref project,
-                ref auth_token,
+                ref auth,
                 ..
             } = mode
             else {
@@ -97,10 +98,16 @@ async fn main() -> Result<()> {
             };
 
             let mut headers = header::HeaderMap::new();
-            headers.insert(
-                header::AUTHORIZATION,
-                header::HeaderValue::from_str(&format!("Bearer {auth_token}")).unwrap(),
-            );
+            match auth {
+                SentryCredentials::Token(token) => headers.insert(
+                    header::AUTHORIZATION,
+                    header::HeaderValue::from_str(&format!("Bearer {}", token.0)).unwrap(),
+                ),
+                SentryCredentials::Cookies(cookies) => headers.insert(
+                    header::COOKIE,
+                    header::HeaderValue::from_str(&cookies.0).unwrap(),
+                ),
+            };
 
             let client = reqwest::Client::builder()
                 .default_headers(headers)
@@ -130,8 +137,9 @@ async fn main() -> Result<()> {
 
         Payload::Event(event) if event.platform.is_native() => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
-            let request = create_native_symbolication_request(scope, dsym_sources, event)
-                .context("Event cannot be symbolicated")?;
+            let request =
+                create_native_symbolication_request(scope, dsym_sources, event, extract_variables)
+                    .context("Event cannot be symbolicated")?;
 
             tracing::info!("symbolicating event");
 
@@ -150,6 +158,7 @@ async fn main() -> Result<()> {
                     sources: dsym_sources,
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
+                    extract_variables,
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -165,6 +174,7 @@ async fn main() -> Result<()> {
                     AttachmentFile::Local(file),
                     dsym_sources,
                     Default::default(),
+                    extract_variables,
                 )
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -202,13 +212,13 @@ fn prepare_dsym_sources(
         ref org,
         ref project,
         ref base_url,
-        ref auth_token,
+        ref auth,
         ..
     } = mode
     {
         let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
             id: SourceId::new("sentry:project"),
-            token: SentryToken(auth_token.clone()),
+            credentials: auth.clone(),
             url: base_url
                 .join(&format!("projects/{org}/{project}/files/dsyms/"))
                 .unwrap(),
@@ -246,7 +256,7 @@ fn prepare_sourcemap_source(
             ref org,
             ref project,
             ref base_url,
-            ref auth_token,
+            ref auth,
         } => {
             if local_symbols.is_some() {
                 tracing::warn!("Local symbol source will not be used in online mode");
@@ -254,7 +264,7 @@ fn prepare_sourcemap_source(
 
             Ok(Arc::new(SentrySourceConfig {
                 id: SourceId::new("sentry:project"),
-                token: SentryToken(auth_token.clone()),
+                credentials: auth.clone(),
                 url: base_url
                     .join(&format!("projects/{org}/{project}/artifact-lookup/"))
                     .unwrap(),

@@ -42,7 +42,7 @@ pub fn start_server(path: impl AsRef<Path> + Clone) -> anyhow::Result<SentrySour
     Ok(SentrySourceConfig {
         id: SourceId::new("local"),
         url: source_url,
-        token: SentryToken(String::new()),
+        credentials: SentryToken(String::new()).into(),
     })
 }
 

@@ -1,5 +1,3 @@
-//! Helpers for testing the web server and service.
-//!
 //! When writing tests, keep the following points in mind:
 //!
 //!  - In every test, call [`setup`]. This will set up the logger so that all console output
@@ -399,7 +397,7 @@ where
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         url: server.url("/lookup"),
-        token: SentryToken(String::new()),
+        credentials: SentryToken(String::new()).into(),
     };
 
     (server, source)
@@ -440,7 +438,7 @@ where
     let source = SentrySourceConfig {
         id: SourceId::new("sentry:project"),
         url: server.url("/files/dsyms/"),
-        token: SentryToken(String::new()),
+        credentials: SentryToken(String::new()).into(),
     };
 
     (server, source)

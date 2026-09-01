@@ -4,14 +4,12 @@ authors = ["Sentry <oss@sentry.io>"]
 description = "Native crash reporting for Symbolicator"
 homepage = "https://getsentry.github.io/symbolicator/"
 repository = "https://github.com/getsentry/symbolicator"
-version = "26.5.2"
+version = "26.8.0"
 edition = "2024"
-build = "build.rs"
 license-file = "../../LICENSE.md"
 publish = false
 
 [dependencies]
-
-[build-dependencies]
-bindgen = { workspace = true }
-cmake = { workspace = true }
+minidumper-child = { workspace = true }
+sentry = { workspace = true }
+tracing = { workspace = true }

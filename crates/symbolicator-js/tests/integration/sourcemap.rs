@@ -776,7 +776,7 @@ async fn test_manual_processing() {
             "https://sentry.io/api/0/projects/{org}/{project}/artifact-lookup/"
         ))
         .unwrap(),
-        token: SentryToken(token.to_string()),
+        credentials: SentryToken(token.to_string()).into(),
     };
 
     let request = make_js_request(source, frames, modules, release, dist);

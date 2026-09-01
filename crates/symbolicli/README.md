@@ -12,6 +12,13 @@ symbolicli -o <ORG> -p <PROJECT> --auth-token <TOKEN> <EVENT>
 * `<TOKEN>` is a Sentry authentication token that has access to the project;
 * `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event from the Sentry instance.
 
+Instead of an auth token, you can use an existing Sentry session by passing the raw Cookie
+header value from your browser.
+
+```
+symbolicli -o <ORG> -p <PROJECT> --auth-cookies '<COOKIE_HEADER>' <EVENT>
+```
+
 Alternatively, you can run `symbolicli` in offline mode:
 ```
 symbolicli --offline <EVENT>
@@ -34,6 +41,9 @@ The available options are:
 * `url`: The base URL of the sentry instance. Defaults to `https://sentry.io/`.
 * `auth_token`: A Sentry authentication token. This can be overridden with the `SENTRY_AUTH_TOKEN`
   environment variable or the `--auth-token` command line option.
+* `auth_cookies`: A raw Cookie header value from an existing Sentry session. This can be
+  overridden with the `SENTRY_AUTH_COOKIES` environment variable or the `--auth-cookies` command
+  line option.
 * `org`: The default organization for which to process events. This can be overridden with the `--org`
   command line option.
 * `project`: The default project for which to process events. This can be overridden with the `--project`

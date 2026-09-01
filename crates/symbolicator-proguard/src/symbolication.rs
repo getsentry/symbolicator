@@ -244,9 +244,8 @@ impl ProguardService {
             // * Use line number 0 as a fallback
             //
             // The line-0 fallback is intentional and matches retrace behavior: it triggers
-            // the no-line-info path in ProguardCache, which picks the first range group and
-            // resolves inline chains (e.g. the `line_0_1` test produces `onCreate` +
-            // `barInternalInject`). Retrace does the same via `allRangesForLine(0, true)`.
+            // the no-line-info path in ProguardCache, which reports a single frame when no
+            // entry can be selected by line (see the `line_0_1` test).
             let proguard_frame = frame
                 .lineno
                 .map(|lineno| {
@@ -887,22 +886,14 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
         };
 
         let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
-        // Without the "line 0" change, the second frame doesn't exist.
-        // The `retrace` implementation at
-        // https://dl.google.com/android/repository/commandlinetools-mac-11076708_latest.zip
-        // also returns this, no matter whether you give it line 0 or no line at all.
+        // The frame has neither a line number nor a signature, so no mapping entry can be
+        // selected. Only the outermost entry is reported, matching `retrace`.
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onCreate
           filename: App.java
           module: com.example.App
           abs_path: App.java
-          lineno: 42
-          index: 0
-        - function: barInternalInject
-          filename: App.java
-          module: com.example.App
-          abs_path: App.java
-          lineno: 47
+          lineno: 0
           index: 0
         "###);
     }

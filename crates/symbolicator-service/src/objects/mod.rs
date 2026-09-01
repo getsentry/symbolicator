@@ -4,6 +4,7 @@ use std::sync::Arc;
 use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
+use symbolic::debuginfo::ParseObjectOptions;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
 
 use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
@@ -85,6 +86,7 @@ pub struct ObjectsActor {
     data_cache: Arc<Cacher<FetchFileDataRequest>>,
     download_svc: Arc<DownloadService>,
     source_index_svc: Arc<SourceIndexService>,
+    opts: ParseObjectOptions,
 }
 
 impl ObjectsActor {
@@ -94,12 +96,14 @@ impl ObjectsActor {
         shared_cache: SharedCacheRef,
         download_svc: Arc<DownloadService>,
         source_index_svc: Arc<SourceIndexService>,
+        opts: ParseObjectOptions,
     ) -> Self {
         ObjectsActor {
             meta_cache: Arc::new(Cacher::new(meta_cache, Arc::clone(&shared_cache))),
             data_cache: Arc::new(Cacher::new(data_cache, Arc::clone(&shared_cache))),
             download_svc,
             source_index_svc,
+            opts,
         }
     }
 
@@ -119,6 +123,7 @@ impl ObjectsActor {
             object_id: file_handle.object_id.clone(),
             data_cache: self.data_cache.clone(),
             download_svc: self.download_svc.clone(),
+            opts: self.opts,
         });
 
         self.data_cache
@@ -186,6 +191,7 @@ impl ObjectsActor {
                 object_id: identifier.clone(),
                 data_cache: self.data_cache.clone(),
                 download_svc: self.download_svc.clone(),
+                opts: self.opts,
             };
 
             async move {

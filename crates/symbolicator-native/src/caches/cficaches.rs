@@ -8,7 +8,7 @@ use sentry::types::DebugId;
 use symbolicator_service::caches::CacheVersions;
 use tempfile::NamedTempFile;
 
-use symbolic::cfi::CfiCache;
+use symbolic::cfi::{CfiCache, FromObjectOptions};
 use symbolic::common::ByteView;
 use symbolic::debuginfo::breakpad::BreakpadModuleRecord;
 use symbolicator_service::caches::versions::CFICACHE_VERSIONS;
@@ -69,13 +69,20 @@ fn parse_cfi_cache(bytes: ByteView<'static>) -> CacheContents<(u32, CfiItem)> {
 pub struct CfiCacheActor {
     cficaches: Arc<Cacher<FetchCfiCacheInternal>>,
     objects: ObjectsActor,
+    ops: FromObjectOptions,
 }
 
 impl CfiCacheActor {
-    pub fn new(cache: Cache, shared_cache: SharedCacheRef, objects: ObjectsActor) -> Self {
+    pub fn new(
+        cache: Cache,
+        shared_cache: SharedCacheRef,
+        objects: ObjectsActor,
+        ops: FromObjectOptions,
+    ) -> Self {
         CfiCacheActor {
             cficaches: Arc::new(Cacher::new(cache, shared_cache)),
             objects,
+            ops,
         }
     }
 }
@@ -84,6 +91,7 @@ impl CfiCacheActor {
 struct FetchCfiCacheInternal {
     objects_actor: ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
+    ops: FromObjectOptions,
 }
 
 /// Extracts the Call Frame Information (CFI) from an object file.
@@ -95,10 +103,11 @@ async fn compute_cficache(
     objects_actor: &ObjectsActor,
     meta_handle: Arc<ObjectMetaHandle>,
     temp_file: &mut NamedTempFile,
+    ops: FromObjectOptions,
 ) -> CacheContents {
     let object = objects_actor.fetch(meta_handle).await?;
 
-    write_cficache(temp_file.as_file_mut(), &object)
+    write_cficache(temp_file.as_file_mut(), &object, ops)
 }
 
 impl CacheItemRequest for FetchCfiCacheInternal {
@@ -111,6 +120,7 @@ impl CacheItemRequest for FetchCfiCacheInternal {
             &self.objects_actor,
             self.meta_handle.clone(),
             temp_file,
+            self.ops,
         ))
     }
 
@@ -158,6 +168,7 @@ impl CfiCacheActor {
             let request = FetchCfiCacheInternal {
                 objects_actor: self.objects.clone(),
                 meta_handle,
+                ops: self.ops,
             };
             async {
                 let entry = self
@@ -178,12 +189,16 @@ impl CfiCacheActor {
 /// The source file is probably an executable or so, the resulting file is in the format of
 /// [`CfiCache`].
 #[tracing::instrument(skip_all)]
-fn write_cficache(file: &mut File, object_handle: &ObjectHandle) -> CacheContents {
+fn write_cficache(
+    file: &mut File,
+    object_handle: &ObjectHandle,
+    ops: FromObjectOptions,
+) -> CacheContents {
     object_handle.configure_scope();
 
     tracing::debug!("Converting cficache for {}", object_handle.cache_key);
 
-    let cficache = CfiCache::from_object(object_handle.object()).map_err(|e| {
+    let cficache = CfiCache::from_object_with_opts(object_handle.object(), ops).map_err(|e| {
         let dynerr: &dyn std::error::Error = &e; // tracing expects a `&dyn Error`
         tracing::debug!(error = dynerr, "Could not process CFI Cache");
 

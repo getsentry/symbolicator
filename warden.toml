@@ -1,0 +1,52 @@
+# Warden Configuration
+# https://github.com/getsentry/warden
+#
+# Warden reviews code using AI-powered skills triggered by GitHub events.
+# Skills live in .agents/skills/ or .claude/skills/
+#
+# Add skills with: warden add <skill-name>
+
+version = 1
+
+# Default settings inherited by all skills
+[defaults]
+# Severity levels: critical, high, medium, low, info
+# failOn: minimum severity that fails the check
+failOn = "high"
+# reportOn: minimum severity that creates PR annotations
+reportOn = "medium"
+
+# Scope all skills to Rust source under crates/.
+# `type = "local"` makes them run on CLI invocations (bare `warden` and `warden <git-ref>`).
+# Add a `pull_request` trigger alongside it if you also want them to run in CI.
+
+[[skills]]
+name = "security-review"
+paths = ["crates/**/*.rs"]
+
+# `local` for CLI runs; `pull_request` so committing this file cannot drop
+# security-review from PRs. In layered config the org base wins this duplicate;
+# this trigger guards the repo-only resolution case.
+[[skills.triggers]]
+type = "local"
+[[skills.triggers]]
+type = "pull_request"
+actions = ["opened", "synchronize", "reopened"]
+
+[[skills]]
+name = "code-review"
+paths = ["crates/**/*.rs"]
+
+[[skills.triggers]]
+type = "local"
+
+# DoS / resource-exhaustion review, pulled from the shared warden-skills repo.
+# Applied per-repo (opt-in) rather than as a warden default. Runs in CI on PRs.
+[[skills]]
+name = "wrdn-dos-review"
+remote = "getsentry/warden-skills"
+paths = ["crates/**/*.rs"]
+
+[[skills.triggers]]
+type = "pull_request"
+actions = ["opened", "synchronize", "reopened"]
