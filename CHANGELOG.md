@@ -6,6 +6,7 @@
 
 - Temp files are now always created in the configured cache directory. ([#2028](https://github.com/getsentry/symbolicator/pull/2028))
 - Filter bogus entry point frames after `__clone` and `__clone3` frames. ([#2040](https://github.com/getsentry/symbolicator/pull/2040))
+- Filter nullish outermost frames from stack traces. ([#2041](https://github.com/getsentry/symbolicator/pull/2041))
 
 ## 26.8.0
 
