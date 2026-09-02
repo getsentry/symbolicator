@@ -625,7 +625,7 @@ impl SymbolicationActor {
             rewrite_first_module,
             extract_variables,
         } = request;
-        let minidump_file = download_attachment(&self.download_svc, minidump_file).await?;
+        let minidump_file = download_attachment(self.download_svc.clone(), minidump_file).await?;
         let len = minidump_file.metadata()?.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(distribution("minidump.upload.size") = len as f64);
