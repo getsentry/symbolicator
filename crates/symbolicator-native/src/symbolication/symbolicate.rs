@@ -239,8 +239,8 @@ fn symbolicate_stacktrace(
                     continue;
                 }
 
-                // Glibc inserts an explicit `DW_CFA_undefined: RIP` DWARF rule to say that `_start`
-                // has no return address.
+                // Glibc inserts an explicit `DW_CFA_undefined: RIP` DWARF rule to say that frames like
+                // `_start` have no return address.
                 // See https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/start.S;h=1b3e36826b8a477474cee24d1c931429fbdf6d8f;hb=HEAD#l59
                 // We do not support this due to lack of breakpad support, and will thus use the
                 // previous rule for RIP, which says to look it up the value on the stack,
@@ -248,12 +248,12 @@ fn symbolicate_stacktrace(
                 // trailing garbage frame on the following conditions:
                 // * it is unmapped (UnknownImage)
                 // * this is the last frame to symbolicate (via peek)
-                // * the previous symbolicated frame is `_start`
-                let is_start =
-                    |frame: &SymbolicatedFrame| frame.raw.function.as_deref() == Some("_start");
+                // * the previous symbolicated frame is a well known frame like `_start`
                 if status == FrameStatus::UnknownImage
                     && unsymbolicated_frames_iter.peek().is_none()
-                    && symbolicated_frames.last().is_some_and(is_start)
+                    && symbolicated_frames
+                        .last()
+                        .is_some_and(is_likely_glibc_undefined_rip_frame)
                 {
                     continue;
                 }
@@ -375,7 +375,10 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     };
 
     // C start/main
-    if matches!(function, "main" | "start" | "_start") {
+    if matches!(
+        function,
+        "main" | "start" | "_start" | "__clone" | "__clone3"
+    ) {
         return true;
     }
 
@@ -390,4 +393,15 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     }
 
     false
+}
+
+/// Returns `true` if the passed frame is likely a well known glibc frame using a DWARF
+/// `DW_CFA_undefined: RIP` rule.
+///
+/// Note: This has some overlap with [`is_likely_base_frame`] but is more specific.
+fn is_likely_glibc_undefined_rip_frame(frame: &SymbolicatedFrame) -> bool {
+    matches!(
+        frame.raw.function.as_deref(),
+        Some("_start" | "__clone" | "__clone3")
+    )
 }
