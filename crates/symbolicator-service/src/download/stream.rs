@@ -61,20 +61,6 @@ impl Download {
         Ok(())
     }
 
-    /// Materializes the download into a [`NamedTempFile`].
-    ///
-    /// This is very similar to [`Self::materialize_into`], but slightly more convenient
-    /// and efficient as not always a new temp file must be created.
-    pub async fn materialize(self) -> CacheContents<NamedTempFile> {
-        if self.compression == Compression::Identity {
-            return Ok(self.inner);
-        }
-
-        let mut file = NamedTempFile::new()?;
-        self.materialize_into(&mut file).await?;
-        Ok(file)
-    }
-
     /// Returns the downloaded contents as an [`AsyncRead`].
     pub fn into_read(self) -> impl AsyncRead + Unpin {
         let source = tokio::fs::File::from_std(self.inner.into_file());
@@ -294,7 +280,8 @@ mod tests {
             },
         );
 
-        let error = download.materialize().await.unwrap_err();
+        let mut tmp_file = tempfile::NamedTempFile::new().unwrap();
+        let error = download.materialize_into(&mut tmp_file).await.unwrap_err();
         assert_eq!(
             error,
             CacheError::Malformed("Maximum file size exceeded".to_owned())

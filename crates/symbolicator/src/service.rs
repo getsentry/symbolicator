@@ -636,6 +636,7 @@ mod tests {
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: false,
+            memory: None,
         };
 
         let request_id = service
@@ -681,6 +682,7 @@ mod tests {
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: false,
+            memory: None,
         }
     }
 

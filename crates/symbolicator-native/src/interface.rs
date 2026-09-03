@@ -19,6 +19,7 @@ use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
 
+use crate::memory::MemoryAccess;
 pub use crate::metrics::StacktraceOrigin;
 
 #[derive(Debug, Clone)]
@@ -68,10 +69,11 @@ pub struct SymbolicateStacktraces {
     pub frame_order: FrameOrder,
     /// Whether we extract variables.
     pub extract_variables: bool,
+    /// The program memory, if it is available.
+    pub memory: Option<Arc<dyn MemoryAccess>>,
 }
 
 /// Location of an attachment file, such as a minidump.
-#[derive(Debug)]
 pub enum AttachmentFile {
     /// The attachment has been stored on the local system already.
     Local(File),
@@ -80,6 +82,18 @@ pub enum AttachmentFile {
         storage_url: String,
         storage_token: Option<String>,
     },
+}
+
+impl fmt::Debug for AttachmentFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Local(file) => f.debug_tuple("Local").field(file).finish(),
+            Self::Remote {
+                storage_url,
+                storage_token: _,
+            } => f.debug_tuple("Remote").field(storage_url).finish(),
+        }
+    }
 }
 
 /// A request to process (stackwalk + symbolicate) a minidump.
@@ -345,6 +359,10 @@ pub struct RawFrame {
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
     pub trust: FrameTrust,
+
+    /// Values of CPU registers in this frame.
+    #[serde(skip)]
+    pub registers: Registers,
 }
 
 /// How trustworth the instruction pointer of the frame is.

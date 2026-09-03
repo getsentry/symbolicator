@@ -154,6 +154,7 @@ pub fn create_native_symbolication_request(
         // "callee first"
         frame_order: FrameOrder::CalleeFirst,
         extract_variables,
+        memory: None,
     })
 }
 
@@ -296,6 +297,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         in_app: value.in_app,
         vars: value.vars,
         trust: value.trust,
+        registers: Default::default(),
     })
 }
 

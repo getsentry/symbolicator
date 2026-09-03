@@ -100,7 +100,7 @@ minidump = "0.26.1"
 minidump-processor = "0.26.1"
 minidump-unwind = "0.26.1"
 minidumper-child = "0.5.0"
-moka = { version = "0.12.8", features = ["future", "sync"] }
+moka = { version = "0.12.16", features = ["future", "sync"] }
 pin-project-lite = "0.2.17"
 prettytable-rs = "0.10.0"
 proguard = "5.10.4"
@@ -109,6 +109,7 @@ rayon = "1.10.0"
 regex = "1.5.5"
 reqwest = "0.12.15"
 rustls = { version = "0.23.31", features = ["ring"] }
+scroll = "0.12.0"
 sentry = { version = "0.42.0", default-features = false, features = [
     # default features, except `release-health` is disabled
     "backtrace",
@@ -128,7 +129,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "569f0962b645e400b65290cec99c40af7cbef128" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "89d4ee3ff11cf4f565e61a6630c6738086230a55" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }
