@@ -60,8 +60,9 @@ function(region) {
       checks: {
         fetch_materials: true,
         environment_variables: {
-          // Required for checkruns.
-          GITHUB_TOKEN: '{{SECRET:[devinfra-github][token]}}',
+          // Required for checkruns2.
+          GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
+          GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
         },
         jobs: {
           checks: {
