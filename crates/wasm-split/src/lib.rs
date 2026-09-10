@@ -42,7 +42,14 @@ pub struct SplitResult {
     /// The build id embedded in the module.
     pub build_id: Vec<u8>,
     /// The path the main module resolves to.
+    ///
+    /// This is only written to if the module changed, see `main_written`.
     pub main_output: PathBuf,
+    /// Whether the main module was written to `main_output`.
+    ///
+    /// The module is left alone if it already had a build id and neither
+    /// stripping nor an external dwarf url changed it.
+    pub main_written: bool,
     /// The path the debug companion file was written to, if any.
     pub debug_output: Option<PathBuf>,
 }
@@ -145,6 +152,7 @@ pub fn split(opts: SplitOptions) -> anyhow::Result<SplitResult> {
     Ok(SplitResult {
         build_id,
         main_output,
+        main_written: should_write_main_module,
         debug_output: opts.debug_out,
     })
 }
