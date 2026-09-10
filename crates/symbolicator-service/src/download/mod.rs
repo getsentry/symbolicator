@@ -810,7 +810,7 @@ impl<'a> SymRequest<'a> {
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|val| val.to_str().ok()?.parse().ok())
         {
-            self.measure.add_size(content_length);
+            self.measure.set_size(content_length);
         }
 
         let headers: ::sentry::protocol::value::Map<_, ::sentry::protocol::Value> = response
@@ -1022,12 +1022,11 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
             .store(num_streams, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Adds the passed size to the download's known total size.
+    /// Set the total size of the file being downloaded (before decompression).
     ///
     /// This value will be used to compute the `download_ratio` metric.
-    pub fn add_size(&self, size: u64) {
-        self.size
-            .fetch_add(size, std::sync::atomic::Ordering::Relaxed);
+    pub fn set_size(&self, size: u64) {
+        self.size.store(size, std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn set_compression(&self, compression: compression::Compression) {
