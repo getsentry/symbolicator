@@ -805,12 +805,9 @@ impl<'a> SymRequest<'a> {
         let response = request
             .await
             .map_err(|_| CacheError::Timeout(self.limits.timeouts.head))??;
-        if let Some(content_length) = response
-            .headers()
-            .get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|val| val.to_str().ok()?.parse().ok())
-        {
-            self.measure.set_size(content_length);
+
+        if let Some(total_size) = Self::total_size(&response) {
+            self.measure.set_size(total_size);
         }
 
         let headers: ::sentry::protocol::value::Map<_, ::sentry::protocol::Value> = response
@@ -830,6 +827,24 @@ impl<'a> SymRequest<'a> {
             measure: self.measure,
             response,
         })
+    }
+
+    /// Returns the total size of the file on the server, if known.
+    ///
+    /// If the response contains a range, we take its total length as
+    /// authoritative. Otherwise, we try the content length header.
+    fn total_size(response: &reqwest::Response) -> Option<u64> {
+        if let Some(range) = partial::BytesContentRange::from_response(response) {
+            return Some(range.ok()?.total_size);
+        }
+
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)?
+            .to_str()
+            .ok()?
+            .parse()
+            .ok()
     }
 }
 
