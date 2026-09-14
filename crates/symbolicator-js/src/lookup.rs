@@ -44,6 +44,7 @@ use symbolicator_sources::{
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
 use symbolicator_service::caching::{CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher};
 use symbolicator_service::download::DownloadService;
+use symbolicator_service::metric;
 use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
 use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
@@ -122,6 +123,10 @@ pub struct SourceMapLookup {
     /// Arbitrary source files keyed by their [`FileKey`].
     files_by_key: HashMap<FileKey, CachedFileEntry>,
 
+    /// The remaining budget for source file contents retained in `modules_by_abs_path` and
+    /// `files_by_key` over the lifetime of this request.
+    remaining_sources_size_budget: usize,
+
     /// The [`ArtifactFetcher`] responsible for fetching artifacts, from bundles or as individual files.
     fetcher: ArtifactFetcher,
 }
@@ -135,6 +140,7 @@ impl SourceMapLookup {
             sourcemap_caches,
             download_svc,
             api_lookup,
+            max_sources_size_per_request,
         } = service;
 
         let SymbolicateJsStacktraces {
@@ -188,6 +194,7 @@ impl SourceMapLookup {
         Self {
             modules_by_abs_path,
             files_by_key: Default::default(),
+            remaining_sources_size_budget: max_sources_size_per_request.unwrap_or(usize::MAX),
             fetcher,
         }
     }
@@ -226,10 +233,15 @@ impl SourceMapLookup {
         module.was_fetched = true;
 
         // we can’t have a mutable `module` while calling `fetch_module` :-(
-        let (minified_source, smcache) = self
+        let (mut minified_source, smcache) = self
             .fetcher
             .fetch_minified_and_sourcemap(module.abs_path.clone(), module.debug_id)
             .await;
+
+        apply_sources_budget(
+            &mut minified_source,
+            &mut self.remaining_sources_size_budget,
+        );
 
         // We use the sourcemap url as the base. If that is not available because there is no
         // sourcemap url, or it is an for embedded sourcemap, we fall back to the minified file.
@@ -252,7 +264,8 @@ impl SourceMapLookup {
     /// Gets the source file based on its [`FileKey`].
     pub async fn get_source_file(&mut self, key: FileKey) -> &CachedFileEntry {
         if !self.files_by_key.contains_key(&key) {
-            let file = self.fetcher.get_file(&key).await;
+            let mut file = self.fetcher.get_file(&key).await;
+            apply_sources_budget(&mut file, &mut self.remaining_sources_size_budget);
             self.files_by_key.insert(key.clone(), file);
         }
         self.files_by_key.get(&key).expect("we should have a file")
@@ -414,6 +427,27 @@ impl fmt::Display for CachedFileUri {
             CachedFileUri::Embedded => f.write_str("<embedded>"),
         }
     }
+}
+
+/// Accounts the size of the file in `entry` against the per-request sources budget.
+///
+/// If the file does not fit into the remaining budget, the entry is replaced by an error,
+/// so that the file is not retained for the rest of the request.
+fn apply_sources_budget(entry: &mut CachedFileEntry, remaining_budget: &mut usize) {
+    let Ok(file) = &entry.entry else {
+        return;
+    };
+
+    let len = file.contents.as_ref().map_or(0, |contents| contents.len());
+    if len > *remaining_budget {
+        metric!(counter("js.sources_budget_exceeded") += 1);
+        entry.entry = Err(CacheError::SizeExceeded(String::from(
+            "Per-request sources size budget exceeded",
+        )));
+        return;
+    }
+
+    *remaining_budget -= len;
 }
 
 #[derive(Clone, Debug)]
