@@ -52,7 +52,6 @@ pub fn object_file_status_from_cache_contents<T>(
         Err(CacheError::Timeout(_)) => ObjectFileStatus::Timeout,
         Err(CacheError::Malformed(_)) => ObjectFileStatus::Malformed,
         Err(CacheError::Unsupported(_)) => ObjectFileStatus::Unsupported,
-        Err(CacheError::SizeExceeded(_)) => ObjectFileStatus::Other,
         Err(CacheError::InternalError) => ObjectFileStatus::Other,
     }
 }

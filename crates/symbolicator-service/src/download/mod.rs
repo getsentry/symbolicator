@@ -318,7 +318,6 @@ impl DownloadService {
                 Err(CacheError::Malformed(_)) => "malformed",
                 Err(CacheError::Unsupported(_)) => "unsupported",
                 Err(CacheError::InternalError) => "internalerror",
-                Err(CacheError::SizeExceeded(_)) => "sizeexceeded",
             };
             metric!(counter("service.builtin_source.download") += 1, "source" => source_metric_key, "status" => status);
         }

@@ -47,11 +47,6 @@ pub enum CacheError {
     /// [here](https://github.com/getsentry/symbolic/issues/871).
     #[error("unsupported: {0}")]
     Unsupported(String),
-    /// A size limit was exceeded.
-    ///
-    /// For example, the `SourceMapLookup` - constructed per request - exceeded its size limit.
-    #[error("size exceeded")]
-    SizeExceeded(String),
     /// An unexpected error in symbolicator itself.
     ///
     /// This variant is not intended to be persisted to or read from caches.
@@ -90,8 +85,8 @@ impl CacheError {
     /// * In all other cases, it writes the corresponding marker, followed by the error
     ///   details, and truncates the file.
     pub async fn write(&self, file: &mut File) -> Result<(), io::Error> {
-        if let Self::InternalError | Self::SizeExceeded(_) = self {
-            tracing::error!("A `CacheError::{self:?}` should never be written out");
+        if let Self::InternalError = self {
+            tracing::error!("A `CacheError::InternalError` should never be written out");
             return Ok(());
         }
         file.rewind().await?;
@@ -121,7 +116,7 @@ impl CacheError {
                 file.write_all(Self::UNSUPPORTED_MARKER).await?;
                 file.write_all(details.as_bytes()).await?;
             }
-            CacheError::InternalError | CacheError::SizeExceeded(_) => {
+            CacheError::InternalError => {
                 unreachable!("this was already handled above");
             }
         }
