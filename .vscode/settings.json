@@ -5,10 +5,9 @@
   "editor.formatOnType": true,
   "editor.tabSize": 4,
   "editor.rulers": [100],
-  "files.autoSave": "afterDelay",
+  "files.autoSave": "onWindowChange",
   "files.trimTrailingWhitespace": true,
   "files.insertFinalNewline": true,
-  "files.autoSaveDelay": 10,
 
   // Rust configuration
   "rust-client.channel": "stable",
@@ -22,5 +21,5 @@
 
   "[markdown]": {
     "editor.rulers": [80]
-  },
+  }
 }
