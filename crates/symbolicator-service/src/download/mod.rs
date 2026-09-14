@@ -802,9 +802,13 @@ impl<'a> SymRequest<'a> {
         // The head requests can still be tracked individually.
         let request = measure_connect_time(self.source_name, request);
 
-        let response = request
-            .await
-            .map_err(|_| CacheError::Timeout(self.limits.timeouts.head))??;
+        let response = request.await.map_err(|_| {
+            tracing::warn!(
+                timeout = %humantime::format_duration(self.limits.timeouts.head),
+                "HEAD request timed out"
+            );
+            CacheError::Timeout(self.limits.timeouts.head)
+        })??;
 
         if let Some(total_size) = Self::total_size(&response) {
             self.measure.set_size(total_size);
@@ -1182,6 +1186,12 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 "streams" => streams,
                 "compression" => compression,
             );
+        }
+
+        if matches!(self.state, MeasureState::Pending) {
+            let completion = (raw_bytes_transferred as f64) / (size as f64);
+            let completion = completion.is_finite().then_some(completion);
+            tracing::warn!(completion, "download timed out");
         }
     }
 }
