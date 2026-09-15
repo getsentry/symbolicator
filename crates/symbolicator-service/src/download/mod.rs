@@ -1191,7 +1191,12 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
         if matches!(self.state, MeasureState::Pending) {
             let completion = (raw_bytes_transferred as f64) / (size as f64);
             let completion = completion.is_finite().then_some(completion);
-            tracing::warn!(completion, "download timed out");
+            tracing::warn!(
+                completion,
+                transferred = raw_bytes_transferred,
+                size,
+                "download timed out"
+            );
         }
     }
 }
