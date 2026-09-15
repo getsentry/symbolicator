@@ -875,6 +875,9 @@ settings in this case.</p>
   Set it to <code>null</code> to turn off the limit. Defaults to 120.</li>
 <li><code>object_file_max_decompressed_source_size</code>: The maximum decompressed size of an individual
   source file read from a source/artifact bundle.</li>
+<li><code>js_max_sources_size_per_request</code>: The maximum aggregate size of all source and sourcemap
+  files kept in memory for a single JS symbolication request. Files that would exceed this
+  budget are treated as not found. Set it to <code>null</code> to turn off the limit. Defaults to 1GiB.</li>
 </ul>
 <blockquote>
 <p>All time units for the following configuration settings can be either a time
