@@ -675,7 +675,7 @@ impl Default for Config {
             object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
             // Keep in sync with Sentry's `MAX_SOURCE_FILE_SIZE` and https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
             object_file_max_decompressed_source_size: Some(1024 * 1024 * 1024),
-            js_max_sources_size_per_request: Some(1024 * 1024 * 1024),
+            js_max_sources_size_per_request: Some(2 * 1024 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
             max_download_size: Some(15 * 1024 * 1024 * 1024),
         }
