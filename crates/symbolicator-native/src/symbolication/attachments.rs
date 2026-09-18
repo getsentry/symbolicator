@@ -20,7 +20,8 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
-    let mut http_remote_file = HttpRemoteFile::from_url(Url::parse(&storage_url)?, true);
+    let verify_ssl = false;
+    let mut http_remote_file = HttpRemoteFile::from_url(Url::parse(&storage_url)?, verify_ssl);
 
     if let Some(token) = storage_token {
         http_remote_file = http_remote_file.bearer_auth(&token);
