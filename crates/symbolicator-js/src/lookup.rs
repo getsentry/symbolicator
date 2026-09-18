@@ -44,6 +44,7 @@ use symbolicator_sources::{
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
 use symbolicator_service::caching::{CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher};
 use symbolicator_service::download::DownloadService;
+use symbolicator_service::metric;
 use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
 use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
@@ -135,6 +136,7 @@ impl SourceMapLookup {
             sourcemap_caches,
             download_svc,
             api_lookup,
+            max_sources_size_per_request,
         } = service;
 
         let SymbolicateJsStacktraces {
@@ -183,6 +185,8 @@ impl SourceMapLookup {
             metrics,
 
             scraping_attempts: Default::default(),
+
+            remaining_sources_size_budget: max_sources_size_per_request.unwrap_or(usize::MAX),
         };
 
         Self {
@@ -252,7 +256,8 @@ impl SourceMapLookup {
     /// Gets the source file based on its [`FileKey`].
     pub async fn get_source_file(&mut self, key: FileKey) -> &CachedFileEntry {
         if !self.files_by_key.contains_key(&key) {
-            let file = self.fetcher.get_file(&key).await;
+            let mut file = self.fetcher.get_file(&key).await;
+            self.fetcher.apply_sources_budget(&mut file);
             self.files_by_key.insert(key.clone(), file);
         }
         self.files_by_key.get(&key).expect("we should have a file")
@@ -552,6 +557,9 @@ struct ArtifactFetcher {
     used_artifact_bundles: HashSet<SentryFileId>,
 
     scraping_attempts: Vec<JsScrapingAttempt>,
+
+    /// The remaining budget for source file contents retained over the lifetime of this request.
+    remaining_sources_size_budget: usize,
 }
 
 impl ArtifactFetcher {
@@ -573,7 +581,7 @@ impl ArtifactFetcher {
         };
 
         // Fetch the minified file first
-        let minified_source = self.get_file(&key).await;
+        let mut minified_source = self.get_file(&key).await;
         if minified_source.entry.is_err() {
             self.metrics
                 .record_not_found(SourceFileType::Source, debug_id.is_some());
@@ -589,6 +597,11 @@ impl ArtifactFetcher {
                     "Failed to fetch source with debug id"
                 );
             }
+        }
+
+        self.apply_sources_budget(&mut minified_source);
+        if matches!(minified_source.entry, Err(CacheError::NotFound)) {
+            return (minified_source, None);
         }
 
         // Attach the minified file to the scope as a context
@@ -695,6 +708,25 @@ impl ArtifactFetcher {
             .await;
 
         (minified_source, Some(smcache))
+    }
+
+    /// Accounts the size of the file in `entry` against the per-request sources budget.
+    ///
+    /// If the file does not fit into the remaining budget, the entry is replaced by an error,
+    /// so that the file is not retained for the rest of the request.
+    fn apply_sources_budget(&mut self, entry: &mut CachedFileEntry) {
+        let Ok(file) = &entry.entry else {
+            return;
+        };
+
+        let len = file.contents.as_ref().map_or(0, |contents| contents.len());
+        if len > self.remaining_sources_size_budget {
+            metric!(counter("js.sources_budget_exceeded") += 1);
+            entry.entry = Err(CacheError::NotFound);
+            return;
+        }
+
+        self.remaining_sources_size_budget -= len;
     }
 
     /// Fetches an arbitrary file using its `abs_path`,

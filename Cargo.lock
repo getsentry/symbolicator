@@ -3508,7 +3508,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -4752,7 +4752,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4767,7 +4767,7 @@ dependencies = [
 [[package]]
 name = "symbolic-cfi"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4777,7 +4777,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4789,7 +4789,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4820,7 +4820,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "bitflags",
  "cc",
@@ -4834,7 +4834,7 @@ dependencies = [
 [[package]]
 name = "symbolic-il2cpp"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4845,7 +4845,7 @@ dependencies = [
 [[package]]
 name = "symbolic-ppdb"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4860,7 +4860,7 @@ dependencies = [
 [[package]]
 name = "symbolic-sourcemapcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "itertools 0.14.0",
  "js-source-scopes",
@@ -4874,7 +4874,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=89d4ee3ff11cf4f565e61a6630c6738086230a55#89d4ee3ff11cf4f565e61a6630c6738086230a55"
+source = "git+https://github.com/getsentry/symbolic.git?rev=1a9dea6afe77db1e9062842a380468ee72925328#1a9dea6afe77db1e9062842a380468ee72925328"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -4887,7 +4887,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -4926,7 +4926,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "minidumper-child",
  "sentry",
@@ -4935,7 +4935,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "data-url",
  "futures",
@@ -4961,7 +4961,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -4995,7 +4995,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "futures",
  "insta",
@@ -5013,7 +5013,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -5068,7 +5068,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -5084,7 +5084,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5107,7 +5107,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "axum",
  "humantime",
@@ -5126,7 +5126,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -5156,7 +5156,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5963,7 +5963,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-split"
-version = "26.8.0"
+version = "26.9.0"
 dependencies = [
  "anyhow",
  "clap",

@@ -1,0 +1,40 @@
+---
+source: crates/symbolicator-js/tests/integration/sourcemap.rs
+expression: response
+---
+stacktraces:
+  - frames:
+      - function: add
+        filename: file1.js
+        module: file1
+        abs_path: "http://example.com/file1.js"
+        lineno: 3
+        colno: 9
+        data:
+          sourcemap: "http://example.com/file.min.js.map"
+          sourcemap_origin: "sentry://project_debug_file/2"
+          resolved_with: release
+          symbolicated: true
+raw_stacktraces:
+  - frames:
+      - filename: file.min.js
+        abs_path: "http://example.com/file.min.js"
+        lineno: 1
+        colno: 39
+        context_line: "function add(a,b){\"use strict\";return a+b}function multiply(a,b){\"use strict\";return a*b}function divide(a,b){\"use strict\";try{return multip {snip}"
+        post_context:
+          - //@ sourceMappingURL=file.min.js.map
+        data:
+          symbolicated: false
+errors:
+  - abs_path: "http://example.com/file.min.js"
+    type: missing_source_content
+    source: "http://example.com/file1.js"
+    sourcemap: "http://example.com/file.min.js.map"
+scraping_attempts:
+  - url: "http://example.com/file.min.js"
+    status: not_attempted
+  - url: "http://example.com/file.min.js.map"
+    status: not_attempted
+  - url: "http://example.com/file1.js"
+    status: not_attempted

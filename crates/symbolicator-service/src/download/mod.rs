@@ -784,6 +784,7 @@ impl<'a> SymRequest<'a> {
     }
 
     /// Executes the request and returns the corresponding [`SymResponse`].
+    #[tracing::instrument(skip(self), fields(source_name = self.source_name))]
     async fn execute(mut self) -> CacheContents<SymResponse<'a>> {
         use reqwest::header::ACCEPT_ENCODING;
 
@@ -801,9 +802,17 @@ impl<'a> SymRequest<'a> {
         // The head requests can still be tracked individually.
         let request = measure_connect_time(self.source_name, request);
 
-        let response = request
-            .await
-            .map_err(|_| CacheError::Timeout(self.limits.timeouts.head))??;
+        let response = request.await.map_err(|_| {
+            tracing::warn!(
+                timeout = %humantime::format_duration(self.limits.timeouts.head),
+                "HEAD request timed out"
+            );
+            CacheError::Timeout(self.limits.timeouts.head)
+        })??;
+
+        if let Some(total_size) = Self::total_size(&response) {
+            self.measure.set_size(total_size);
+        }
 
         let headers: ::sentry::protocol::value::Map<_, ::sentry::protocol::Value> = response
             .headers()
@@ -822,6 +831,24 @@ impl<'a> SymRequest<'a> {
             measure: self.measure,
             response,
         })
+    }
+
+    /// Returns the total size of the file on the server, if known.
+    ///
+    /// If the response contains a range, we take its total length as
+    /// authoritative. Otherwise, we try the content length header.
+    fn total_size(response: &reqwest::Response) -> Option<u64> {
+        if let Some(range) = partial::BytesContentRange::from_response(response) {
+            return Some(range.ok()?.total_size);
+        }
+
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)?
+            .to_str()
+            .ok()?
+            .parse()
+            .ok()
     }
 }
 
@@ -922,9 +949,15 @@ impl SymResponse<'_> {
 
         let body = match decompress_with {
             // No compression -> no need to go through the decompression layer dance.
-            compression::Compression::Identity => Either::Left(body),
+            compression::Compression::Identity => Either::Left(
+                body.inspect_ok(|chunk| self.measure.add_raw_bytes_transferred(chunk.len() as u64)),
+            ),
             _ => {
-                let body = tokio_util::io::StreamReader::new(body.map_err(std::io::Error::other));
+                let body = tokio_util::io::StreamReader::new(
+                    body.map_err(std::io::Error::other).inspect_ok(|chunk| {
+                        self.measure.add_raw_bytes_transferred(chunk.len() as u64)
+                    }),
+                );
                 let body = decompress_with.decompress(body);
                 // Unfortunately we need to convert back to a `Stream` here, because `WriteStream`
                 // requires an owned `Buf`. This is roughly equivalent to what reqwest does internally.
@@ -948,14 +981,28 @@ enum MeasureState {
 }
 
 /// A guard to [`measure`] the amount of time it takes to download a source and limit the download size.
-/// This guard is also capable of calculating and reporting the throughput of the connection. Two metrics are
-/// emitted if `bytes_transferred` is set:
+/// This guard is also capable of calculating and reporting the throughput of the connection.
 ///
-/// 1. Amount of time taken to complete the measurement
-/// 2. Connection thoroughput (bytes transferred / time taken to complete)
+/// # Metrics emitted
+/// - `download_duration` is always emitted.
+/// - If `bytes_transferred` is set:
+///   - `download_size` (number of bytes transferred)
+///   - `download_throughput` (number of bytes transferred/ time taken to complete)
+/// - If `raw_bytes_transferred` is set:
+///   - `download_size_raw` (number of raw bytes transferred)
+///   - `download_throughput_raw` (number of raw bytes transferred/ time taken to complete)
+/// - If `size` is also set:
+///   - `download_ratio` (number of raw bytes transferred / size)
 ///
-/// If `bytes_transferred` is not set, then only the first metric (amount of time taken) is
-/// recorded.
+/// # `bytes_transferred` vs `raw_bytes_transferred`
+/// `raw_bytes_transferred` is the number of bytes transferred before decompression, i.e.
+/// what we actually received over the connection. This is used in the calculation of the
+/// download ratio because the only size we know is the compressed size sent by the server.
+///
+/// `bytes_transferred` is the size _after_ decompression. This is the size that matters for
+/// size limits, because decompressed files are what we actually store.
+///
+/// If the source file isn't compressed then the two values coincide.
 pub struct MeasureSourceDownloadGuard<'a> {
     state: MeasureState,
     task_name: &'a str,
@@ -963,8 +1010,10 @@ pub struct MeasureSourceDownloadGuard<'a> {
     creation_time: Instant,
     bytes_transferred: AtomicU64,
     max_bytes_transferred: u64,
+    raw_bytes_transferred: AtomicU64,
     streams: AtomicUsize,
     compression: AtomicU8,
+    size: AtomicU64,
 }
 
 impl<'a> MeasureSourceDownloadGuard<'a> {
@@ -976,9 +1025,11 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
             source_name,
             bytes_transferred: AtomicU64::new(0),
             max_bytes_transferred,
+            raw_bytes_transferred: AtomicU64::new(0),
             creation_time: Instant::now(),
             streams: AtomicUsize::new(0),
             compression: AtomicU8::new(u8::MAX),
+            size: AtomicU64::new(0),
         }
     }
 
@@ -988,6 +1039,13 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
     pub fn set_streams(&self, num_streams: usize) {
         self.streams
             .store(num_streams, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Set the total size of the file being downloaded (before decompression).
+    ///
+    /// This value will be used to compute the `download_ratio` metric.
+    pub fn set_size(&self, size: u64) {
+        self.size.store(size, std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn set_compression(&self, compression: compression::Compression) {
@@ -1021,6 +1079,11 @@ impl<'a> MeasureSourceDownloadGuard<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn add_raw_bytes_transferred(&self, additional_bytes: u64) {
+        self.raw_bytes_transferred
+            .fetch_add(additional_bytes, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Marks the download as terminated.
@@ -1082,8 +1145,57 @@ impl Drop for MeasureSourceDownloadGuard<'_> {
                 "task_name" => self.task_name.to_owned(),
                 "status" => status.to_owned(),
                 "source" => self.source_name.to_owned(),
+                "streams" => streams.clone(),
+                "compression" => compression,
+            );
+        }
+
+        let raw_bytes_transferred = *self.raw_bytes_transferred.get_mut();
+        if raw_bytes_transferred > 0 {
+            let throughput = (raw_bytes_transferred as u128)
+                .checked_div(duration.as_millis())
+                .and_then(|t| t.try_into().ok())
+                .unwrap_or(raw_bytes_transferred);
+
+            metric!(
+                distribution("download_throughput_raw") = throughput as f64,
+                "task_name" => self.task_name.to_owned(),
+                "status" => status.to_owned(),
+                "source" => self.source_name.to_owned(),
+                "streams" => streams.clone(),
+                "compression" => compression,
+            );
+
+            metric!(
+                distribution("download_size_raw") = raw_bytes_transferred as f64,
+                "task_name" => self.task_name.to_owned(),
+                "status" => status.to_owned(),
+                "source" => self.source_name.to_owned(),
+                "streams" => streams.clone(),
+                "compression" => compression,
+            );
+        }
+
+        let size = *self.size.get_mut();
+        if size > 0 {
+            metric!(
+                distribution("download_ratio") = raw_bytes_transferred as f64 / size as f64,
+                "task_name" => self.task_name.to_owned(),
+                "status" => status.to_owned(),
+                "source" => self.source_name.to_owned(),
                 "streams" => streams,
                 "compression" => compression,
+            );
+        }
+
+        if matches!(self.state, MeasureState::Pending) {
+            let completion = (raw_bytes_transferred as f64) / (size as f64);
+            let completion = completion.is_finite().then_some(completion);
+            tracing::warn!(
+                completion,
+                transferred = raw_bytes_transferred,
+                size,
+                "download timed out"
             );
         }
     }

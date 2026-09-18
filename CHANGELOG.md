@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 26.9.0
 
 ### Bug Fixes 🐛
 
 - Temp files are now always created in the configured cache directory. ([#2028](https://github.com/getsentry/symbolicator/pull/2028))
 - Filter bogus entry point frames after `__clone` and `__clone3` frames. ([#2040](https://github.com/getsentry/symbolicator/pull/2040))
 - Filter nullish outermost frames from stack traces. ([#2041](https://github.com/getsentry/symbolicator/pull/2041))
+- Add setting `js_max_sources_size_per_request` to limit the size of js sources kept in memory per request. ([#2048](https://github.com/getsentry/symbolicator/pull/2048))
 
 ## 26.8.0
 
