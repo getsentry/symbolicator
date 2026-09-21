@@ -30,7 +30,7 @@ async fn test_attachment_download() {
             None,
             Scope::Global,
             AttachmentFile::Remote {
-                storage_url: attachment_server.url("/the_crash_report.txt").to_string(),
+                storage_url: attachment_server.url("/the_crash_report.txt"),
                 storage_token: None,
             },
             Arc::new([source]),

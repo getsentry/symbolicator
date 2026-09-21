@@ -1,9 +1,11 @@
 use std::fs::File;
 use std::sync::Arc;
 
-use symbolicator_service::download::{DownloadService, fetch_file};
+use symbolicator_service::{
+    caching::CacheError,
+    download::{DownloadService, fetch_file},
+};
 use symbolicator_sources::{AttachmentRemoteFile, SentryToken};
-use url::Url;
 
 use crate::interface::AttachmentFile;
 
@@ -11,7 +13,7 @@ use crate::interface::AttachmentFile;
 pub async fn download_attachment(
     download_svc: Arc<DownloadService>,
     file: AttachmentFile,
-) -> anyhow::Result<File> {
+) -> Result<File, CacheError> {
     let (storage_url, storage_token) = match file {
         AttachmentFile::Local(file) => return Ok(file),
         AttachmentFile::Remote {
@@ -21,7 +23,7 @@ pub async fn download_attachment(
     };
 
     let remote_file = AttachmentRemoteFile {
-        url: Url::parse(&storage_url)?,
+        url: storage_url,
         token: storage_token.map(SentryToken),
     };
 
@@ -74,7 +76,7 @@ mod tests {
             );
             let server = Server::with_router(router);
             let attachment = AttachmentFile::Remote {
-                storage_url: server.url("/attachment?signature=abc%2F123").to_string(),
+                storage_url: server.url("/attachment?signature=abc%2F123"),
                 storage_token: token,
             };
             let mut file = download_attachment(downloader.clone(), attachment)
