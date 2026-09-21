@@ -259,10 +259,13 @@ impl SentryDownloader {
         file_source: &SentryRemoteFile,
         destination: impl Destination,
     ) -> CacheContents<Compression> {
-        let credentials = file_source
-            .use_credentials()
-            .then_some(&file_source.source.credentials);
-        self.download_url(source_name, file_source.url(), credentials, destination)
+        let url = file_source.url();
+        tracing::debug!("Fetching Sentry artifact from {}", url);
+        let mut builder = self.client.get(url);
+        if file_source.use_credentials() {
+            builder = authenticate(builder, &file_source.source.credentials);
+        }
+        self.download_request(source_name, builder, destination)
             .await
     }
 
@@ -273,29 +276,21 @@ impl SentryDownloader {
         file: &AttachmentRemoteFile,
         destination: impl Destination,
     ) -> CacheContents<Compression> {
-        let credentials = file.token.clone().map(SentryCredentials::Token);
-        self.download_url(
-            source_name,
-            file.url.clone(),
-            credentials.as_ref(),
-            destination,
-        )
-        .await
+        tracing::debug!("Fetching Sentry attachment from {}", file.url);
+        let mut builder = self.client.get(file.url.clone());
+        if let Some(token) = &file.token {
+            builder = builder.bearer_auth(&token.0);
+        }
+        self.download_request(source_name, builder, destination)
+            .await
     }
 
-    async fn download_url(
+    async fn download_request(
         &self,
         source_name: &str,
-        url: Url,
-        credentials: Option<&SentryCredentials>,
+        builder: RequestBuilder,
         destination: impl Destination,
     ) -> CacheContents<Compression> {
-        tracing::debug!("Fetching Sentry artifact from {}", url);
-        let mut builder = self.client.get(url);
-        if let Some(credentials) = credentials {
-            builder = authenticate(builder, credentials);
-        }
-
         super::download_reqwest(
             source_name,
             builder,
