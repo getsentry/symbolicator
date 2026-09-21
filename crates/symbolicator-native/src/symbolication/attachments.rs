@@ -53,7 +53,7 @@ mod tests {
             connect_to_reserved_ips: false,
             ..Default::default()
         };
-        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
+        let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
 
         for token in [None, Some("attachment-token".to_owned())] {
             let expected_token = token.clone();
@@ -79,7 +79,7 @@ mod tests {
                 storage_url: server.url("/attachment?signature=abc%2F123"),
                 storage_token: token,
             };
-            let mut file = download_attachment(downloader.clone(), attachment)
+            let mut file = download_attachment(Arc::clone(&download_svc), attachment)
                 .await
                 .unwrap();
             let mut contents = String::new();
