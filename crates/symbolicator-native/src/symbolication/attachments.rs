@@ -4,6 +4,7 @@ use std::sync::Arc;
 use symbolicator_service::{
     caching::CacheError,
     download::{DownloadService, fetch_file},
+    utils::fs,
 };
 use symbolicator_sources::{AttachmentRemoteFile, SentryToken};
 
@@ -27,7 +28,7 @@ pub async fn download_attachment(
         token: storage_token.map(SentryToken),
     };
 
-    let mut temp_file = tempfile::NamedTempFile::new()?;
+    let mut temp_file = fs::tempfile(download_svc.tmp_dir.as_deref())?;
 
     fetch_file(download_svc, remote_file.into(), &mut temp_file).await?;
 
