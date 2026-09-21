@@ -2,7 +2,7 @@ use std::fs::File;
 use std::sync::Arc;
 
 use symbolicator_service::download::{DownloadService, fetch_file};
-use symbolicator_sources::{HttpRemoteFile, RemoteFile};
+use symbolicator_sources::{AttachmentRemoteFile, SentryToken};
 use url::Url;
 
 use crate::interface::AttachmentFile;
@@ -20,20 +20,69 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
-    let mut http_remote_file = HttpRemoteFile::from_url(Url::parse(&storage_url)?, true);
-
-    if let Some(token) = storage_token {
-        http_remote_file = http_remote_file.bearer_auth(&token);
-    }
+    let remote_file = AttachmentRemoteFile {
+        url: Url::parse(&storage_url)?,
+        token: storage_token.map(SentryToken),
+    };
 
     let mut temp_file = tempfile::NamedTempFile::new()?;
 
-    fetch_file(
-        download_svc,
-        RemoteFile::Http(http_remote_file),
-        &mut temp_file,
-    )
-    .await?;
+    fetch_file(download_svc, remote_file.into(), &mut temp_file).await?;
 
     Ok(temp_file.into_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+
+    use axum::Router;
+    use axum::http::{HeaderMap, Uri, header};
+    use axum::routing::get;
+    use symbolicator_service::config::Config;
+    use symbolicator_test::Server;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn download_internal_attachment() {
+        symbolicator_test::setup();
+        let config = Config {
+            connect_to_reserved_ips: false,
+            ..Default::default()
+        };
+        let downloader = DownloadService::new(&config, tokio::runtime::Handle::current());
+
+        for token in [None, Some("attachment-token".to_owned())] {
+            let expected_token = token.clone();
+            let router = Router::new().route(
+                "/attachment",
+                get(move |headers: HeaderMap, uri: Uri| async move {
+                    assert_eq!(uri.query(), Some("signature=abc%2F123"));
+                    let expected_auth = expected_token.map(|token| format!("Bearer {token}"));
+                    assert_eq!(
+                        headers
+                            .get(header::AUTHORIZATION)
+                            .map(|h| h.to_str().unwrap()),
+                        expected_auth.as_deref(),
+                    );
+                    (
+                        [(header::CONTENT_ENCODING, "zstd")],
+                        zstd::bulk::compress(b"attachment contents", 0).unwrap(),
+                    )
+                }),
+            );
+            let server = Server::with_router(router);
+            let attachment = AttachmentFile::Remote {
+                storage_url: server.url("/attachment?signature=abc%2F123").to_string(),
+                storage_token: token,
+            };
+            let mut file = download_attachment(downloader.clone(), attachment)
+                .await
+                .unwrap();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+            assert_eq!(contents, "attachment contents");
+        }
+    }
 }

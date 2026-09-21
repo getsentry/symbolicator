@@ -5,15 +5,15 @@
 
 use std::fmt;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
     CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile, GcsRemoteFile,
-    HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SourceFilters, SourceId, SourceIndex,
-    get_directory_paths,
+    HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SentryToken, SourceFilters, SourceId,
+    SourceIndex, get_directory_paths,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -141,13 +141,26 @@ impl Iterator for SourceLocationIter<'_> {
     }
 }
 
-/// Represents a single Debug Information File stored on a source.
-///
-/// This joins the file location together with a [`SourceConfig`](crate::SourceConfig) and thus
-/// provides all information to retrieve the DIF from its source.  The file could be any DIF type:
-/// an auxiliary DIF or an object file.
+/// A trusted attachment stored by Sentry, independent of symbol source configuration.
+#[derive(Debug, Clone)]
+pub struct AttachmentRemoteFile {
+    /// The complete download URL, including any signature in the query string.
+    pub url: Url,
+    /// Optional bearer credentials for the attachment.
+    pub token: Option<SentryToken>,
+}
+
+impl From<AttachmentRemoteFile> for RemoteFile {
+    fn from(file: AttachmentRemoteFile) -> Self {
+        Self::Attachment(file)
+    }
+}
+
+/// A file retrievable from a symbol source or trusted attachment storage.
 #[derive(Debug, Clone)]
 pub enum RemoteFile {
+    /// An attachment stored by Sentry.
+    Attachment(AttachmentRemoteFile),
     /// A file on a filesystem source.
     Filesystem(FilesystemRemoteFile),
     /// A file on a gcs source.
@@ -163,6 +176,7 @@ pub enum RemoteFile {
 impl fmt::Display for RemoteFile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::Attachment(file) => write!(f, "Sentry attachment {}", file.url),
             Self::Sentry(s) => {
                 write!(f, "Sentry source '{}' file id '{}'", s.source.id, s.file_id)
             }
@@ -190,7 +204,7 @@ impl RemoteFile {
     /// Whether files from this source may be shared.
     pub fn is_public(&self) -> bool {
         match self {
-            Self::Sentry(_) => false,
+            Self::Attachment(_) | Self::Sentry(_) => false,
             Self::Http(x) => x.source.files.is_public,
             Self::S3(x) => x.source.files.is_public,
             Self::Gcs(x) => x.source.files.is_public,
@@ -201,6 +215,7 @@ impl RemoteFile {
     /// A specific cache key for this [`RemoteFile`].
     pub fn cache_key(&self) -> String {
         match self {
+            Self::Attachment(file) => format!("sentry:attachments.{}", file.url),
             Self::Sentry(x) => {
                 format!("{}.{}.sentryinternal", x.source.id, x.file_id)
             }
@@ -225,6 +240,11 @@ impl RemoteFile {
     /// configuration which are available to all requests.
     pub fn source_id(&self) -> &SourceId {
         match self {
+            Self::Attachment(_) => {
+                static SOURCE_ID: LazyLock<SourceId> =
+                    LazyLock::new(|| SourceId::new("sentry:attachments"));
+                &SOURCE_ID
+            }
             Self::Sentry(x) => &x.source.id,
             Self::Http(x) => &x.source.id,
             Self::S3(x) => &x.source.id,
@@ -246,6 +266,7 @@ impl RemoteFile {
             return self.source_id().as_str();
         }
         match self {
+            Self::Attachment(..) => "sentry:attachments",
             Self::Sentry(..) => "sentry",
             Self::S3(..) => "s3",
             Self::Gcs(..) => "gcs",
@@ -267,6 +288,7 @@ impl RemoteFile {
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
     pub fn uri(&self) -> RemoteFileUri {
         match self {
+            Self::Attachment(file) => file.url.as_str().into(),
             Self::Sentry(file_source) => file_source.uri(),
             Self::Http(file_source) => file_source.uri(),
             Self::S3(file_source) => file_source.uri(),
@@ -284,6 +306,7 @@ impl RemoteFile {
     /// * A placeholder string for the filesystem.
     pub fn host(&self) -> String {
         match self {
+            RemoteFile::Attachment(file) => file.url.host_str().unwrap_or_default().to_owned(),
             RemoteFile::Filesystem(source) => source.host(),
             RemoteFile::Gcs(source) => source.host(),
             RemoteFile::Http(source) => source.host(),
@@ -302,6 +325,7 @@ impl RemoteFile {
             // the file through the Python->FileStore->GCS indirection,
             // or rather pay to save it twice so we can access GCS (shared cache) directly.
             RemoteFile::Sentry(_) => true,
+            RemoteFile::Attachment(_) => false,
             // This is most likely our scraped apple symbols, which are hosted on GCS directly, no
             // need to save them twice in shared cache.
             RemoteFile::Gcs(source) if source.source.id.as_str().starts_with("sentry:") => false,
