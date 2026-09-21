@@ -150,6 +150,12 @@ pub struct AttachmentRemoteFile {
     pub token: Option<SentryToken>,
 }
 
+impl AttachmentRemoteFile {
+    pub(crate) fn host(&self) -> String {
+        self.url.to_string()
+    }
+}
+
 impl From<AttachmentRemoteFile> for RemoteFile {
     fn from(file: AttachmentRemoteFile) -> Self {
         Self::Attachment(file)
@@ -306,7 +312,7 @@ impl RemoteFile {
     /// * A placeholder string for the filesystem.
     pub fn host(&self) -> String {
         match self {
-            RemoteFile::Attachment(file) => file.url.host_str().unwrap_or_default().to_owned(),
+            RemoteFile::Attachment(source) => source.host(),
             RemoteFile::Filesystem(source) => source.host(),
             RemoteFile::Gcs(source) => source.host(),
             RemoteFile::Http(source) => source.host(),
