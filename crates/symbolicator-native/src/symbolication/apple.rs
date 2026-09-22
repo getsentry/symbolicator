@@ -138,7 +138,7 @@ impl SymbolicationActor {
         scraping: ScrapingConfig,
         extract_variables: bool,
     ) -> Result<CompletedSymbolicationResponse> {
-        let report = download_attachment(&self.download_svc, report).await?;
+        let report = download_attachment(Arc::clone(&self.download_svc), report).await?;
         let (request, state) = self.parse_apple_crash_report(
             platform,
             scope,

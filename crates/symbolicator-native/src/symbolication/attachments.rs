@@ -1,16 +1,18 @@
 use std::fs::File;
+use std::sync::Arc;
 
-use futures::TryStreamExt;
-use symbolicator_service::caching::CacheError;
-use symbolicator_service::download::{self, DownloadService};
-use symbolicator_service::utils::fs;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt, BufWriter};
+use symbolicator_service::{
+    caching::CacheError,
+    download::{DownloadService, fetch_file},
+    utils::fs,
+};
+use symbolicator_sources::{AttachmentRemoteFile, SentryToken};
 
 use crate::interface::AttachmentFile;
 
 #[tracing::instrument(skip(download_svc))]
 pub async fn download_attachment(
-    download_svc: &DownloadService,
+    download_svc: Arc<DownloadService>,
     file: AttachmentFile,
 ) -> Result<File, CacheError> {
     let (storage_url, storage_token) = match file {
@@ -21,39 +23,69 @@ pub async fn download_attachment(
         } => (storage_url, storage_token),
     };
 
-    // TODO: maybe its worth using the actual `DownloadService` instead of straight going to the `trusted_client`.
-    // Doing so would in theory allow us to have retries and error report, as well as being able to
-    // download files in multiple chunks concurrently, but I don’t think our `objecstore` server currently
-    // supports range requests, and those would also mess with streaming decompression.
-    // Not to mention that using the `DownloadService` is not that straight forward.
-    download::retry(|| async {
-        let mut request = download_svc.trusted_client.get(&storage_url);
-        if let Some(token) = storage_token.as_ref() {
-            request = request.bearer_auth(token);
+    let remote_file = AttachmentRemoteFile {
+        url: storage_url,
+        token: storage_token.map(SentryToken),
+    };
+
+    let mut temp_file = fs::tempfile(download_svc.tmp_dir.as_deref())?;
+
+    fetch_file(download_svc, remote_file.into(), &mut temp_file).await?;
+
+    Ok(temp_file.into_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+
+    use axum::Router;
+    use axum::http::{HeaderMap, Uri, header};
+    use axum::routing::get;
+    use symbolicator_service::config::Config;
+    use symbolicator_test::Server;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn download_internal_attachment() {
+        symbolicator_test::setup();
+        let config = Config {
+            connect_to_reserved_ips: false,
+            ..Default::default()
+        };
+        let download_svc = DownloadService::new(&config, tokio::runtime::Handle::current());
+
+        for token in [None, Some("attachment-token".to_owned())] {
+            let expected_token = token.clone();
+            let router = Router::new().route(
+                "/attachment",
+                get(move |headers: HeaderMap, uri: Uri| async move {
+                    assert_eq!(uri.query(), Some("signature=abc%2F123"));
+                    let expected_auth = expected_token.map(|token| format!("Bearer {token}"));
+                    assert_eq!(
+                        headers
+                            .get(header::AUTHORIZATION)
+                            .map(|h| h.to_str().unwrap()),
+                        expected_auth.as_deref(),
+                    );
+                    (
+                        [(header::CONTENT_ENCODING, "zstd")],
+                        zstd::bulk::compress(b"attachment contents", 0).unwrap(),
+                    )
+                }),
+            );
+            let server = Server::with_router(router);
+            let attachment = AttachmentFile::Remote {
+                storage_url: server.url("/attachment?signature=abc%2F123"),
+                storage_token: token,
+            };
+            let mut file = download_attachment(Arc::clone(&download_svc), attachment)
+                .await
+                .unwrap();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+            assert_eq!(contents, "attachment contents");
         }
-        let response = request.send().await?;
-        if !response.status().is_success() {
-            return Err(download::GenericErrorHandler::handle_status(
-                &storage_url,
-                response.status(),
-            )
-            .await);
-        }
-
-        let mut stream = response.bytes_stream();
-
-        let file = fs::tempfile(download_svc.tmp_dir.as_deref())?.into_file();
-        let mut writer = BufWriter::new(tokio::fs::File::from_std(file));
-        while let Some(chunk) = stream.try_next().await? {
-            writer.write_all(&chunk).await?;
-        }
-        writer.flush().await?;
-        let mut file = writer.into_inner();
-        file.sync_data().await?;
-
-        file.rewind().await?;
-
-        Ok(file.into_std().await)
-    })
-    .await
+    }
 }

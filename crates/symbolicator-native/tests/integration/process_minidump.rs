@@ -107,7 +107,7 @@ async fn test_minidump_attachment_download() {
             platform: None,
             scope: Scope::Global,
             minidump_file: AttachmentFile::Remote {
-                storage_url: attachment_server.url("/the_minidump.dmp").to_string(),
+                storage_url: attachment_server.url("/the_minidump.dmp"),
                 storage_token: None,
             },
             sources: Arc::new([source]),

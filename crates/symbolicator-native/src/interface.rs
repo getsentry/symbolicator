@@ -18,6 +18,7 @@ use symbolicator_service::types::{
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
+use url::Url;
 
 use crate::memory::MemoryAccess;
 pub use crate::metrics::StacktraceOrigin;
@@ -79,7 +80,7 @@ pub enum AttachmentFile {
     Local(File),
     /// The attachment needs to be fetched from the remote url.
     Remote {
-        storage_url: String,
+        storage_url: Url,
         storage_token: Option<String>,
     },
 }

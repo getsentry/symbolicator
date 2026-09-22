@@ -13,7 +13,8 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use symbolicator_sources::{
-    ObjectId, RemoteFile, SentryCredentials, SentryFileId, SentryRemoteFile, SentrySourceConfig,
+    AttachmentRemoteFile, ObjectId, RemoteFile, SentryCredentials, SentryFileId, SentryRemoteFile,
+    SentrySourceConfig,
 };
 
 use super::{Destination, FileType};
@@ -260,12 +261,36 @@ impl SentryDownloader {
     ) -> CacheContents<Compression> {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);
-
         let mut builder = self.client.get(url);
         if file_source.use_credentials() {
             builder = authenticate(builder, &file_source.source.credentials);
         }
+        self.download_request(source_name, builder, destination)
+            .await
+    }
 
+    /// Downloads an attachment from trusted internal storage.
+    pub async fn download_attachment(
+        &self,
+        source_name: &str,
+        file: &AttachmentRemoteFile,
+        destination: impl Destination,
+    ) -> CacheContents<Compression> {
+        tracing::debug!("Fetching Sentry attachment from {}", file.url);
+        let mut builder = self.client.get(file.url.clone());
+        if let Some(token) = &file.token {
+            builder = builder.bearer_auth(&token.0);
+        }
+        self.download_request(source_name, builder, destination)
+            .await
+    }
+
+    async fn download_request(
+        &self,
+        source_name: &str,
+        builder: RequestBuilder,
+        destination: impl Destination,
+    ) -> CacheContents<Compression> {
         super::download_reqwest(
             source_name,
             builder,

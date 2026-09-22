@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::extract;
 use axum::response::Json;
+use reqwest::Url;
 use serde::Deserialize;
 
 use symbolicator_native::interface::{AttachmentFile, ProcessMinidump, RewriteRules};
@@ -39,12 +40,12 @@ pub struct SymbolicateAnyRequestBody {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SymbolicationRequest {
     Minidump {
-        storage_url: String,
+        storage_url: Url,
         storage_token: Option<String>,
         rewrite_first_module: RewriteRules,
     },
     AppleCrashreport {
-        storage_url: String,
+        storage_url: Url,
         storage_token: Option<String>,
     },
     // TODO: it should be possible to also support native, js and jvm requests here as well

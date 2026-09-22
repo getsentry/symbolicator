@@ -213,6 +213,11 @@ impl DownloadService {
             let temp = crate::utils::fs::tempfile(self.tmp_dir.as_deref())?;
             let mut destination = tokio::fs::File::from_std(temp.reopen()?);
             let result = match source {
+                RemoteFile::Attachment(source) => {
+                    self.sentry
+                        .download_attachment(source_name, source, &mut destination)
+                        .await
+                }
                 RemoteFile::Sentry(source) => {
                     self.sentry
                         .download_source(source_name, source, &mut destination)
