@@ -98,13 +98,12 @@ impl SourceMapService {
         lookup.record_metrics();
         record_stacktrace_metrics(platform, stats);
 
-        let (used_artifact_bundles, scraping_attempts) = lookup.into_records();
+        let scraping_attempts = lookup.into_scraping_attempts();
 
         CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
             errors: errors.into_iter().collect(),
-            used_artifact_bundles,
             scraping_attempts,
         }
     }

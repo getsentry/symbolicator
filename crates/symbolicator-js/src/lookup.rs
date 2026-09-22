@@ -22,7 +22,7 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -37,9 +37,7 @@ use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
 use symbolic::sourcemapcache::SourceMapCache;
-use symbolicator_sources::{
-    HttpRemoteFile, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
-};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile, RemoteFileUri, SentrySourceConfig};
 
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
 use symbolicator_service::caching::{CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher};
@@ -180,8 +178,6 @@ impl SourceMapLookup {
             artifact_bundles: Default::default(),
             individual_artifacts: Default::default(),
 
-            used_artifact_bundles: Default::default(),
-
             metrics,
 
             scraping_attempts: Default::default(),
@@ -268,19 +264,15 @@ impl SourceMapLookup {
         self.fetcher.record_metrics();
     }
 
-    /// Consumes `self` and returns the artifact bundles that were used and
-    /// the scraping attempts that were made.
-    pub fn into_records(mut self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+    /// Consumes `self` and returns the scraping attempts that were made.
+    pub fn into_scraping_attempts(mut self) -> Vec<JsScrapingAttempt> {
         // There is no guaranteed order on `scraping_attempts` in the response. We might
         // as well sort them here for consistency.
         self.fetcher
             .scraping_attempts
             .sort_by(|l, r| l.url.cmp(&r.url));
 
-        (
-            self.fetcher.used_artifact_bundles,
-            self.fetcher.scraping_attempts,
-        )
+        self.fetcher.scraping_attempts
     }
 }
 
@@ -553,8 +545,6 @@ struct ArtifactFetcher {
     artifact_bundles: ArtifactBundles,
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
-
-    used_artifact_bundles: HashSet<SentryFileId>,
 
     scraping_attempts: Vec<JsScrapingAttempt>,
 
