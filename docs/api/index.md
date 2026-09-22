@@ -80,7 +80,7 @@ Sources are ordered by priority. Each source needs at least two keys:
 
 - `id`: the ID of the source. This can be freely chosen and is used to identify
   cache files in the cache folder
-- `type`: defines the type of the source (`http`, `s3`, `gcs` or `sentry`)
+- `type`: defines the type of the source (`http`, `s3`, `gcs`, `azure` or `sentry`)
 
 These are common parameters that work on most symbol sources (except `sentry`):
 
@@ -152,6 +152,20 @@ similarly to `s3` but uses different credentials:
 - `private_key`: the GCS private key (base64 encoded and with optional PEM
   envelope)
 - `client_email`: the GCS client email for authentication
+
+## Azure Blob Storage Container
+
+This source connects to an Azure Blob Storage container and looks for symbols
+there. It behaves similarly to `s3` but authenticates with a Microsoft Entra
+service principal that needs the `Storage Blob Data Reader` role:
+
+- `type`: `"azure"`
+- `account`: the name of the storage account
+- `container`: the name of the blob container
+- `prefix`: a path prefix to put in front of all keys (eg: `/windows`)
+- `tenant_id`: the Microsoft Entra tenant ID
+- `client_id`: the application (client) ID of the service principal
+- `client_secret`: the client secret of the service principal
 
 ## Sentry
 

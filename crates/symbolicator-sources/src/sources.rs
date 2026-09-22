@@ -9,11 +9,13 @@ use crate::filetype::FileType;
 use crate::paths;
 use crate::types::{Glob, ObjectId};
 
+mod azure;
 mod filesystem;
 mod gcs;
 mod http;
 mod s3;
 mod sentry;
+pub use azure::*;
 pub use filesystem::*;
 pub use gcs::*;
 pub use http::*;
@@ -55,6 +57,8 @@ impl fmt::Display for SourceId {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SourceConfig {
+    /// An Azure Blob Storage container.
+    Azure(Arc<AzureSourceConfig>),
     /// Local file system.
     Filesystem(Arc<FilesystemSourceConfig>),
     /// A google cloud storage bucket.
@@ -71,6 +75,7 @@ impl SourceConfig {
     /// The unique identifier of this source.
     pub fn id(&self) -> &SourceId {
         match self {
+            Self::Azure(x) => &x.id,
             Self::Filesystem(x) => &x.id,
             Self::Gcs(x) => &x.id,
             Self::Http(x) => &x.id,
@@ -82,6 +87,7 @@ impl SourceConfig {
     /// Name of this source.
     pub fn type_name(&self) -> &'static str {
         match self {
+            Self::Azure(..) => "azure",
             Self::Filesystem(..) => "filesystem",
             Self::Gcs(..) => "gcs",
             Self::Http(..) => "http",

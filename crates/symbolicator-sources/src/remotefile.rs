@@ -11,9 +11,9 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile, GcsRemoteFile,
-    HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SentryToken, SourceFilters, SourceId,
-    SourceIndex, get_directory_paths,
+    AzureRemoteFile, CommonSourceConfig, DirectoryLayout, FileType, FilesystemRemoteFile,
+    GcsRemoteFile, HttpRemoteFile, ObjectId, S3RemoteFile, SentryRemoteFile, SentryToken,
+    SourceFilters, SourceId, SourceIndex, get_directory_paths,
 };
 
 /// A location for a file retrievable from many source configs.
@@ -167,6 +167,8 @@ impl From<AttachmentRemoteFile> for RemoteFile {
 pub enum RemoteFile {
     /// An attachment stored by Sentry.
     Attachment(AttachmentRemoteFile),
+    /// A file on an Azure source.
+    Azure(AzureRemoteFile),
     /// A file on a filesystem source.
     Filesystem(FilesystemRemoteFile),
     /// A file on a gcs source.
@@ -195,6 +197,13 @@ impl fmt::Display for RemoteFile {
             Self::Gcs(s) => {
                 write!(f, "GCS source '{}' location '{}'", s.source.id, s.location)
             }
+            Self::Azure(s) => {
+                write!(
+                    f,
+                    "Azure source '{}' location '{}'",
+                    s.source.id, s.location
+                )
+            }
             Self::Filesystem(s) => {
                 write!(
                     f,
@@ -214,6 +223,7 @@ impl RemoteFile {
             Self::Http(x) => x.source.files.is_public,
             Self::S3(x) => x.source.files.is_public,
             Self::Gcs(x) => x.source.files.is_public,
+            Self::Azure(x) => x.source.files.is_public,
             Self::Filesystem(x) => x.source.files.is_public,
         }
     }
@@ -232,6 +242,9 @@ impl RemoteFile {
                 format!("{}.{}", x.source.id, x.location)
             }
             Self::Gcs(x) => {
+                format!("{}.{}", x.source.id, x.location)
+            }
+            Self::Azure(x) => {
                 format!("{}.{}", x.source.id, x.location)
             }
             Self::Filesystem(x) => {
@@ -255,6 +268,7 @@ impl RemoteFile {
             Self::Http(x) => &x.source.id,
             Self::S3(x) => &x.source.id,
             Self::Gcs(x) => &x.source.id,
+            Self::Azure(x) => &x.source.id,
             Self::Filesystem(x) => &x.source.id,
         }
     }
@@ -276,6 +290,7 @@ impl RemoteFile {
             Self::Sentry(..) => "sentry",
             Self::S3(..) => "s3",
             Self::Gcs(..) => "gcs",
+            Self::Azure(..) => "azure",
             Self::Http(..) => "http",
             Self::Filesystem(..) => "filesystem",
         }
@@ -299,6 +314,7 @@ impl RemoteFile {
             Self::Http(file_source) => file_source.uri(),
             Self::S3(file_source) => file_source.uri(),
             Self::Gcs(file_source) => file_source.uri(),
+            Self::Azure(file_source) => file_source.uri(),
             Self::Filesystem(file_source) => file_source.uri(),
         }
     }
@@ -313,6 +329,7 @@ impl RemoteFile {
     pub fn host(&self) -> String {
         match self {
             RemoteFile::Attachment(source) => source.host(),
+            RemoteFile::Azure(source) => source.host(),
             RemoteFile::Filesystem(source) => source.host(),
             RemoteFile::Gcs(source) => source.host(),
             RemoteFile::Http(source) => source.host(),

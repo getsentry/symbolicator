@@ -349,6 +349,8 @@ pub struct InMemoryCacheConfig {
     /// Defaults to `100`.
     pub s3_client_capacity: u64,
 
+    pub azure_token_capacity: u64,
+
     /// Capacity (in bytes) for the in-memory `object_meta` Cache.
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
@@ -384,6 +386,7 @@ impl Default for InMemoryCacheConfig {
             sentry_index_ttl: Duration::from_secs(3600),
             gcs_token_capacity: 100.try_into().unwrap(),
             s3_client_capacity: 100,
+            azure_token_capacity: 100,
             object_meta_capacity: 100 * meg,
             cficaches_capacity: 400 * meg,
             // NOTE: JS symbolication is very sensitive to this cache size.

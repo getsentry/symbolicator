@@ -23,15 +23,17 @@ use crate::utils::futures::{CancelOnDrop, SendFuture as _, m, measure};
 use crate::utils::gcs::GcsError;
 use crate::utils::http::ClientSettings;
 use crate::utils::sentry::ConfigureScope;
+use symbolicator_sources::{
+    AzureRemoteFile, FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile,
+    SourceLocationIter,
+};
 pub use symbolicator_sources::{
     DirectoryLayout, FileType, ObjectId, ObjectType, RemoteFile, RemoteFileUri, SourceConfig,
     SourceFilters, SourceLocation,
 };
-use symbolicator_sources::{
-    FilesystemRemoteFile, GcsRemoteFile, HttpRemoteFile, S3RemoteFile, SourceLocationIter,
-};
 use tokio::io::AsyncWriteExt;
 
+mod azure;
 mod compression;
 mod deny_list;
 mod destination;
@@ -132,6 +134,7 @@ pub struct DownloadService {
     http: http::HttpDownloader,
     s3: s3::S3Downloader,
     gcs: gcs::GcsDownloader,
+    azure: azure::AzureDownloader,
     fs: filesystem::FilesystemDownloader,
     host_deny_list: Option<HostDenyList>,
     connect_to_reserved_ips: bool,
@@ -178,6 +181,7 @@ impl DownloadService {
         let http_no_ssl_client = crate::utils::http::create_client(&no_ssl_settings);
         let s3_client = crate::utils::http::create_client(&restricted_settings);
         let gcs_client = crate::utils::http::create_client(&restricted_settings);
+        let azure_client = crate::utils::http::create_client(&restricted_settings);
 
         let in_memory = &config.caches.in_memory;
 
@@ -195,6 +199,11 @@ impl DownloadService {
             http: http::HttpDownloader::new(http_restricted_client, http_no_ssl_client, limits),
             s3: s3::S3Downloader::new(s3_client, limits, in_memory.s3_client_capacity),
             gcs: gcs::GcsDownloader::new(gcs_client, limits, in_memory.gcs_token_capacity),
+            azure: azure::AzureDownloader::new(
+                azure_client,
+                limits,
+                in_memory.azure_token_capacity,
+            ),
             fs: filesystem::FilesystemDownloader::new(),
             host_deny_list: config
                 .deny_list_enabled
@@ -235,6 +244,11 @@ impl DownloadService {
                 }
                 RemoteFile::Gcs(source) => {
                     self.gcs
+                        .download_source(source_name, source, &mut destination)
+                        .await
+                }
+                RemoteFile::Azure(source) => {
+                    self.azure
                         .download_source(source_name, source, &mut destination)
                         .await
                 }
@@ -409,6 +423,7 @@ pub async fn list_files(
             }
             SourceConfig::S3(cfg) => check_source!(cfg => S3RemoteFile, index.as_ref()),
             SourceConfig::Gcs(cfg) => check_source!(cfg => GcsRemoteFile, index.as_ref()),
+            SourceConfig::Azure(cfg) => check_source!(cfg => AzureRemoteFile, index.as_ref()),
             SourceConfig::Filesystem(cfg) => {
                 check_source!(cfg => FilesystemRemoteFile, index.as_ref())
             }
