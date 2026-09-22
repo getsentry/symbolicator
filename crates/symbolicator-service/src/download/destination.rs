@@ -231,6 +231,7 @@ impl WriteStream for OffsetFileWriteStream {
     }
 }
 
+#[allow(clippy::disallowed_methods)]
 #[cfg(test)]
 mod tests {
     use futures::{StreamExt as _, stream::FuturesUnordered};

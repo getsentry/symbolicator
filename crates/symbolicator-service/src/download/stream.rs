@@ -176,6 +176,7 @@ where
     }
 }
 
+#[allow(clippy::disallowed_methods)]
 #[cfg(test)]
 mod tests {
     use std::io::Write as _;

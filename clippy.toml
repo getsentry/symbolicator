@@ -1,0 +1,3 @@
+disallowed-methods = [
+    { path = "tempfile::NamedTempFile::new", reason = "use `fs::tempfile` instead." },
+]

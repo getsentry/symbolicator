@@ -1228,6 +1228,7 @@ where
     }
 }
 
+#[allow(clippy::disallowed_methods)]
 #[cfg(test)]
 mod tests {
     // Actual implementation is tested in the sub-modules, this only needs to

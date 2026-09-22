@@ -16,6 +16,7 @@ pub fn tempfile_in_parent(file: &NamedTempFile) -> io::Result<NamedTempFile> {
 /// Creates a new [`NamedTempFile`] in `tmp_dir`.
 pub fn tempfile(tmp_dir: Option<&Path>) -> io::Result<NamedTempFile> {
     let Some(tmp_dir) = tmp_dir else {
+        #[allow(clippy::disallowed_methods)]
         return NamedTempFile::new();
     };
 
