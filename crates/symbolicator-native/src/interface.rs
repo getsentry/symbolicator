@@ -347,10 +347,6 @@ pub struct RawFrame {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_link: Option<String>,
 
-    /// Whether the frame is related to app-code (rather than libraries/dependencies).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub in_app: Option<bool>,
-
     /// Mapping of local variables and expression names that were available in this frame.
     ///
     /// Current format is heavily work in progress.

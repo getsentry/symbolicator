@@ -88,7 +88,6 @@ pub fn symbolicate_native_frame(
                     Language::Unknown => None,
                     language => Some(language),
                 },
-                in_app: None,
                 vars,
                 trust: frame.trust,
                 registers: Default::default(),
