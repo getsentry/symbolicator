@@ -267,7 +267,6 @@ struct Frame {
     post_context: Vec<String>,
     module: Option<String>,
     source_link: Option<String>,
-    in_app: Option<bool>,
     vars: Option<BTreeMap<String, serde_json::Value>>,
     #[serde(default)]
     trust: FrameTrust,
@@ -294,7 +293,6 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         context_line: value.context_line,
         post_context: value.post_context,
         source_link: value.source_link,
-        in_app: value.in_app,
         vars: value.vars,
         trust: value.trust,
         registers: Default::default(),
