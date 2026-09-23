@@ -38,7 +38,7 @@ codegen-units = 256
 reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/update-restricted-connector" }
 
 # This patch adds limited "templated lambdas" demangling support
-cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches" }
+cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches-0.5" }
 
 # For local development: uncomment the following three lines (and adjust the path if necessary)
 # to use a local symbolic checkout everywhere.
@@ -129,7 +129,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "1a9dea6afe77db1e9062842a380468ee72925328" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "ad48fd9e836b939ce610ac92bab38d18687bda1f" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }
