@@ -162,6 +162,13 @@ async fn symbolicate_js_frame(
         Err(_) => return Err(JsModuleErrorKind::MissingSource),
     };
 
+    // Any source context the frame came with (e.g. read by an SDK from the minified file on disk)
+    // belongs to the minified location, so it must not survive on the unminified frame.
+    // If we can't find the original source below, the frame is better off without context.
+    frame.pre_context.clear();
+    frame.context_line = None;
+    frame.post_context.clear();
+
     let sourcemap_label = &module
         .minified_source
         .entry

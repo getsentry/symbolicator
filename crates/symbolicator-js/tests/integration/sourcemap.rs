@@ -557,6 +557,48 @@ async fn test_no_source_contents() {
 }
 
 #[tokio::test]
+async fn test_no_source_contents_with_sdk_context() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("11_no_source_contents", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/embedded.js"),
+            "abs_path": "~/embedded.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/embedded.js.map"),
+            "abs_path": "~/embedded.js.map",
+            "resolved_with": "release",
+        }])
+    });
+
+    // SDKs like `@sentry/node` read context lines from the (minified) file on disk.
+    let frames = r#"[{
+        "abs_path": "http://example.com/embedded.js",
+        "filename": "embedded.js",
+        "lineno": 1,
+        "colno": 39,
+        "pre_context": ["minified pre context"],
+        "context_line": "minified context line",
+        "post_context": ["minified post context"]
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    // The minified context must not end up on the symbolicated frame,
+    // since it doesn't belong to the original source location.
+    let frame = &response.stacktraces[0].frames[0];
+    assert_eq!(frame.filename.as_deref(), Some("file1.js"));
+    assert!(frame.pre_context.is_empty());
+    assert_eq!(frame.context_line, None);
+    assert!(frame.post_context.is_empty());
+}
+
+#[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = sourcemap_server("e2e_node_debugid", |url, query| {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes 🐛
+
+- Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))
+
 ## 26.9.0
 
 ### Bug Fixes 🐛
