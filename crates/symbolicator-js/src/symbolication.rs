@@ -275,6 +275,13 @@ async fn symbolicate_js_frame(
     frame.lineno = token.line().saturating_add(1);
     frame.colno = Some(token.column().saturating_add(1));
 
+    // Any source context the frame came with (e.g. read by an SDK from the minified file on disk)
+    // belongs to the minified location, so it must not survive on the unminified frame.
+    // If we can't find the original source below, the frame is better off without context.
+    frame.pre_context.clear();
+    frame.context_line = None;
+    frame.post_context.clear();
+
     if !should_apply_source_context {
         return Ok(frame);
     }
