@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use symbolicator_native::interface::AttachmentFile;
+use symbolicator_native::interface::{AttachmentFile, FrameStatus};
 use symbolicator_service::types::Scope;
 
 use crate::{
@@ -44,6 +44,34 @@ async fn test_add_bucket() {
     let response = symbolication.symbolicate(request).await;
 
     assert_snapshot!(response.unwrap());
+}
+
+#[tokio::test]
+async fn test_native_symbolication_preserves_in_app() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_symsrv, source) = symbol_server();
+
+    // Use the existing Mach-O fixture to exercise real native symbolication, not just
+    // passthrough of a frame for which symbols could not be found.
+    let mut request = example_request(vec![source]);
+    request.stacktraces[0].frames[0].in_app = Some(true);
+
+    let response = symbolication.symbolicate(request).await.unwrap();
+
+    assert_eq!(response.stacktraces.len(), 1);
+    let frames = &response.stacktraces[0].frames;
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].status, FrameStatus::Symbolicated);
+    assert_eq!(frames[0].raw.function.as_deref(), Some("main"));
+
+    // Profile processing uses the returned frames, so the flag must survive in the
+    // serialized response rather than relying on the caller to restore it.
+    let response = serde_json::to_value(&response).unwrap();
+    assert_eq!(
+        response["stacktraces"][0]["frames"][0]["in_app"],
+        serde_json::json!(true),
+        "native symbolication must preserve the SDK's explicit in_app classification"
+    );
 }
 
 #[tokio::test]
