@@ -490,7 +490,6 @@ impl ProguardService {
     ///
     /// If one of the source bundles contains the correct file name, we apply it, otherwise
     /// the frame stays unmodified.
-    #[tracing::instrument(skip_all)]
     fn apply_source_context(source_bundles: &[SourceBundleDebugSession<'_>], frame: &mut JvmFrame) {
         let lineno = match frame.lineno {
             // can't apply source context without line number
