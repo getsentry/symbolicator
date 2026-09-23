@@ -99,7 +99,7 @@ impl AzureDownloader {
         let token = self.get_token(&source.source_key).await?;
 
         let url = blob_url(&source.account, &source.container, &key)
-            .map_err(|_| CacheError::DownloadError("invalid Azure blob URL".into()))?;
+            .ok_or_else(|| CacheError::DownloadError("invalid Azure blob URL".into()))?;
 
         let builder = self
             .client
@@ -118,14 +118,15 @@ impl AzureDownloader {
     }
 }
 
-fn blob_url(account: &str, container: &str, key: &str) -> Result<Url, ()> {
-    let mut url = Url::parse("https://blob.core.windows.net").map_err(|_| ())?;
-    url.set_host(Some(&format!("{account}.blob.core.windows.net")))
-        .map_err(|_| ())?;
-    url.path_segments_mut()?
+fn blob_url(account: &str, container: &str, key: &str) -> Option<Url> {
+    let mut url: Url = format!("https://{account}.blob.core.windows.net")
+        .parse()
+        .ok()?;
+    url.path_segments_mut()
+        .ok()?
         .push(container)
         .extend(key.split('/'));
-    Ok(url)
+    Some(url)
 }
 
 #[cfg(test)]
@@ -139,6 +140,6 @@ mod tests {
             url.as_str(),
             "https://account.blob.core.windows.net/container/a/key/with%20spaces"
         );
-        assert!(blob_url("evil.com/#", "container", "key").is_err());
+        assert!(blob_url("evil.com/#", "container", "key").is_none());
     }
 }
