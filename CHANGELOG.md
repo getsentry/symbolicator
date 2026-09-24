@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
+
 ### Bug Fixes 🐛
 
 - Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))

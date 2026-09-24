@@ -8,9 +8,10 @@ use futures::future::BoxFuture;
 use moka::ops::compute::Op;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
-    DirectoryLayoutType, FilesystemRemoteFile, FilesystemSourceConfig, GcsRemoteFile,
-    GcsSourceConfig, HttpRemoteFile, HttpSourceConfig, RemoteFile, S3RemoteFile, S3SourceConfig,
-    SourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
+    AzureRemoteFile, AzureSourceConfig, DirectoryLayoutType, FilesystemRemoteFile,
+    FilesystemSourceConfig, GcsRemoteFile, GcsSourceConfig, HttpRemoteFile, HttpSourceConfig,
+    RemoteFile, S3RemoteFile, S3SourceConfig, SourceConfig, SourceId, SourceIndex, SourceLocation,
+    SymstoreIndex,
 };
 use tempfile::NamedTempFile;
 use tokio::io::AsyncReadExt as _;
@@ -51,6 +52,7 @@ const LASTID_ERROR_CACHE_TIME: Duration = Duration::from_secs(10 * 60);
 /// We never want to use an index for Sentry sources.
 #[derive(Debug, Clone)]
 enum IndexSourceConfig {
+    Azure(Arc<AzureSourceConfig>),
     Filesystem(Arc<FilesystemSourceConfig>),
     Gcs(Arc<GcsSourceConfig>),
     Http(Arc<HttpSourceConfig>),
@@ -60,6 +62,7 @@ enum IndexSourceConfig {
 impl IndexSourceConfig {
     fn maybe_from(source: &SourceConfig) -> Option<Self> {
         match source {
+            SourceConfig::Azure(azure) => Some(Self::Azure(Arc::clone(azure))),
             SourceConfig::Filesystem(fs) => Some(Self::Filesystem(Arc::clone(fs))),
             SourceConfig::Gcs(gcs) => Some(Self::Gcs(Arc::clone(gcs))),
             SourceConfig::Http(http) => Some(Self::Http(Arc::clone(http))),
@@ -70,6 +73,7 @@ impl IndexSourceConfig {
 
     pub fn id(&self) -> &SourceId {
         match self {
+            Self::Azure(x) => &x.id,
             Self::Filesystem(x) => &x.id,
             Self::Gcs(x) => &x.id,
             Self::Http(x) => &x.id,
@@ -79,6 +83,7 @@ impl IndexSourceConfig {
 
     fn has_index(&self) -> bool {
         match self {
+            IndexSourceConfig::Azure(azure) => azure.files.has_index,
             IndexSourceConfig::Filesystem(fs) => fs.files.has_index,
             IndexSourceConfig::Gcs(gcs) => gcs.files.has_index,
             IndexSourceConfig::Http(http) => http.files.has_index,
@@ -88,6 +93,7 @@ impl IndexSourceConfig {
 
     fn layout_ty(&self) -> DirectoryLayoutType {
         match self {
+            IndexSourceConfig::Azure(azure) => azure.files.layout.ty,
             IndexSourceConfig::Filesystem(fs) => fs.files.layout.ty,
             IndexSourceConfig::Gcs(gcs) => gcs.files.layout.ty,
             IndexSourceConfig::Http(http) => http.files.layout.ty,
@@ -97,6 +103,7 @@ impl IndexSourceConfig {
 
     fn remote_file(&self, loc: SourceLocation) -> RemoteFile {
         match self {
+            IndexSourceConfig::Azure(azure) => AzureRemoteFile::new(Arc::clone(azure), loc).into(),
             IndexSourceConfig::Filesystem(fs) => {
                 FilesystemRemoteFile::new(Arc::clone(fs), loc).into()
             }
@@ -121,6 +128,7 @@ impl IndexSourceConfig {
             match self {
                 Self::S3(..) => "s3",
                 Self::Gcs(..) => "gcs",
+                Self::Azure(..) => "azure",
                 Self::Http(..) => "http",
                 Self::Filesystem(..) => "filesystem",
             }
