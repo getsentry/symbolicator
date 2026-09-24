@@ -576,6 +576,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#azure-blob-storage-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      Azure Blob Storage Container
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sentry" class="md-nav__link">
     <span class="md-ellipsis">
       Sentry
@@ -801,6 +810,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#azure-blob-storage-container" class="md-nav__link">
+    <span class="md-ellipsis">
+      Azure Blob Storage Container
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sentry" class="md-nav__link">
     <span class="md-ellipsis">
       Sentry
@@ -900,7 +918,7 @@ preconfigure the sources.</p>
 <ul>
 <li><code>id</code>: the ID of the source. This can be freely chosen and is used to identify
   cache files in the cache folder</li>
-<li><code>type</code>: defines the type of the source (<code>http</code>, <code>s3</code>, <code>gcs</code> or <code>sentry</code>)</li>
+<li><code>type</code>: defines the type of the source (<code>http</code>, <code>s3</code>, <code>gcs</code>, <code>azure</code> or <code>sentry</code>)</li>
 </ul>
 <p>These are common parameters that work on most symbol sources (except <code>sentry</code>):</p>
 <ul>
@@ -974,6 +992,19 @@ similarly to <code>s3</code> but uses different credentials:</p>
 <li><code>private_key</code>: the GCS private key (base64 encoded and with optional PEM
   envelope)</li>
 <li><code>client_email</code>: the GCS client email for authentication</li>
+</ul>
+<h2 id="azure-blob-storage-container">Azure Blob Storage Container</h2>
+<p>This source connects to an Azure Blob Storage container and looks for symbols
+there. It behaves similarly to <code>s3</code> but authenticates with a Microsoft Entra
+service principal that needs the <code>Storage Blob Data Reader</code> role:</p>
+<ul>
+<li><code>type</code>: <code>"azure"</code></li>
+<li><code>account</code>: the name of the storage account</li>
+<li><code>container</code>: the name of the blob container</li>
+<li><code>prefix</code>: a path prefix to put in front of all keys (eg: <code>/windows</code>)</li>
+<li><code>tenant_id</code>: the Microsoft Entra tenant ID</li>
+<li><code>client_id</code>: the application (client) ID of the service principal</li>
+<li><code>client_secret</code>: the client secret of the service principal</li>
 </ul>
 <h2 id="sentry">Sentry</h2>
 <p>This points Symbolicator at a Sentry installation to fetch customer supplied
