@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use anyhow::bail;
@@ -9,7 +8,7 @@ use symbolicator_js::interface::{
 };
 use symbolicator_native::interface::{
     AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal, StacktraceOrigin,
-    SymbolicateStacktraces,
+    SymbolicateStacktraces, Variables,
 };
 use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_service::utils::hex::HexValue;
@@ -267,7 +266,8 @@ struct Frame {
     post_context: Vec<String>,
     module: Option<String>,
     source_link: Option<String>,
-    vars: Option<BTreeMap<String, serde_json::Value>>,
+    #[serde(default)]
+    variables: Variables,
     #[serde(default)]
     trust: FrameTrust,
     #[serde(default)]
@@ -293,7 +293,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         context_line: value.context_line,
         post_context: value.post_context,
         source_link: value.source_link,
-        vars: value.vars,
+        vars: value.variables,
         trust: value.trust,
         registers: Default::default(),
     })

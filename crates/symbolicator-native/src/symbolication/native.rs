@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use minidump::CpuContext;
 use symbolic::common::{CpuFamily, InstructionInfo, Language, split_path};
 use symbolic::symcache::{
@@ -10,6 +8,7 @@ use symbolicator_service::utils::hex::HexValue;
 
 use crate::interface::{
     AdjustInstructionAddr, FrameStatus, RawFrame, Registers, Signal, SymbolicatedFrame,
+    VariableValue, Variables,
 };
 use crate::memory::{MemoryAccess, MemoryAccessExt};
 
@@ -55,10 +54,9 @@ pub fn symbolicate_native_frame(
             frame.filename.clone()
         };
 
-        let mut vars = None;
-        if let Some(memory) = memory {
-            vars = do_extract_variables(&source_location, symcache, &frame.registers, memory);
-        }
+        let vars = memory.map_or_default(|memory| {
+            do_extract_variables(&source_location, symcache, &frame.registers, memory)
+        });
 
         rv.push(SymbolicatedFrame {
             status: FrameStatus::Symbolicated,
@@ -170,35 +168,28 @@ fn do_extract_variables<'data, 'cache>(
     cache: &SymCache<'cache>,
     registers: &Registers,
     memory: &dyn MemoryAccess,
-) -> Option<BTreeMap<String, serde_json::Value>> {
-    let mut result = BTreeMap::new();
+) -> Variables {
+    source_location
+        .variables()
+        .flat_map(|variable| {
+            let name = variable.name()?;
 
-    for variable in source_location.variables() {
-        let Some(name) = variable.name() else {
-            continue;
-        };
+            let mut ty = String::new();
+            resolve_type_name(&mut ty, cache, variable.ty(), 0);
 
-        let mut ty = String::new();
-        resolve_type_name(&mut ty, cache, variable.ty(), 0);
+            let value = variable.locations().find_map(|loc| {
+                resolve_variable_value(cache, registers, memory, loc, variable.ty())
+            });
 
-        let value = variable
-            .locations()
-            .find_map(|loc| resolve_variable_value(cache, registers, memory, loc, variable.ty()));
-
-        // This doesn't handle name collisions currently.
-        result.insert(
-            name.to_owned(),
-            match value {
-                Some(value) => format!("{value} ({ty})").into(),
-                None => ty.into(),
-            },
-        );
-    }
-
-    match result.is_empty() {
-        false => Some(result),
-        true => None,
-    }
+            Some((
+                name.to_owned(),
+                VariableValue::new()
+                    .formatted(value)
+                    .ty(ty)
+                    .kind(variable.kind().into()),
+            ))
+        })
+        .collect()
 }
 
 fn resolve_variable_value(
