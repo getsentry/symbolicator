@@ -13,6 +13,8 @@ use super::Destination;
 
 type AzureTokenCache = moka::future::Cache<Arc<AzureSourceKey>, CacheContents<AzureToken>>;
 
+const TOKEN_EXPIRY_MARGIN: Duration = Duration::minutes(1);
+
 #[derive(Debug, Clone)]
 struct AzureToken {
     access_token: Arc<str>,
@@ -65,7 +67,7 @@ impl AzureDownloader {
 
         Ok(AzureToken {
             access_token: response.access_token.into(),
-            expires_at: Utc::now() + Duration::seconds(response.expires_in - 60),
+            expires_at: Utc::now() + Duration::seconds(response.expires_in) - TOKEN_EXPIRY_MARGIN,
         })
     }
 
@@ -118,7 +120,18 @@ impl AzureDownloader {
     }
 }
 
+fn is_valid_account(account: &str) -> bool {
+    (3..=24).contains(&account.len())
+        && account
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+}
+
 fn blob_url(account: &str, container: &str, key: &str) -> Option<Url> {
+    if !is_valid_account(account) {
+        return None;
+    }
+
     let mut url: Url = format!("https://{account}.blob.core.windows.net")
         .parse()
         .ok()?;
@@ -141,5 +154,8 @@ mod tests {
             "https://account.blob.core.windows.net/container/a/key/with%20spaces"
         );
         assert!(blob_url("evil.com/#", "container", "key").is_none());
+        assert!(blob_url("evil.com", "container", "key").is_none());
+        assert!(blob_url("ACCOUNT", "container", "key").is_none());
+        assert!(blob_url("ab", "container", "key").is_none());
     }
 }
