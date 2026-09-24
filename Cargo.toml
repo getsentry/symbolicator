@@ -96,9 +96,9 @@ jemallocator = { version = "0.5", features = [
 jsonwebtoken = "9.1.0"
 metrics = "0.24.3"
 metrics-exporter-dogstatsd = "0.9.6"
-minidump = "0.26.1"
-minidump-processor = "0.26.1"
-minidump-unwind = "0.26.1"
+minidump = "0.27.0"
+minidump-processor = "0.27.0"
+minidump-unwind = "0.27.0"
 minidumper-child = "0.5.0"
 moka = { version = "0.12.16", features = ["future", "sync"] }
 pin-project-lite = "0.2.17"
@@ -109,7 +109,7 @@ rayon = "1.10.0"
 regex = "1.5.5"
 reqwest = "0.12.15"
 rustls = { version = "0.23.31", features = ["ring"] }
-scroll = "0.12.0"
+scroll = "0.13.0"
 sentry = { version = "0.42.0", default-features = false, features = [
     # default features, except `release-health` is disabled
     "backtrace",
@@ -129,7 +129,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "ad48fd9e836b939ce610ac92bab38d18687bda1f" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "c18f2a5065b99af7b20d984b3f51cd66a858cca9" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }

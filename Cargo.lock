@@ -802,16 +802,16 @@ dependencies = [
 
 [[package]]
 name = "breakpad-symbols"
-version = "0.26.1"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b544545512b213899840bb26f72cd13f9fb4c3de3dd5f8dc7219688f54aebe9"
+checksum = "2dae6ece2d0e62389d1b24953ee54da7e385cf56653324304afd6c89c4bc73b5"
 dependencies = [
  "async-trait",
  "cachemap2",
  "circular",
  "debugid",
  "futures-util",
- "minidump-common",
+ "minidump-common 0.27.0",
  "nom",
  "range-map",
  "thiserror 2.0.17",
@@ -2777,19 +2777,19 @@ dependencies = [
 
 [[package]]
 name = "minidump"
-version = "0.26.1"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a902ca21d9772a66d3d1b050b3436dcadb192694be01409e0219902dcf4bc1e8"
+checksum = "a03516f742a87e757019a3019707b38900663397d63cdb0442721c5dbd29ed6b"
 dependencies = [
  "debugid",
  "encoding_rs",
  "memmap2",
- "minidump-common",
+ "minidump-common 0.27.0",
  "num-traits",
- "procfs-core 0.17.0",
+ "procfs-core",
  "prost",
  "range-map",
- "scroll 0.12.0",
+ "scroll 0.13.0",
  "thiserror 2.0.17",
  "time",
  "tracing",
@@ -2804,7 +2804,7 @@ checksum = "2e16d10087ae9e375bad7a40e8ef5504bc08e808ccc6019067ff9de42a84570f"
 dependencies = [
  "bitflags",
  "debugid",
- "num-derive",
+ "num-derive 0.4.2",
  "num-traits",
  "range-map",
  "scroll 0.12.0",
@@ -2812,19 +2812,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "minidump-processor"
-version = "0.26.1"
+name = "minidump-common"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee81ed67b9b37e3e1e47b3677bebe739499b12dcec7cdc74440990fde64e232b"
+checksum = "c8e6411f30cf59f8a4815820a9b5d0c38962a719f5c43f80f5afbb71e791af16"
+dependencies = [
+ "bitflags",
+ "debugid",
+ "num-derive 0.5.1",
+ "num-traits",
+ "range-map",
+ "scroll 0.13.0",
+ "smart-default",
+]
+
+[[package]]
+name = "minidump-processor"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "18ca2c7f6f820b83a1e4916178aa678eded0b9aad0eab1e1a71f573283a13ff0"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
  "debugid",
  "futures-util",
  "minidump",
- "minidump-common",
+ "minidump-common 0.27.0",
  "minidump-unwind",
- "scroll 0.12.0",
+ "scroll 0.13.0",
  "serde",
  "serde_json",
  "thiserror 2.0.17",
@@ -2834,15 +2849,15 @@ dependencies = [
 
 [[package]]
 name = "minidump-unwind"
-version = "0.26.1"
+version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aa8b7212f59c525f93c62457c54f9f9ac550316ee0e41f129b4b19165d5acd1"
+checksum = "4a98fe0ffc82b1f29b0f9510fceb345b90f87820cb7923b06a74280abee4a45f"
 dependencies = [
  "async-trait",
  "breakpad-symbols",
  "minidump",
- "minidump-common",
- "scroll 0.12.0",
+ "minidump-common 0.27.0",
+ "scroll 0.13.0",
  "tracing",
 ]
 
@@ -2863,9 +2878,9 @@ dependencies = [
  "log",
  "mach2",
  "memmap2",
- "minidump-common",
+ "minidump-common 0.26.1",
  "nix",
- "procfs-core 0.18.0",
+ "procfs-core",
  "scroll 0.12.0",
  "serde",
  "serde_json",
@@ -3080,6 +3095,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "num-derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4e98dc3b890f6c23a0f9d3d491a2823d0dea0fa656302a13dd225fa924112a8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -3520,16 +3546,6 @@ dependencies = [
 
 [[package]]
 name = "procfs-core"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "239df02d8349b06fc07398a3a1697b06418223b1c7725085e801e7c0fc6a12ec"
-dependencies = [
- "bitflags",
- "hex",
-]
-
-[[package]]
-name = "procfs-core"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6401bf7b6af22f78b563665d15a22e9aef27775b79b149a66ca022468a4e405"
@@ -3553,9 +3569,9 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.13.5"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
+checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
  "prost-derive",
@@ -3563,9 +3579,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.13.5"
+version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
+checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
  "itertools 0.14.0",
@@ -4752,7 +4768,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4767,7 +4783,7 @@ dependencies = [
 [[package]]
 name = "symbolic-cfi"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4777,7 +4793,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "debugid",
  "memmap2",
@@ -4789,7 +4805,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4820,7 +4836,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "bitflags",
  "cc",
@@ -4834,7 +4850,7 @@ dependencies = [
 [[package]]
 name = "symbolic-il2cpp"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4845,7 +4861,7 @@ dependencies = [
 [[package]]
 name = "symbolic-ppdb"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4860,7 +4876,7 @@ dependencies = [
 [[package]]
 name = "symbolic-sourcemapcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "itertools 0.14.0",
  "js-source-scopes",
@@ -4874,7 +4890,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "14.0.0-alpha.3"
-source = "git+https://github.com/getsentry/symbolic.git?rev=ad48fd9e836b939ce610ac92bab38d18687bda1f#ad48fd9e836b939ce610ac92bab38d18687bda1f"
+source = "git+https://github.com/getsentry/symbolic.git?rev=c18f2a5065b99af7b20d984b3f51cd66a858cca9#c18f2a5065b99af7b20d984b3f51cd66a858cca9"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -4975,7 +4991,7 @@ dependencies = [
  "minidump-unwind",
  "moka",
  "regex",
- "scroll 0.12.0",
+ "scroll 0.13.0",
  "sentry",
  "serde",
  "serde_json",
