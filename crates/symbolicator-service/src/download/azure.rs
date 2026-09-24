@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
@@ -15,10 +16,19 @@ type AzureTokenCache = moka::future::Cache<Arc<AzureSourceKey>, CacheContents<Az
 
 const TOKEN_EXPIRY_MARGIN: Duration = Duration::minutes(1);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AzureToken {
     access_token: Arc<str>,
     expires_at: DateTime<Utc>,
+}
+
+impl fmt::Debug for AzureToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AzureToken")
+            .field("access_token", &"<azure access token>")
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 #[derive(Deserialize)]
@@ -145,6 +155,17 @@ fn blob_url(account: &str, container: &str, key: &str) -> Option<Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_token_debug_is_redacted() {
+        let token = AzureToken {
+            access_token: "super-secret-token".into(),
+            expires_at: Utc::now(),
+        };
+        let debug = format!("{token:?}");
+        assert!(!debug.contains("super-secret-token"));
+        assert!(debug.contains("<azure access token>"));
+    }
 
     #[test]
     fn test_blob_url() {
