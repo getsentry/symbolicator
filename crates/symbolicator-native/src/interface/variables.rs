@@ -47,7 +47,6 @@ pub enum VariableKind {
 /// A [`Value`] with a type.
 ///
 /// Constructed via [`Value::ty`].
-// TODO: I am not sure we need this as a separate type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct TypedValue {
     #[serde(rename = "type")]
@@ -69,7 +68,7 @@ impl TypedValue {
 
 /// A value of a variable or field within a variable (e.g. list item, pointee, struct field).
 ///
-/// This struct allows for multiple possible representations.
+/// This struct allows for multiple co-existing representations.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Value {
     /// A fully-formatted, source-specific representation of a variable value.
