@@ -181,13 +181,12 @@ fn do_extract_variables<'data, 'cache>(
                 resolve_variable_value(cache, registers, memory, loc, variable.ty())
             });
 
-            Some((
-                name.to_owned(),
-                VariableValue::new()
-                    .formatted(value)
-                    .ty(ty)
-                    .kind(variable.kind().into()),
-            ))
+            let interface_variable = VariableValue::new()
+                .formatted(value)
+                .ty(ty)
+                .kind(variable.kind());
+
+            Some((name, interface_variable))
         })
         .collect()
 }

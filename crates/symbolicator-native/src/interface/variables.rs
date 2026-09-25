@@ -16,9 +16,15 @@ impl Variables {
     }
 }
 
-impl FromIterator<(String, Variable)> for Variables {
-    fn from_iter<T: IntoIterator<Item = (String, Variable)>>(iter: T) -> Self {
-        Self(iter.into_iter().collect())
+impl<S> FromIterator<(S, Variable)> for Variables
+where
+    S: Into<String>,
+{
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = (S, Variable)>,
+    {
+        Self(iter.into_iter().map(|(k, v)| (k.into(), v)).collect())
     }
 }
 
@@ -52,7 +58,11 @@ pub(crate) struct TypedValue {
 
 impl TypedValue {
     /// Convert this [`TypedValue`] into a [`Variable`] with the given kind.
-    pub fn kind(self, kind: VariableKind) -> Variable {
+    pub fn kind<K>(self, kind: K) -> Variable
+    where
+        K: Into<VariableKind>,
+    {
+        let kind = kind.into();
         Variable { kind, value: self }
     }
 }
