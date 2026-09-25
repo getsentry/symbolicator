@@ -20,6 +20,7 @@ pub struct SourceMapService {
     pub(crate) sourcemap_caches: Arc<Cacher<FetchSourceMapCacheInternal>>,
     pub(crate) download_svc: Arc<DownloadService>,
     pub(crate) api_lookup: Arc<SentryLookupApi>,
+    pub(crate) max_sources_size_per_request: Option<usize>,
 }
 
 impl SourceMapService {
@@ -34,7 +35,6 @@ impl SourceMapService {
         let api_lookup = Arc::new(SentryLookupApi::new(
             download_svc.trusted_client.clone(),
             download_svc.runtime.clone(),
-            download_svc.timeouts,
             in_memory,
             services.config.propagate_traces,
         ));
@@ -46,6 +46,7 @@ impl SourceMapService {
             sourcemap_caches: Arc::new(Cacher::new(caches.sourcemap_caches.clone(), shared_cache)),
             download_svc,
             api_lookup,
+            max_sources_size_per_request: services.config.js_max_sources_size_per_request,
         }
     }
 }

@@ -1,12 +1,13 @@
 [package]
 name = "symbolicli"
-version = "25.12.1"
+version = "26.9.0"
 edition = "2024"
 authors = ["Sentry <hello@getsentry.com>"]
 license-file = "../../LICENSE.md"
 
 [dependencies]
 anyhow = { workspace = true }
+axum = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
 prettytable-rs = { workspace = true }
@@ -27,5 +28,10 @@ tokio = { workspace = true, features = [
     "sync",
 ] }
 toml = { workspace = true }
+tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+walkdir = { workspace = true }
+zip = { workspace = true }

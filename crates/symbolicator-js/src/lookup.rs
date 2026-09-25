@@ -22,7 +22,7 @@
 //! single [`ArtifactBundle`], using [`DebugId`]s. Legacy usage of individual artifact files
 //! and web scraping should trend to `0` with time.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::{self, Write};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -37,13 +37,12 @@ use symbolic::debuginfo::sourcebundle::{
     SourceBundleDebugSession, SourceFileDescriptor, SourceFileType,
 };
 use symbolic::sourcemapcache::SourceMapCache;
-use symbolicator_sources::{
-    HttpRemoteFile, RemoteFile, RemoteFileUri, SentryFileId, SentrySourceConfig,
-};
+use symbolicator_sources::{HttpRemoteFile, RemoteFile, RemoteFileUri, SentrySourceConfig};
 
 use symbolicator_service::caches::{ByteViewString, SourceFilesCache};
 use symbolicator_service::caching::{CacheContents, CacheError, CacheKey, CacheKeyBuilder, Cacher};
 use symbolicator_service::download::DownloadService;
+use symbolicator_service::metric;
 use symbolicator_service::objects::{ObjectHandle, ObjectMetaHandle, ObjectsActor};
 use symbolicator_service::types::{Scope, ScrapingConfig};
 use symbolicator_service::utils::http::is_valid_origin;
@@ -135,6 +134,7 @@ impl SourceMapLookup {
             sourcemap_caches,
             download_svc,
             api_lookup,
+            max_sources_size_per_request,
         } = service;
 
         let SymbolicateJsStacktraces {
@@ -158,7 +158,7 @@ impl SourceMapLookup {
             modules_by_abs_path.insert(module.code_file.to_owned(), cached_module);
         }
 
-        let metrics = JsMetrics::new(scope.as_ref().parse().ok());
+        let metrics = JsMetrics::default();
 
         let fetcher = ArtifactFetcher {
             objects,
@@ -178,11 +178,11 @@ impl SourceMapLookup {
             artifact_bundles: Default::default(),
             individual_artifacts: Default::default(),
 
-            used_artifact_bundles: Default::default(),
-
             metrics,
 
             scraping_attempts: Default::default(),
+
+            remaining_sources_size_budget: max_sources_size_per_request.unwrap_or(usize::MAX),
         };
 
         Self {
@@ -252,7 +252,8 @@ impl SourceMapLookup {
     /// Gets the source file based on its [`FileKey`].
     pub async fn get_source_file(&mut self, key: FileKey) -> &CachedFileEntry {
         if !self.files_by_key.contains_key(&key) {
-            let file = self.fetcher.get_file(&key).await;
+            let mut file = self.fetcher.get_file(&key).await;
+            self.fetcher.apply_sources_budget(&mut file);
             self.files_by_key.insert(key.clone(), file);
         }
         self.files_by_key.get(&key).expect("we should have a file")
@@ -263,19 +264,15 @@ impl SourceMapLookup {
         self.fetcher.record_metrics();
     }
 
-    /// Consumes `self` and returns the artifact bundles that were used and
-    /// the scraping attempts that were made.
-    pub fn into_records(mut self) -> (HashSet<SentryFileId>, Vec<JsScrapingAttempt>) {
+    /// Consumes `self` and returns the scraping attempts that were made.
+    pub fn into_scraping_attempts(mut self) -> Vec<JsScrapingAttempt> {
         // There is no guaranteed order on `scraping_attempts` in the response. We might
         // as well sort them here for consistency.
         self.fetcher
             .scraping_attempts
             .sort_by(|l, r| l.url.cmp(&r.url));
 
-        (
-            self.fetcher.used_artifact_bundles,
-            self.fetcher.scraping_attempts,
-        )
+        self.fetcher.scraping_attempts
     }
 }
 
@@ -549,9 +546,10 @@ struct ArtifactFetcher {
     /// The set of individual artifacts, by their `url`.
     individual_artifacts: HashMap<String, IndividualArtifact>,
 
-    used_artifact_bundles: HashSet<SentryFileId>,
-
     scraping_attempts: Vec<JsScrapingAttempt>,
+
+    /// The remaining budget for source file contents retained over the lifetime of this request.
+    remaining_sources_size_budget: usize,
 }
 
 impl ArtifactFetcher {
@@ -573,7 +571,7 @@ impl ArtifactFetcher {
         };
 
         // Fetch the minified file first
-        let minified_source = self.get_file(&key).await;
+        let mut minified_source = self.get_file(&key).await;
         if minified_source.entry.is_err() {
             self.metrics
                 .record_not_found(SourceFileType::Source, debug_id.is_some());
@@ -582,13 +580,18 @@ impl ArtifactFetcher {
             if let Some(debug_id) = debug_id
                 && rand::random::<f64>() < 0.0001
             {
-                tracing::error!(
+                tracing::warn!(
                     source_url = %self.source.url,
                     abs_path,
                     %debug_id,
                     "Failed to fetch source with debug id"
                 );
             }
+        }
+
+        self.apply_sources_budget(&mut minified_source);
+        if matches!(minified_source.entry, Err(CacheError::NotFound)) {
+            return (minified_source, None);
         }
 
         // Attach the minified file to the scope as a context
@@ -671,7 +674,7 @@ impl ArtifactFetcher {
 
         if matches!(sourcemap.uri, CachedFileUri::Embedded) {
             self.metrics.record_sourcemap_not_needed();
-        } else if sourcemap.entry.is_err() {
+        } else if let Err(err) = &sourcemap.entry {
             self.metrics
                 .record_not_found(SourceFileType::SourceMap, debug_id.is_some());
 
@@ -680,6 +683,7 @@ impl ArtifactFetcher {
                 && rand::random::<f64>() < 0.0001
             {
                 tracing::error!(
+                    error = err as &dyn std::error::Error,
                     source_url = %self.source.url,
                     abs_path,
                     %debug_id,
@@ -694,6 +698,25 @@ impl ArtifactFetcher {
             .await;
 
         (minified_source, Some(smcache))
+    }
+
+    /// Accounts the size of the file in `entry` against the per-request sources budget.
+    ///
+    /// If the file does not fit into the remaining budget, the entry is replaced by an error,
+    /// so that the file is not retained for the rest of the request.
+    fn apply_sources_budget(&mut self, entry: &mut CachedFileEntry) {
+        let Ok(file) = &entry.entry else {
+            return;
+        };
+
+        let len = file.contents.as_ref().map_or(0, |contents| contents.len());
+        if len > self.remaining_sources_size_budget {
+            metric!(counter("js.sources_budget_exceeded") += 1);
+            entry.entry = Err(CacheError::NotFound);
+            return;
+        }
+
+        self.remaining_sources_size_budget -= len;
     }
 
     /// Fetches an arbitrary file using its `abs_path`,

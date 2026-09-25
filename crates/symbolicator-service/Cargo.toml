@@ -1,20 +1,21 @@
 [package]
 name = "symbolicator-service"
-version = "25.12.1"
+version = "26.9.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
 
 [dependencies]
 anyhow = { workspace = true }
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip", "zlib", "zstd"] }
 aws-config = { workspace = true }
 aws-credential-types = { workspace = true }
 aws-sdk-s3 = { workspace = true }
+aws-smithy-types = { workspace = true }
+aws-smithy-xml = { workspace = true }
 bytes = { workspace = true }
 cab = { workspace = true }
-cadence = { workspace = true }
 chrono = { workspace = true }
-crossbeam-utils = { workspace = true }
 filetime = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
@@ -24,7 +25,10 @@ humantime-serde = { workspace = true }
 idna = { workspace = true }
 ipnetwork = { workspace = true }
 jsonwebtoken = { workspace = true }
+metrics = { workspace = true }
+metrics-exporter-dogstatsd = { workspace = true }
 moka = { workspace = true }
+pin-project-lite = { workspace = true }
 proguard = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
@@ -38,8 +42,7 @@ reqwest = { workspace = true, features = [
     "hickory-dns",
     "socks",
 ] }
-rustc-hash = { workspace = true }
-sentry = { workspace = true, features = ["logs"] }
+sentry = { workspace = true }
 serde = { workspace = true }
 serde-vars = { workspace = true }
 serde_json = { workspace = true }
@@ -54,9 +57,8 @@ symbolic = { workspace = true, features = [
 symbolicator-sources = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
-thread_local = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros", "fs"] }
-tokio-util = { workspace = true, features = ["io"] }
+tokio-util = { workspace = true, features = ["io", "io-util"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["json"] }
 url = { workspace = true }
@@ -65,6 +67,7 @@ zip = { workspace = true }
 zstd = { workspace = true }
 
 [dev-dependencies]
+axum = { workspace = true }
 sha-1 = { workspace = true }
 symbolicator-test = { workspace = true }
 insta = { workspace = true }

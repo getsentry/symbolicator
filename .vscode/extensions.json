@@ -7,7 +7,7 @@
     // TOML language support
     "tamasfe.even-better-toml",
     // Crates.io dependency versions
-    "serayuzgur.crates",
+    "fill-labs.dependi",
     // Debugger support for Rust and native
     "vadimcn.vscode-lldb"
   ]

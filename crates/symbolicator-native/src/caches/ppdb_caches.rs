@@ -132,7 +132,7 @@ fn write_ppdb_cache(file: &mut File, object_handle: &ObjectHandle) -> CacheConte
     let ppdb_obj = match object_handle.object() {
         Object::PortablePdb(ppdb_obj) => ppdb_obj,
         _ => {
-            tracing::error!("Trying to symbolicate a .NET event with a non-PPDB object file");
+            tracing::warn!("Trying to symbolicate a .NET event with a non-PPDB object file");
             return Err(CacheError::Unsupported(
                 "Only portable PDB files can be used for .NET symbolication".to_owned(),
             ));

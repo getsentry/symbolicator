@@ -17,8 +17,8 @@ pub enum CacheName {
     SourceIndex,
 }
 
-impl AsRef<str> for CacheName {
-    fn as_ref(&self) -> &str {
+impl CacheName {
+    pub fn as_str(&self) -> &'static str {
         match self {
             Self::Objects => "objects",
             Self::ObjectMeta => "object_meta",
@@ -38,6 +38,6 @@ impl AsRef<str> for CacheName {
 
 impl fmt::Display for CacheName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.as_str())
     }
 }

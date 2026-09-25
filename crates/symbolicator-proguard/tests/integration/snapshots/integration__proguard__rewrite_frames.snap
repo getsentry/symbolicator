@@ -12,19 +12,27 @@ stacktraces:
       module: java.lang
     frames:
       - function: render
+        filename: UiBridge.java
         module: com.example.flow.UiBridge
+        abs_path: UiBridge.java
         lineno: 200
         index: 0
       - function: dispatch
+        filename: StreamRouter.java
         module: com.example.flow.StreamRouter
+        abs_path: StreamRouter.java
         lineno: 12
         index: 1
       - function: internalDispatch
+        filename: StreamRouter.java
         module: com.example.flow.StreamRouter$Inline
+        abs_path: StreamRouter.java
         lineno: 30
         index: 1
       - function: start
+        filename: Initializer.java
         module: com.example.flow.Initializer
+        abs_path: Initializer.java
         lineno: 42
         index: 2
 classes: {}

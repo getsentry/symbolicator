@@ -8,11 +8,13 @@ use futures::future::BoxFuture;
 use moka::ops::compute::Op;
 use symbolic::common::{AccessPattern, ByteView};
 use symbolicator_sources::{
-    DirectoryLayoutType, FilesystemRemoteFile, FilesystemSourceConfig, GcsRemoteFile,
-    GcsSourceConfig, HttpRemoteFile, HttpSourceConfig, RemoteFile, S3RemoteFile, S3SourceConfig,
-    SourceConfig, SourceId, SourceIndex, SourceLocation, SymstoreIndex,
+    AzureRemoteFile, AzureSourceConfig, DirectoryLayoutType, FilesystemRemoteFile,
+    FilesystemSourceConfig, GcsRemoteFile, GcsSourceConfig, HttpRemoteFile, HttpSourceConfig,
+    RemoteFile, S3RemoteFile, S3SourceConfig, SourceConfig, SourceId, SourceIndex, SourceLocation,
+    SymstoreIndex,
 };
 use tempfile::NamedTempFile;
+use tokio::io::AsyncReadExt as _;
 
 use crate::caches::CacheVersions;
 use crate::caches::versions::SYMSTORE_INDEX_VERSIONS;
@@ -27,6 +29,17 @@ use super::DownloadService;
 /// log file.
 const LASTID_FILE: &str = "000Admin/lastid.txt";
 
+/// Maximum last id we consider valid.
+///
+/// Symbolicator fetches all index files up to this maximum.
+const LASTID_MAX: u32 = 10_000;
+
+/// Maximum length for a valid id stored in the [`LASTID_FILE`].
+///
+/// Digits in [`LASTID_MAX`], doubled to tolerate whitespace,
+/// newlines, or leading zeros.
+const LASTID_MAX_LENGTH: usize = (u32::MAX.ilog10() as usize + 1) * 2;
+
 /// The time for which a successfully fetched Symstore "last id" should be cached in memory.
 const LASTID_OK_CACHE_TIME: Duration = Duration::from_secs(24 * 60 * 60);
 
@@ -39,6 +52,7 @@ const LASTID_ERROR_CACHE_TIME: Duration = Duration::from_secs(10 * 60);
 /// We never want to use an index for Sentry sources.
 #[derive(Debug, Clone)]
 enum IndexSourceConfig {
+    Azure(Arc<AzureSourceConfig>),
     Filesystem(Arc<FilesystemSourceConfig>),
     Gcs(Arc<GcsSourceConfig>),
     Http(Arc<HttpSourceConfig>),
@@ -48,6 +62,7 @@ enum IndexSourceConfig {
 impl IndexSourceConfig {
     fn maybe_from(source: &SourceConfig) -> Option<Self> {
         match source {
+            SourceConfig::Azure(azure) => Some(Self::Azure(Arc::clone(azure))),
             SourceConfig::Filesystem(fs) => Some(Self::Filesystem(Arc::clone(fs))),
             SourceConfig::Gcs(gcs) => Some(Self::Gcs(Arc::clone(gcs))),
             SourceConfig::Http(http) => Some(Self::Http(Arc::clone(http))),
@@ -58,6 +73,7 @@ impl IndexSourceConfig {
 
     pub fn id(&self) -> &SourceId {
         match self {
+            Self::Azure(x) => &x.id,
             Self::Filesystem(x) => &x.id,
             Self::Gcs(x) => &x.id,
             Self::Http(x) => &x.id,
@@ -67,6 +83,7 @@ impl IndexSourceConfig {
 
     fn has_index(&self) -> bool {
         match self {
+            IndexSourceConfig::Azure(azure) => azure.files.has_index,
             IndexSourceConfig::Filesystem(fs) => fs.files.has_index,
             IndexSourceConfig::Gcs(gcs) => gcs.files.has_index,
             IndexSourceConfig::Http(http) => http.files.has_index,
@@ -76,6 +93,7 @@ impl IndexSourceConfig {
 
     fn layout_ty(&self) -> DirectoryLayoutType {
         match self {
+            IndexSourceConfig::Azure(azure) => azure.files.layout.ty,
             IndexSourceConfig::Filesystem(fs) => fs.files.layout.ty,
             IndexSourceConfig::Gcs(gcs) => gcs.files.layout.ty,
             IndexSourceConfig::Http(http) => http.files.layout.ty,
@@ -85,6 +103,7 @@ impl IndexSourceConfig {
 
     fn remote_file(&self, loc: SourceLocation) -> RemoteFile {
         match self {
+            IndexSourceConfig::Azure(azure) => AzureRemoteFile::new(Arc::clone(azure), loc).into(),
             IndexSourceConfig::Filesystem(fs) => {
                 FilesystemRemoteFile::new(Arc::clone(fs), loc).into()
             }
@@ -109,6 +128,7 @@ impl IndexSourceConfig {
             match self {
                 Self::S3(..) => "s3",
                 Self::Gcs(..) => "gcs",
+                Self::Azure(..) => "azure",
                 Self::Http(..) => "http",
                 Self::Filesystem(..) => "filesystem",
             }
@@ -166,24 +186,28 @@ async fn download_index_segment(
 ) -> CacheContents {
     let loc = SourceLocation::new(format!("000Admin/{segment:0>10}"));
     let remote_file = source.remote_file(loc);
-    let temp_file = NamedTempFile::new()?;
 
     tracing::debug!(segment, "Downloading Symstore index segment");
 
-    if let Err(e) = downloader
-        .download(remote_file, temp_file.path().to_path_buf())
-        .await
-    {
-        tracing::error!(
-            error = &e as &dyn std::error::Error,
-            source_id = %source.id(),
-            segment,
-            "Failed to download Symstore index segment",
-        )
-    }
+    let download = match downloader.download(remote_file).await {
+        Ok(download) => download,
+        Err(err) => {
+            tracing::error!(
+                error = &err as &dyn std::error::Error,
+                source_id = %source.id(),
+                segment,
+                "Failed to download Symstore index segment",
+            );
+            return Err(err);
+        }
+    };
 
-    let buf = BufReader::new(temp_file);
-    let index = SymstoreIndex::parse_from_reader(buf)?;
+    let reader = tokio_util::io::SyncIoBridge::new(download.into_read());
+    let index = tokio::task::spawn_blocking(move || {
+        SymstoreIndex::parse_from_reader(BufReader::new(reader))
+    })
+    .await
+    .map_err(CacheError::from_std_error)??;
 
     index.write(file)?;
 
@@ -197,7 +221,7 @@ async fn download_index_segment(
 ///
 /// If one segment file can't be fetched or read, the whole index
 /// computation aborts. This guarantees that we don't cache incomplete
-/// indexes as "succesful", but instead recompute them as soon as possible.
+/// indexes as "successful", but instead recompute them as soon as possible.
 #[tracing::instrument(skip(cache, downloader, source, file), fields(source.id = %source.id()))]
 async fn download_full_index(
     cache: Arc<Cacher<FetchSymstoreIndexSegment>>,
@@ -208,6 +232,17 @@ async fn download_full_index(
     file: &mut File,
 ) -> CacheContents {
     let mut index = SymstoreIndex::default();
+
+    if last_id > LASTID_MAX {
+        tracing::warn!(
+            source_id = %source.id(),
+            "Symstore Index skipped because the last id is too large {last_id} > {LASTID_MAX}"
+        );
+        return Err(CacheError::Malformed(format!(
+            "Invalid Symstore Id: {last_id}, too large"
+        )));
+    }
+
     // This download is intentionally sequential. Doing it concurrently
     // causes at least the Intel symbol server to rate limit us.
     for i in 1..=last_id {
@@ -355,7 +390,7 @@ impl SourceIndexService {
     ///
     /// The last ID is locally cached for an hour, and download failures
     /// are cached for 10 minutes. If downloading a new last ID fails but there
-    /// is an existing succesful download, it will be reused for another hour.
+    /// is an existing successful download, it will be reused for another hour.
     #[tracing::instrument(skip(self, source), fields(source.id = %source.id()))]
     async fn fetch_symstore_last_id_memoized(
         &self,
@@ -440,7 +475,7 @@ impl SourceIndexService {
         // as a placeholder in case of errors.
         if entry.is_fresh() || entry.is_old_value_replaced() {
             let lastid = entry.value().0.as_ref().copied().unwrap_or_default();
-            metric!(gauge("index.symstore.lastid") = lastid as u64, "source" => source.source_metric_key());
+            metric!(gauge("index.symstore.lastid") = lastid as f64, "source" => source.source_metric_key().to_owned());
         }
 
         entry.into_value().0
@@ -453,18 +488,29 @@ impl SourceIndexService {
     /// `000Admin` directory.
     #[tracing::instrument(skip_all, fields(source.id = %source.id()), ret)]
     async fn fetch_symstore_last_id(&self, source: &IndexSourceConfig) -> Result<u32, CacheError> {
-        let temp_file = NamedTempFile::new()?;
         let remote_file = source.remote_file(SourceLocation::new(LASTID_FILE));
-        self.downloader
-            .download(remote_file, temp_file.path().to_path_buf())
+
+        let mut last_id = Vec::new();
+        let read = self
+            .downloader
+            .download(remote_file)
+            .await?
+            .into_read()
+            .take(LASTID_MAX_LENGTH as u64 + 1)
+            .read_to_end(&mut last_id)
             .await?;
-        let bv = ByteView::map_file(temp_file.into_file())?;
-        let last_id = std::str::from_utf8(&bv)
-            .map_err(|e| CacheError::Malformed(format!("Not valid UTF8: {e}")))?
+
+        if read > LASTID_MAX_LENGTH {
+            return Err(CacheError::Malformed(
+                "Invalid Symstore Id (too big)".to_owned(),
+            ));
+        }
+
+        std::str::from_utf8(&last_id)
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))?
             .trim()
             .parse()
-            .map_err(|e| CacheError::Malformed(format!("Not a number: {e}")))?;
-        Ok(last_id)
+            .map_err(|e| CacheError::Malformed(format!("Invalid Symstore Id: {e}")))
     }
 
     /// Fetches a Symstore index for the given source.

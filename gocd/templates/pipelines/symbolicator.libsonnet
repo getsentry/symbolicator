@@ -1,9 +1,17 @@
 local getsentry = import 'github.com/getsentry/gocd-jsonnet/libs/getsentry.libsonnet';
 local gocdtasks = import 'github.com/getsentry/gocd-jsonnet/libs/gocd-tasks.libsonnet';
 
-// Only the US region has a canary deployment.
+local sentry_create_env_vars(region) = {
+  SENTRY_ORG: if region == 's4s2' then 'sentry-st' else 'sentry-s4s2',
+  SENTRY_PROJECT: 'symbolicator',
+  SENTRY_URL: 'https://sentry.io',
+  // We use the Relay token, it is named in S4S2 to indicate usage for Relay and Symbolicator.
+  SENTRY_AUTH_TOKEN: if region == 's4s2' then '{{SECRET:[devinfra-sentryst][token]}}' else '{{SECRET:[devinfra-temp][relay_sentry_s4s2_auth_token]}}',
+};
+
+// Only the US and DE regions has a canary deployment.
 local deploy_canary_stage(region) =
-  if region != 'us' then
+  if region != 'us' && region != 'de' then
     []
   else
     [
@@ -12,13 +20,7 @@ local deploy_canary_stage(region) =
           fetch_materials: true,
           jobs: {
             create_sentry_release: {
-              environment_variables: {
-                SENTRY_URL: 'https://sentry.my.sentry.io/',
-                ENVIRONMENT: 'canary',
-                // Temporary; self-service encrypted secrets aren't implemented yet.
-                // This should really be rotated to an internal integration token.
-                SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}',
-              },
+              environment_variables: sentry_create_env_vars(region),
               timeout: 1200,
               elastic_profile_id: 'symbolicator',
               tasks: [
@@ -58,8 +60,9 @@ function(region) {
       checks: {
         fetch_materials: true,
         environment_variables: {
-          // Required for checkruns.
-          GITHUB_TOKEN: '{{SECRET:[devinfra-github][token]}}',
+          // Required for checkruns2.
+          GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
+          GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
         },
         jobs: {
           checks: {
@@ -81,13 +84,7 @@ function(region) {
         fetch_materials: true,
         jobs: {
           create_sentry_release: {
-            environment_variables: {
-              SENTRY_URL: 'https://sentry.my.sentry.io/',
-              ENVIRONMENT: 'production',
-              // Temporary; self-service encrypted secrets aren't implemented yet.
-              // This should really be rotated to an internal integration token.
-              SENTRY_AUTH_TOKEN: '{{SECRET:[devinfra-temp][symbolicator_sentry_auth_token]}}',
-            },
+            environment_variables: sentry_create_env_vars(region),
             timeout: 1200,
             elastic_profile_id: 'symbolicator',
             tasks: [

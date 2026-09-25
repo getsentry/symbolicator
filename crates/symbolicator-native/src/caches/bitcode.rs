@@ -3,7 +3,6 @@
 //! This service downloads and caches the `PList` and [`BcSymbolMap`] used to un-obfuscate
 //! debug symbols for obfuscated Apple bitcode builds.
 
-use std::fmt::{self, Display};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -60,15 +59,6 @@ enum AuxDifKind {
     UuidMap,
 }
 
-impl Display for AuxDifKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            AuxDifKind::BcSymbolMap => write!(f, "BCSymbolMap"),
-            AuxDifKind::UuidMap => write!(f, "UuidMap"),
-        }
-    }
-}
-
 /// The interface to the [`Cacher`] service.
 ///
 /// The main work is done by the [`CacheItemRequest`] impl.
@@ -81,7 +71,7 @@ struct FetchFileRequest {
 }
 
 impl FetchFileRequest {
-    #[tracing::instrument(skip(self, temp_file), fields(kind = %self.kind))]
+    #[tracing::instrument(skip(self, temp_file), fields(kind = ?self.kind))]
     async fn fetch_auxdif(&self, temp_file: &mut NamedTempFile) -> CacheContents {
         fetch_file(
             self.download_svc.clone(),
@@ -95,16 +85,14 @@ impl FetchFileRequest {
         match self.kind {
             AuxDifKind::BcSymbolMap => {
                 if let Err(err) = BcSymbolMap::parse(&view) {
-                    let kind = self.kind.to_string();
-                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => "BCSymbolMap");
                     tracing::debug!("Failed to parse bcsymbolmap: {}", err);
                     return Err(CacheError::Malformed(err.to_string()));
                 }
             }
             AuxDifKind::UuidMap => {
                 if let Err(err) = UuidMapping::parse_plist(self.uuid, &view) {
-                    let kind = self.kind.to_string();
-                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => &kind);
+                    metric!(counter("services.bitcode.loaderrror") += 1, "kind" => "UuidMap");
                     tracing::debug!("Failed to parse plist: {}", err);
                     return Err(CacheError::Malformed(err.to_string()));
                 }
@@ -224,7 +212,7 @@ impl BitcodeService {
             let hub = Hub::new_from_top(Hub::current());
             hub.configure_scope(|scope| {
                 scope.set_tag("auxdif.debugid", uuid);
-                scope.set_extra("auxdif.kind", dif_kind.to_string().into());
+                scope.set_extra("auxdif.kind", format!("{dif_kind:?}").into());
                 scope.set_extra("auxdif.source", file_source.source_metric_key().into());
             });
             let request = FetchFileRequest {

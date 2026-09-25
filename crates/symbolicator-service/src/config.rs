@@ -10,6 +10,8 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use sentry::types::Dsn;
 use serde::{Deserialize, Deserializer, de};
+use symbolic::cfi::FromObjectOptions;
+use symbolic::debuginfo::ParseObjectOptions;
 use tracing::level_filters::LevelFilter;
 
 use symbolicator_sources::SourceConfig;
@@ -347,6 +349,8 @@ pub struct InMemoryCacheConfig {
     /// Defaults to `100`.
     pub s3_client_capacity: u64,
 
+    pub azure_token_capacity: u64,
+
     /// Capacity (in bytes) for the in-memory `object_meta` Cache.
     ///
     /// The in-memory size limit is a best-effort approximation, and not an exact limit.
@@ -382,6 +386,7 @@ impl Default for InMemoryCacheConfig {
             sentry_index_ttl: Duration::from_secs(3600),
             gcs_token_capacity: 100.try_into().unwrap(),
             s3_client_capacity: 100,
+            azure_token_capacity: 100,
             object_meta_capacity: 100 * meg,
             cficaches_capacity: 400 * meg,
             // NOTE: JS symbolication is very sensitive to this cache size.
@@ -532,6 +537,32 @@ pub struct Config {
     /// This applies to the `/symbolicate`, `/symbolicate-any`, `/symbolicate-js`,
     /// and `/symbolicate-jvm` endpoints.
     pub symbolicate_body_max_bytes: usize,
+
+    /// Maximum decompressed size of compressed sections in debug files.
+    ///
+    /// Defaults to 4GiB
+    pub object_file_max_decompressed_section_size: Option<usize>,
+
+    /// Maximum decompressed size of compressed source files embedded in debug files.
+    ///
+    /// Defaults to 1GiB.
+    pub object_file_max_decompressed_source_size: Option<usize>,
+
+    /// Maximum aggregate size of all source and sourcemap files retained in memory
+    /// for a single JS symbolication request.
+    ///
+    /// Files that would exceed this budget are treated as not found.
+    pub js_max_sources_size_per_request: Option<usize>,
+
+    /// Maximum length of the CFI unwind chain.
+    ///
+    /// Defaults to 128.
+    pub max_unwind_chain_len: Option<usize>,
+
+    /// Maximum size, in bytes, for downloaded files.
+    ///
+    /// Defaults to 15GiB.
+    pub max_download_size: Option<u64>,
 }
 
 impl Config {
@@ -546,8 +577,28 @@ impl Config {
         self.cache_dir.as_ref().map(|base| base.join(dir))
     }
 
+    /// Returns a directory for temporary files within the configured base cache directory.
+    ///
+    /// If there is no base cache directory configured this returns `None`.
+    pub fn tmp_dir(&self) -> Option<PathBuf> {
+        self.cache_dir("tmp")
+    }
+
     pub fn default_sources(&self) -> Arc<[SourceConfig]> {
         self.sources.clone()
+    }
+
+    pub fn parse_object_options(&self) -> ParseObjectOptions {
+        let mut opts = ParseObjectOptions::default();
+        opts.max_decompressed_section_size = self.object_file_max_decompressed_section_size;
+        opts.max_decompressed_embedded_source_size = self.object_file_max_decompressed_source_size;
+        opts
+    }
+
+    pub fn from_object_options(&self) -> FromObjectOptions {
+        let mut opts = FromObjectOptions::default();
+        opts.max_unwind_chain_len = self.max_unwind_chain_len;
+        opts
     }
 }
 
@@ -624,6 +675,12 @@ impl Default for Config {
             // We allow profiles up to 50MiB in through Relay, This allows for that size
             // plus some extra for the rest of the request.
             symbolicate_body_max_bytes: 55 * 1024 * 1024,
+            object_file_max_decompressed_section_size: Some(4 * 1024 * 1024 * 1024),
+            // Keep in sync with Sentry's `MAX_SOURCE_FILE_SIZE` and https://docs.sentry.io/platforms/javascript/sourcemaps/troubleshooting_js/
+            object_file_max_decompressed_source_size: Some(1024 * 1024 * 1024),
+            js_max_sources_size_per_request: Some(2 * 1024 * 1024 * 1024),
+            max_unwind_chain_len: Some(128),
+            max_download_size: Some(15 * 1024 * 1024 * 1024),
         }
     }
 }
@@ -683,8 +740,8 @@ pub struct DownloadTimeouts {
 impl Default for DownloadTimeouts {
     fn default() -> Self {
         Self {
-            connect: Duration::from_secs(1),
-            head: Duration::from_secs(5),
+            connect: Duration::from_secs(5),
+            head: Duration::from_secs(10),
             // We want to have a hard download timeout of 5 minutes.
             // This means a download connection needs to sustain ~6.7MB/s to download a 2GB file.
             max_download: Duration::from_mins(5),

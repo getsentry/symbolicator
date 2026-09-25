@@ -4,7 +4,8 @@ use std::sync::Arc;
 use symbolicator_sources::{GcsRemoteFile, GcsSourceAuthorization, GcsSourceKey, GcsSourceToken};
 
 use crate::caching::{CacheContents, CacheError};
-use crate::config::DownloadTimeouts;
+use crate::download::DownloadLimits;
+use crate::download::compression::Compression;
 use crate::utils::gcs::{self, CacheableToken};
 
 use super::Destination;
@@ -17,17 +18,17 @@ type GcsTokenCache = moka::future::Cache<Arc<GcsSourceKey>, CacheContents<Cachea
 pub struct GcsDownloader {
     token_cache: GcsTokenCache,
     client: reqwest::Client,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
 }
 
 impl GcsDownloader {
-    pub fn new(client: reqwest::Client, timeouts: DownloadTimeouts, token_capacity: u64) -> Self {
+    pub fn new(client: reqwest::Client, limits: DownloadLimits, token_capacity: u64) -> Self {
         Self {
             token_cache: GcsTokenCache::builder()
                 .max_capacity(token_capacity)
                 .build(),
             client,
-            timeouts,
+            limits,
         }
     }
 
@@ -71,7 +72,7 @@ impl GcsDownloader {
         source_name: &str,
         file_source: &GcsRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let key = file_source.key();
         let bucket = &file_source.source.bucket;
         tracing::debug!("Fetching from GCS: {} (from {})", key, bucket);
@@ -87,7 +88,14 @@ impl GcsDownloader {
             .get(url)
             .header("authorization", format!("Bearer {}", token.bearer_token.0));
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.limits,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
     }
 }
 

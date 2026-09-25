@@ -1,5 +1,251 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
+
+### Bug Fixes 🐛
+
+- Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))
+
+## 26.9.0
+
+### Bug Fixes 🐛
+
+- Temp files are now always created in the configured cache directory. ([#2028](https://github.com/getsentry/symbolicator/pull/2028))
+- Filter bogus entry point frames after `__clone` and `__clone3` frames. ([#2040](https://github.com/getsentry/symbolicator/pull/2040))
+- Filter nullish outermost frames from stack traces. ([#2041](https://github.com/getsentry/symbolicator/pull/2041))
+- Add setting `js_max_sources_size_per_request` to limit the size of js sources kept in memory per request. ([#2048](https://github.com/getsentry/symbolicator/pull/2048))
+
+## 26.8.0
+
+### Features
+
+- Files uploaded to the shared cache are zstd compressed. ([#2006](https://github.com/getsentry/symbolicator/pull/2006))
+- Added a config setting `max_download_size` to restrict the size of downloaded files.
+  For compressed files, this limit applies to the _decompressed_ size.
+  The default value is 15GiB. ([#1993](https://github.com/getsentry/symbolicator/pull/1993))
+- Support compressed range requests. This allows backends (like S3 and objectstore) to serve partial
+  ranges from a compressed file. ([#2004](https://github.com/getsentry/symbolicator/pull/1999))
+- Raised the default of `object_file_max_decompressed_source_size` from 100MiB to 190MiB. ([#2009](https://github.com/getsentry/symbolicator/pull/2009))
+
+## 26.7.2
+
+### Internal Changes 🔧
+
+- (deps) Bump gocd-jsonnet to v3.0.7 by @dmajere in [#1991](https://github.com/getsentry/symbolicator/pull/1991)
+
+## 26.7.1
+
+### Bug Fixes 🐛
+
+- (crash reporter) Don't start the crash reporting process if there is no Sentry DSN
+  or if the CLI command is anything other than `run` by @loewenheim in [#1988](https://github.com/getsentry/symbolicator/pull/1988)
+
+## 26.7.0
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_source_size` to limit
+  the decompressed sizes of compressed embedded sources during debug file parsing. The default
+  value is 100MiB. ([#1972](https://github.com/getsentry/symbolicator/pull/1972))
+
+### Internal changes
+
+- Replaced `sentry-native` with `minidumper-child` for crash reporting by @loewenheim in [#1978](https://github.com/getsentry/symbolicator/pull/1978)
+
+### Other
+
+- (symbolicator-service) Increase default connect and head timeouts. ([#1980](https://github.com/getsentry/symbolicator/pull/1980))
+
+## 26.6.0
+
+### Features
+
+- (native) Added a config setting `object_file_max_decompressed_section_size` to limit
+  the decompressed sizes of compressed sections during debug file parsing. The default
+  value is 4GiB. ([#1965](https://github.com/getsentry/symbolicator/pull/1965))
+
+## 26.5.2
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump symbolic to 13.1.1 for arm64 pe unwinding support by @klochek in [#1958](https://github.com/getsentry/symbolicator/pull/1958)
+
+## 26.5.1
+
+### Features
+
+- (symbolicli) Support local JavaScript symbolication by @loewenheim in [#1956](https://github.com/getsentry/symbolicator/pull/1956)
+
+## 26.5.0
+
+### Bug Fixes 🐛
+
+- (objectstore) Retry attachment downloads by @Dav1dde in [#1946](https://github.com/getsentry/symbolicator/pull/1946)
+- Revert "dep: Update reqwest fork (#1942)" by @loewenheim in [#1947](https://github.com/getsentry/symbolicator/pull/1947)
+
+### Documentation 📚
+
+- (symbolicator-service) Fix 'succesful' -> 'successful' typos in download index doc comments by @SAY-5 in [#1949](https://github.com/getsentry/symbolicator/pull/1949)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump urllib3 from 2.6.3 to 2.7.0 by @dependabot in [#1950](https://github.com/getsentry/symbolicator/pull/1950)
+- Bump openssl from 0.10.78 to 0.10.79 by @dependabot in [#1948](https://github.com/getsentry/symbolicator/pull/1948)
+
+## 26.4.2
+
+### New Features ✨
+
+- Enable source server support in symcaches by @loewenheim in [#1943](https://github.com/getsentry/symbolicator/pull/1943)
+
+### Bug Fixes 🐛
+
+- (download) Force identity encoding on range requests by @Dav1dde in [#1944](https://github.com/getsentry/symbolicator/pull/1944)
+- (proguard) Remap root-package exception classes by @romtsn in [#1933](https://github.com/getsentry/symbolicator/pull/1933)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump time from 0.3.43 to 0.3.47 by @dependabot in [#1938](https://github.com/getsentry/symbolicator/pull/1938)
+- Bump proguard to 5.10.3 by @romtsn in [#1937](https://github.com/getsentry/symbolicator/pull/1937)
+- Bump symbolic to 12.8.3 for more lenient JS magic comments by @Dav1dde in [#1936](https://github.com/getsentry/symbolicator/pull/1936)
+- Bump openssl from 0.10.73 to 0.10.78 by @dependabot in [#1935](https://github.com/getsentry/symbolicator/pull/1935)
+
+#### Other
+
+- (sentry) Remove release health integration by @Dav1dde in [#1934](https://github.com/getsentry/symbolicator/pull/1934)
+
+### Other
+
+- dep: Update reqwest fork by @loewenheim in [#1942](https://github.com/getsentry/symbolicator/pull/1942)
+
+## 26.4.1
+
+- fix(js): Improve scope name resolution by @loewenheim in [#1929](https://github.com/getsentry/symbolicator/pull/1929)
+
+## 26.4.0
+
+### Bug Fixes
+
+- fix(stackwalking): Use debug info to inform scanning by @loewenheim in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+- fix(apple): Rewind objectstore downloads so they are parsed properly by @jjbayer in [#1924](https://github.com/getsentry/symbolicator/pull/1924)
+
+### Deps
+
+- Bump Native SDK from 0.11.2 to 0.13.5 by @loewenheim in [#1917](https://github.com/getsentry/symbolicator/pull/1917)
+  - [changelog](https://github.com/getsentry/sentry-native/blob/master/CHANGELOG.md#0135)
+  - [diff](https://github.com/getsentry/sentry-native/compare/0.11.2...0.13.5)
+
+## 26.3.1
+
+### New Features ✨
+
+- Emit warnings to Sentry by @jjbayer in [#1905](https://github.com/getsentry/symbolicator/pull/1905)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump actions/create-github-app-token from 2.2.1 to 3.0.0 by @dependabot in [#1901](https://github.com/getsentry/symbolicator/pull/1901)
+- Bump dorny/paths-filter from 3.0.2 to 4.0.1 by @dependabot in [#1902](https://github.com/getsentry/symbolicator/pull/1902)
+
+#### Other
+
+- Fail if env vars cannot be set by @jjbayer in [#1906](https://github.com/getsentry/symbolicator/pull/1906)
+- Replace deprecated recommendation for vscode by @jjbayer in [#1904](https://github.com/getsentry/symbolicator/pull/1904)
+
+## 26.3.0
+
+### New Features ✨
+
+#### Symbolicli
+
+- Symbolicate local apple crash reports by @jjbayer in [#1900](https://github.com/getsentry/symbolicator/pull/1900)
+- Support different symbol layouts for cli by @Dav1dde in [#1888](https://github.com/getsentry/symbolicator/pull/1888)
+
+#### Other
+
+- (proguard) Bump proguard to 5.10.1 and filter synthesized frames by @romtsn in [#1896](https://github.com/getsentry/symbolicator/pull/1896)
+
+### Bug Fixes 🐛
+
+- (instr) Tag with source_name not source by @Dav1dde in [#1893](https://github.com/getsentry/symbolicator/pull/1893)
+- (proguard) Accept mapping files without line number ranges by @romtsn in [#1898](https://github.com/getsentry/symbolicator/pull/1898)
+- (s3) Force path style addressing for better 3rd party provider support by @Dav1dde in [#1883](https://github.com/getsentry/symbolicator/pull/1883)
+- (symbolicator) Disable transparent decompression for S3 downloads by @Dav1dde in [#1890](https://github.com/getsentry/symbolicator/pull/1890)
+- Compile-time recursion limit by @jjbayer in [#1895](https://github.com/getsentry/symbolicator/pull/1895)
+
+### Internal Changes 🔧
+
+- (deps) Bump actions/download-artifact from 7.0.0 to 8.0.0 by @dependabot in [#1886](https://github.com/getsentry/symbolicator/pull/1886)
+- (gocd) Bump gocd-jsonnet to v2.19.0 to disable fetch_materials on pipeline-complete by @mchen-sentry in [#1894](https://github.com/getsentry/symbolicator/pull/1894)
+- (http) Refactor client settings into a struct by @Dav1dde in [#1892](https://github.com/getsentry/symbolicator/pull/1892)
+- (proguard) Add synthesized frames e2e test by @romtsn in [#1897](https://github.com/getsentry/symbolicator/pull/1897)
+- (s3) Use pre-signed URLs with a parallelized download for S3 by @Dav1dde in [#1882](https://github.com/getsentry/symbolicator/pull/1882)
+
+### Other
+
+- Update apple-crash-report-parser to version 0.5.2 by @jjbayer in [#1887](https://github.com/getsentry/symbolicator/pull/1887)
+
+## 26.2.1
+
+### Bug Fixes 🐛
+
+- (playstation) Prospero symbol uploader is using uppercase for IDs by @mujacica in [#1881](https://github.com/getsentry/symbolicator/pull/1881)
+- Do not double write `user-agent` by @tobias-wilfert in [#1880](https://github.com/getsentry/symbolicator/pull/1880)
+
+## 26.2.0
+
+### Bug Fixes 🐛
+
+#### Gocd
+
+- More sentry-cli/gocd script fixes by @Dav1dde in [#1865](https://github.com/getsentry/symbolicator/pull/1865)
+- Shell settings in gocd require variables, default it to nothing by @Dav1dde in [#1864](https://github.com/getsentry/symbolicator/pull/1864)
+
+### Internal Changes 🔧
+
+#### Deps
+
+- Bump bytes from 1.10.1 to 1.11.1 by @dependabot in [#1877](https://github.com/getsentry/symbolicator/pull/1877)
+- Bump actions/cache from 5.0.2 to 5.0.3 by @dependabot in [#1875](https://github.com/getsentry/symbolicator/pull/1875)
+- Bump virtualenv from 20.29.3 to 20.36.1 by @dependabot in [#1871](https://github.com/getsentry/symbolicator/pull/1871)
+- Bump filelock from 3.18.0 to 3.20.3 by @dependabot in [#1872](https://github.com/getsentry/symbolicator/pull/1872)
+- Bump actions/checkout from 6.0.1 to 6.0.2 by @dependabot in [#1870](https://github.com/getsentry/symbolicator/pull/1870)
+- Bump urllib3 from 2.5.0 to 2.6.3 by @dependabot in [#1862](https://github.com/getsentry/symbolicator/pull/1862)
+- Bump actions/cache from 5.0.1 to 5.0.2 by @dependabot in [#1861](https://github.com/getsentry/symbolicator/pull/1861)
+
+#### Gocd
+
+- Enable canary deployment for DE by @loewenheim in [#1874](https://github.com/getsentry/symbolicator/pull/1874)
+- Point s4s2 to sentry-st by @Dav1dde in [#1869](https://github.com/getsentry/symbolicator/pull/1869)
+- Bump gocd lib version to v2.18.0 (again) by @Dav1dde in [#1866](https://github.com/getsentry/symbolicator/pull/1866)
+- Switch debug file uploads to s4s2 by @Dav1dde in [#1863](https://github.com/getsentry/symbolicator/pull/1863)
+
+#### Other
+
+- (symbolicator) Enable stacktraces for sentry issues when backtraces are enabled by @Dav1dde in [#1868](https://github.com/getsentry/symbolicator/pull/1868)
+- Add log line when starting cleanup thread by @loewenheim in [#1873](https://github.com/getsentry/symbolicator/pull/1873)
+
+## 26.1.0
+
+### New Features ✨
+
+- Handle turbopack file paths by @chargome in [#1855](https://github.com/getsentry/symbolicator/pull/1855)
+
+### Build / dependencies / internal 🔧
+
+- (build) Release Docker image to GHCR via Craft by @aldy505 in [#1856](https://github.com/getsentry/symbolicator/pull/1856)
+
 ## 25.12.1
 
 ### New Features ✨

@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, Error, Result, anyhow};
@@ -22,11 +23,10 @@ use tokio::fs::{self, File};
 use tokio::io::{self, AsyncWrite};
 use tokio::sync::{OnceCell, mpsc, oneshot};
 use tokio_util::io::{ReaderStream, StreamReader};
-use url::Url;
 
 use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
-use crate::utils::gcs::{self, GcsError};
+use crate::utils::gcs;
 
 use super::CacheName;
 
@@ -77,7 +77,7 @@ pub fn measure_download_time<'a, F, T, E>(
 where
     F: 'a + Future<Output = Result<T, E>>,
 {
-    let guard = MeasureSourceDownloadGuard::new(metric_prefix, source_name);
+    let guard = MeasureSourceDownloadGuard::new(metric_prefix, source_name, u64::MAX);
     async move {
         let output = f.await;
         guard.done(&output);
@@ -247,7 +247,7 @@ impl GcsState {
         };
         metric!(
             counter("services.shared_cache.exists") += 1,
-            "cache" => cache.as_ref(),
+            "cache" => cache.as_str(),
             "status" => status
         );
         ret
@@ -292,22 +292,23 @@ impl GcsState {
 
         let total_bytes = content.len() as u64;
         let token = self.get_token().await?;
-        let mut url =
-            Url::parse("https://storage.googleapis.com/upload/storage/v1/b?uploadType=media")
-                .map_err(|_| GcsError::InvalidUrl)
-                .context("failed to parse url")?;
-        // Append path segments manually for proper encoding
-        url.path_segments_mut()
-            .map_err(|_| GcsError::InvalidUrl)
-            .context("failed to build url")?
-            .extend(&[&self.config.bucket, "o"]);
-        url.query_pairs_mut()
-            .append_pair("name", key)
-            // Upload only if it's not already there
-            .append_pair("ifGenerationMatch", "0");
 
-        let stream = ReaderStream::new(std::io::Cursor::new(content));
+        let url = gcs::upload_url(&self.config.bucket, key, true, Some("zstd"))
+            .context("failed to build url")?;
+
+        let stream = std::io::Cursor::new(content);
+        let stream = async_compression::tokio::bufread::ZstdEncoder::new(stream);
+        let stream = ReaderStream::new(stream);
+        let compressed_bytes = Arc::new(AtomicU64::new(0));
+        let stream = {
+            let compressed_bytes = Arc::clone(&compressed_bytes);
+            stream.inspect_ok(move |b| {
+                compressed_bytes.fetch_add(b.len() as u64, Ordering::Relaxed);
+            })
+        };
+
         let body = Body::wrap_stream(stream);
+
         let request = self
             .client
             .post(url.clone())
@@ -323,7 +324,10 @@ impl GcsState {
                 match status {
                     successful if successful.is_success() => {
                         tracing::trace!("Success hitting shared_cache GCS {}", key);
-                        Ok(SharedCacheStoreResult::Written(total_bytes))
+                        Ok(SharedCacheStoreResult::Written {
+                            raw: total_bytes,
+                            stored: compressed_bytes.load(Ordering::Relaxed),
+                        })
                     }
                     StatusCode::PRECONDITION_FAILED => Ok(SharedCacheStoreResult::Skipped),
                     StatusCode::FORBIDDEN => Err(anyhow!(
@@ -404,7 +408,10 @@ impl FilesystemSharedCacheConfig {
         temp_file
             .persist(abspath)
             .context("Failed to save file in shared cache")?;
-        Ok(SharedCacheStoreResult::Written(bytes))
+        Ok(SharedCacheStoreResult::Written {
+            raw: bytes,
+            stored: bytes,
+        })
     }
 }
 
@@ -412,23 +419,28 @@ impl FilesystemSharedCacheConfig {
 #[derive(Debug, Clone, Copy)]
 enum SharedCacheStoreResult {
     /// Successfully written to the cache as a new entry, contains number of bytes written.
-    Written(u64),
+    Written {
+        /// Raw amount of bytes as given to the cache.
+        raw: u64,
+        /// Amount of bytes written after compression.
+        stored: u64,
+    },
     /// Skipped writing the item as it was already on the cache.
     Skipped,
 }
 
-impl AsRef<str> for SharedCacheStoreResult {
-    fn as_ref(&self) -> &str {
+impl SharedCacheStoreResult {
+    fn as_str(&self) -> &'static str {
         match self {
-            SharedCacheStoreResult::Written(_) => "written",
-            SharedCacheStoreResult::Skipped => "skipped",
+            Self::Written { .. } => "written",
+            Self::Skipped => "skipped",
         }
     }
 }
 
 impl fmt::Display for SharedCacheStoreResult {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_ref())
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -497,11 +509,11 @@ pub enum CacheStoreReason {
     Refresh,
 }
 
-impl AsRef<str> for CacheStoreReason {
-    fn as_ref(&self) -> &str {
+impl CacheStoreReason {
+    fn as_str(&self) -> &'static str {
         match self {
-            CacheStoreReason::New => "new",
-            CacheStoreReason::Refresh => "refresh",
+            Self::New => "new",
+            Self::Refresh => "refresh",
         }
     }
 }
@@ -566,8 +578,8 @@ impl SharedCacheService {
                         Self::single_uploader(done_tx.clone(), backend.clone(), message)
                             .bind_hub(Hub::new_from_top(Hub::current()))
                     );
-                    let uploads_in_flight: u64 = (max_concurrent_uploads - uploads_counter) as u64;
-                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight);
+                    let uploads_in_flight = max_concurrent_uploads - uploads_counter;
+                    metric!(gauge("services.shared_cache.uploads_in_flight") = uploads_in_flight as f64);
                 }
                 Some(_) = done_rx.recv() => {
                     uploads_counter += 1;
@@ -597,7 +609,7 @@ impl SharedCacheService {
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend.name().into());
-            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("cache".to_string(), cache.as_str().into());
             map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
@@ -610,16 +622,23 @@ impl SharedCacheService {
             Ok(op) => {
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache.as_ref(),
-                    "write" => op.as_ref(),
+                    "cache" => cache.as_str(),
+                    "write" => op.as_str(),
                     "status" => "ok",
-                    "reason" => reason.as_ref(),
+                    "reason" => reason.as_str(),
                 );
-                if let SharedCacheStoreResult::Written(bytes) = op {
-                    let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
+                if let SharedCacheStoreResult::Written {
+                    raw,
+                    stored: compressed,
+                } = op
+                {
                     metric!(
-                        counter("services.shared_cache.store.bytes") += bytes,
-                        "cache" => cache.as_ref(),
+                        counter("services.shared_cache.store.bytes") += compressed,
+                        "cache" => cache.as_str(),
+                    );
+                    metric!(
+                        counter("services.shared_cache.store.bytes.raw") += raw,
+                        "cache" => cache.as_str(),
                     );
                 }
             }
@@ -639,9 +658,9 @@ impl SharedCacheService {
                 }
                 metric!(
                     counter("services.shared_cache.store") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "status" => "error",
-                    "reason" => reason.as_ref(),
+                    "reason" => reason.as_str(),
                     "errdetails" => errdetails,
                 );
             }
@@ -683,11 +702,11 @@ impl SharedCacheService {
     ) -> bool {
         let _guard = Hub::current().push_scope();
         let backend_name = self.backend_name();
-        let key = format!("{}/{key}", cache.as_ref());
+        let key = format!("{}/{key}", cache.as_str());
         sentry::configure_scope(|scope| {
             let mut map = BTreeMap::new();
             map.insert("backend".to_string(), backend_name.into());
-            map.insert("cache".to_string(), cache.as_ref().into());
+            map.insert("cache".to_string(), cache.as_str().into());
             map.insert("path".to_string(), key.clone().into());
             scope.set_context("Shared Cache", Context::Other(map));
         });
@@ -709,21 +728,20 @@ impl SharedCacheService {
             Ok(Some(bytes)) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "hit" => "true",
                     "status" => "ok",
                 );
-                let bytes: i64 = bytes.try_into().unwrap_or(i64::MAX);
                 metric!(
                     counter("services.shared_cache.fetch.bytes") += bytes,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                 );
                 true
             }
             Ok(None) => {
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "hit" => "false",
                     "status" => "ok",
                 );
@@ -737,11 +755,11 @@ impl SharedCacheService {
                 };
                 if let CacheError::Other(err) = outer_err {
                     let stderr: &dyn std::error::Error = &*err;
-                    tracing::error!(stderr, "Error fetching from {} shared cache", backend_name);
+                    tracing::warn!(stderr, "Error fetching from {} shared cache", backend_name);
                 }
                 metric!(
                     counter("services.shared_cache.fetch") += 1,
-                    "cache" => cache.as_ref(),
+                    "cache" => cache.as_str(),
                     "status" => "error",
                     "errdetails" => errdetails,
                 );
@@ -787,19 +805,19 @@ impl SharedCacheService {
         }
         metric!(
             gauge("services.shared_cache.uploads_queue_capacity") =
-                self.upload_queue_tx.capacity() as u64
+                self.upload_queue_tx.capacity() as f64
         );
         self.upload_queue_tx
             .try_send(UploadMessage {
                 cache,
-                key: format!("{}/{key}", cache.as_ref()),
+                key: format!("{}/{key}", cache.as_str()),
                 content,
                 done_tx,
                 reason,
             })
             .unwrap_or_else(|_| {
                 metric!(counter("services.shared_cache.store.dropped") += 1);
-                tracing::error!("Shared cache upload queue full");
+                tracing::warn!("Shared cache upload queue full");
             });
         done_rx
     }
@@ -1021,23 +1039,29 @@ mod tests {
             .await
             .unwrap();
 
+        let data = b"cache data aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
             .unwrap();
 
-        assert!(matches!(ret, SharedCacheStoreResult::Written(_)));
+        let SharedCacheStoreResult::Written { raw, stored } = ret else {
+            unreachable!()
+        };
+        assert_eq!(raw, data.len() as u64);
+        assert!(stored < raw);
 
         let ret = state
             .store(
                 CacheName::Objects,
                 &key,
-                ByteView::from_slice(b"cache data"),
+                ByteView::from_slice(data),
                 CacheStoreReason::New,
             )
             .await
@@ -1069,5 +1093,38 @@ mod tests {
             .unwrap();
 
         assert!(state.exists(CacheName::Objects, &key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_gcs_fetch_uncompressed() {
+        symbolicator_test::setup();
+        let credentials = symbolicator_test::gcs_credentials!();
+
+        let key = format!("{}/some_item", Uuid::new_v4());
+
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+            .await
+            .unwrap();
+        let token = state.get_token().await.unwrap();
+
+        let expected = b"cached dataaaaaaaa";
+
+        let url = gcs::upload_url(&state.config.bucket, &key, false, None).unwrap();
+        state
+            .client
+            .post(url)
+            .bearer_auth(token.as_str())
+            .body(expected.to_vec())
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+
+        let mut actual = Vec::new();
+        let ret = state.fetch(&key, &mut actual).await.unwrap();
+
+        assert_eq!(ret, Some(expected.len() as u64));
+        assert_eq!(actual, expected);
     }
 }

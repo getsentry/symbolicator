@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use symbolic::common::Name;
-use symbolic::demangle::Demangle;
 use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
@@ -15,13 +14,14 @@ use crate::caches::il2cpp::Il2cppService;
 use crate::caches::ppdb_caches::PortablePdbCacheActor;
 use crate::caches::symcaches::SymCacheActor;
 use crate::interface::{
-    AdjustInstructionAddr, CompleteStacktrace, CompletedSymbolicationResponse, FrameStatus,
-    FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
+    AddrMode, AdjustInstructionAddr, CompleteStacktrace, CompletedSymbolicationResponse,
+    FrameStatus, FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
     SymbolicatedFrame,
 };
+use crate::memory::MemoryAccess;
 use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
 
-use super::demangle::{DEMANGLE_OPTIONS, DemangleCache};
+use super::demangle::DemangleCache;
 use super::dotnet::symbolicate_dotnet_frame;
 use super::module_lookup::{CacheFileEntry, ModuleLookup};
 use super::native::{get_relative_caller_addr, symbolicate_native_frame};
@@ -32,7 +32,7 @@ use super::native::{get_relative_caller_addr, symbolicate_native_frame};
 pub struct SymbolicationActor {
     demangle_cache: DemangleCache,
     pub(crate) objects: ObjectsActor,
-    symcaches: SymCacheActor,
+    pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
     pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
@@ -74,15 +74,13 @@ impl SymbolicationActor {
             caches.cficaches.clone(),
             shared_cache.clone(),
             objects.clone(),
+            services.config.from_object_options(),
         );
 
         let ppdb_caches =
             PortablePdbCacheActor::new(caches.ppdb_caches.clone(), shared_cache, objects.clone());
 
-        let demangle_cache = DemangleCache::builder()
-            .max_capacity(10 * 1024 * 1024) // 10 MiB, considering key and value:
-            .weigher(|k, v| (k.0.len() + v.len()).try_into().unwrap_or(u32::MAX))
-            .build();
+        let demangle_cache = DemangleCache::new(10 * 1024 * 1024); // 10 MiB, considering key and value:
 
         SymbolicationActor {
             demangle_cache,
@@ -112,6 +110,8 @@ impl SymbolicationActor {
             scraping,
             rewrite_first_module,
             frame_order,
+            extract_variables,
+            memory,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -130,6 +130,7 @@ impl SymbolicationActor {
                 self.symcaches.clone(),
                 self.ppdb_caches.clone(),
                 &stacktraces,
+                extract_variables,
             )
             .await;
 
@@ -143,6 +144,7 @@ impl SymbolicationActor {
                     &module_lookup,
                     &mut metrics,
                     signal,
+                    memory.as_deref().filter(|_| extract_variables),
                 )
             })
             .collect();
@@ -178,6 +180,7 @@ fn symbolicate_stacktrace(
     caches: &ModuleLookup,
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
+    memory: Option<&dyn MemoryAccess>,
 ) -> CompleteStacktrace {
     let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
@@ -193,6 +196,7 @@ fn symbolicate_stacktrace(
             &mut frame,
             index,
             adjustment,
+            memory,
         ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
@@ -205,7 +209,8 @@ fn symbolicate_stacktrace(
                 // either one of `function` or `symbol`, treat that as mangled name and try to
                 // demangle it. If that succeeds, write the demangled name back.
                 let mangled = frame.function.as_deref().xor(frame.symbol.as_deref());
-                let demangled = mangled.and_then(|m| Name::from(m).demangle(DEMANGLE_OPTIONS));
+                let demangled = mangled.and_then(|m| demangle_cache.demangle(&Name::from(m)));
+
                 if let Some(demangled) = demangled
                     && let Some(old_mangled) = frame.function.replace(demangled)
                 {
@@ -234,8 +239,11 @@ fn symbolicate_stacktrace(
                     continue;
                 }
 
-                // Glibc inserts an explicit `DW_CFA_undefined: RIP` DWARF rule to say that `_start`
-                // has no return address.
+                // Whether this frame is the last (outermost) frame.
+                let is_outermost_frame = unsymbolicated_frames_iter.peek().is_none();
+
+                // Glibc inserts an explicit `DW_CFA_undefined: RIP` DWARF rule to say that frames like
+                // `_start` have no return address.
                 // See https://sourceware.org/git/?p=glibc.git;a=blob;f=sysdeps/x86_64/start.S;h=1b3e36826b8a477474cee24d1c931429fbdf6d8f;hb=HEAD#l59
                 // We do not support this due to lack of breakpad support, and will thus use the
                 // previous rule for RIP, which says to look it up the value on the stack,
@@ -243,12 +251,28 @@ fn symbolicate_stacktrace(
                 // trailing garbage frame on the following conditions:
                 // * it is unmapped (UnknownImage)
                 // * this is the last frame to symbolicate (via peek)
-                // * the previous symbolicated frame is `_start`
-                let is_start =
-                    |frame: &SymbolicatedFrame| frame.raw.function.as_deref() == Some("_start");
+                // * the previous symbolicated frame is a well known frame like `_start`
                 if status == FrameStatus::UnknownImage
-                    && unsymbolicated_frames_iter.peek().is_none()
-                    && symbolicated_frames.last().is_some_and(is_start)
+                    && is_outermost_frame
+                    && symbolicated_frames
+                        .last()
+                        .is_some_and(is_likely_glibc_undefined_rip_frame)
+                {
+                    continue;
+                }
+
+                // Stack traces unwound from a minidump already consider an address from the first page
+                // practically null and use it as a marker to indicate that stack unwinding is complete.
+                //
+                // Stack traces which are unwound on the client side, may still have a frame at the
+                // end of the stack trace which is null-ish -> remove it here.
+                let is_nullish =
+                    frame.addr_mode == AddrMode::Abs && frame.instruction_addr.0 < 4096;
+                if status == FrameStatus::UnknownImage
+                    && is_outermost_frame
+                    && is_nullish
+                    // Check for any frames to avoid completely empty stack traces
+                    && !symbolicated_frames.is_empty()
                 {
                     continue;
                 }
@@ -304,6 +328,10 @@ fn symbolicate_stacktrace(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "https://github.com/getsentry/symbolicator/issues/2002"
+)]
 fn symbolicate_frame(
     demangle_cache: &DemangleCache,
     caches: &ModuleLookup,
@@ -312,6 +340,7 @@ fn symbolicate_frame(
     frame: &mut RawFrame,
     index: usize,
     adjustment: AdjustInstructionAddr,
+    memory: Option<&dyn MemoryAccess>,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -339,6 +368,7 @@ fn symbolicate_frame(
                 relative_addr,
                 frame,
                 index,
+                memory,
             )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
@@ -364,7 +394,10 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     };
 
     // C start/main
-    if matches!(function, "main" | "start" | "_start") {
+    if matches!(
+        function,
+        "main" | "start" | "_start" | "__clone" | "__clone3"
+    ) {
         return true;
     }
 
@@ -379,4 +412,15 @@ fn is_likely_base_frame(frame: &SymbolicatedFrame) -> bool {
     }
 
     false
+}
+
+/// Returns `true` if the passed frame is likely a well known glibc frame using a DWARF
+/// `DW_CFA_undefined: RIP` rule.
+///
+/// Note: This has some overlap with [`is_likely_base_frame`] but is more specific.
+fn is_likely_glibc_undefined_rip_frame(frame: &SymbolicatedFrame) -> bool {
+    matches!(
+        frame.raw.function.as_deref(),
+        Some("_start" | "__clone" | "__clone3")
+    )
 }

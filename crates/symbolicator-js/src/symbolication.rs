@@ -98,13 +98,12 @@ impl SourceMapService {
         lookup.record_metrics();
         record_stacktrace_metrics(platform, stats);
 
-        let (used_artifact_bundles, scraping_attempts) = lookup.into_records();
+        let scraping_attempts = lookup.into_scraping_attempts();
 
         CompletedJsSymbolicationResponse {
             stacktraces,
             raw_stacktraces,
             errors: errors.into_iter().collect(),
-            used_artifact_bundles,
             scraping_attempts,
         }
     }
@@ -162,6 +161,13 @@ async fn symbolicate_js_frame(
         }
         Err(_) => return Err(JsModuleErrorKind::MissingSource),
     };
+
+    // Any source context the frame came with (e.g. read by an SDK from the minified file on disk)
+    // belongs to the minified location, so it must not survive on the unminified frame.
+    // If we can't find the original source below, the frame is better off without context.
+    frame.pre_context.clear();
+    frame.context_line = None;
+    frame.post_context.clear();
 
     let sourcemap_label = &module
         .minified_source
@@ -243,7 +249,9 @@ async fn symbolicate_js_frame(
         callsite_fn_name.as_deref(),
     )));
 
-    if let Some(filename) = token.file_name() {
+    if let Some(filename) = token.file_name()
+        && !filename.is_empty()
+    {
         let mut filename = filename.to_string();
         frame.abs_path = module
             .source_file_base()

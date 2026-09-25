@@ -1,0 +1,81 @@
+# {'id':'com.android.tools.r8.mapping','version':'1.0'}
+_COROUTINE.ArtificialStackFrames -> yy.zX:
+    android.content.Context appContext -> Xc
+    java.lang.Object contentProviderStarted -> kc
+    java.lang.String guardsInvoked -> zc
+    boolean _COROUTINE.ArtificialStackFrames.isSupported() -> GV
+    java.lang.StackTraceElement _COROUTINE.ArtificialStackFrames.coroutineBoundary() -> VF
+    java.lang.StackTraceElement _COROUTINE.ArtificialStackFrames.coroutineCreation() -> XF
+_COROUTINE.CoroutineDebuggingKt -> yy.Lr:
+    java.lang.StackTraceElement _COROUTINE.CoroutineDebuggingKt.access$artificialFrame(java.lang.Throwable,java.lang.String) -> kc
+_COROUTINE._BOUNDARY -> yy.lX:
+    int _COROUTINE._BOUNDARY.decodeVarint64(long,byte[],int,com.google.protobuf.ArrayDecoders$Registers) -> uG
+_COROUTINE._CREATION -> yy.QG:
+com.google.common.util.concurrent.ListenableFuture -> yy.Pv:
+com.google.protobuf.AbstractMessageLite -> yy.Hv:
+com.google.protobuf.AbstractMessageLite$Builder -> yy.Ov:
+com.google.protobuf.AbstractMessageLite$Builder$LimitedInputStream -> yy.pv:
+    int limit -> Xc
+    int $stable -> kc
+    com.google.protobuf.InvalidProtocolBufferException com.google.protobuf.AbstractMessageLite$Builder$LimitedInputStream.parseFailure() -> xc
+com.google.protobuf.AbstractMessageLite$InternalOneOfEnum -> yy.ov:
+com.google.protobuf.AbstractParser -> yy.xv:
+    com.google.protobuf.ExtensionRegistryLite EMPTY_REGISTRY -> Xc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(byte[],com.google.protobuf.ExtensionRegistryLite) -> BAc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.CodedInputStream) -> DAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> DW
+    java.lang.Object com.google.protobuf.AbstractParser.parseDelimitedFrom(java.io.InputStream) -> GAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(java.io.InputStream) -> GW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(byte[]) -> HW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(byte[],int,int) -> IW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(byte[],com.google.protobuf.ExtensionRegistryLite) -> JAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(byte[]) -> JW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(byte[],int,int) -> KAc
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(byte[]) -> OAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.ByteString,com.google.protobuf.ExtensionRegistryLite) -> OW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.CodedInputStream,com.google.protobuf.ExtensionRegistryLite) -> PW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> RAc
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(java.io.InputStream) -> SAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(byte[],int,int,com.google.protobuf.ExtensionRegistryLite) -> TW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> UAc
+    java.lang.Object com.google.protobuf.AbstractParser.parseDelimitedFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> VAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialDelimitedFrom(java.io.InputStream) -> VW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(java.nio.ByteBuffer) -> XAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(java.io.InputStream) -> XW
+    com.google.protobuf.UninitializedMessageException com.google.protobuf.AbstractParser.newUninitializedMessageException(com.google.protobuf.MessageLite) -> Xc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(byte[],int,int,com.google.protobuf.ExtensionRegistryLite) -> YAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(java.nio.ByteBuffer) -> YW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialDelimitedFrom(java.io.InputStream) -> ZAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(java.nio.ByteBuffer,com.google.protobuf.ExtensionRegistryLite) -> ZW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseDelimitedFrom(java.io.InputStream) -> aq
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.ByteString) -> bAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(byte[],com.google.protobuf.ExtensionRegistryLite) -> dW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.CodedInputStream) -> eAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.CodedInputStream) -> eW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.ByteString,com.google.protobuf.ExtensionRegistryLite) -> gAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.ByteString) -> gW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialDelimitedFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> hAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.CodedInputStream) -> hW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(byte[],com.google.protobuf.ExtensionRegistryLite) -> iW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(byte[],int,int,com.google.protobuf.ExtensionRegistryLite) -> jW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.CodedInputStream,com.google.protobuf.ExtensionRegistryLite) -> kAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.checkMessageInitialized(com.google.protobuf.MessageLite) -> kc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.ByteString,com.google.protobuf.ExtensionRegistryLite) -> lAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> lW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(byte[],int,int) -> oAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialFrom(com.google.protobuf.ByteString,com.google.protobuf.ExtensionRegistryLite) -> oW
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.ByteString) -> pW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(java.io.InputStream) -> rAc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(byte[]) -> sAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseFrom(byte[],int,int) -> tW
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(java.nio.ByteBuffer,com.google.protobuf.ExtensionRegistryLite) -> vAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parseDelimitedFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> vW
+    java.lang.Object com.google.protobuf.AbstractParser.parsePartialFrom(byte[],int,int,com.google.protobuf.ExtensionRegistryLite) -> wAc
+    java.lang.Object com.google.protobuf.AbstractParser.parseFrom(com.google.protobuf.ByteString) -> zAc
+    com.google.protobuf.MessageLite com.google.protobuf.AbstractParser.parsePartialDelimitedFrom(java.io.InputStream,com.google.protobuf.ExtensionRegistryLite) -> zW
+com.google.protobuf.AbstractProtobufList -> yy.Fv:
+    boolean isMutable -> Xc
+    int DEFAULT_CAPACITY -> kc
+    boolean com.google.protobuf.AbstractProtobufList.isModifiable() -> Zf
+    void com.google.protobuf.AbstractProtobufList.makeImmutable() -> bf
+    void com.google.protobuf.AbstractProtobufList.ensureIsMutable() -> kV

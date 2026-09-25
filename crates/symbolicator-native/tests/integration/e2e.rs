@@ -158,6 +158,7 @@ async fn test_minidump_symstore_index() {
             sources: Arc::new([source]),
             scraping: Default::default(),
             rewrite_first_module: Default::default(),
+            extract_variables: false,
         })
         .await
         .unwrap();
@@ -237,7 +238,9 @@ async fn test_no_permission() {
     );
     assert_eq!(
         candidates[5].download,
-        ObjectDownloadInfo::NoPerm { details: "The authorization header is malformed; a non-empty Access Key (AKID) must be provided in the credential.".into() }
+        ObjectDownloadInfo::NoPerm {
+            details: "AuthorizationQueryParametersError: Error parsing the X-Amz-Credential parameter; a non-empty Access Key (AKID) must be provided in the credential.".to_owned()
+        }
     );
 }
 
@@ -406,7 +409,7 @@ async fn test_unreachable_bucket() {
                 SourceConfig::Sentry(Arc::new(SentrySourceConfig {
                     id: SourceId::new(format!("broken-{ty}-{code}")),
                     url: hitcounter.url(&format!("respond_statuscode/{code}")),
-                    token: SentryToken("123abc".to_owned()),
+                    credentials: SentryToken("123abc".to_owned()).into(),
                 }))
             };
 

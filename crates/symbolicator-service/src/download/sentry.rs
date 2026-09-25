@@ -6,18 +6,22 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::RequestBuilder;
 use sentry::SentryFutureExt;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use url::Url;
 
 use symbolicator_sources::{
-    ObjectId, RemoteFile, SentryFileId, SentryRemoteFile, SentrySourceConfig, SentryToken,
+    AttachmentRemoteFile, ObjectId, RemoteFile, SentryCredentials, SentryFileId, SentryRemoteFile,
+    SentrySourceConfig,
 };
 
-use super::{Destination, FileType, USER_AGENT};
+use super::{Destination, FileType};
 use crate::caching::{CacheContents, CacheError};
-use crate::config::{DownloadTimeouts, InMemoryCacheConfig};
+use crate::config::InMemoryCacheConfig;
+use crate::download::DownloadLimits;
+use crate::download::compression::Compression;
 use crate::utils::futures::{CancelOnDrop, m, measure};
 
 #[derive(Clone, Debug, Deserialize)]
@@ -77,7 +81,7 @@ impl SentryFileType {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SearchQuery {
     pub index_url: Url,
-    pub token: SentryToken,
+    pub credentials: SentryCredentials,
 }
 
 /// An LRU Cache for Sentry DIF (Native Debug Files) lookups.
@@ -87,7 +91,7 @@ pub struct SentryDownloader {
     client: reqwest::Client,
     runtime: tokio::runtime::Handle,
     dif_cache: SentryDifCache,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
     propagate_traces: bool,
 }
 
@@ -95,7 +99,7 @@ impl fmt::Debug for SentryDownloader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SentryDownloader")
             .field("dif_cache", &self.dif_cache.entry_count())
-            .field("timeouts", &self.timeouts)
+            .field("timeouts", &self.limits)
             .field("propagate_traces", &self.propagate_traces)
             .finish()
     }
@@ -105,7 +109,7 @@ impl SentryDownloader {
     pub fn new(
         client: reqwest::Client,
         runtime: tokio::runtime::Handle,
-        timeouts: DownloadTimeouts,
+        limits: DownloadLimits,
         in_memory: &InMemoryCacheConfig,
         propagate_traces: bool,
     ) -> Self {
@@ -117,7 +121,7 @@ impl SentryDownloader {
             client,
             runtime,
             dif_cache,
-            timeouts,
+            limits,
             propagate_traces,
         }
     }
@@ -132,11 +136,8 @@ impl SentryDownloader {
     where
         T: DeserializeOwned,
     {
-        let mut request = client
-            .get(query.index_url.clone())
-            .bearer_auth(&query.token.0)
-            .header("Accept-Encoding", "identity")
-            .header("User-Agent", USER_AGENT);
+        let mut request = authenticate(client.get(query.index_url.clone()), &query.credentials)
+            .header("Accept-Encoding", "identity");
 
         if propagate_traces && let Some(span) = sentry::configure_scope(|scope| scope.get_span()) {
             for (k, v) in span.iter_headers() {
@@ -156,6 +157,7 @@ impl SentryDownloader {
         }
     }
 
+    #[tracing::instrument(skip(self, source), fields(query))]
     pub async fn list_files(
         &self,
         source: Arc<SentrySourceConfig>,
@@ -182,13 +184,15 @@ impl SentryDownloader {
                 .append_pair("code_id", code_id.as_str());
         }
 
+        tracing::Span::current().record("query", index_url.to_string());
+
         // NOTE: We intentionally don't limit the query to the provided file types, even though
         // the endpoint supports it. The reason is that the result of the query gets cached locally
         // and we can then filter the cached results. This saves us from making individual requests to Sentry
         // for every file type or combination of file types we need.
         let query = SearchQuery {
             index_url,
-            token: source.token.clone(),
+            credentials: source.credentials.clone(),
         };
 
         metric!(counter("source.sentry.dif_query.access") += 1);
@@ -226,7 +230,7 @@ impl SentryDownloader {
                 // TODO(flub): These queries do not handle pagination.  But sentry only starts to
                 // paginate at 20 results so we get away with this for now.
                 if result.len() >= 20 {
-                    tracing::error!(query = ?query.index_url, "Sentry API Query returned 20 results");
+                    tracing::error!("Sentry API Query returned 20 results");
                 }
             }
 
@@ -254,16 +258,54 @@ impl SentryDownloader {
         source_name: &str,
         file_source: &SentryRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let url = file_source.url();
         tracing::debug!("Fetching Sentry artifact from {}", url);
-
-        let mut builder = self.client.get(url).header("User-Agent", USER_AGENT);
+        let mut builder = self.client.get(url);
         if file_source.use_credentials() {
-            builder = builder.bearer_auth(&file_source.source.token.0);
+            builder = authenticate(builder, &file_source.source.credentials);
         }
+        self.download_request(source_name, builder, destination)
+            .await
+    }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+    /// Downloads an attachment from trusted internal storage.
+    pub async fn download_attachment(
+        &self,
+        source_name: &str,
+        file: &AttachmentRemoteFile,
+        destination: impl Destination,
+    ) -> CacheContents<Compression> {
+        tracing::debug!("Fetching Sentry attachment from {}", file.url);
+        let mut builder = self.client.get(file.url.clone());
+        if let Some(token) = &file.token {
+            builder = builder.bearer_auth(&token.0);
+        }
+        self.download_request(source_name, builder, destination)
+            .await
+    }
+
+    async fn download_request(
+        &self,
+        source_name: &str,
+        builder: RequestBuilder,
+        destination: impl Destination,
+    ) -> CacheContents<Compression> {
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.limits,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
+    }
+}
+
+fn authenticate(builder: RequestBuilder, credentials: &SentryCredentials) -> RequestBuilder {
+    match credentials {
+        SentryCredentials::Token(token) => builder.bearer_auth(&token.0),
+        SentryCredentials::Cookies(cookies) => builder.header(reqwest::header::COOKIE, &cookies.0),
     }
 }
 
@@ -271,14 +313,14 @@ impl SentryDownloader {
 mod tests {
     use super::*;
 
-    use symbolicator_sources::{RemoteFileUri, SourceId};
+    use symbolicator_sources::{RemoteFileUri, SentryToken, SourceId};
 
     #[test]
     fn test_download_url() {
         let source = SentrySourceConfig {
             id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
-            token: SentryToken("token".into()),
+            credentials: SentryToken("token".into()).into(),
         };
         let file_source =
             SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);
@@ -291,7 +333,7 @@ mod tests {
         let source = SentrySourceConfig {
             id: SourceId::new("test"),
             url: Url::parse("https://example.net/endpoint/").unwrap(),
-            token: SentryToken("token".to_owned()),
+            credentials: SentryToken("token".to_owned()).into(),
         };
         let file_source =
             SentryRemoteFile::new(Arc::new(source), true, SentryFileId("abc123".into()), None);

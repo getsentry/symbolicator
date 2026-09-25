@@ -9,14 +9,13 @@ use symbolicator_service::caches::versions::PROGUARD_CACHE_VERSIONS;
 use symbolicator_service::caching::{
     CacheContents, CacheError, CacheItemRequest, CacheKey, Cacher,
 };
-use symbolicator_service::download::{
-    self, DownloadService, SourceIndexService, fetch_file, tempfile_in_parent,
-};
+use symbolicator_service::download::{self, DownloadService, SourceIndexService, fetch_file};
 use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
+use symbolicator_service::utils::fs::tempfile_in_parent;
 use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig};
 use tempfile::NamedTempFile;
 
@@ -175,10 +174,6 @@ impl CacheItemRequest for FetchProguard {
             if !mapping.is_valid() {
                 Err(CacheError::Malformed(
                     "The file is not a valid ProGuard file".into(),
-                ))
-            } else if !mapping.has_line_info() {
-                Err(CacheError::Malformed(
-                    "The ProGuard file doesn't contain any line mappings".into(),
                 ))
             } else {
                 let cache_temp_file = tempfile_in_parent(temp_file)?;

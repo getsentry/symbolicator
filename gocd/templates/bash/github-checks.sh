@@ -1,6 +1,6 @@
 #!/bin/bash
 
-checks-githubactions-checkruns \
+checks-githubactions-checkruns2 \
   getsentry/symbolicator \
   ${GO_REVISION_SYMBOLICATOR_REPO} \
   'Tests' \

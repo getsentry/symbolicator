@@ -2,6 +2,7 @@ use axum::extract;
 use axum::http::StatusCode;
 use axum::response::Json;
 use symbolicator_native::interface::AttachmentFile;
+use symbolicator_service::utils::fs;
 use tokio::fs::File;
 
 use crate::endpoints::symbolicate::SymbolicationRequestQueryParams;
@@ -16,8 +17,6 @@ pub async fn handle_apple_crash_report_request(
     extract::Query(params): extract::Query<SymbolicationRequestQueryParams>,
     mut multipart: extract::Multipart,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let mut report = None;
@@ -29,7 +28,8 @@ pub async fn handle_apple_crash_report_request(
     while let Some(field) = multipart.next_field().await? {
         match field.name() {
             Some("apple_crash_report") => {
-                let mut report_file = File::from_std(tempfile::tempfile()?);
+                let temp_file = fs::tempfile(service.config().tmp_dir().as_deref())?.into_file();
+                let mut report_file = File::from_std(temp_file);
                 stream_multipart_file(field, &mut report_file).await?;
                 report = Some(report_file.into_std().await)
             }

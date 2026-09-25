@@ -1,6 +1,7 @@
+#![recursion_limit = "256"]
 use std::fs::File;
 use std::io::{Read, Seek};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, io};
 
@@ -8,7 +9,8 @@ use event::{create_js_symbolication_request, create_native_symbolication_request
 use output::{print_compact, print_pretty};
 use remote::EventKey;
 
-use settings::Mode;
+use reqwest::header;
+use settings::{Mode, SymbolsPath};
 use symbolicator_js::SourceMapService;
 use symbolicator_native::SymbolicationActor;
 use symbolicator_native::interface::{AttachmentFile, ProcessMinidump};
@@ -16,17 +18,18 @@ use symbolicator_service::config::Config;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::{
-    CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FilesystemSourceConfig,
-    SentrySourceConfig, SentryToken, SourceConfig, SourceId,
+    CommonSourceConfig, DirectoryLayout, FilesystemSourceConfig, SentryCredentials,
+    SentrySourceConfig, SourceConfig, SourceId,
 };
 
 use anyhow::{Context, Result};
-use reqwest::header;
 use tracing_subscriber::filter;
 use tracing_subscriber::prelude::*;
 
 use crate::output::CompletedResponse;
 
+mod event;
+mod js_local_source;
 mod output;
 mod settings;
 
@@ -39,6 +42,8 @@ async fn main() -> Result<()> {
         log_level,
         mode,
         symbols,
+        scraping_enabled,
+        extract_variables,
     } = settings::Settings::get()?;
 
     // We depend on `rustls` with both the `aws-lc-rs` and
@@ -83,7 +88,7 @@ async fn main() -> Result<()> {
                 ref base_url,
                 ref org,
                 ref project,
-                ref auth_token,
+                ref auth,
                 ..
             } = mode
             else {
@@ -93,10 +98,16 @@ async fn main() -> Result<()> {
             };
 
             let mut headers = header::HeaderMap::new();
-            headers.insert(
-                header::AUTHORIZATION,
-                header::HeaderValue::from_str(&format!("Bearer {auth_token}")).unwrap(),
-            );
+            match auth {
+                SentryCredentials::Token(token) => headers.insert(
+                    header::AUTHORIZATION,
+                    header::HeaderValue::from_str(&format!("Bearer {}", token.0)).unwrap(),
+                ),
+                SentryCredentials::Cookies(cookies) => headers.insert(
+                    header::COOKIE,
+                    header::HeaderValue::from_str(&cookies.0).unwrap(),
+                ),
+            };
 
             let client = reqwest::Client::builder()
                 .default_headers(headers)
@@ -115,25 +126,7 @@ async fn main() -> Result<()> {
 
     let res = match payload {
         Payload::Event(event) if event.platform.is_js() => {
-            let Mode::Online {
-                ref org,
-                ref project,
-                ref base_url,
-                ref auth_token,
-                scraping_enabled,
-            } = mode
-            else {
-                anyhow::bail!("JavaScript symbolication is not supported in offline mode.");
-            };
-
-            let source = Arc::new(SentrySourceConfig {
-                id: SourceId::new("sentry:project"),
-                token: SentryToken(auth_token.clone()),
-                url: base_url
-                    .join(&format!("projects/{org}/{project}/artifact-lookup/"))
-                    .unwrap(),
-            });
-
+            let source = prepare_sourcemap_source(mode, symbols)?;
             let request = create_js_symbolication_request(scope, source, event, scraping_enabled)
                 .context("Event cannot be symbolicated")?;
 
@@ -144,14 +137,16 @@ async fn main() -> Result<()> {
 
         Payload::Event(event) if event.platform.is_native() => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
-            let request = create_native_symbolication_request(scope, dsym_sources, event)
-                .context("Event cannot be symbolicated")?;
+            let request =
+                create_native_symbolication_request(scope, dsym_sources, event, extract_variables)
+                    .context("Event cannot be symbolicated")?;
 
             tracing::info!("symbolicating event");
 
             let res = native.symbolicate(request).await?;
             CompletedResponse::NativeSymbolication(res)
         }
+
         Payload::Minidump(minidump_file) => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
             tracing::info!("symbolicating minidump");
@@ -163,10 +158,28 @@ async fn main() -> Result<()> {
                     sources: dsym_sources,
                     scraping: Default::default(),
                     rewrite_first_module: Default::default(),
+                    extract_variables,
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
         }
+
+        Payload::AppleCrashReport(file) => {
+            let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
+            tracing::info!("symbolicating apple crash report");
+            let res = native
+                .process_apple_crash_report(
+                    None,
+                    scope,
+                    AttachmentFile::Local(file),
+                    dsym_sources,
+                    Default::default(),
+                    extract_variables,
+                )
+                .await?;
+            CompletedResponse::NativeSymbolication(res)
+        }
+
         Payload::Event(event) => anyhow::bail!(
             "Cannot symbolicate event: invalid platform {}",
             event.platform
@@ -192,20 +205,20 @@ async fn main() -> Result<()> {
 fn prepare_dsym_sources(
     mode: Mode,
     symbolicator_config: &Config,
-    local_symbols: Option<PathBuf>,
+    local_symbols: Option<SymbolsPath>,
 ) -> Arc<[SourceConfig]> {
     let mut dsym_sources = vec![];
     if let Mode::Online {
         ref org,
         ref project,
         ref base_url,
-        ref auth_token,
+        ref auth,
         ..
     } = mode
     {
         let project_source = SourceConfig::Sentry(Arc::new(SentrySourceConfig {
             id: SourceId::new("sentry:project"),
-            token: SentryToken(auth_token.clone()),
+            credentials: auth.clone(),
             url: base_url
                 .join(&format!("projects/{org}/{project}/files/dsyms/"))
                 .unwrap(),
@@ -215,14 +228,14 @@ fn prepare_dsym_sources(
     }
 
     dsym_sources.extend(symbolicator_config.sources.iter().cloned());
-    if let Some(path) = local_symbols {
+    if let Some(symbols_path) = local_symbols {
         let local_source = FilesystemSourceConfig {
             id: SourceId::new("local:cli"),
-            path,
+            path: symbols_path.path,
             files: CommonSourceConfig {
                 filters: Default::default(),
                 layout: DirectoryLayout {
-                    ty: DirectoryLayoutType::Unified,
+                    ty: symbols_path.layout_type,
                     casing: Default::default(),
                 },
                 is_public: false,
@@ -234,30 +247,73 @@ fn prepare_dsym_sources(
     Arc::from(dsym_sources.into_boxed_slice())
 }
 
+fn prepare_sourcemap_source(
+    mode: Mode,
+    local_symbols: Option<SymbolsPath>,
+) -> Result<Arc<SentrySourceConfig>> {
+    match mode {
+        Mode::Online {
+            ref org,
+            ref project,
+            ref base_url,
+            ref auth,
+        } => {
+            if local_symbols.is_some() {
+                tracing::warn!("Local symbol source will not be used in online mode");
+            }
+
+            Ok(Arc::new(SentrySourceConfig {
+                id: SourceId::new("sentry:project"),
+                credentials: auth.clone(),
+                url: base_url
+                    .join(&format!("projects/{org}/{project}/artifact-lookup/"))
+                    .unwrap(),
+            }))
+        }
+
+        Mode::Offline => {
+            let Some(SymbolsPath { path, .. }) = local_symbols else {
+                anyhow::bail!(
+                    "In JS offline mode, you must provide a local symbol directory with --symbols"
+                );
+            };
+
+            let source = js_local_source::start_server(&path)
+                .context("Failed to start local symbol server")?;
+
+            Ok(Arc::new(source))
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Payload {
     Event(event::Event),
     Minidump(File),
+    AppleCrashReport(File),
 }
 
 impl Payload {
     fn parse<P: AsRef<Path> + fmt::Debug>(path: &P) -> Result<Option<Self>> {
         match File::open(path) {
-            Ok(mut file) => {
-                let mut magic = [0; 4];
-                file.read_exact(&mut magic)?;
-                file.rewind()?;
-
-                if &magic == b"MDMP" || &magic == b"PMDM" {
-                    Ok(Some(Payload::Minidump(file)))
-                } else {
-                    let event =
-                        serde_json::from_reader(file).context("failed to parse event json file")?;
-                    Ok(Some(Payload::Event(event)))
-                }
-            }
+            Ok(file) => Self::parse_file(file).map(Option::Some),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e).context(format!("Could not open event file at {path:?}")),
+        }
+    }
+
+    fn parse_file(mut file: File) -> Result<Self> {
+        let mut magic = [0; 4];
+        file.read_exact(&mut magic)?;
+        file.rewind()?;
+
+        if &magic == b"MDMP" || &magic == b"PMDM" {
+            Ok(Payload::Minidump(file))
+        } else if &magic == b"Inci" || &magic == b"----" {
+            Ok(Payload::AppleCrashReport(file))
+        } else {
+            let event = serde_json::from_reader(file).context("failed to parse event json file")?;
+            Ok(Payload::Event(event))
         }
     }
 
@@ -266,17 +322,17 @@ impl Payload {
         let event = remote::download_event(client, key).await?;
         tracing::info!("event json file downloaded");
 
-        match remote::get_attached_minidump(client, key).await? {
-            Some(minidump_url) => {
-                tracing::info!("minidump attachment found");
-                let minidump_path = remote::download_minidump(client, minidump_url).await?;
-                tracing::info!(path = ?minidump_path, "minidump file downloaded");
+        match remote::get_attached_crash(client, key).await? {
+            Some(url) => {
+                tracing::info!("crash attachment found");
+                let file = remote::download_crash_file(client, url).await?;
+                tracing::info!(path = ?file, "crash file downloaded");
 
-                Ok(Payload::Minidump(minidump_path))
+                Payload::parse_file(file)
             }
 
             None => {
-                tracing::info!("no minidump attachment found");
+                tracing::info!("no crash attachment found");
                 Ok(Self::Event(event))
             }
         }
@@ -284,8 +340,8 @@ impl Payload {
 }
 
 mod remote {
-    use std::fs::File;
     use std::io::Write;
+    use std::{fs::File, io::Seek};
 
     use anyhow::{Context, Result, bail};
     use reqwest::{StatusCode, Url};
@@ -307,7 +363,7 @@ mod remote {
         id: String,
     }
 
-    pub async fn get_attached_minidump(
+    pub async fn get_attached_crash(
         client: &reqwest::Client,
         key: EventKey<'_>,
     ) -> Result<Option<Url>> {
@@ -348,7 +404,10 @@ mod remote {
 
         let Some(minidump_id) = attachments
             .iter()
-            .find(|attachment| attachment.r#type == "event.minidump")
+            .find(|attachment| {
+                attachment.r#type == "event.minidump"
+                    || attachment.r#type == "event.applecrashreport"
+            })
             .map(|attachment| &attachment.id)
         else {
             return Ok(None);
@@ -360,8 +419,8 @@ mod remote {
         Ok(Some(download_url))
     }
 
-    pub async fn download_minidump(client: &reqwest::Client, download_url: Url) -> Result<File> {
-        tracing::info!(url = %download_url, "downloading minidump file");
+    pub async fn download_crash_file(client: &reqwest::Client, download_url: Url) -> Result<File> {
+        tracing::info!(url = %download_url, "downloading crash file");
 
         let response = client
             .get(download_url)
@@ -369,7 +428,7 @@ mod remote {
             .await
             .context("Failed to send request")?;
 
-        let minidump = if response.status().is_success() {
+        let crash_file = if response.status().is_success() {
             response
                 .bytes()
                 .await
@@ -386,8 +445,10 @@ mod remote {
 
         let mut temp_file = tempfile::tempfile().unwrap();
         temp_file
-            .write_all(&minidump)
-            .context("Failed to write minidump to disk")?;
+            .write_all(&crash_file)
+            .context("Failed to write crash file to disk")?;
+
+        temp_file.rewind()?;
 
         Ok(temp_file)
     }
@@ -423,339 +484,5 @@ mod remote {
                     .unwrap_or("unknown error")
             ));
         }
-    }
-}
-
-mod event {
-    use std::sync::Arc;
-
-    use anyhow::bail;
-    use serde::Deserialize;
-    use symbolic::common::Language;
-    use symbolicator_js::interface::{
-        JsFrame, JsFrameData, JsModule, JsStacktrace, SymbolicateJsStacktraces,
-    };
-    use symbolicator_native::interface::{
-        AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal,
-        StacktraceOrigin, SymbolicateStacktraces,
-    };
-    use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
-    use symbolicator_service::utils::hex::HexValue;
-    use symbolicator_sources::{SentrySourceConfig, SourceConfig};
-
-    pub fn create_js_symbolication_request(
-        scope: Scope,
-        source: Arc<SentrySourceConfig>,
-        event: Event,
-        scraping_enabled: bool,
-    ) -> anyhow::Result<SymbolicateJsStacktraces> {
-        let Event {
-            platform,
-            debug_meta,
-            exception,
-            threads,
-            release,
-            dist,
-            ..
-        } = event;
-
-        let mut stacktraces = vec![];
-        if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(
-                excs.iter_mut()
-                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
-            );
-        }
-        if let Some(mut threads) = threads.map(|threads| threads.values) {
-            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
-                thread
-                    .raw_stacktrace
-                    .take()
-                    .or_else(|| thread.stacktrace.take())
-            }));
-        }
-
-        let stacktraces: Vec<_> = stacktraces
-            .into_iter()
-            .map(JsStacktrace::from)
-            .filter(|stacktrace| !stacktrace.frames.is_empty())
-            .collect();
-
-        let modules: Vec<_> = debug_meta
-            .images
-            .into_iter()
-            .filter_map(|module| match module {
-                Module::Sourcemap(m) => Some(m),
-                _ => None,
-            })
-            .collect();
-
-        if stacktraces.is_empty() {
-            bail!("Event has no usable frames");
-        };
-
-        Ok(SymbolicateJsStacktraces {
-            platform: Some(platform),
-            scope,
-            source,
-            release,
-            dist,
-            scraping: ScrapingConfig {
-                enabled: scraping_enabled,
-                ..Default::default()
-            },
-            apply_source_context: true,
-            // we manually reversed the frames when we created the stacktraces, so this is
-            // "callee first"
-            frame_order: FrameOrder::CalleeFirst,
-
-            stacktraces,
-            modules,
-        })
-    }
-
-    pub fn create_native_symbolication_request(
-        scope: Scope,
-        sources: Arc<[SourceConfig]>,
-        event: Event,
-    ) -> anyhow::Result<SymbolicateStacktraces> {
-        let Event {
-            debug_meta,
-            exception,
-            threads,
-            signal,
-            ..
-        } = event;
-
-        let mut stacktraces = vec![];
-        if let Some(mut excs) = exception.map(|excs| excs.values) {
-            stacktraces.extend(
-                excs.iter_mut()
-                    .filter_map(|exc| exc.raw_stacktrace.take().or_else(|| exc.stacktrace.take())),
-            );
-        }
-        if let Some(mut threads) = threads.map(|threads| threads.values) {
-            stacktraces.extend(threads.iter_mut().filter_map(|thread| {
-                thread
-                    .raw_stacktrace
-                    .take()
-                    .or_else(|| thread.stacktrace.take())
-            }));
-        }
-
-        let stacktraces: Vec<_> = stacktraces
-            .into_iter()
-            .map(RawStacktrace::from)
-            .filter(|stacktrace| !stacktrace.frames.is_empty())
-            .collect();
-
-        let modules: Vec<_> = debug_meta
-            .images
-            .into_iter()
-            .filter_map(|module| match module {
-                Module::Object(m) => Some(CompleteObjectInfo::from(m)),
-                _ => None,
-            })
-            .collect();
-
-        if modules.is_empty() {
-            bail!("Event has no debug images");
-        };
-
-        if stacktraces.is_empty() {
-            bail!("Event has no usable frames");
-        };
-
-        Ok(SymbolicateStacktraces {
-            platform: Some(event.platform),
-            scope,
-            signal,
-            sources,
-            origin: StacktraceOrigin::Symbolicate,
-            stacktraces,
-            modules,
-            apply_source_context: true,
-            scraping: Default::default(),
-            rewrite_first_module: Default::default(),
-            // we manually reversed the frames when we created the stacktraces, so this is
-            // "callee first"
-            frame_order: FrameOrder::CalleeFirst,
-        })
-    }
-
-    #[derive(Debug, Deserialize)]
-    pub struct Event {
-        #[serde(default)]
-        pub platform: Platform,
-        #[serde(default)]
-        debug_meta: DebugMeta,
-        exception: Option<Exceptions>,
-        threads: Option<Threads>,
-        signal: Option<Signal>,
-        release: Option<String>,
-        dist: Option<String>,
-    }
-
-    #[derive(Debug, Deserialize, Default)]
-    struct DebugMeta {
-        images: Vec<Module>,
-    }
-
-    #[derive(Debug, Clone, Deserialize)]
-    #[serde(untagged)]
-    pub enum Module {
-        Object(RawObjectInfo),
-        Sourcemap(JsModule),
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Exceptions {
-        values: Vec<Exception>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Exception {
-        raw_stacktrace: Option<Stacktrace>,
-        stacktrace: Option<Stacktrace>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Threads {
-        values: Vec<Thread>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Thread {
-        raw_stacktrace: Option<Stacktrace>,
-        stacktrace: Option<Stacktrace>,
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Stacktrace {
-        frames: Vec<Frame>,
-        #[serde(default)]
-        is_requesting: bool,
-    }
-
-    impl From<Stacktrace> for RawStacktrace {
-        fn from(stacktrace: Stacktrace) -> Self {
-            let frames = stacktrace
-                .frames
-                .into_iter()
-                .filter_map(to_raw_frame)
-                .rev()
-                .collect();
-
-            Self {
-                is_requesting: Some(stacktrace.is_requesting),
-                frames,
-                ..Default::default()
-            }
-        }
-    }
-
-    impl From<Stacktrace> for JsStacktrace {
-        fn from(stacktrace: Stacktrace) -> Self {
-            let frames = stacktrace
-                .frames
-                .into_iter()
-                .filter_map(to_js_frame)
-                .rev()
-                .collect();
-
-            Self { frames }
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
-    struct Frame {
-        platform: Option<Platform>,
-        #[serde(default)]
-        addr_mode: AddrMode,
-
-        instruction_addr: Option<HexValue>,
-
-        #[serde(default)]
-        function_id: Option<HexValue>,
-
-        #[serde(default)]
-        package: Option<String>,
-
-        lang: Option<Language>,
-
-        symbol: Option<String>,
-
-        sym_addr: Option<HexValue>,
-
-        function: Option<String>,
-
-        filename: Option<String>,
-
-        abs_path: Option<String>,
-
-        lineno: Option<u32>,
-
-        colno: Option<u32>,
-
-        #[serde(default)]
-        pre_context: Vec<String>,
-
-        context_line: Option<String>,
-
-        #[serde(default)]
-        post_context: Vec<String>,
-
-        module: Option<String>,
-
-        source_link: Option<String>,
-
-        in_app: Option<bool>,
-
-        #[serde(default)]
-        trust: FrameTrust,
-
-        #[serde(default)]
-        data: JsFrameData,
-    }
-
-    fn to_raw_frame(value: Frame) -> Option<RawFrame> {
-        Some(RawFrame {
-            platform: value.platform,
-            addr_mode: value.addr_mode,
-            instruction_addr: value.instruction_addr?,
-            adjust_instruction_addr: None,
-            function_id: value.function_id,
-            package: value.package,
-            lang: value.lang,
-            symbol: value.symbol,
-            sym_addr: value.sym_addr,
-            function: value.function,
-            filename: value.filename,
-            abs_path: value.abs_path,
-            lineno: value.lineno,
-            pre_context: value.pre_context,
-            context_line: value.context_line,
-            post_context: value.post_context,
-            source_link: value.source_link,
-            in_app: value.in_app,
-            trust: value.trust,
-        })
-    }
-
-    fn to_js_frame(value: Frame) -> Option<JsFrame> {
-        Some(JsFrame {
-            platform: value.platform,
-            function: value.function,
-            filename: value.filename,
-            module: value.module,
-            abs_path: value.abs_path?,
-            lineno: value.lineno?,
-            colno: value.colno,
-            pre_context: value.pre_context,
-            context_line: value.context_line,
-            post_context: value.post_context,
-            token_name: None,
-            data: value.data,
-        })
     }
 }

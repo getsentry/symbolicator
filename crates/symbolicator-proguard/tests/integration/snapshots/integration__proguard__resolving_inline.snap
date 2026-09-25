@@ -1,5 +1,6 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
+assertion_line: 181
 expression: response
 ---
 exceptions:
@@ -11,22 +12,27 @@ stacktraces:
       module: org.a.b
     frames:
       - function: onClick
+        filename: "-.java"
         module: io.sentry.sample.-$$Lambda$r3Avcbztes2hicEObh02jjhQqd4
+        abs_path: "-.java"
         lineno: 2
         index: 0
       - function: onClickHandler
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
+        abs_path: MainActivity.java
         lineno: 40
         index: 1
       - function: foo
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
+        abs_path: MainActivity.java
         lineno: 44
         index: 1
       - function: bar
         filename: MainActivity.java
         module: io.sentry.sample.MainActivity
+        abs_path: MainActivity.java
         lineno: 54
         index: 1
 classes: {}

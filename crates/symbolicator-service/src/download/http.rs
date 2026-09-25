@@ -6,25 +6,25 @@ use symbolicator_sources::HttpRemoteFile;
 
 use crate::{
     caching::{CacheContents, CacheError},
-    config::DownloadTimeouts,
+    download::{DownloadLimits, compression::Compression},
 };
 
-use super::{Destination, USER_AGENT};
+use super::Destination;
 
 /// Downloader implementation that supports the HTTP source.
 #[derive(Debug)]
 pub struct HttpDownloader {
     client: Client,
     no_ssl_client: Client,
-    timeouts: DownloadTimeouts,
+    limits: DownloadLimits,
 }
 
 impl HttpDownloader {
-    pub fn new(client: Client, no_ssl_client: Client, timeouts: DownloadTimeouts) -> Self {
+    pub fn new(client: Client, no_ssl_client: Client, limits: DownloadLimits) -> Self {
         Self {
             client,
             no_ssl_client,
-            timeouts,
+            limits,
         }
     }
 
@@ -34,7 +34,7 @@ impl HttpDownloader {
         source_name: &str,
         file_source: &HttpRemoteFile,
         destination: impl Destination,
-    ) -> CacheContents {
+    ) -> CacheContents<Compression> {
         let download_url = file_source.url().map_err(|_| CacheError::NotFound)?;
 
         tracing::debug!("Fetching debug file from `{}`", download_url);
@@ -46,7 +46,6 @@ impl HttpDownloader {
             self.client.get(download_url)
         };
 
-        builder = builder.header(header::USER_AGENT, USER_AGENT);
         let headers = file_source
             .source
             .headers
@@ -59,10 +58,18 @@ impl HttpDownloader {
             }
         }
 
-        super::download_reqwest(source_name, builder, &self.timeouts, destination).await
+        super::download_reqwest(
+            source_name,
+            builder,
+            &self.limits,
+            destination,
+            &super::GenericErrorHandler,
+        )
+        .await
     }
 }
 
+#[allow(clippy::disallowed_methods)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,6 +77,7 @@ mod tests {
     use symbolicator_sources::{SourceConfig, SourceLocation};
 
     use crate::test;
+    use crate::utils::http::ClientSettings;
 
     #[tokio::test]
     async fn test_download_source() {
@@ -132,9 +140,15 @@ mod tests {
         let file_source =
             HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
 
-        let restricted_client = crate::utils::http::create_client(&Default::default(), true, false);
-        let no_ssl_client = crate::utils::http::create_client(&Default::default(), true, true);
-
+        let restricted_client = crate::utils::http::create_client(&ClientSettings {
+            connect_to_reserved_ips: true,
+            ..Default::default()
+        });
+        let no_ssl_client = crate::utils::http::create_client(&ClientSettings {
+            connect_to_reserved_ips: true,
+            accept_invalid_certs: true,
+            ..Default::default()
+        });
         let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
         let mut destination = tokio::fs::File::create(&dest).await.unwrap();
         let download_status = downloader

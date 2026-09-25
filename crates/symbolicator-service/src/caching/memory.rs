@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -14,7 +13,7 @@ use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::caches::CacheVersions;
 use crate::caching::Metadata;
-use crate::utils::futures::CallOnDrop;
+use crate::utils::defer::defer;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
 
@@ -132,7 +131,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     pub fn new(config: Cache, shared_cache: SharedCacheRef) -> Self {
         let cache = InMemoryCache::builder()
             .max_capacity(config.in_memory_capacity)
-            .name(config.name().as_ref())
+            .name(config.name().as_str())
             .expire_after(CacheExpiration)
             // NOTE: we count all the bookkeeping structures to the weight as well
             .weigher(|_k, v| {
@@ -270,7 +269,7 @@ impl<T: CacheItemRequest> Cacher<T> {
         let entry = match entry {
             Some(entry) => entry,
             None => {
-                metric!(counter("caches.computation") += 1, "cache" => name.as_ref());
+                metric!(counter("caches.computation") += 1, "cache" => name.as_str());
                 match request.compute(&mut temp_file).await {
                     Ok(()) => {
                         // Now we have written the data to the tempfile we can mmap it, persisting it later
@@ -353,16 +352,16 @@ impl<T: CacheItemRequest> Cacher<T> {
                     Err(CacheError::Malformed(_)) => "malformed",
                     Err(_) => "cache-specific error",
                 },
-                "is_refresh" => &is_refresh.to_string(),
-                "cache" => name.as_ref(),
+                "is_refresh" => is_refresh.to_string(),
+                "cache" => name.as_str(),
             );
 
             if let Ok(byte_view) = contents {
                 metric!(
-                    distribution("caches.file.size") = byte_view.len() as u64,
+                    distribution("caches.file.size") = byte_view.len() as f64,
                     "hit" => "false",
-                    "is_refresh" => &is_refresh.to_string(),
-                    "cache" => name.as_ref(),
+                    "is_refresh" => if is_refresh { "true" } else { "false" },
+                    "cache" => name.as_str(),
                 );
             }
 
@@ -468,8 +467,8 @@ impl<T: CacheItemRequest> Cacher<T> {
                 // in a deduplicated background task, which we will not await
                 metric!(
                     counter("caches.file.fallback") += 1,
-                    "version" => &version.to_string(),
-                    "cache" => name.as_ref(),
+                    "version" => version.to_string(),
+                    "cache" => name.as_str(),
                 );
                 self.spawn_refresh(request, cache_key.clone());
             }
@@ -493,7 +492,7 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// will return an `Err`. This err may be persisted in the cache for a time.
     pub async fn compute_memoized(&self, request: T, cache_key: CacheKey) -> CacheEntry<T::Item> {
         let name = self.config.name();
-        metric!(counter("caches.access") += 1, "cache" => name.as_ref());
+        metric!(counter("caches.access") += 1, "cache" => name.as_str());
 
         let entry = self
             .cache
@@ -502,7 +501,7 @@ impl<T: CacheItemRequest> Cacher<T> {
             .await;
 
         if !entry.is_fresh() {
-            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_ref());
+            metric!(counter("caches.memory.hit") += 1, "cache" => name.as_str());
         }
         entry.into_value().data
     }
@@ -521,7 +520,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         // A file was not found. If this spikes, it's possible that the filesystem cache
         // just got pruned.
-        metric!(counter("caches.file.miss") += 1, "cache" => name.as_ref());
+        metric!(counter("caches.file.miss") += 1, "cache" => name.as_str());
 
         let data = self
             .compute(request, cache_key, false)
@@ -549,20 +548,16 @@ impl<T: CacheItemRequest> Cacher<T> {
             return;
         }
 
-        // We count down towards zero, and if we reach or surpass it, we will stop here.
-        let max_lazy_refreshes = self.config.max_lazy_refreshes();
-        if max_lazy_refreshes.fetch_sub(1, Ordering::Relaxed) <= 0 {
-            max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
-
-            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_ref());
+        let Some(lazy_refresh_token) = self.config.lazy_refresh().try_incr() else {
+            metric!(counter("caches.lazy_limit_hit") += 1, "cache" => name.as_str());
             return;
-        }
+        };
 
         let done_token = {
             let key = cache_key.clone();
             let refreshes = Arc::clone(&self.refreshes);
-            CallOnDrop::new(move || {
-                max_lazy_refreshes.fetch_add(1, Ordering::Relaxed);
+            defer(move || {
+                drop(lazy_refresh_token);
                 refreshes.lock().unwrap().remove(&key);
             })
         };
@@ -578,7 +573,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
         let this = self.clone();
         let task = async move {
-            let _done_token = done_token; // move into the future
+            let _done_token = done_token;
 
             let span = sentry::configure_scope(|scope| scope.get_span());
             let ctx = sentry::TransactionContext::continue_from_span(
@@ -638,12 +633,12 @@ fn lookup_local_cache(
 
     // This is also reported for "negative cache hits": When we cached
     // the 404 response from a server as empty file.
-    metric!(counter("caches.file.hit") += 1, "cache" => name.as_ref());
+    metric!(counter("caches.file.hit") += 1, "cache" => name.as_str());
     if let Ok(byteview) = data.contents() {
         metric!(
-            distribution("caches.file.size") = byteview.len() as u64,
+            distribution("caches.file.size") = byteview.len() as f64,
             "hit" => "true",
-            "cache" => name.as_ref(),
+            "cache" => name.as_str(),
         );
     }
 

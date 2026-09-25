@@ -557,6 +557,48 @@ async fn test_no_source_contents() {
 }
 
 #[tokio::test]
+async fn test_no_source_contents_with_sdk_context() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_srv, source) = sourcemap_server("11_no_source_contents", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            "url": format!("{url}/embedded.js"),
+            "abs_path": "~/embedded.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            "url": format!("{url}/embedded.js.map"),
+            "abs_path": "~/embedded.js.map",
+            "resolved_with": "release",
+        }])
+    });
+
+    // SDKs like `@sentry/node` read context lines from the (minified) file on disk.
+    let frames = r#"[{
+        "abs_path": "http://example.com/embedded.js",
+        "filename": "embedded.js",
+        "lineno": 1,
+        "colno": 39,
+        "pre_context": ["minified pre context"],
+        "context_line": "minified context line",
+        "post_context": ["minified post context"]
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    // The minified context must not end up on the symbolicated frame,
+    // since it doesn't belong to the original source location.
+    let frame = &response.stacktraces[0].frames[0];
+    assert_eq!(frame.filename.as_deref(), Some("file1.js"));
+    assert!(frame.pre_context.is_empty());
+    assert_eq!(frame.context_line, None);
+    assert!(frame.post_context.is_empty());
+}
+
+#[tokio::test]
 async fn e2e_node_debugid() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_srv, source) = sourcemap_server("e2e_node_debugid", |url, query| {
@@ -776,11 +818,140 @@ async fn test_manual_processing() {
             "https://sentry.io/api/0/projects/{org}/{project}/artifact-lookup/"
         ))
         .unwrap(),
-        token: SentryToken(token.to_string()),
+        credentials: SentryToken(token.to_string()).into(),
     };
 
     let request = make_js_request(source, frames, modules, release, dist);
     let response = symbolication.symbolicate_js(request).await;
 
     assert_snapshot!(response);
+}
+
+#[tokio::test]
+async fn test_sources_budget_exceeded_by_minified_source() {
+    let (symbolication, _cache_dir) =
+        setup_service(|config| config.js_max_sources_size_per_request = Some(235));
+    let (_srv, source) = sourcemap_server("01_sourcemap_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            // 236 bytes
+            "url": format!("{url}/test.min.js"),
+            "abs_path": "~/test.min.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            // Sourcemaps don't count towards budget
+            "url": format!("{url}/test.min.js.map"),
+            "abs_path": "~/test.min.js.map",
+            "resolved_with": "release",
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/test.min.js",
+        "filename": "test.min.js",
+        "lineno": 1,
+        "colno": 183,
+        "function": "i"
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response);
+}
+
+#[tokio::test]
+async fn test_sources_budget_exceeded_by_source_file() {
+    let (symbolication, _cache_dir) =
+        setup_service(|config| config.js_max_sources_size_per_request = Some(293));
+    let (_srv, source) = sourcemap_server("02_sourcemap_source_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            // 233 bytes
+            "url": format!("{url}/file.min.js"),
+            "abs_path": "~/file.min.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            // Sourcemaps don't count towards budget
+            "url": format!("{url}/file.min.js.map"),
+            "abs_path": "~/file.min.js.map",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "3",
+            // 61 bytes
+            "url": format!("{url}/file1.js"),
+            "abs_path": "~/file1.js",
+            "resolved_with": "release",
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/file.min.js",
+        "filename": "file.min.js",
+        "lineno": 1,
+        "colno": 39
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_snapshot!(response);
+}
+
+#[tokio::test]
+async fn test_sources_budget_not_counted_twice_by_same_file() {
+    let (symbolication, _cache_dir) =
+        setup_service(|config| config.js_max_sources_size_per_request = Some(295));
+    let (_srv, source) = sourcemap_server("02_sourcemap_source_expansion", |url, _query| {
+        json!([{
+            "type": "file",
+            "id": "1",
+            // 233 bytes
+            "url": format!("{url}/file.min.js"),
+            "abs_path": "~/file.min.js",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "2",
+            // Sourcemaps don't count towards budget
+            "url": format!("{url}/file.min.js.map"),
+            "abs_path": "~/file.min.js.map",
+            "resolved_with": "release",
+        }, {
+            "type": "file",
+            "id": "3",
+            // 61 bytes
+            "url": format!("{url}/file1.js"),
+            "abs_path": "~/file1.js",
+            "resolved_with": "release",
+        }])
+    });
+
+    let frames = r#"[{
+        "abs_path": "http://example.com/file.min.js",
+        "filename": "file.min.js",
+        "lineno": 1,
+        "colno": 39
+    },
+    {
+        "abs_path": "http://example.com/file.min.js",
+        "filename": "file.min.js",
+        "lineno": 1,
+        "colno": 20
+    }]"#;
+
+    let request = make_js_request(source, frames, "[]", String::from("release"), None);
+    let response = symbolication.symbolicate_js(request).await;
+
+    assert_eq!(response.errors, vec![]);
+    let frames = &response.stacktraces[0].frames;
+    assert_eq!(frames.len(), 2);
+    assert!(frames.iter().all(|frame| frame.data.symbolicated));
 }

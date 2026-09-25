@@ -5,8 +5,9 @@
 # The Sentry server to access in online mode. Defaults to "https://sentry.io/".
 # url = "https://sentry.io/"
 
-# The default auth token to use for accessing Sentry.
-# auth_token = ""
+# The default auth to use for accessing Sentry.
+# auth = { token = "..." }
+# auth = { cookies = "..." }
 
 ### Example symbol sources
 

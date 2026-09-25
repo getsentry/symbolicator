@@ -21,13 +21,20 @@ pub async fn fetch_file(
     temp_file: &mut NamedTempFile,
 ) -> CacheContents {
     downloader
-        .download(file_id, temp_file.path().to_owned())
+        .download(file_id)
+        .await?
+        .materialize_into(temp_file)
         .await?;
+
     tracing::trace!("Finished download");
 
     // Treat decompression errors as malformed files. It is more likely that
     // the error comes from a corrupt file than a local file system error.
-    maybe_decompress_file(temp_file).map_err(|e| CacheError::Malformed(e.to_string()))?;
+    maybe_decompress_file(
+        temp_file,
+        downloader.limits.max_download_size.unwrap_or(u64::MAX),
+    )
+    .map_err(|e| CacheError::Malformed(e.to_string()))?;
 
     Ok(temp_file.as_file().rewind()?)
 }

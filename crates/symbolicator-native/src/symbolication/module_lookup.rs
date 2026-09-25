@@ -219,6 +219,7 @@ impl ModuleLookup {
         symcache_actor: SymCacheActor,
         ppdb_cache_actor: PortablePdbCacheActor,
         stacktraces: &[RawStacktrace],
+        extract_variables: bool,
     ) {
         let mut referenced_objects = HashSet::new();
         for stacktrace in stacktraces {
@@ -277,6 +278,7 @@ impl ModuleLookup {
                                 identifier,
                                 sources,
                                 scope,
+                                extract_variables,
                             };
 
                             let DerivedCache {

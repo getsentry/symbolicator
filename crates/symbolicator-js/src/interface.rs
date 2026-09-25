@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -6,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::types::{FrameOrder, Platform, Scope, ScrapingConfig};
-use symbolicator_sources::{SentryFileId, SentrySourceConfig};
+use symbolicator_sources::SentrySourceConfig;
 
 use crate::lookup::CachedFileUri;
 
@@ -303,8 +302,6 @@ pub struct CompletedJsSymbolicationResponse {
     pub raw_stacktraces: Vec<JsStacktrace>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<JsModuleError>,
-    #[serde(skip_serializing_if = "HashSet::is_empty")]
-    pub used_artifact_bundles: HashSet<SentryFileId>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub scraping_attempts: Vec<JsScrapingAttempt>,
 }

@@ -1,7 +1,6 @@
 use std::env;
 
-use sentry::integrations::tracing::EventFilter;
-use symbolicator_service::logging::init_json_logging;
+use symbolicator_service::logging::{init_json_logging, sentry_layer};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::UtcTime;
@@ -78,17 +77,9 @@ pub unsafe fn init_logging(config: &Config) {
     }
     .with_filter(EnvFilter::new(&rust_log));
 
-    // Same as the default filter, except it sends everything at or above INFO as logs instead of breadcrumbs.
-    let sentry_layer =
-        sentry::integrations::tracing::layer().event_filter(|md| match *md.level() {
-            tracing::Level::ERROR => EventFilter::Event | EventFilter::Log,
-            tracing::Level::WARN | tracing::Level::INFO => EventFilter::Log,
-            tracing::Level::DEBUG | tracing::Level::TRACE => EventFilter::Ignore,
-        });
-
     tracing_subscriber::registry()
         .with(fmt_layer)
-        .with(sentry_layer)
+        .with(sentry_layer())
         .init();
 }
 

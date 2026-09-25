@@ -61,7 +61,7 @@ jobs:
         }')[matrix.arch] }}
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - uses: actions/checkout@v7.0.1
         with:
           submodules: recursive
 
@@ -75,7 +75,7 @@ jobs:
           rustup toolchain install stable --profile minimal --target "${RUST_TARGET}" --no-self-update
 
       - name: Install sentry-cli
-        run: curl -sL https://sentry.io/get-cli/ | bash
+        uses: getsentry/action-setup-cli@70d7e587b84c2e78cf4d37cd33d7b74fb3729c1b # v1
 
       - uses: swatinem/rust-cache@7939da402645ba29a2df566723491a2c856e8f8a # v2
         if: ${{ !startsWith(github.ref_name, 'release/') }}
@@ -126,10 +126,10 @@ jobs:
       id-token: write  # required for GAR
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Download Binaries
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: symbolicator-binary-*
           path: /tmp/docker-ctx
@@ -147,7 +147,7 @@ jobs:
       # if the build was more complicated as we're building twice)
       - name: Build and push images
         if: "needs.build-setup.outputs.full_ci == 'true'"
-        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
+        uses: getsentry/action-build-and-push-images@dd9b907092cdd2dbc6c1a409f7290df1b391f6ee
         with:
           image_name: 'symbolicator'
           # Please note that multiplatform builds like this are only feasible in this case
@@ -162,7 +162,7 @@ jobs:
           tag_latest: true
           google_ar_image_name: us-central1-docker.pkg.dev/sentryio/symbolicator/image
           google_workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          google_service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+          google_service_account: gha-symbolicator-push@sac-prod-sa.iam.gserviceaccount.com
 
   gocd-artifacts:
     needs: [build-setup, build-binaries]
@@ -181,22 +181,26 @@ jobs:
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: projects/868781662168/locations/global/workloadIdentityPools/prod-github/providers/github-oidc-pool
-          service_account: gha-gcr-push@sac-prod-sa.iam.gserviceaccount.com
+          service_account: gha-symbolicator-push@sac-prod-sa.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
         with:
           version: ">= 390.0.0"
 
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: "symbolicator-debug@*"
           path: /tmp/debug-info/
           merge-multiple: true
 
       - name: Upload gocd deployment assets
+        env:
+          # the upload SA has no delete perms; disable parallel composite uploads
+          # since their chunk cleanup would fail on delete
+          CLOUDSDK_STORAGE_PARALLEL_COMPOSITE_UPLOAD_ENABLED: false
         run: |
-          gsutil -m cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
+          gcloud storage cp /tmp/debug-info/symbolicator*.zip "gs://dicd-team-devinfra-cd--symbolicator/difs/${{ github.sha }}/"
 
   prepare-self-hosted-end-to-end:
     needs: [build-binaries]
@@ -204,10 +208,10 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v5
+      - uses: actions/checkout@v7.0.1
 
       - name: Download amd64 binary
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           pattern: symbolicator-binary-amd64
           path: /tmp/docker-ctx
@@ -219,7 +223,7 @@ jobs:
           mv /tmp/docker-ctx/symbolicator /tmp/docker-ctx/binaries/linux/amd64
 
       - name: Build amd64 Image
-        uses: getsentry/action-build-and-push-images@b172ab61a5f7eabd58bd42ce231b517e79947c01
+        uses: getsentry/action-build-and-push-images@dd9b907092cdd2dbc6c1a409f7290df1b391f6ee
         with:
           image_name: 'symbolicator'
           tags: 'symbolicator-self-hosted'
@@ -241,7 +245,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Download amd64 Image from GitHub Artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v5
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v5
         with:
           name: symbolicator-self-hosted-amd64
           path: /tmp/

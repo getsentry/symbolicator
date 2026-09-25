@@ -50,13 +50,13 @@ pub fn run(config: Config) -> Result<()> {
     let local_addr = socket_http.local_addr()?;
     tracing::info!("Starting HTTP server on {}", local_addr);
 
-    #[allow(clippy::redundant_clone)] // we need `svc` for the https case below
     let server_http = axum_server::from_tcp(socket_http).serve(svc.clone());
     servers.push(Box::pin(server_http));
 
     if config.enable_cache_cleanup {
         let caches =
             Caches::from_config(&config).context("Failed to initialize cache configurations")?;
+        tracing::info!("Starting cache cleanup thread");
         std::thread::spawn(move || caches.cleanup(false, Some(config.cache_cleanup_interval)));
     };
 

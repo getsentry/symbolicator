@@ -12,6 +12,13 @@ symbolicli -o <ORG> -p <PROJECT> --auth-token <TOKEN> <EVENT>
 * `<TOKEN>` is a Sentry authentication token that has access to the project;
 * `<EVENT>` is either a local file (minidump or event JSON) or the ID of an event from the Sentry instance.
 
+Instead of an auth token, you can use an existing Sentry session by passing the raw Cookie
+header value from your browser.
+
+```
+symbolicli -o <ORG> -p <PROJECT> --auth-cookies '<COOKIE_HEADER>' <EVENT>
+```
+
 Alternatively, you can run `symbolicli` in offline mode:
 ```
 symbolicli --offline <EVENT>
@@ -20,7 +27,7 @@ symbolicli --offline <EVENT>
 In offline mode `symbolicli` will not attempt to access a Sentry server, which means you can only
 process local events.
 
-*NB*: JavaScript symbolication is not supported in offline mode.
+*NB*: JavaScript symbolication is supported in offline mode, but you have to pass a directory containing artifact bundles with `--symbols`.
 
 # Configuration
 
@@ -34,6 +41,9 @@ The available options are:
 * `url`: The base URL of the sentry instance. Defaults to `https://sentry.io/`.
 * `auth_token`: A Sentry authentication token. This can be overridden with the `SENTRY_AUTH_TOKEN`
   environment variable or the `--auth-token` command line option.
+* `auth_cookies`: A raw Cookie header value from an existing Sentry session. This can be
+  overridden with the `SENTRY_AUTH_COOKIES` environment variable or the `--auth-cookies` command
+  line option.
 * `org`: The default organization for which to process events. This can be overridden with the `--org`
   command line option.
 * `project`: The default project for which to process events. This can be overridden with the `--project`
@@ -48,6 +58,6 @@ You can control the level of logging output by passing the desired log level to 
 Available levels are `off`, `error`, `warn`, `info`, `debug`, `trace`. The default is `info`.
 
 # Local Symbols
-The `--symbols` option allows you to supply a local directory containing debug files to use
-in addition to the configured sources. The directory must be sorted according to the
-`unified` layout. The easiest way to accomplish that is using `symsorter`.
+The `--symbols` option allows you to supply local debug information.
+- For native events, pass a local directory containing debug files to use in addition to the configured sources. The directory must be sorted according to the `unified` layout. The easiest way to accomplish that is using `symsorter`.
+- For JS events, pass a directory containing artifact bundles (individual files are not supported right now). Note that this only works in offline mode; in online mode, only files from Sentry are used.

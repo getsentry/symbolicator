@@ -87,14 +87,14 @@ pub unsafe fn init(config: Config) -> Guard {
             }
         }));
 
-        let addrs = vec![([127, 0, 0, 1], socket.port()).into()];
+        let addr = format!("127.0.0.1:{}", socket.port());
 
         // have some default tags, just to be closer to the real world config
         let mut tags = BTreeMap::new();
         tags.insert("host".into(), "stresstest".into());
         tags.insert("env".into(), "stresstest".into());
 
-        metrics::configure_statsd("symbolicator", addrs, tags);
+        metrics::configure_statsd("symbolicator", &addr, tags).unwrap();
     }
 
     guard

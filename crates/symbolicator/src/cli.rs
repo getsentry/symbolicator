@@ -1,5 +1,5 @@
 //! Exposes the command line application.
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -24,7 +24,7 @@ fn get_long_crate_version() -> &'static str {
         "version: ",
         env!("CARGO_PKG_VERSION"),
         "\ngit commit: ",
-        env!("SYMBOLICATOR_GIT_VERSION")
+        env!("SYMBOLICATOR_RELEASE")
     )
 }
 
@@ -69,6 +69,13 @@ enum Command {
     },
 }
 
+impl Command {
+    #[cfg(feature = "symbolicator-crash")]
+    fn requires_crash_reporter(&self) -> bool {
+        matches!(self, Self::Run)
+    }
+}
+
 /// Command line interface parser.
 #[derive(Parser)]
 #[command(
@@ -98,27 +105,10 @@ pub fn execute() -> Result<()> {
 
     let release = Some(env!("SYMBOLICATOR_RELEASE").into());
 
-    #[cfg(feature = "symbolicator-crash")]
-    {
-        let dsn = config.sentry_dsn.as_ref().map(|d| d.to_string());
-        let db = config._crash_db.clone().or_else(|| {
-            config
-                .cache_dir
-                .as_ref()
-                .map(|cache_dir| cache_dir.join(".sentry-native"))
-        });
-        if let (Some(dsn), Some(db)) = (dsn, db) {
-            symbolicator_crash::CrashHandler::new(dsn.as_ref(), &db)
-                .transport(capture_native_envelope)
-                .release(release.as_deref())
-                .install();
-        }
-    }
     let sentry = sentry::init(sentry::ClientOptions {
         dsn: config.sentry_dsn.clone(),
         release,
-        session_mode: sentry::SessionMode::Request,
-        auto_session_tracking: false,
+        attach_stacktrace: config.logging.enable_backtraces,
         traces_sampler: Some(Arc::new(move |ctx| {
             if Some(true) == ctx.sampled() && config.propagate_traces {
                 1.0
@@ -136,6 +126,23 @@ pub fn execute() -> Result<()> {
     // is safe to call.
     unsafe { logging::init_logging(&config) };
 
+    #[cfg(feature = "symbolicator-crash")]
+    {
+        let crash_db = config._crash_db.clone().or_else(|| {
+            config
+                .cache_dir
+                .as_ref()
+                .map(|cache_dir| cache_dir.join(".sentry-native"))
+        });
+
+        if let Some(crash_db) = crash_db
+            && cli.command.requires_crash_reporter()
+            && config.sentry_dsn.is_some()
+        {
+            symbolicator_crash::init(crash_db, (*sentry).clone());
+        }
+    }
+
     // We depend on `rustls` with both the `aws-lc-rs` and
     // `ring` features enabled. This means that `rustls` can't automatically
     // decide which provider to use and we have to initialize it manually.
@@ -147,10 +154,6 @@ pub fn execute() -> Result<()> {
     }
 
     if let Some(ref statsd) = config.metrics.statsd {
-        let addrs = statsd
-            .to_socket_addrs()
-            .with_context(|| format!("invalid statsd host: {statsd}"))?
-            .collect();
         let mut tags = config.metrics.custom_tags.clone();
 
         if let Some(hostname_tag) = config.metrics.hostname_tag.clone() {
@@ -198,7 +201,10 @@ pub fn execute() -> Result<()> {
             }
         };
 
-        metrics::configure_statsd(&config.metrics.prefix, addrs, tags);
+        if let Err(e) = metrics::configure_statsd(&config.metrics.prefix, statsd, tags) {
+            tracing::error!(error = %e, "failed to initialize statsd backend");
+            return Err(e);
+        }
     }
 
     match cli.command {
@@ -215,20 +221,4 @@ pub fn execute() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Captures an envelope from the native crash reporter using the main Sentry SDK.
-#[cfg(feature = "symbolicator-crash")]
-fn capture_native_envelope(data: &[u8]) {
-    if let Some(client) = sentry::Hub::main().client() {
-        match sentry::Envelope::from_bytes_raw(data.to_owned()) {
-            Ok(envelope) => client.send_envelope(envelope),
-            Err(error) => {
-                let error = &error as &dyn std::error::Error;
-                tracing::error!(error, "failed to capture crash")
-            }
-        }
-    } else {
-        tracing::error!("failed to capture crash: no sentry client registered");
-    }
 }

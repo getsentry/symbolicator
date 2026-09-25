@@ -1,10 +1,14 @@
 [package]
 name = "symbolicator"
-version = "25.12.1"
+version = "26.9.0"
 authors = ["Sentry <hello@getsentry.com>"]
 edition = "2024"
 license-file = "../../LICENSE.md"
 default-run = "symbolicator"
+
+
+[features]
+symbolicator-crash = ["dep:symbolicator-crash"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -16,7 +20,7 @@ futures = { workspace = true}
 hostname = { workspace = true}
 humantime =  { workspace = true }
 rustls = { workspace = true }
-sentry = { workspace = true, features = ["release-health", "tower", "tower-http"] }
+sentry = { workspace = true, features = ["tower", "tower-http"] }
 serde = { workspace = true }
 serde_json = { workspace = true}
 symbolic = { workspace = true }
@@ -26,7 +30,6 @@ symbolicator-native = { workspace = true }
 symbolicator-proguard = { workspace = true }
 symbolicator-service = { workspace = true }
 symbolicator-sources = { workspace = true }
-tempfile = { workspace = true }
 thiserror = { workspace = true}
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "fs"] }
 tokio-metrics = { workspace = true }

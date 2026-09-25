@@ -15,8 +15,9 @@ pub struct SentrySourceConfig {
     /// Absolute URL of the endpoint.
     pub url: Url,
 
-    /// Bearer authorization token.
-    pub token: SentryToken,
+    /// Credentials to use.
+    #[serde(flatten)]
+    pub credentials: SentryCredentials,
 }
 
 /// The Sentry-specific [`RemoteFile`].
@@ -96,13 +97,92 @@ impl fmt::Display for SentryFileId {
     }
 }
 
-/// A sentry authentication token.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+/// Credentials for a Sentry source.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SentryCredentials {
+    /// A bearer authorization token.
+    Token(SentryToken),
+
+    /// A raw Cookie header value for an existing Sentry session.
+    Cookies(SentryCookies),
+}
+
+impl From<SentryToken> for SentryCredentials {
+    fn from(value: SentryToken) -> Self {
+        Self::Token(value)
+    }
+}
+
+impl From<SentryCookies> for SentryCredentials {
+    fn from(value: SentryCookies) -> Self {
+        Self::Cookies(value)
+    }
+}
+
+/// A Sentry authentication token.
+#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct SentryToken(pub String);
 
 impl fmt::Debug for SentryToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("<sentry token>")
+    }
+}
+
+/// A raw Cookie header value for an existing Sentry session.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct SentryCookies(pub String);
+
+impl fmt::Debug for SentryCookies {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("<sentry cookies>")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sentry_source_credentials_token() {
+        let c: SentrySourceConfig = serde_json::from_str(
+            r#"{
+            "id": "foobar",
+            "url": "http://foo.bar",
+            "token": "123"
+}"#,
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(c, @r#"
+        {
+          "id": "foobar",
+          "url": "http://foo.bar/",
+          "token": "123"
+        }
+        "#);
+    }
+
+    #[test]
+    fn test_sentry_source_credentials() {
+        let c: SentrySourceConfig = serde_json::from_str(
+            r#"{
+            "id": "foobar",
+            "url": "http://foo.bar",
+            "cookies": "foo=bar; asd=123"
+}"#,
+        )
+        .unwrap();
+
+        insta::assert_json_snapshot!(c, @r#"
+        {
+          "id": "foobar",
+          "url": "http://foo.bar/",
+          "cookies": "foo=bar; asd=123"
+        }
+        "#);
     }
 }

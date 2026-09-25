@@ -9,3 +9,4 @@ mod symbolication;
 mod utils;
 
 pub use service::SourceMapService;
+pub use utils::extract_file_stem;

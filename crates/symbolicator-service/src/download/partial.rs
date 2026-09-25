@@ -126,6 +126,14 @@ pub struct BytesContentRange {
 }
 
 impl BytesContentRange {
+    /// Returns whether the range contains the full resource.
+    ///
+    /// A range with total size of `0` is not considered a full range,
+    /// as it is technically not a valid range.
+    pub fn is_full_range(self) -> bool {
+        self.start == 0 && self.end.checked_add(1) == Some(self.total_size)
+    }
+
     /// Extracts the contained range into a [`Range`].
     pub fn range(self) -> Range {
         Range {
@@ -345,6 +353,18 @@ mod tests {
         assert_bcr!("bytes     0-12/123" = 0 - 12 / 123);
         assert_bcr!("   bytes 0-12/123   " = 0 - 12 / 123);
         assert_bcr!("bytes 0- 12/ 123" = 0 - 12 / 123);
+    }
+
+    #[test]
+    fn test_byte_content_range_is_full_range() {
+        fn is_full_range(s: &str) -> bool {
+            BytesContentRange::from_str(s).unwrap().is_full_range()
+        }
+
+        assert!(is_full_range("bytes 0-11/12"));
+        assert!(!is_full_range("bytes 0-10/12"));
+        assert!(!is_full_range("bytes 1-11/12"));
+        assert!(!is_full_range("bytes 0-0/0"));
     }
 
     #[test]

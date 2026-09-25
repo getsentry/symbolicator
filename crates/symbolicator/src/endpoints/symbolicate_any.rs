@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::extract;
 use axum::response::Json;
+use reqwest::Url;
 use serde::Deserialize;
 
 use symbolicator_native::interface::{AttachmentFile, ProcessMinidump, RewriteRules};
@@ -39,11 +40,13 @@ pub struct SymbolicateAnyRequestBody {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum SymbolicationRequest {
     Minidump {
-        storage_url: String,
+        storage_url: Url,
+        storage_token: Option<String>,
         rewrite_first_module: RewriteRules,
     },
     AppleCrashreport {
-        storage_url: String,
+        storage_url: Url,
+        storage_token: Option<String>,
     },
     // TODO: it should be possible to also support native, js and jvm requests here as well
 }
@@ -53,34 +56,42 @@ pub async fn symbolicate_any(
     extract::Query(params): extract::Query<RequestQueryParams>,
     extract::Json(body): extract::Json<SymbolicateAnyRequestBody>,
 ) -> Result<Json<SymbolicationResponse>, ResponseError> {
-    sentry::start_session();
-
     params.configure_scope();
 
     let request_id = match body.symbolicate {
         SymbolicationRequest::Minidump {
             storage_url,
+            storage_token,
             rewrite_first_module,
         } => service.process_minidump(
             ProcessMinidump {
                 platform: body.platform,
                 scope: params.scope,
-                minidump_file: AttachmentFile::Remote(storage_url),
+                minidump_file: AttachmentFile::Remote {
+                    storage_url,
+                    storage_token,
+                },
                 sources: body.sources,
                 scraping: body.scraping,
                 rewrite_first_module,
+                extract_variables: body.options.extract_variables,
             },
             body.options,
         )?,
-        SymbolicationRequest::AppleCrashreport { storage_url } => service
-            .process_apple_crash_report(
-                body.platform,
-                params.scope,
-                AttachmentFile::Remote(storage_url),
-                body.sources,
-                body.scraping,
-                body.options,
-            )?,
+        SymbolicationRequest::AppleCrashreport {
+            storage_url,
+            storage_token,
+        } => service.process_apple_crash_report(
+            body.platform,
+            params.scope,
+            AttachmentFile::Remote {
+                storage_url,
+                storage_token,
+            },
+            body.sources,
+            body.scraping,
+            body.options,
+        )?,
     };
 
     match service.get_response(request_id, params.timeout).await {

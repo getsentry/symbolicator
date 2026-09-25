@@ -12,6 +12,7 @@ use std::sync::Arc;
 use futures::future::BoxFuture;
 
 use symbolic::common::ByteView;
+use symbolic::debuginfo::ParseObjectOptions;
 use symbolicator_sources::{ObjectId, RemoteFile};
 use tempfile::NamedTempFile;
 
@@ -32,6 +33,7 @@ pub(super) struct FetchFileMetaRequest {
     /// Source-type specific attributes.
     pub(super) file_source: RemoteFile,
     pub(super) object_id: ObjectId,
+    pub(super) opts: ParseObjectOptions,
 
     // XXX: This kind of state is not request data. We should find a different way to get this into
     // `<FetchFileMetaRequest as CacheItemRequest>::compute`, e.g. make the Cacher hold arbitrary
@@ -113,8 +115,16 @@ impl FetchFileMetaRequest {
 
         // Extract SRCSRV VCS name for PDB files and convert to enum
         let srcsrv_vcs = if let symbolic::debuginfo::Object::Pdb(pdb) = object {
-            pdb.srcsrv_vcs_name()
-                .map(|vcs_name| SrcSrvVcs::from_vcs_name(&vcs_name))
+            pdb.debug_session()
+                .inspect_err(|err| {
+                    tracing::error!(?err, "Failed to open pdb debug session");
+                })
+                .ok()
+                .and_then(|session| {
+                    session
+                        .srcsrv_vcs_name()
+                        .map(|vcs_name| SrcSrvVcs::from_vcs_name(&vcs_name))
+                })
         } else {
             None
         };

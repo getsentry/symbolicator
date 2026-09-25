@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::{collections::HashMap, fmt};
 
@@ -125,6 +126,20 @@ pub struct JvmException {
     pub module: String,
 }
 
+impl JvmException {
+    /// Returns the exception's fully-qualified class name.
+    ///
+    /// R8 aggressive mode can rename classes into the root package, in which
+    /// case `module` is empty and the bare `ty` is the full name.
+    pub fn full_class_name(&self) -> Cow<'_, str> {
+        if self.module.is_empty() {
+            Cow::Borrowed(&self.ty)
+        } else {
+            Cow::Owned(format!("{}.{}", self.module, self.ty))
+        }
+    }
+}
+
 /// A JVM stacktrace.
 #[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct JvmStacktrace {
@@ -165,8 +180,6 @@ pub enum ProguardErrorKind {
     Missing,
     /// The file is invalid according to [`is_valid`](proguard::ProguardMapping::is_valid).
     Invalid,
-    /// The file doesn't contain line mapping information.
-    NoLineInfo,
 }
 
 impl fmt::Display for ProguardErrorKind {
@@ -174,9 +187,6 @@ impl fmt::Display for ProguardErrorKind {
         match self {
             ProguardErrorKind::Missing => write!(f, "The proguard mapping file is missing."),
             ProguardErrorKind::Invalid => write!(f, "The proguard mapping file is invalid."),
-            ProguardErrorKind::NoLineInfo => {
-                write!(f, "The proguard mapping file does not contain line info.")
-            }
         }
     }
 }
