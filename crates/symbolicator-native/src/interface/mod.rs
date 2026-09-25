@@ -20,8 +20,12 @@ use symbolicator_sources::SourceConfig;
 use thiserror::Error;
 use url::Url;
 
+pub(crate) use self::variables::Value as VariableValue;
+pub use self::variables::{Variable, VariableKind, Variables};
 use crate::memory::MemoryAccess;
 pub use crate::metrics::StacktraceOrigin;
+
+mod variables;
 
 #[derive(Debug, Clone)]
 /// A request for symbolication of multiple stack traces.
@@ -350,8 +354,8 @@ pub struct RawFrame {
     /// Mapping of local variables and expression names that were available in this frame.
     ///
     /// Current format is heavily work in progress.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vars: Option<BTreeMap<String, serde_json::Value>>,
+    #[serde(default, skip_serializing_if = "Variables::is_empty")]
+    pub vars: Variables,
 
     /// Information about how the raw frame was created.
     #[serde(default, skip_serializing_if = "is_default_value")]
