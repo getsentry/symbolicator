@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release (optional)
+        description: Version to release (or "auto")
         required: false
       force:
         description: Force a release even when there are release-blockers (optional)
@@ -12,6 +12,10 @@ on:
     # We want the release to be at 9-10am Pacific Time
     # We also want it to be 1 hour before the on-prem release
     - cron: '0 17 15 * *' # 5pm UTC on the 15th of every month
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -31,7 +35,7 @@ jobs:
           fetch-depth: 0
 
       - name: Prepare release
-        uses: getsentry/action-prepare-release@v1
+        uses: getsentry/craft@c6e2f04939b6ee67030588afbb5af76b127d8203 # v2
         env:
           GITHUB_TOKEN:  ${{ steps.token.outputs.token }}
         with:
