@@ -621,7 +621,6 @@ impl SymbolicationActor {
             scope,
             minidump_file,
             sources,
-            scraping,
             rewrite_first_module,
             extract_variables,
         } = request;
@@ -669,7 +668,6 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
-            scraping,
             rewrite_first_module,
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: request.extract_variables,

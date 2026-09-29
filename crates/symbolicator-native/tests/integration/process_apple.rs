@@ -34,7 +34,6 @@ async fn test_attachment_download() {
                 storage_token: None,
             },
             Arc::new([source]),
-            Default::default(),
             false,
         )
         .await;

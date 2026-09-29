@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use symbolic::common::Name;
-use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
@@ -35,7 +34,6 @@ pub struct SymbolicationActor {
     pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
     pub(crate) download_svc: Arc<DownloadService>,
 }
 
@@ -46,7 +44,6 @@ impl SymbolicationActor {
         let objects = services.objects.clone();
         let download_svc = services.download_svc.clone();
         let source_index_svc = services.source_index_svc.clone();
-        let sourcefiles_cache = services.sourcefiles_cache.clone();
 
         let bitcode = BitcodeService::new(
             caches.auxdifs.clone(),
@@ -88,7 +85,6 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             ppdb_caches,
-            sourcefiles_cache,
             download_svc,
         }
     }
@@ -107,7 +103,6 @@ impl SymbolicationActor {
             origin,
             modules,
             apply_source_context,
-            scraping,
             rewrite_first_module,
             frame_order,
             extract_variables,
@@ -150,7 +145,7 @@ impl SymbolicationActor {
             .collect();
 
         if apply_source_context {
-            self.apply_source_context(&mut module_lookup, &mut stacktraces, &scraping)
+            self.apply_source_context(&mut module_lookup, &mut stacktraces)
                 .await
         }
 

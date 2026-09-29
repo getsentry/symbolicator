@@ -85,7 +85,6 @@ pub fn prepare_payload(
                 sources,
                 origin: StacktraceOrigin::Symbolicate,
                 apply_source_context: true,
-                scraping: Default::default(),
                 stacktraces,
                 modules,
                 rewrite_first_module: Default::default(),
@@ -169,7 +168,6 @@ pub async fn process_payload(
                     scope: scope.clone(),
                     minidump_file: AttachmentFile::Local(minidump_file),
                     sources: Arc::clone(sources),
-                    scraping: Default::default(),
                     rewrite_first_module: Default::default(),
                     extract_variables: true,
                 })

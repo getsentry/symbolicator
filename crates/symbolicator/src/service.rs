@@ -354,7 +354,6 @@ impl RequestService {
         scope: Scope,
         apple_crash_report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
@@ -366,7 +365,6 @@ impl RequestService {
                     scope,
                     apple_crash_report,
                     sources,
-                    scraping,
                     extract_variables,
                 )
                 .await
@@ -632,7 +630,6 @@ mod tests {
             sources: Arc::new([]),
             scope: Default::default(),
             apply_source_context: true,
-            scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: false,
@@ -678,7 +675,6 @@ mod tests {
                 debug_checksum: None,
             })],
             apply_source_context: true,
-            scraping: Default::default(),
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: false,

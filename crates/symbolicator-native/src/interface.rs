@@ -12,9 +12,7 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
-use symbolicator_service::types::{
-    FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
-};
+use symbolicator_service::types::{FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
@@ -61,8 +59,6 @@ pub struct SymbolicateStacktraces {
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
 
-    /// Scraping configuration controling authenticated requests.
-    pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
@@ -110,8 +106,6 @@ pub struct ProcessMinidump {
     pub minidump_file: AttachmentFile,
     /// A list of external sources to load debug files.
     pub sources: Arc<[SourceConfig]>,
-    /// Scraping configuration controling authenticated requests.
-    pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
