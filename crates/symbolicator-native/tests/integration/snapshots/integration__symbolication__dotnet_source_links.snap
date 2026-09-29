@@ -13,19 +13,6 @@ stacktraces:
         filename: ThrowHelper.cs
         abs_path: /_/src/libraries/Common/src/System/ThrowHelper.cs
         lineno: 24
-        pre_context:
-          - "            [NotNull]"
-          - "#endif"
-          - "            object? argument,"
-          - "            [CallerArgumentExpression(\"argument\")] string? paramName = null)"
-          - "        {"
-        context_line: "            if (argument is null)"
-        post_context:
-          - "            {"
-          - "                Throw(paramName);"
-          - "            }"
-          - "        }"
-          - ""
         source_link: "https://raw.githubusercontent.com/dotnet/runtime/d099f075e45d2aa6007a22b71b45a08758559f80/src/libraries/Common/src/System/ThrowHelper.cs"
 modules:
   - debug_status: found
@@ -63,12 +50,3 @@ modules:
         location: "http://localhost:<port>/symbols/source-links.pdb/37E9E8A61A8E404EB93C6902E277FF55ffffffff/source-links.src.zip"
         download:
           status: notfound
-      - source: sourcelink
-        location: "https://raw.githubusercontent.com/dotnet/runtime/d099f075e45d2aa6007a22b71b45a08758559f80/src/libraries/Common/src/System/ThrowHelper.cs"
-        download:
-          status: ok
-          features:
-            has_debug_info: false
-            has_unwind_info: false
-            has_symbols: false
-            has_sources: true

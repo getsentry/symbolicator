@@ -6,7 +6,7 @@ use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
-use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
+use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
 
@@ -27,7 +27,6 @@ impl SymbolicationActor {
         scope: Scope,
         report: File,
         sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
         extract_variables: bool,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
         let report =
@@ -85,7 +84,6 @@ impl SymbolicationActor {
             signal: None,
             stacktraces,
             apply_source_context: true,
-            scraping,
             rewrite_first_module: Default::default(),
             frame_order: FrameOrder::CalleeFirst,
             extract_variables,
@@ -135,18 +133,11 @@ impl SymbolicationActor {
         scope: Scope,
         report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
-        scraping: ScrapingConfig,
         extract_variables: bool,
     ) -> Result<CompletedSymbolicationResponse> {
         let report = download_attachment(Arc::clone(&self.download_svc), report).await?;
-        let (request, state) = self.parse_apple_crash_report(
-            platform,
-            scope,
-            report,
-            sources,
-            scraping,
-            extract_variables,
-        )?;
+        let (request, state) =
+            self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)?;
         let mut response = self.symbolicate(request).await?;
 
         state.merge_into(&mut response);

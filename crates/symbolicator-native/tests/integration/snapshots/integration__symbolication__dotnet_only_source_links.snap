@@ -13,13 +13,6 @@ stacktraces:
         filename: Program.cs
         abs_path: "C:\\dev\\dotnet\\samples\\Sentry.Samples.Console.Basic\\Program.cs"
         lineno: 13
-        pre_context:
-          - "    // When debug is enabled, the Sentry client will emit detailed debugging information to the console."
-          - "    o.Debug = true;"
-          - "});"
-          - ""
-          - // The following unhandled exception will be captured and sent to Sentry.
-        context_line: "throw new Exception(\"test\");"
         source_link: "https://raw.githubusercontent.com/getsentry/sentry-dotnet/b31b62192e6934ea04396456461f430e143cf4f9/samples/Sentry.Samples.Console.Basic/Program.cs"
 modules:
   - debug_status: found
@@ -57,12 +50,3 @@ modules:
         location: "http://localhost:<port>/symbols/source-links.pdb/0C380A12822140698565BEE6B3AC196Effffffff/source-links.src.zip"
         download:
           status: notfound
-      - source: sourcelink
-        location: "https://raw.githubusercontent.com/getsentry/sentry-dotnet/b31b62192e6934ea04396456461f430e143cf4f9/samples/Sentry.Samples.Console.Basic/Program.cs"
-        download:
-          status: ok
-          features:
-            has_debug_info: false
-            has_unwind_info: false
-            has_symbols: false
-            has_sources: true

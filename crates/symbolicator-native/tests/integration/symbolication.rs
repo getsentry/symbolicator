@@ -59,7 +59,6 @@ async fn test_apple_crash_report() {
             Scope::Global,
             AttachmentFile::Local(report_file),
             Arc::new([source]),
-            Default::default(),
             false,
         )
         .await;
