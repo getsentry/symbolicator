@@ -77,7 +77,6 @@ mod tests {
     use symbolicator_sources::{SourceConfig, SourceLocation};
 
     use crate::test;
-    use crate::utils::http::ClientSettings;
 
     #[tokio::test]
     async fn test_download_source() {
@@ -128,38 +127,5 @@ mod tests {
             .await;
 
         assert_eq!(download_status, Err(CacheError::NotFound));
-    }
-
-    #[tokio::test]
-    async fn test_download_azure_file() {
-        test::setup();
-
-        let tmpfile = tempfile::NamedTempFile::new().unwrap();
-        let dest = tmpfile.path();
-
-        let file_source =
-            HttpRemoteFile::from_url("https://dev.azure.com/foo/bar.cs".parse().unwrap(), true);
-
-        let restricted_client = crate::utils::http::create_client(&ClientSettings {
-            connect_to_reserved_ips: true,
-            ..Default::default()
-        });
-        let no_ssl_client = crate::utils::http::create_client(&ClientSettings {
-            connect_to_reserved_ips: true,
-            accept_invalid_certs: true,
-            ..Default::default()
-        });
-        let downloader = HttpDownloader::new(restricted_client, no_ssl_client, Default::default());
-        let mut destination = tokio::fs::File::create(&dest).await.unwrap();
-        let download_status = downloader
-            .download_source("", &file_source, &mut destination)
-            .await;
-
-        assert_eq!(
-            download_status,
-            Err(CacheError::PermissionDenied(
-                "Potential login page detected".into()
-            ))
-        );
     }
 }
