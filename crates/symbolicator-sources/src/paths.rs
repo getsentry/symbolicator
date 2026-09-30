@@ -434,6 +434,23 @@ fn get_slashsymbols_paths(identifier: &ObjectId) -> Vec<String> {
     ]
 }
 
+fn get_nxsymstore_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
+    if !matches!(filetype, FileType::ElfDebug | FileType::ElfCode) {
+        return Vec::new();
+    }
+
+    let Some(code_id) = identifier.code_id.as_ref() else {
+        return Vec::new();
+    };
+
+    if code_id.as_str().len() < 2 {
+        return Vec::new();
+    }
+    let (prefix, rest) = code_id.as_str().split_at(2);
+
+    vec![format!("{prefix}/{rest}00000000.nxsym")]
+}
+
 /// Determines the paths for an object file in the given layout.
 ///
 /// The vector is ordered from lower priority to highest priority.
@@ -460,6 +477,7 @@ pub fn get_directory_paths(
             get_unified_path(filetype, identifier).into_iter().collect()
         }
         DirectoryLayoutType::SlashSymbols => get_slashsymbols_paths(identifier),
+        DirectoryLayoutType::NxSymStore => get_nxsymstore_paths(filetype, identifier),
     };
 
     for path in paths.iter_mut() {
@@ -607,7 +625,7 @@ pub fn matches_path_patterns(object_id: &ObjectId, patterns: &[Glob]) -> bool {
 mod tests {
     use super::*;
 
-    use std::sync::LazyLock;
+    use std::{str::FromStr, sync::LazyLock};
 
     static PE_OBJECT_ID: LazyLock<ObjectId> = LazyLock::new(|| ObjectId {
         code_id: Some("5ab380779000".parse().unwrap()),
@@ -765,6 +783,31 @@ mod tests {
                 "libm-2.23.so/DFB85DE42DAFFD09640C8FE377D572DE3E168920/symbols",
             ]
         );
+    }
+
+    #[test]
+    fn test_nxsymstore() {
+        let layout = DirectoryLayout {
+            ty: DirectoryLayoutType::NxSymStore,
+            ..Default::default()
+        };
+        let id = |id| ObjectId {
+            code_id: Some(CodeId::from_str(id).unwrap()),
+            ..Default::default()
+        };
+        let example_id = "dfb85de42daffd09640c8fe377d572de3e168920";
+
+        assert_eq!(
+            get_directory_paths(layout, FileType::ElfDebug, &id(example_id)),
+            ["df/b85de42daffd09640c8fe377d572de3e16892000000000.nxsym"]
+        );
+        assert_eq!(
+            get_directory_paths(layout, FileType::ElfDebug, &id("df")),
+            ["df/00000000.nxsym"]
+        );
+        assert!(get_directory_paths(layout, FileType::ElfDebug, &id("d")).is_empty());
+        assert!(get_directory_paths(layout, FileType::ElfDebug, &ObjectId::default()).is_empty());
+        assert!(get_directory_paths(layout, FileType::Pdb, &id(example_id)).is_empty());
     }
 
     #[test]

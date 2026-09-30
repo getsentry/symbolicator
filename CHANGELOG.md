@@ -11,6 +11,7 @@
 ### Features
 
 - Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
+- Add a `nxsymstore` source layout which supports the path schema of Nintendo's `NXSymStore.exe` symbol sorting tool. ([#2067](https://github.com/getsentry/symbolicator/pull/2067))
 
 ### Bug Fixes 🐛
 
