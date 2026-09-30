@@ -68,6 +68,8 @@ pub struct SymbolicateStacktraces {
     pub extract_variables: bool,
     /// The program memory, if it is available.
     pub memory: Option<Arc<dyn MemoryAccess>>,
+    /// Whether to apply source server information, if available.
+    pub apply_source_server_info: bool,
 }
 
 /// Location of an attachment file, such as a minidump.
@@ -111,6 +113,8 @@ pub struct ProcessMinidump {
     pub rewrite_first_module: RewriteRules,
     /// Whether to extract varialbes.
     pub extract_variables: bool,
+    /// Whether to apply source server information, if available.
+    pub apply_source_server_info: bool,
 }
 
 /// The symbolicated crash data.
@@ -314,10 +318,18 @@ pub struct RawFrame {
     pub function: Option<String>,
 
     /// Source file path relative to the compilation directory.
+    ///
+    /// If the frame was symbolicated with source server info
+    /// (controlled by [`SymbolicateStacktraces::apply_source_server_info`])
+    /// this is the file name on the source server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
     /// Absolute path to the source file.
+    ///
+    /// If the frame was symbolicated with source server info
+    /// (controlled by [`SymbolicateStacktraces::apply_source_server_info`])
+    /// this is the path on the source server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub abs_path: Option<String>,
 
@@ -354,6 +366,13 @@ pub struct RawFrame {
     /// Values of CPU registers in this frame.
     #[serde(skip)]
     pub registers: Registers,
+
+    /// The value of the source revision of the frame's file.
+    ///
+    /// This is only set if [`SymbolicateStacktraces::apply_source_server_info`]
+    /// is `true` and the debug file contains source server info.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
 }
 
 /// How trustworth the instruction pointer of the frame is.

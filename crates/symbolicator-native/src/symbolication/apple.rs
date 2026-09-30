@@ -88,6 +88,7 @@ impl SymbolicationActor {
             frame_order: FrameOrder::CalleeFirst,
             extract_variables,
             memory: None,
+            apply_source_server_info: false,
         };
 
         let mut system_info = SystemInfo {

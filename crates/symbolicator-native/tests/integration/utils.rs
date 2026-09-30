@@ -64,6 +64,7 @@ pub fn make_symbolication_request(
         frame_order: FrameOrder::CalleeFirst,
         extract_variables: false,
         memory: None,
+        apply_source_server_info: false,
     }
 }
 
