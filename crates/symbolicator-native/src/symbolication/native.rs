@@ -37,21 +37,23 @@ pub fn symbolicate_native_frame(
     let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
 
     for source_location in symcache.lookup(relative_addr) {
-        let source_server_path = if apply_source_server_info {
-            source_location.file().and_then(|f| f.full_srcsrv_path())
-        } else {
-            None
+        let source_server_path = match apply_source_server_info {
+            true => source_location.file().and_then(|f| f.full_srcsrv_path()),
+            false => None,
         };
 
         let abs_path = source_server_path
             .or_else(|| source_location.file().map(|f| f.full_path()))
             .unwrap_or_default();
 
-        let revision = source_location
-            .file()
-            .and_then(|f| f.srcsrv_revision().map(|r| r.to_owned()));
-
         let filename = split_path(&abs_path).1;
+
+        let revision = match apply_source_server_info {
+            true => source_location
+                .file()
+                .and_then(|f| f.srcsrv_revision().map(|r| r.to_owned())),
+            false => None,
+        };
 
         let func = source_location.function();
         let function = demangle_cache
