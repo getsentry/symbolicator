@@ -21,7 +21,6 @@ pub async fn handle_apple_crash_report_request(
 
     let mut report = None;
     let mut sources = service.config().default_sources();
-    let mut scraping = Default::default();
     let mut options = RequestOptions::default();
     let mut platform = None;
 
@@ -36,10 +35,6 @@ pub async fn handle_apple_crash_report_request(
             Some("sources") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 sources = serde_json::from_slice(&data)?;
-            }
-            Some("scraping") => {
-                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
-                scraping = serde_json::from_slice(&data)?;
             }
             Some("options") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
@@ -60,7 +55,6 @@ pub async fn handle_apple_crash_report_request(
         params.scope,
         AttachmentFile::Local(report),
         sources,
-        scraping,
         options,
     )?;
 

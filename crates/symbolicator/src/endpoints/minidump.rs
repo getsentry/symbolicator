@@ -23,7 +23,6 @@ pub async fn handle_minidump_request(
 
     let mut minidump = None;
     let mut sources = service.config().default_sources();
-    let mut scraping = Default::default();
     let mut options = RequestOptions::default();
     let mut platform = None;
     let mut rewrite_first_module = Default::default();
@@ -39,10 +38,6 @@ pub async fn handle_minidump_request(
             Some("sources") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
                 sources = serde_json::from_slice(&data)?;
-            }
-            Some("scraping") => {
-                let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
-                scraping = serde_json::from_slice(&data)?;
             }
             Some("options") => {
                 let data = read_multipart_data(field, 1024 * 1024).await?; // 1Mb
@@ -80,7 +75,6 @@ pub async fn handle_minidump_request(
             scope: params.scope,
             minidump_file: AttachmentFile::Local(minidump_file),
             sources,
-            scraping,
             rewrite_first_module,
             extract_variables: options.extract_variables,
         },

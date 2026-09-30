@@ -26,7 +26,7 @@ targets:
     name: docker
     source: ghcr.io/getsentry/symbolicator
     target: ghcr.io/getsentry/symbolicator
-    targetFormat: '{{{target}}}:latest'
+    targetFormat: "{{{target}}}:latest"
 requireNames:
   - /^symbolicator-Darwin-universal$/
   - /^symbolicator-Linux-x86_64$/
@@ -47,3 +47,5 @@ requireNames:
   - /^wasm-split-Linux-x86_64$/
   - /^wasm-split-Linux-aarch64$/
   - /^wasm-split-Windows-x86_64\.exe$/
+versioning:
+  policy: calver

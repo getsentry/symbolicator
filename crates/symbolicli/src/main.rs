@@ -156,7 +156,6 @@ async fn main() -> Result<()> {
                     scope,
                     minidump_file: AttachmentFile::Local(minidump_file),
                     sources: dsym_sources,
-                    scraping: Default::default(),
                     rewrite_first_module: Default::default(),
                     extract_variables,
                 })
@@ -173,7 +172,6 @@ async fn main() -> Result<()> {
                     scope,
                     AttachmentFile::Local(file),
                     dsym_sources,
-                    Default::default(),
                     extract_variables,
                 )
                 .await?;

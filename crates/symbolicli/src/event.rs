@@ -147,7 +147,6 @@ pub fn create_native_symbolication_request(
         stacktraces,
         modules,
         apply_source_context: true,
-        scraping: Default::default(),
         rewrite_first_module: Default::default(),
         // we manually reversed the frames when we created the stacktraces, so this is
         // "callee first"

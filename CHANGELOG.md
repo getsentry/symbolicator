@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- (native) Symbolicator no longer fetches remote source files to apply source context.
+  Remote source context is better served by Sentry's [SCM source context fetching](https://docs.sentry.io/integrations/source-code-mgmt/source-context/),
+  which properly integrates with source code hosters. ([#2069](https://github.com/getsentry/symbolicator/pull/2069))
+
 ### Features
 
 - Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))

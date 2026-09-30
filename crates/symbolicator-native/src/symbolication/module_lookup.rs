@@ -5,6 +5,7 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
 use symbolic::debuginfo::ObjectDebugSession;
+use symbolic::debuginfo::sourcebundle::SourceFileDescriptor;
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
     AllObjectCandidates, FindObject, FindResult, ObjectCandidate, ObjectFeatures, ObjectHandle,
@@ -434,49 +435,42 @@ impl ModuleLookup {
     }
 
     /// Update the frame with source context, if available.
-    ///
-    /// Return a triple of scope, URL, and module index
-    /// in case the source code has to be fetched.
     pub(crate) fn try_set_source_context(
         &self,
         debug_sessions: &DebugSessions<'_>,
         frame: &mut RawFrame,
-    ) -> Option<(Scope, url::Url, usize)> {
-        let abs_path = frame.abs_path.as_ref()?;
-
-        // Short-circuit here before accessing the source. Line number is required to resolve the context.
-        // TODO how about setting source_link in the output? Shouldn't we still do that?
-        // Related: https://github.com/getsentry/sentry/issues/44015
-        frame.lineno?;
-
-        let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
-        let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
-        let source_descriptor = session.1.source_by_path(abs_path).ok()??;
+    ) {
+        let Some(source_descriptor) = self.get_source_descriptor(debug_sessions, frame) else {
+            return;
+        };
 
         // Always set the source link URL if available (and it passes a simple validation).
-        let filtered_url = source_descriptor.url().and_then(|url| {
-            // Only allow http:// and https:// URLs to prevent file-system reads.
-            // TODO maybe we want even stricter rules, e.g. only fetch from github/gitlab?
-            if url.starts_with("https://") || url.starts_with("http://") {
-                url::Url::parse(url).ok()
-            } else {
-                None
-            }
-        });
-
-        frame.source_link = filtered_url.as_ref().map(url::Url::to_string);
+        if let Some(filtered_url) = source_descriptor
+            .url()
+            .filter(|url| url.starts_with("https://") || url.starts_with("http://"))
+            .and_then(|url| url::Url::parse(url).ok())
+        {
+            frame.source_link = Some(filtered_url.to_string());
+        }
 
         if let Some(text) = source_descriptor.contents() {
             // Set the actual source code, if embedded in the file.
             Self::set_source_context(text, frame);
-            None
-        } else {
-            // Let caller know this source code may be resolved from a remote URL.
-            filtered_url.map(|url| (session.0.clone(), url, entry.module_index))
         }
     }
 
-    pub(crate) fn set_source_context(source: &str, frame: &mut RawFrame) -> Option<()> {
+    fn get_source_descriptor<'a>(
+        &self,
+        debug_sessions: &'a DebugSessions<'_>,
+        frame: &RawFrame,
+    ) -> Option<SourceFileDescriptor<'a>> {
+        let abs_path = frame.abs_path.as_ref()?;
+        let entry = self.get_module_by_addr(frame.instruction_addr.0, frame.addr_mode)?;
+        let session = debug_sessions.get(&entry.module_index)?.as_ref()?;
+        session.1.source_by_path(abs_path).ok()?
+    }
+
+    fn set_source_context(source: &str, frame: &mut RawFrame) -> Option<()> {
         let (pre_context, context_line, post_context) =
             get_context_lines(source, frame.lineno?.try_into().ok()?, 0, None)?;
         frame.pre_context = pre_context;

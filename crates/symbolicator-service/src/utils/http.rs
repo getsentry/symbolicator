@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use std::time::Duration;
 
 use ipnetwork::Ipv4Network;
-use reqwest::{StatusCode, Url, header, redirect};
+use reqwest::{Url, header};
 
 use crate::config::DownloadTimeouts;
 
@@ -99,27 +99,7 @@ pub fn create_client(settings: &ClientSettings) -> reqwest::Client {
         .connect_timeout(settings.timeouts.connect)
         .timeout(settings.timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30))
-        .danger_accept_invalid_certs(settings.accept_invalid_certs)
-        .redirect(redirect::Policy::custom(|attempt: redirect::Attempt| {
-            // The default redirect policy allows to follow up to 10 redirects. This is problematic
-            // when symbolicator tries to fetch native source files from a web source, as a redirect
-            // might land us on a login page, which is then used for source context.
-            // To avoid this, symbolicator's redirect policy is to not follow temporary redirects
-            // on hosts that are known to redirect to login pages.
-
-            if attempt.status() == StatusCode::FOUND {
-                let is_from_azure = attempt
-                    .previous()
-                    .last()
-                    .and_then(|url| url.host_str())
-                    .is_some_and(|host| host == "dev.azure.com");
-
-                if is_from_azure {
-                    return attempt.stop();
-                }
-            }
-            redirect::Policy::default().redirect(attempt)
-        }));
+        .danger_accept_invalid_certs(settings.accept_invalid_certs);
 
     if !settings.connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
@@ -287,23 +267,6 @@ mod tests {
 
         let text = response.text().await.unwrap();
         assert_eq!(text, "OK");
-    }
-
-    #[tokio::test]
-    async fn test_client_redirect_policy() {
-        let client = create_client(&Default::default());
-
-        let response = client
-            .get("https://dev.azure.com/foo/bar.cs")
-            .send()
-            .await
-            .unwrap();
-
-        let status = response.status();
-
-        assert_eq!(status.as_u16(), 302);
-        assert!(status.is_redirection());
-        assert!(!status.is_success());
     }
 
     fn is_valid_origin(origin: &str, allowed: &[&str]) -> bool {
