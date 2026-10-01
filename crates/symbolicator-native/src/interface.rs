@@ -371,8 +371,11 @@ pub struct RawFrame {
     ///
     /// This is only set if [`SymbolicateStacktraces::apply_source_server_info`]
     /// is `true` and the debug file contains source server info.
+    ///
+    /// The meaning of this field depends on the version control system
+    /// used by the source server.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub revision: Option<String>,
+    pub file_revision: Option<String>,
 }
 
 /// How trustworth the instruction pointer of the frame is.

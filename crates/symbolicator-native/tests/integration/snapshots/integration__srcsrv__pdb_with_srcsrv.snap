@@ -14,7 +14,7 @@ stacktraces:
         filename: crash_generation_client.cc
         abs_path: depot/breakpad/src/client/windows/crash_generation/crash_generation_client.cc
         lineno: 323
-        revision: "12345"
+        file_revision: "12345"
 modules:
   - debug_status: found
     features:

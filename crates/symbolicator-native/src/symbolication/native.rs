@@ -48,7 +48,7 @@ pub fn symbolicate_native_frame(
 
         let filename = split_path(&abs_path).1;
 
-        let revision = match apply_source_server_info {
+        let file_revision = match apply_source_server_info {
             true => source_location
                 .file()
                 .and_then(|f| f.srcsrv_revision().map(|r| r.to_owned())),
@@ -105,7 +105,7 @@ pub fn symbolicate_native_frame(
                 vars,
                 trust: frame.trust,
                 registers: Default::default(),
-                revision,
+                file_revision,
             },
         });
     }
