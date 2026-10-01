@@ -68,6 +68,8 @@ pub struct ClientSettings {
     pub accept_invalid_certs: bool,
     /// Controls whether transparent decompression is enabled.
     pub compression: bool,
+    /// Whether to enable HTTP2.
+    pub enable_http2: bool,
 }
 
 impl Default for ClientSettings {
@@ -77,6 +79,7 @@ impl Default for ClientSettings {
             connect_to_reserved_ips: false,
             accept_invalid_certs: false,
             compression: true,
+            enable_http2: false,
         }
     }
 }
@@ -100,6 +103,10 @@ pub fn create_client(settings: &ClientSettings) -> reqwest::Client {
         .timeout(settings.timeouts.max_download)
         .pool_idle_timeout(Duration::from_secs(30))
         .danger_accept_invalid_certs(settings.accept_invalid_certs);
+
+    if !settings.enable_http2 {
+        builder = builder.http1_only();
+    }
 
     if !settings.connect_to_reserved_ips {
         builder = builder.ip_filter(is_external_ip);
