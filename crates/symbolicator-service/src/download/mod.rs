@@ -149,17 +149,18 @@ impl DownloadService {
             max_download_size: config.max_download_size,
         };
 
-        // |   client  | can connect to reserved IPs | accepts invalid SSL certs
-        // | ----------| ----------------------------|---------------------------
-        // |  trusted  |             yes             |             no
-        // |   sentry  |             yes             |             no
-        // | restrcted | according to config setting |             no
-        // |  no ssl   | according to config setting |             yes
+        // |   client  | can connect to reserved IPs | accepts invalid SSL certs | compression
+        // | ----------| ----------------------------|---------------------------|-------------
+        // |  trusted  |             yes             |             no            |     yes
+        // |   sentry  |             yes             |             no            |     no
+        // | restrcted | according to config setting |             no            |     no
+        // |  no ssl   | according to config setting |             yes           |     no
         let restricted_settings = ClientSettings {
             timeouts: limits.timeouts,
             connect_to_reserved_ips: config.connect_to_reserved_ips,
             accept_invalid_certs: false,
             compression: false,
+            enable_http2: config.enable_http2,
         };
         let trusted_client = ClientSettings {
             connect_to_reserved_ips: true,
