@@ -93,6 +93,7 @@ pub fn create_client(settings: &ClientSettings) -> reqwest::Client {
     default_headers.insert(header::USER_AGENT, USER_AGENT.parse().unwrap());
 
     let mut builder = reqwest::ClientBuilder::new()
+        .tls_backend_native()
         .default_headers(default_headers)
         .gzip(settings.compression)
         .deflate(settings.compression)
