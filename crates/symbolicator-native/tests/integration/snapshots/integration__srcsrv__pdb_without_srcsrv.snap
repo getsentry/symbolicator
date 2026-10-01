@@ -6,12 +6,14 @@ stacktraces:
   - frames:
       - status: symbolicated
         original_index: 0
-        instruction_addr: "0x2a2755"
+        instruction_addr: "0x2a1000"
         package: "C:\\projects\\breakpad-tools\\windows\\Release\\crash.exe"
-        symbol: "google_breakpad::CrashGenerationClient::`scalar deleting destructor'(unsigned int)"
-        sym_addr: "0x2a26f0"
-        function: "google_breakpad::CrashGenerationClient::`scalar deleting destructor'(unsigned int)"
-        lineno: 0
+        symbol: "google_breakpad::CrashGenerationClient::RequestDump(_EXCEPTION_POINTERS *,MDRawAssertionInfo *)"
+        sym_addr: "0x2a1000"
+        function: "google_breakpad::CrashGenerationClient::RequestDump(_EXCEPTION_POINTERS *,MDRawAssertionInfo *)"
+        filename: crash_generation_client.cc
+        abs_path: "c:\\projects\\breakpad-tools\\deps\\breakpad\\src\\client\\windows\\crash_generation\\crash_generation_client.cc"
+        lineno: 323
 modules:
   - debug_status: found
     features:

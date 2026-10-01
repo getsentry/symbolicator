@@ -79,6 +79,7 @@ pub async fn symbolicate_frames(
             frame_order: body.options.frame_order,
             extract_variables: body.options.extract_variables,
             memory: None,
+            apply_source_server_info: body.options.apply_source_server_info,
         },
         body.options,
     )?;

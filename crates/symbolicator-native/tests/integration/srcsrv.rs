@@ -18,15 +18,17 @@ async fn symbolicate_with_pdb(pdb_file: &str) -> CompletedSymbolicationResponse 
         pdb_file
     );
 
-    let request = make_symbolication_request(
+    let mut request = make_symbolication_request(
         vec![source],
         &modules_json,
         r#"[{
           "frames":[{
-            "instruction_addr":"0x2a2755"
+            "instruction_addr":"0x2a1000"
           }]
         }]"#,
     );
+
+    request.apply_source_server_info = true;
 
     symbolication.symbolicate(request).await.unwrap()
 }

@@ -31,6 +31,7 @@ async fn stackwalk_minidump(path: &str) -> CompletedSymbolicationResponse {
             sources: Arc::new([source]),
             rewrite_first_module: Default::default(),
             extract_variables: false,
+            apply_source_server_info: false,
         })
         .await
         .unwrap()
@@ -112,6 +113,7 @@ async fn test_minidump_attachment_download() {
             sources: Arc::new([source]),
             rewrite_first_module: Default::default(),
             extract_variables: false,
+            apply_source_server_info: false,
         })
         .await;
 

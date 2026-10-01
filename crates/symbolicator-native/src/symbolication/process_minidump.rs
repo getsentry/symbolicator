@@ -623,6 +623,7 @@ impl SymbolicationActor {
             sources,
             rewrite_first_module,
             extract_variables,
+            apply_source_server_info,
         } = request;
         let minidump_file =
             download_attachment(Arc::clone(&self.download_svc), minidump_file).await?;
@@ -672,6 +673,7 @@ impl SymbolicationActor {
             frame_order: FrameOrder::CalleeFirst,
             extract_variables: request.extract_variables,
             memory: Some(Arc::new(minidump)),
+            apply_source_server_info,
         };
 
         Ok((request, minidump_state))

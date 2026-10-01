@@ -158,6 +158,7 @@ async fn test_minidump_symstore_index() {
             sources: Arc::new([source]),
             rewrite_first_module: Default::default(),
             extract_variables: false,
+            apply_source_server_info: false,
         })
         .await
         .unwrap();

@@ -11,6 +11,10 @@
 ### Features
 
 - Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
+- (native) Apply source server information contained in debug files. This replaces the `abs_path` and `filename`
+  of symbolicated frames with the path/name on the source server and additionally sets the `revision` field. The
+  behavior is gated behind the new request option `apply_source_server_info`. The `symbolicli` option to enable
+  this feature is `--use-srcsrv`. ([#2071](https://github.com/getsentry/symbolicator/pull/2071))
 
 ### Bug Fixes 🐛
 

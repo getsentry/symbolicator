@@ -69,6 +69,7 @@ pub async fn symbolicate_any(
                 sources: body.sources,
                 rewrite_first_module,
                 extract_variables: body.options.extract_variables,
+                apply_source_server_info: body.options.apply_source_server_info,
             },
             body.options,
         )?,

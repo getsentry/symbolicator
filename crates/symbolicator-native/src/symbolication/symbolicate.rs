@@ -107,6 +107,7 @@ impl SymbolicationActor {
             frame_order,
             extract_variables,
             memory,
+            apply_source_server_info,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -140,6 +141,7 @@ impl SymbolicationActor {
                     &mut metrics,
                     signal,
                     memory.as_deref().filter(|_| extract_variables),
+                    apply_source_server_info,
                 )
             })
             .collect();
@@ -176,6 +178,7 @@ fn symbolicate_stacktrace(
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
     memory: Option<&dyn MemoryAccess>,
+    apply_source_server_info: bool,
 ) -> CompleteStacktrace {
     let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
@@ -192,6 +195,7 @@ fn symbolicate_stacktrace(
             index,
             adjustment,
             memory,
+            apply_source_server_info,
         ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
@@ -336,6 +340,7 @@ fn symbolicate_frame(
     index: usize,
     adjustment: AdjustInstructionAddr,
     memory: Option<&dyn MemoryAccess>,
+    apply_source_server_info: bool,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -364,6 +369,7 @@ fn symbolicate_frame(
                 frame,
                 index,
                 memory,
+                apply_source_server_info,
             )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {
