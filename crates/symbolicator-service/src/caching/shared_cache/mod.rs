@@ -27,6 +27,7 @@ use tokio_util::io::{ReaderStream, StreamReader};
 use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs;
+use crate::utils::http::ClientSettings;
 
 use super::CacheName;
 
@@ -130,7 +131,7 @@ async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::E
 }
 
 impl GcsState {
-    pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
+    pub async fn try_new(config: GcsSharedCacheConfig, enable_http2: bool) -> Result<Self> {
         let token_provider = match config.service_account_path {
             Some(ref path) => {
                 let service_account = CustomServiceAccount::from_file(path)?;
@@ -138,9 +139,22 @@ impl GcsState {
             }
             None => initialize_token_provider().await?,
         };
+
+        let client = crate::utils::http::create_client(&ClientSettings {
+            timeouts: crate::config::DownloadTimeouts {
+                connect: Duration::from_secs(10),
+                head: Duration::from_secs(10),
+                max_download: Duration::from_hours(1),
+            },
+            connect_to_reserved_ips: true,
+            accept_invalid_certs: false,
+            compression: false,
+            enable_http2,
+        });
+
         Ok(Self {
             config,
-            client: Client::new(),
+            client,
             token_provider,
         })
     }
@@ -455,10 +469,10 @@ impl SharedCacheBackend {
     /// Creates the backend.
     ///
     /// If the backend can not be created the error will already be reported.
-    async fn maybe_new(cfg: SharedCacheBackendConfig) -> Option<Self> {
+    async fn maybe_new(cfg: SharedCacheBackendConfig, enable_http2: bool) -> Option<Self> {
         match cfg {
             SharedCacheBackendConfig::Gcs(cfg) => {
-                match GcsState::try_new(cfg)
+                match GcsState::try_new(cfg, enable_http2)
                     .await
                     .context("Failed to initialise GCS backend for shared cache")
                 {
@@ -534,10 +548,16 @@ impl SharedCacheService {
     pub fn new(
         config: Option<SharedCacheConfig>,
         runtime: tokio::runtime::Handle,
+        enable_http2: bool,
     ) -> SharedCacheRef {
         let cache = SharedCacheRef::default();
         if let Some(config) = config {
-            runtime.spawn(Self::init(runtime.clone(), cache.clone(), config));
+            runtime.spawn(Self::init(
+                runtime.clone(),
+                cache.clone(),
+                config,
+                enable_http2,
+            ));
         }
         cache
     }
@@ -546,9 +566,10 @@ impl SharedCacheService {
         runtime: tokio::runtime::Handle,
         cache: SharedCacheRef,
         config: SharedCacheConfig,
+        enable_http2: bool,
     ) {
         let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
-        if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
+        if let Some(backend) = SharedCacheBackend::maybe_new(config.backend, enable_http2).await {
             let backend = Arc::new(backend);
             tokio::spawn(
                 Self::upload_worker(rx, backend.clone(), config.max_concurrent_uploads)
@@ -873,7 +894,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
         let svc = wait_init(&svc).await;
 
         // This mimics how Cacher::compute creates this file.
@@ -901,7 +922,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
         let svc = wait_init(&svc).await;
 
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -928,7 +949,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
@@ -960,7 +981,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
         let svc = wait_init(&svc).await;
 
         let dir = symbolicator_test::tempdir();
@@ -981,7 +1002,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
             .await
             .unwrap();
 
@@ -1006,7 +1027,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
@@ -1035,7 +1056,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
             .await
             .unwrap();
 
@@ -1074,7 +1095,7 @@ mod tests {
     async fn test_gcs_exists() {
         symbolicator_test::setup();
         let credentials = symbolicator_test::gcs_credentials!();
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
             .await
             .unwrap();
 
@@ -1102,7 +1123,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
             .await
             .unwrap();
         let token = state.get_token().await.unwrap();
