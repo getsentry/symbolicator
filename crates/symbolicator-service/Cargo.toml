@@ -33,14 +33,17 @@ proguard = { workspace = true }
 rand = { workspace = true }
 rayon = { workspace = true }
 reqwest = { workspace = true, features = [
-    "gzip",
+    "blocking",
     "brotli",
     "deflate",
-    "zstd",
-    "json",
-    "stream",
+    "form",
+    "gzip",
     "hickory-dns",
+    "json",
+    "native-tls",
     "socks",
+    "stream",
+    "zstd",
 ] }
 sentry = { workspace = true }
 serde = { workspace = true }

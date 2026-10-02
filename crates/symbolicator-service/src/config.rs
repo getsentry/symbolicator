@@ -563,6 +563,11 @@ pub struct Config {
     ///
     /// Defaults to 15GiB.
     pub max_download_size: Option<u64>,
+
+    /// Whether to enable HTTP2 for internal downloaders.
+    ///
+    /// Defaults to `false`.
+    pub enable_http2: bool,
 }
 
 impl Config {
@@ -681,6 +686,7 @@ impl Default for Config {
             js_max_sources_size_per_request: Some(2 * 1024 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
             max_download_size: Some(15 * 1024 * 1024 * 1024),
+            enable_http2: false,
         }
     }
 }
