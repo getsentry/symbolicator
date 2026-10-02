@@ -251,12 +251,11 @@ wheels = [
 
 [[package]]
 name = "mkdocs-material"
-version = "9.6.17"
+version = "9.7.7"
 source = { registry = "https://sfw.security.sentry.io/pypi/simple" }
 dependencies = [
     { name = "babel" },
     { name = "backrefs" },
-    { name = "click" },
     { name = "colorama" },
     { name = "jinja2" },
     { name = "markdown" },
@@ -267,9 +266,9 @@ dependencies = [
     { name = "pymdown-extensions" },
     { name = "requests" },
 ]
-sdist = { url = "https://sfw.security.sentry.io/pypi/packages/47/02/51115cdda743e1551c5c13bdfaaf8c46b959acc57ba914d8ec479dd2fe1f/mkdocs_material-9.6.17.tar.gz", hash = "sha256:48ae7aec72a3f9f501a70be3fbd329c96ff5f5a385b67a1563e5ed5ce064affe", size = 4032898, upload-time = "2025-08-15T16:09:21.412Z" }
+sdist = { url = "https://sfw.security.sentry.io/pypi/packages/f1/cd/c05d3a530ba7934f144fb45f7203cd236adc25c7bdcc34673d202f4b0278/mkdocs_material-9.7.7.tar.gz", hash = "sha256:c0649c065b1b0512d60aad8c10f947f8e455284475239b364b610f2deb4d0855", size = 4097923, upload-time = "2026-07-17T16:21:33.156Z" }
 wheels = [
-    { url = "https://sfw.security.sentry.io/pypi/packages/3c/7c/0f0d44c92c8f3068930da495b752244bd59fd87b5b0f9571fa2d2a93aee7/mkdocs_material-9.6.17-py3-none-any.whl", hash = "sha256:221dd8b37a63f52e580bcab4a7e0290e4a6f59bd66190be9c3d40767e05f9417", size = 9229230, upload-time = "2025-08-15T16:09:18.301Z" },
+    { url = "https://sfw.security.sentry.io/pypi/packages/ad/21/17c1bc9e6f47c972ad66fb2ac2568f99f90f1207eeb6fc3b34d094dba7b5/mkdocs_material-9.7.7-py3-none-any.whl", hash = "sha256:8ea9bb1737a5b524a5f9dcf2e1b4ebda8274ae3008aa7845720a97083bef708f", size = 9305438, upload-time = "2026-07-17T16:21:30.017Z" },
 ]
 
 [[package]]
