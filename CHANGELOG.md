@@ -22,7 +22,7 @@
 
 ### Internal changes
 
-- Switch default PyPI index to Socket Firewall. ([#2075](https://github.com/getsentry/relay/pull/2075))
+- Switch default PyPI index to Socket Firewall. ([#2075](https://github.com/getsentry/symbolicator/pull/2075))
 
 ## 26.9.0
 
