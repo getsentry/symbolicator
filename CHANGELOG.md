@@ -20,6 +20,10 @@
 
 - Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))
 
+### Internal changes
+
+- Switch default PyPI index to Socket Firewall. ([#2075](https://github.com/getsentry/relay/pull/2075))
+
 ## 26.9.0
 
 ### Bug Fixes 🐛
