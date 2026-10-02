@@ -40,7 +40,7 @@ reqwest = { workspace = true, features = [
     "gzip",
     "hickory-dns",
     "json",
-    "native-tls-no-alpn",
+    "native-tls",
     "socks",
     "stream",
     "zstd",
