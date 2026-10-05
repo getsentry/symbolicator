@@ -121,7 +121,7 @@ struct Cli {
     /// The symbol path is optionally prefixed with the symbol layout. The layout defaults to `unified`.
     ///
     /// Supported layouts: native, symstore, symstore_index2, ssqp,
-    /// debuginfod, unified, slashsymbols.
+    /// debuginfod, unified, slashsymbols, nxsymstore.
     #[arg(long)]
     symbols: Option<SymbolsPath>,
 
@@ -191,6 +191,7 @@ fn parse_layout_type(s: &str) -> Option<DirectoryLayoutType> {
         "debuginfod" => DirectoryLayoutType::Debuginfod,
         "unified" => DirectoryLayoutType::Unified,
         "slashsymbols" => DirectoryLayoutType::SlashSymbols,
+        "nxsymstore" => DirectoryLayoutType::NxSymStore,
         _ => return None,
     })
 }

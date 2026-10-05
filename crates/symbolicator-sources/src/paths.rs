@@ -443,12 +443,12 @@ fn get_nxsymstore_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String
         return Vec::new();
     };
 
-    if code_id.as_str().len() < 2 {
+    let id = code_id.as_str();
+    let Some(prefix) = id.get(..2) else {
         return Vec::new();
-    }
-    let (prefix, rest) = code_id.as_str().split_at(2);
+    };
 
-    vec![format!("{prefix}/{rest}00000000.nxsym")]
+    vec![format!("{prefix}/{id}00000000.nxsym")]
 }
 
 /// Determines the paths for an object file in the given layout.
@@ -799,11 +799,11 @@ mod tests {
 
         assert_eq!(
             get_directory_paths(layout, FileType::ElfDebug, &id(example_id)),
-            ["df/b85de42daffd09640c8fe377d572de3e16892000000000.nxsym"]
+            ["df/dfb85de42daffd09640c8fe377d572de3e16892000000000.nxsym"]
         );
         assert_eq!(
             get_directory_paths(layout, FileType::ElfDebug, &id("df")),
-            ["df/00000000.nxsym"]
+            ["df/df00000000.nxsym"]
         );
         assert!(get_directory_paths(layout, FileType::ElfDebug, &id("d")).is_empty());
         assert!(get_directory_paths(layout, FileType::ElfDebug, &ObjectId::default()).is_empty());
