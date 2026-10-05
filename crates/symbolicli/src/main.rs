@@ -44,6 +44,7 @@ async fn main() -> Result<()> {
         symbols,
         scraping_enabled,
         extract_variables,
+        apply_source_server_info,
     } = settings::Settings::get()?;
 
     // We depend on `rustls` with both the `aws-lc-rs` and
@@ -137,9 +138,14 @@ async fn main() -> Result<()> {
 
         Payload::Event(event) if event.platform.is_native() => {
             let dsym_sources = prepare_dsym_sources(mode, &symbolicator_config, symbols);
-            let request =
-                create_native_symbolication_request(scope, dsym_sources, event, extract_variables)
-                    .context("Event cannot be symbolicated")?;
+            let request = create_native_symbolication_request(
+                scope,
+                dsym_sources,
+                event,
+                extract_variables,
+                apply_source_server_info,
+            )
+            .context("Event cannot be symbolicated")?;
 
             tracing::info!("symbolicating event");
 
@@ -156,9 +162,9 @@ async fn main() -> Result<()> {
                     scope,
                     minidump_file: AttachmentFile::Local(minidump_file),
                     sources: dsym_sources,
-                    scraping: Default::default(),
                     rewrite_first_module: Default::default(),
                     extract_variables,
+                    apply_source_server_info,
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -173,7 +179,6 @@ async fn main() -> Result<()> {
                     scope,
                     AttachmentFile::Local(file),
                     dsym_sources,
-                    Default::default(),
                     extract_variables,
                 )
                 .await?;

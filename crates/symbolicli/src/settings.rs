@@ -128,6 +128,10 @@ struct Cli {
     /// Whether to extract variables from the minidump.
     #[arg(long)]
     extract_variables: bool,
+
+    /// Whether to apply source server information embedded in debug files.
+    #[arg(long)]
+    use_srcsrv: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -206,6 +210,7 @@ pub struct Settings {
     pub symbols: Option<SymbolsPath>,
     pub scraping_enabled: bool,
     pub extract_variables: bool,
+    pub apply_source_server_info: bool,
 }
 
 impl Settings {
@@ -223,6 +228,7 @@ impl Settings {
             no_scrape,
             symbols,
             extract_variables,
+            use_srcsrv,
         } = Cli::parse();
 
         let global_config_path = find_global_config_file()?;
@@ -315,6 +321,7 @@ impl Settings {
             symbols,
             scraping_enabled: !no_scrape,
             extract_variables,
+            apply_source_server_info: use_srcsrv,
         };
 
         Ok(args)

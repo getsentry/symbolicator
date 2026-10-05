@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use symbolic::common::Name;
-use symbolicator_service::caches::SourceFilesCache;
 use symbolicator_service::caching::CacheError;
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
@@ -35,7 +34,6 @@ pub struct SymbolicationActor {
     pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    pub(crate) sourcefiles_cache: Arc<SourceFilesCache>,
     pub(crate) download_svc: Arc<DownloadService>,
 }
 
@@ -46,7 +44,6 @@ impl SymbolicationActor {
         let objects = services.objects.clone();
         let download_svc = services.download_svc.clone();
         let source_index_svc = services.source_index_svc.clone();
-        let sourcefiles_cache = services.sourcefiles_cache.clone();
 
         let bitcode = BitcodeService::new(
             caches.auxdifs.clone(),
@@ -88,7 +85,6 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             ppdb_caches,
-            sourcefiles_cache,
             download_svc,
         }
     }
@@ -107,11 +103,11 @@ impl SymbolicationActor {
             origin,
             modules,
             apply_source_context,
-            scraping,
             rewrite_first_module,
             frame_order,
             extract_variables,
             memory,
+            apply_source_server_info,
         } = request;
 
         if frame_order == FrameOrder::CallerFirst {
@@ -145,12 +141,13 @@ impl SymbolicationActor {
                     &mut metrics,
                     signal,
                     memory.as_deref().filter(|_| extract_variables),
+                    apply_source_server_info,
                 )
             })
             .collect();
 
         if apply_source_context {
-            self.apply_source_context(&mut module_lookup, &mut stacktraces, &scraping)
+            self.apply_source_context(&mut module_lookup, &mut stacktraces)
                 .await
         }
 
@@ -181,6 +178,7 @@ fn symbolicate_stacktrace(
     metrics: &mut StacktraceMetrics,
     signal: Option<Signal>,
     memory: Option<&dyn MemoryAccess>,
+    apply_source_server_info: bool,
 ) -> CompleteStacktrace {
     let default_adjustment = AdjustInstructionAddr::default_for_thread(&thread);
     let mut symbolicated_frames = vec![];
@@ -197,6 +195,7 @@ fn symbolicate_stacktrace(
             index,
             adjustment,
             memory,
+            apply_source_server_info,
         ) {
             Ok(frames) => {
                 if matches!(frame.trust, FrameTrust::Scan) {
@@ -341,6 +340,7 @@ fn symbolicate_frame(
     index: usize,
     adjustment: AdjustInstructionAddr,
     memory: Option<&dyn MemoryAccess>,
+    apply_source_server_info: bool,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     let lookup_result = caches
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
@@ -369,6 +369,7 @@ fn symbolicate_frame(
                 frame,
                 index,
                 memory,
+                apply_source_server_info,
             )
         }
         Ok(CacheFileEntry::PortablePdbCache(ppdb_cache)) => {

@@ -2,14 +2,28 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- (native) Symbolicator no longer fetches remote source files to apply source context.
+  Remote source context is better served by Sentry's [SCM source context fetching](https://docs.sentry.io/integrations/source-code-mgmt/source-context/),
+  which properly integrates with source code hosters. ([#2069](https://github.com/getsentry/symbolicator/pull/2069))
+
 ### Features
 
 - Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
 - Add a `nxsymstore` source layout which supports the path schema of Nintendo's `NXSymStore.exe` symbol sorting tool. ([#2067](https://github.com/getsentry/symbolicator/pull/2067))
+- (native) Apply source server information contained in debug files. This replaces the `abs_path` and `filename`
+  of symbolicated frames with the path/name on the source server and additionally sets the `revision` field. The
+  behavior is gated behind the new request option `apply_source_server_info`. The `symbolicli` option to enable
+  this feature is `--use-srcsrv`. ([#2071](https://github.com/getsentry/symbolicator/pull/2071))
 
 ### Bug Fixes 🐛
 
 - Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))
+
+### Internal changes
+
+- Switch default PyPI index to Socket Firewall. ([#2075](https://github.com/getsentry/symbolicator/pull/2075))
 
 ## 26.9.0
 

@@ -12,9 +12,7 @@ use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
-use symbolicator_service::types::{
-    FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope, ScrapingConfig,
-};
+use symbolicator_service::types::{FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::SourceConfig;
 use thiserror::Error;
@@ -61,8 +59,6 @@ pub struct SymbolicateStacktraces {
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
 
-    /// Scraping configuration controling authenticated requests.
-    pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
@@ -72,6 +68,8 @@ pub struct SymbolicateStacktraces {
     pub extract_variables: bool,
     /// The program memory, if it is available.
     pub memory: Option<Arc<dyn MemoryAccess>>,
+    /// Whether to apply source server information, if available.
+    pub apply_source_server_info: bool,
 }
 
 /// Location of an attachment file, such as a minidump.
@@ -110,13 +108,13 @@ pub struct ProcessMinidump {
     pub minidump_file: AttachmentFile,
     /// A list of external sources to load debug files.
     pub sources: Arc<[SourceConfig]>,
-    /// Scraping configuration controling authenticated requests.
-    pub scraping: ScrapingConfig,
     /// Rules for rewriting the debug file of the first (lowest-address) module
     /// in the request.
     pub rewrite_first_module: RewriteRules,
     /// Whether to extract varialbes.
     pub extract_variables: bool,
+    /// Whether to apply source server information, if available.
+    pub apply_source_server_info: bool,
 }
 
 /// The symbolicated crash data.
@@ -320,10 +318,18 @@ pub struct RawFrame {
     pub function: Option<String>,
 
     /// Source file path relative to the compilation directory.
+    ///
+    /// If the frame was symbolicated with source server info
+    /// (controlled by [`SymbolicateStacktraces::apply_source_server_info`])
+    /// this is the file name on the source server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filename: Option<String>,
 
     /// Absolute path to the source file.
+    ///
+    /// If the frame was symbolicated with source server info
+    /// (controlled by [`SymbolicateStacktraces::apply_source_server_info`])
+    /// this is the path on the source server.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub abs_path: Option<String>,
 
@@ -360,6 +366,16 @@ pub struct RawFrame {
     /// Values of CPU registers in this frame.
     #[serde(skip)]
     pub registers: Registers,
+
+    /// The value of the source revision of the frame's file.
+    ///
+    /// This is only set if [`SymbolicateStacktraces::apply_source_server_info`]
+    /// is `true` and the debug file contains source server info.
+    ///
+    /// The meaning of this field depends on the version control system
+    /// used by the source server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_revision: Option<String>,
 }
 
 /// How trustworth the instruction pointer of the frame is.

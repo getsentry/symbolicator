@@ -91,6 +91,7 @@ pub fn create_native_symbolication_request(
     sources: Arc<[SourceConfig]>,
     event: Event,
     extract_variables: bool,
+    apply_source_server_info: bool,
 ) -> anyhow::Result<SymbolicateStacktraces> {
     let Event {
         debug_meta,
@@ -148,13 +149,13 @@ pub fn create_native_symbolication_request(
         stacktraces,
         modules,
         apply_source_context: true,
-        scraping: Default::default(),
         rewrite_first_module: Default::default(),
         // we manually reversed the frames when we created the stacktraces, so this is
         // "callee first"
         frame_order: FrameOrder::CalleeFirst,
         extract_variables,
         memory: None,
+        apply_source_server_info,
     })
 }
 
@@ -296,6 +297,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         vars: value.vars,
         trust: value.trust,
         registers: Default::default(),
+        file_revision: None,
     })
 }
 

@@ -75,11 +75,11 @@ pub async fn symbolicate_frames(
             stacktraces: body.stacktraces,
             modules: body.modules.into_iter().map(From::from).collect(),
             apply_source_context: body.options.apply_source_context,
-            scraping: body.scraping,
             rewrite_first_module: Default::default(),
             frame_order: body.options.frame_order,
             extract_variables: body.options.extract_variables,
             memory: None,
+            apply_source_server_info: body.options.apply_source_server_info,
         },
         body.options,
     )?;

@@ -16,6 +16,7 @@ use crate::memory::{MemoryAccess, MemoryAccessExt};
 use super::demangle::DemangleCache;
 use super::module_lookup::CacheLookupResult;
 
+#[allow(clippy::too_many_arguments)]
 pub fn symbolicate_native_frame(
     demangle_cache: &DemangleCache,
     symcache: &SymCache,
@@ -24,6 +25,7 @@ pub fn symbolicate_native_frame(
     frame: &RawFrame,
     index: usize,
     memory: Option<&dyn MemoryAccess>,
+    apply_source_server_info: bool,
 ) -> Result<Vec<SymbolicatedFrame>, FrameStatus> {
     tracing::trace!("Symbolicating {:#x}", relative_addr);
     let mut rv = vec![];
@@ -35,11 +37,23 @@ pub fn symbolicate_native_frame(
     let instruction_addr = HexValue(lookup_result.expose_preferred_addr(relative_addr));
 
     for source_location in symcache.lookup(relative_addr) {
-        let abs_path = source_location
-            .file()
-            .map(|f| f.full_path())
+        let source_server_path = match apply_source_server_info {
+            true => source_location.file().and_then(|f| f.full_srcsrv_path()),
+            false => None,
+        };
+
+        let abs_path = source_server_path
+            .or_else(|| source_location.file().map(|f| f.full_path()))
             .unwrap_or_default();
+
         let filename = split_path(&abs_path).1;
+
+        let file_revision = match apply_source_server_info {
+            true => source_location
+                .file()
+                .and_then(|f| f.srcsrv_revision().map(|r| r.to_owned())),
+            false => None,
+        };
 
         let func = source_location.function();
         let function = demangle_cache
@@ -91,6 +105,7 @@ pub fn symbolicate_native_frame(
                 vars,
                 trust: frame.trust,
                 registers: Default::default(),
+                file_revision,
             },
         });
     }

@@ -9,9 +9,7 @@ use symbolicator_native::interface::{AttachmentFile, ProcessMinidump, RewriteRul
 use symbolicator_service::types::Platform;
 use symbolicator_sources::SourceConfig;
 
-use crate::service::{
-    RequestOptions, RequestQueryParams, RequestService, ScrapingConfig, SymbolicationResponse,
-};
+use crate::service::{RequestOptions, RequestQueryParams, RequestService, SymbolicationResponse};
 use crate::utils::sentry::ConfigureScope;
 
 use super::ResponseError;
@@ -25,10 +23,7 @@ pub struct SymbolicateAnyRequestBody {
     #[serde(default)]
     pub options: RequestOptions,
     #[serde(default)]
-    pub scraping: ScrapingConfig,
-    #[serde(default)]
     pub sources: Arc<[SourceConfig]>,
-
     pub symbolicate: SymbolicationRequest,
 }
 
@@ -72,9 +67,9 @@ pub async fn symbolicate_any(
                     storage_token,
                 },
                 sources: body.sources,
-                scraping: body.scraping,
                 rewrite_first_module,
                 extract_variables: body.options.extract_variables,
+                apply_source_server_info: body.options.apply_source_server_info,
             },
             body.options,
         )?,
@@ -89,7 +84,6 @@ pub async fn symbolicate_any(
                 storage_token,
             },
             body.sources,
-            body.scraping,
             body.options,
         )?,
     };

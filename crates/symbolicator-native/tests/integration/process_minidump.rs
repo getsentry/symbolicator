@@ -29,9 +29,9 @@ async fn stackwalk_minidump(path: &str) -> CompletedSymbolicationResponse {
             scope: Scope::Global,
             minidump_file: AttachmentFile::Local(minidump_file),
             sources: Arc::new([source]),
-            scraping: Default::default(),
             rewrite_first_module: Default::default(),
             extract_variables: false,
+            apply_source_server_info: false,
         })
         .await
         .unwrap()
@@ -111,9 +111,9 @@ async fn test_minidump_attachment_download() {
                 storage_token: None,
             },
             sources: Arc::new([source]),
-            scraping: Default::default(),
             rewrite_first_module: Default::default(),
             extract_variables: false,
+            apply_source_server_info: false,
         })
         .await;
 
