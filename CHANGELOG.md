@@ -11,6 +11,7 @@
 ### Features
 
 - Microsoft Azure symbol sources are now supported. ([#2058](https://github.com/getsentry/symbolicator/pull/2058))
+- Add a `nxsymstore` source layout which supports the path schema of Nintendo's `NXSymStore.exe` symbol sorting tool. ([#2067](https://github.com/getsentry/symbolicator/pull/2067))
 - (native) Apply source server information contained in debug files. This replaces the `abs_path` and `filename`
   of symbolicated frames with the path/name on the source server and additionally sets the `revision` field. The
   behavior is gated behind the new request option `apply_source_server_info`. The `symbolicli` option to enable
