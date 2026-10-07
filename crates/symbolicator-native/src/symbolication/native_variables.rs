@@ -111,7 +111,6 @@ fn resolve_type_name(
 }
 
 fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<VariableValue> {
-    // Bring in enum variants that we use regularly in the code.
     use PrimitiveTypeEncoding::*;
     use TypeEncoding::*;
 
@@ -195,9 +194,14 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         (Primitive(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 16) => {
             get_value!(u128, |v| match encoding {
                 Boolean => VariableValue::new().value(v > 0),
-                // u128 does not implement Into<serde_json::Value>, we can just represent it
-                // as a string instead.
-                _ => format_variable!("{v}"),
+                // Serializing u128 as a number is possible, but because other parts of Sentry may
+                // not handle it gracefully due to the fact that the `arbitrary_precision` serde
+                // feature is required, so we serialize u128's that cannot be represented as u64 as
+                // a string instead.
+                _ => match u64::try_from(v) {
+                    Ok(v_u64) => VariableValue::new().value(v_u64),
+                    Err(_) => format_variable!("{v}"),
+                },
             })
         }
 
@@ -207,9 +211,14 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         (Primitive(SignedInt | SignedChar), 4) => get_value!(i32),
         (Primitive(SignedInt | SignedChar), 8) => get_value!(i64),
         (Primitive(SignedInt | SignedChar), 16) => {
-            // i128 does not implement Into<serde_json::Value>, we can just represent it
-            // as a string instead.
-            get_value!(i128, |v| format_variable!("{v}"))
+            // Serializing i128 as a number is possible, but because other parts of Sentry may
+            // not handle it gracefully due to the fact that the `arbitrary_precision` serde
+            // feature is required, so we serialize i128's that cannot be represented as i64 as
+            // a string instead.
+            get_value!(i128, |v| match i64::try_from(v) {
+                Ok(v_i64) => VariableValue::new().value(v_i64),
+                Err(_) => format_variable!("{v}"),
+            })
         }
 
         // Floating-point types. Reading f128 from memory is currently not supported, so we don't
