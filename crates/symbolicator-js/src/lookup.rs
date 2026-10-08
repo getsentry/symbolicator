@@ -10,7 +10,7 @@
 //!
 //! Each file will be looked up first inside of all the open [`ArtifactBundle`]s.
 //! If the requested file has a [`DebugId`], the lookup will be performed based on that first,
-//! falling back to other lookup methods.
+//! querying the API if needed before falling back to other lookup methods.
 //! A file without [`DebugId`] will be looked up by a number of candidate URLs, see
 //! [`get_release_file_candidate_urls`]. It will be first looked up inside all the open
 //! [`ArtifactBundle`]s, falling back to individual artifacts, doing another API request if
@@ -735,20 +735,31 @@ impl ArtifactFetcher {
 
         self.metrics.needed_files += 1;
 
-        // Try looking up the file in one of the artifact bundles that we know about.
-        let mut file = self.try_get_file_from_bundles(key);
+        // A URL match in a previously loaded bundle may belong to a different build.
+        // Exhaust debug-ID lookups, including the API, before allowing URL fallbacks.
+        let prefer_debug_id = key.debug_id().is_some();
+        let mut file = self.try_get_file_from_bundles(key, !prefer_debug_id);
+        let queried_sentry = file.is_none() && prefer_debug_id;
+
+        if queried_sentry && self.query_sentry_for_file(key).await {
+            file = self.try_get_file_from_bundles(key, false);
+        }
+
+        if file.is_none() && prefer_debug_id {
+            file = self.try_get_file_from_bundles(key, true);
+        }
 
         if file.is_none() {
             // Otherwise, try to get the file from an individual artifact.
             file = self.try_fetch_file_from_artifacts(key).await;
         }
 
-        if file.is_none() {
+        if file.is_none() && !queried_sentry {
             // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
             if self.query_sentry_for_file(key).await {
                 // At this point, *one* of our known artifacts includes the file we are looking for.
                 // So we do the whole dance yet again.
-                file = self.try_get_file_from_bundles(key);
+                file = self.try_get_file_from_bundles(key, true);
                 if file.is_none() {
                     file = self.try_fetch_file_from_artifacts(key).await;
                 }
@@ -905,7 +916,11 @@ impl ArtifactFetcher {
     }
 
     #[tracing::instrument(skip(self))]
-    fn try_get_file_from_bundles(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+    fn try_get_file_from_bundles(
+        &mut self,
+        key: &FileKey,
+        allow_url_lookup: bool,
+    ) -> Option<CachedFileEntry> {
         if self.artifact_bundles.is_empty() {
             return None;
         }
@@ -914,6 +929,7 @@ impl ArtifactFetcher {
         if let Some((bundle_uri, file_entry, resolved_with)) = self
             .files_in_bundles
             .try_get(self.artifact_bundles.keys().rev().cloned(), key.clone())
+            && (allow_url_lookup || resolved_with == ResolvedWith::DebugId)
         {
             // we would like to gather metrics for which method we used to resolve the artifact bundle
             // containing the file. we should also be doing so if we got the file from the cache.
@@ -959,6 +975,10 @@ impl ArtifactFetcher {
                     return Some(file_entry);
                 }
             }
+        }
+
+        if !allow_url_lookup {
+            return None;
         }
 
         // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
