@@ -1,6 +1,9 @@
 //! Contains types for representing variable values.
 
-use std::{collections::HashMap, fmt::Display, num::ParseIntError, str::FromStr};
+use std::collections::HashMap;
+use std::fmt::Display;
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
