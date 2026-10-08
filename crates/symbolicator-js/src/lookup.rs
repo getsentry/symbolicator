@@ -1002,7 +1002,8 @@ impl ArtifactFetcher {
     /// 1. See if a local bundle contains the file _by debug ID_.
     /// 2. See if Sentry has a bundle containing the file, and download it if so.
     /// 3. If (2) succeeded, check local bundles again _by debug ID_.
-    /// 4. Finally, if the file hasn't been found, check local bundles _by path_.
+    /// 4. If the file hasn't been found by debug ID, check local bundles _by path_.
+    /// 5. Finally, if the file isn't found in any bundle, check individual artifacts.
     ///
     /// This ordering exists because we want to make sure that there is no bundle containing
     /// the file by debug ID before we even try finding it by path. If we look the file up
@@ -1014,19 +1015,11 @@ impl ArtifactFetcher {
         let mut file = self.try_get_file_from_bundles_by_debug_id(key);
 
         if file.is_none() {
-            // Otherwise, try to get the file from an individual artifact.
-            file = self.try_fetch_file_from_artifacts(key).await;
-        }
-
-        if file.is_none() {
             // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
             if self.query_sentry_for_file(key).await {
                 // At this point, *one* of our known artifacts includes the file we are looking for.
                 // So we do the whole dance yet again.
                 file = self.try_get_file_from_bundles_by_debug_id(key);
-                if file.is_none() {
-                    file = self.try_fetch_file_from_artifacts(key).await;
-                }
             }
         }
 
@@ -1035,15 +1028,20 @@ impl ArtifactFetcher {
             file = self.try_get_file_from_bundles_by_path(key);
         }
 
+        if file.is_none() {
+            // Otherwise, try to get the file from an individual artifact.
+            file = self.try_fetch_file_from_artifacts(key).await;
+        }
+
         file
     }
 
     /// Tries to fetch a file without a debug ID from local bundles or Sentry.
     ///
     /// The sequence of steps is as follows:
-    /// 1. See if a local bundle contains the file _by path_.
-    /// 2. See if Sentry has a bundle containing the file, and download it if so.
-    /// 3. If (2) succeeded, check local bundles again _by path_.
+    /// 1. See if a local bundle/artifact contains the file _by path_.
+    /// 2. See if Sentry has a bundle/artifact containing the file, and download it if so.
+    /// 3. If (2) succeeded, check local bundles/artifacts again _by path_.
     async fn try_get_file_without_debug_id(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
         // Try looking up the file in one of the artifact bundles that we know about.
         let mut file = self.try_get_file_from_bundles_by_path(key);
