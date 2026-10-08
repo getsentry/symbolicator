@@ -735,32 +735,28 @@ impl ArtifactFetcher {
 
         self.metrics.needed_files += 1;
 
-        // Try looking up the file in one of the artifact bundles that we know about.
-        let mut file = self.try_get_file_from_bundles(key);
-
-        if file.is_none() {
-            // Otherwise, try to get the file from an individual artifact.
-            file = self.try_fetch_file_from_artifacts(key).await;
-        }
-
-        if file.is_none() {
-            // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
-            if self.query_sentry_for_file(key).await {
-                // At this point, *one* of our known artifacts includes the file we are looking for.
-                // So we do the whole dance yet again.
-                file = self.try_get_file_from_bundles(key);
-                if file.is_none() {
-                    file = self.try_fetch_file_from_artifacts(key).await;
-                }
-            }
-        }
-
-        if let Some(file) = file {
+        if let Some(entry) = self.try_get_file_from_bundles_cached(key) {
             if let Some(url) = key.abs_path() {
                 self.scraping_attempts
                     .push(JsScrapingAttempt::not_attempted(url.to_owned()));
             }
-            return file;
+            return entry;
+        }
+
+        // Try looking up the file in one of the artifact bundles that we know about
+        // and fetch bundles from Sentry if necessary..
+        let entry = if key.debug_id().is_some() {
+            self.try_get_file_with_debug_id(key).await
+        } else {
+            self.try_get_file_without_debug_id(key).await
+        };
+
+        if let Some(entry) = entry {
+            if let Some(url) = key.abs_path() {
+                self.scraping_attempts
+                    .push(JsScrapingAttempt::not_attempted(url.to_owned()));
+            }
+            return entry;
         }
 
         // Otherwise, fall back to scraping from the Web.
@@ -904,8 +900,8 @@ impl ArtifactFetcher {
         }
     }
 
-    #[tracing::instrument(skip(self))]
-    fn try_get_file_from_bundles(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+    /// Try to find a file in our local bundle cache.
+    fn try_get_file_from_bundles_cached(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
         if self.artifact_bundles.is_empty() {
             return None;
         }
@@ -929,72 +925,145 @@ impl ArtifactFetcher {
             return Some(file_entry);
         }
 
-        // If we have a `DebugId`, we try a lookup based on that.
-        if let Some(debug_id) = key.debug_id() {
-            let ty = key.as_type();
-            for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
-                let Ok((bundle, bundle_resolved_with)) = bundle else {
-                    continue;
-                };
-                let bundle = bundle.get();
-                if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
-                    self.metrics.record_file_found_in_bundle(
-                        key.as_type(),
-                        ResolvedWith::DebugId,
-                        *bundle_resolved_with,
-                        key.debug_id().is_some(),
-                    );
-                    tracing::trace!(?key, "Found file in artifact bundles by debug-id");
-                    let file_entry = CachedFileEntry {
-                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                        entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
-                        resolved_with: ResolvedWith::DebugId,
-                    };
-                    self.files_in_bundles.insert(
-                        bundle_uri,
-                        key,
-                        ResolvedWith::DebugId,
-                        &file_entry,
-                    );
-                    return Some(file_entry);
-                }
-            }
-        }
+        None
+    }
 
-        // Otherwise, try all the candidate `abs_path` patterns in every artifact bundle.
-        if let Some(abs_path) = key.abs_path() {
-            for url in get_release_file_candidate_urls(abs_path) {
-                for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
-                    let Ok((bundle, resolved_with)) = bundle else {
-                        continue;
-                    };
-                    let bundle = bundle.get();
-                    if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
-                        self.metrics.record_file_found_in_bundle(
-                            key.as_type(),
-                            ResolvedWith::Url,
-                            *resolved_with,
-                            key.debug_id().is_some(),
-                        );
-                        tracing::trace!(?key, url, "Found file in artifact bundles by url");
-                        let file_entry = CachedFileEntry {
-                            uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
-                            entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
-                            resolved_with: *resolved_with,
-                        };
-                        self.files_in_bundles.insert(
-                            bundle_uri,
-                            key,
-                            ResolvedWith::Url,
-                            &file_entry,
-                        );
-                        return Some(file_entry);
-                    }
-                }
+    /// Try to find a file by debug ID in locally available bundles.
+    ///
+    /// If the file is found in a bundle, that fact is cached in `self.files_in_bundles`.
+    fn try_get_file_from_bundles_by_debug_id(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+        let debug_id = key.debug_id()?;
+        let ty = key.as_type();
+
+        for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
+            let Ok((bundle, bundle_resolved_with)) = bundle else {
+                continue;
+            };
+            let bundle = bundle.get();
+            if let Ok(Some(descriptor)) = bundle.source_by_debug_id(debug_id, ty) {
+                self.metrics.record_file_found_in_bundle(
+                    ty,
+                    ResolvedWith::DebugId,
+                    *bundle_resolved_with,
+                    true,
+                );
+                tracing::trace!(%debug_id, "Found file in artifact bundles by debug-id");
+                let file_entry = CachedFileEntry {
+                    uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
+                    entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
+                    resolved_with: ResolvedWith::DebugId,
+                };
+                self.files_in_bundles
+                    .insert(bundle_uri, key, ResolvedWith::DebugId, &file_entry);
+                return Some(file_entry);
             }
         }
 
         None
+    }
+
+    /// Try to find a file by path in locally available bundles.
+    ///
+    /// If the file is found in a bundle, that fact is cached in `self.files_in_bundles`.
+    fn try_get_file_from_bundles_by_path(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+        let abs_path = key.abs_path()?;
+
+        for url in get_release_file_candidate_urls(abs_path) {
+            for (bundle_uri, bundle) in self.artifact_bundles.iter().rev() {
+                let Ok((bundle, resolved_with)) = bundle else {
+                    continue;
+                };
+                let bundle = bundle.get();
+                if let Ok(Some(descriptor)) = bundle.source_by_url(&url) {
+                    self.metrics.record_file_found_in_bundle(
+                        key.as_type(),
+                        ResolvedWith::Url,
+                        *resolved_with,
+                        key.debug_id().is_some(),
+                    );
+                    tracing::trace!(?key, url, "Found file in artifact bundles by url");
+                    let file_entry = CachedFileEntry {
+                        uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
+                        entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
+                        resolved_with: *resolved_with,
+                    };
+                    self.files_in_bundles
+                        .insert(bundle_uri, key, ResolvedWith::Url, &file_entry);
+                    return Some(file_entry);
+                }
+            }
+        }
+        None
+    }
+
+    /// Tries to fetch a file with a debug ID from local bundles or Sentry.
+    ///
+    /// The sequence of steps is as follows:
+    /// 1. See if a local bundle contains the file _by debug ID_.
+    /// 2. See if Sentry has a bundle containing the file, and download it if so.
+    /// 3. If (2) succeeded, check local bundles again _by debug ID_.
+    /// 4. If the file hasn't been found by debug ID, check local bundles _by path_.
+    /// 5. Finally, if the file isn't found in any bundle, check individual artifacts.
+    ///
+    /// This ordering exists because we want to make sure that there is no bundle containing
+    /// the file by debug ID before we even try finding it by path. If we look the file up
+    /// by path before hitting Sentry, it's possible that we hit a previously downloaded
+    /// bundle containing the wrong version of the file, even though a bundle with the right
+    /// version is actually available on Sentry.
+    async fn try_get_file_with_debug_id(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+        // Try looking up the file in one of the artifact bundles that we know about.
+        let mut file = self.try_get_file_from_bundles_by_debug_id(key);
+
+        if file.is_none() {
+            // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
+            if self.query_sentry_for_file(key).await {
+                // At this point, *one* of our known artifacts includes the file we are looking for.
+                // So we do the whole dance yet again.
+                file = self.try_get_file_from_bundles_by_debug_id(key);
+            }
+        }
+
+        if file.is_none() {
+            // Look the file up by path only if we're sure we can't find it by debug ID.
+            file = self.try_get_file_from_bundles_by_path(key);
+        }
+
+        if file.is_none() {
+            // Otherwise, try to get the file from an individual artifact.
+            file = self.try_fetch_file_from_artifacts(key).await;
+        }
+
+        file
+    }
+
+    /// Tries to fetch a file without a debug ID from local bundles or Sentry.
+    ///
+    /// The sequence of steps is as follows:
+    /// 1. See if a local bundle/artifact contains the file _by path_.
+    /// 2. See if Sentry has a bundle/artifact containing the file, and download it if so.
+    /// 3. If (2) succeeded, check local bundles/artifacts again _by path_.
+    async fn try_get_file_without_debug_id(&mut self, key: &FileKey) -> Option<CachedFileEntry> {
+        // Try looking up the file in one of the artifact bundles that we know about.
+        let mut file = self.try_get_file_from_bundles_by_path(key);
+
+        if file.is_none() {
+            // Otherwise, try to get the file from an individual artifact.
+            file = self.try_fetch_file_from_artifacts(key).await;
+        }
+
+        if file.is_none() {
+            // Otherwise: Do a (cached) API lookup for the `abs_path` + `DebugId`
+            if self.query_sentry_for_file(key).await {
+                // At this point, *one* of our known artifacts includes the file we are looking for.
+                // So we do the whole dance yet again.
+                file = self.try_get_file_from_bundles_by_path(key);
+                if file.is_none() {
+                    file = self.try_fetch_file_from_artifacts(key).await;
+                }
+            }
+        }
+
+        file
     }
 
     #[tracing::instrument(skip(self))]
