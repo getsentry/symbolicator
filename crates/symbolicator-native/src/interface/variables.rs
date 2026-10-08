@@ -74,7 +74,7 @@ pub(crate) struct Value {
     /// A fully-formatted, source-specific representation of a variable value.
     ///
     /// This should typically be used for primitive types like integers, booleans, chars.
-    formatted: Option<String>,
+    value: Option<String>,
 }
 
 impl Value {
@@ -83,10 +83,12 @@ impl Value {
         Self::default()
     }
 
-    /// Provide a formatted value on the [`Value`].
-    pub fn formatted(self, formatted: Option<String>) -> Self {
+    /// Provide a fully-formatted, source-specific representation of the [`Value`].
+    ///
+    /// This should typically be used for primitive types like integers, booleans, and chars.
+    pub fn value(self, value: Option<String>) -> Self {
         #[expect(clippy::needless_update, reason = "we will add other representations")]
-        Self { formatted, ..self }
+        Self { value, ..self }
     }
 
     /// Convert this [`Value`] to a [`TypedValue`] with the given type.
