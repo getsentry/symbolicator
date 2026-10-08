@@ -736,6 +736,10 @@ impl ArtifactFetcher {
         self.metrics.needed_files += 1;
 
         if let Some(entry) = self.try_get_file_from_bundles_cached(key) {
+            if let Some(url) = key.abs_path() {
+                self.scraping_attempts
+                    .push(JsScrapingAttempt::not_attempted(url.to_owned()));
+            }
             return entry;
         }
 
