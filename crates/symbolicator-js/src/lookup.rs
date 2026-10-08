@@ -748,6 +748,10 @@ impl ArtifactFetcher {
         };
 
         if let Some(entry) = entry {
+            if let Some(url) = key.abs_path() {
+                self.scraping_attempts
+                    .push(JsScrapingAttempt::not_attempted(url.to_owned()));
+            }
             return entry;
         }
 
