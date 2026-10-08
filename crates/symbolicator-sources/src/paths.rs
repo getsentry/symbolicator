@@ -443,12 +443,15 @@ fn get_nxsymstore_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String
         return Vec::new();
     };
 
-    let id = code_id.as_str();
+    let id = format!("{:0<40}", code_id.as_str());
     let Some(prefix) = id.get(..2) else {
         return Vec::new();
     };
 
-    vec![format!("{prefix}/{id}00000000.nxsym")]
+    ["nnsym", "nxsym"]
+        .into_iter()
+        .map(|ext| format!("{prefix}/{id}.{ext}"))
+        .collect()
 }
 
 /// Determines the paths for an object file in the given layout.
@@ -795,19 +798,32 @@ mod tests {
             code_id: Some(CodeId::from_str(id).unwrap()),
             ..Default::default()
         };
-        let example_id = "dfb85de42daffd09640c8fe377d572de3e168920";
+        let sha1_id = "dfb85de42daffd09640c8fe377d572de3e168920";
+        let md5_id = "68f9252f319f201d277acef6b2a609d1";
 
         assert_eq!(
-            get_directory_paths(layout, FileType::ElfDebug, &id(example_id)),
-            ["df/dfb85de42daffd09640c8fe377d572de3e16892000000000.nxsym"]
+            get_directory_paths(layout, FileType::ElfDebug, &id(sha1_id)),
+            [
+                "df/dfb85de42daffd09640c8fe377d572de3e168920.nnsym",
+                "df/dfb85de42daffd09640c8fe377d572de3e168920.nxsym",
+            ]
         );
         assert_eq!(
-            get_directory_paths(layout, FileType::ElfDebug, &id("df")),
-            ["df/df00000000.nxsym"]
+            get_directory_paths(layout, FileType::ElfDebug, &id(md5_id)),
+            [
+                "68/68f9252f319f201d277acef6b2a609d100000000.nnsym",
+                "68/68f9252f319f201d277acef6b2a609d100000000.nxsym",
+            ]
         );
-        assert!(get_directory_paths(layout, FileType::ElfDebug, &id("d")).is_empty());
+        assert_eq!(
+            get_directory_paths(layout, FileType::ElfDebug, &id("d")),
+            [
+                format!("d0/d{:0<39}.nnsym", ""),
+                format!("d0/d{:0<39}.nxsym", ""),
+            ]
+        );
         assert!(get_directory_paths(layout, FileType::ElfDebug, &ObjectId::default()).is_empty());
-        assert!(get_directory_paths(layout, FileType::Pdb, &id(example_id)).is_empty());
+        assert!(get_directory_paths(layout, FileType::Pdb, &id(sha1_id)).is_empty());
     }
 
     #[test]
