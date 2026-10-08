@@ -20,6 +20,7 @@
 ### Bug Fixes 🐛
 
 - Drop source context from the minified file on symbolicated JS frames when the original source is unavailable. ([#2063](https://github.com/getsentry/symbolicator/pull/2063))
+- (js) Reorder lookups so debug IDs always take precedence over paths. Tests originally contributed by @Trancever. ([#2088](https://github.com/getsentry/symbolicator/pull/2088))
 
 ### Internal changes
 
