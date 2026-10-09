@@ -31,6 +31,9 @@ local deploy_canary_stage(region) =
               timeout: 1200,
               elastic_profile_id: 'symbolicator',
               environment_variables: {
+                // k8s-deploy dispatches deployment workflows using GitHub App credentials.
+                GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
+                GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
                 LABEL_SELECTOR: 'service=symbolicator,deploy_if_canary=true',
               },
               tasks: [
@@ -95,6 +98,9 @@ function(region) {
             timeout: 1200,
             elastic_profile_id: 'symbolicator',
             environment_variables: {
+              // k8s-deploy dispatches deployment workflows using GitHub App credentials.
+              GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
+              GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
               LABEL_SELECTOR: 'service=symbolicator',
             },
             tasks: [
