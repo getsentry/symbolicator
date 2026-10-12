@@ -6,6 +6,7 @@ pub mod metrics;
 
 pub mod caches;
 pub mod caching;
+pub mod cogs;
 pub mod config;
 pub mod download;
 pub mod logging;

@@ -68,6 +68,7 @@ zstd = { workspace = true }
 
 [dev-dependencies]
 axum = { workspace = true }
+metrics-util = { workspace = true }
 sha-1 = { workspace = true }
 symbolicator-test = { workspace = true }
 insta = { workspace = true }

@@ -5054,6 +5054,7 @@ dependencies = [
  "jsonwebtoken",
  "metrics",
  "metrics-exporter-dogstatsd",
+ "metrics-util",
  "moka",
  "pin-project-lite",
  "proguard",
