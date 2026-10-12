@@ -78,7 +78,7 @@ impl Cogs {
 
     /// Returns the global [`Cogs`].
     ///
-    /// If [`configure`](Self::configure) has not been called, this returns a
+    /// If [`configure_global`](Self::configure_global) has not been called, this returns a
     /// disabled instance which records nothing.
     pub fn global() -> Self {
         GLOBAL.get().cloned().unwrap_or(Self { resource_id: None })
