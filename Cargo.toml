@@ -96,6 +96,7 @@ jemallocator = { version = "0.5", features = [
 jsonwebtoken = "9.1.0"
 metrics = "0.24.3"
 metrics-exporter-dogstatsd = "0.9.6"
+metrics-util = "0.20.1"
 minidump = "0.27.0"
 minidump-processor = "0.27.0"
 minidump-unwind = "0.27.0"
