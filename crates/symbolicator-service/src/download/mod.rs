@@ -16,6 +16,7 @@ use futures::stream::FuturesUnordered;
 use reqwest::StatusCode;
 
 use crate::caching::{CacheContents, CacheError};
+use crate::cogs::{AppFeature, Cogs};
 use crate::config::{Config, DownloadTimeouts};
 use crate::download::deny_list::HostDenyList;
 use crate::types::Scope;
@@ -299,6 +300,7 @@ impl DownloadService {
         let timeout = self.limits.timeouts.max_download;
         let slf = self.clone();
         let job = async move { slf.dispatch_download(&source).await };
+        let job = Cogs::global().timed(AppFeature::Downloads, job);
         let job = CancelOnDrop::new(self.runtime.spawn(job.bind_hub(::sentry::Hub::current())));
         let job = tokio::time::timeout(timeout, job);
         let job = measure("service.download", m::timed_result, job);
