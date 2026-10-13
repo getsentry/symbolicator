@@ -268,7 +268,7 @@ struct Frame {
     module: Option<String>,
     source_link: Option<String>,
     #[serde(default)]
-    variables: Variables,
+    vars: Variables,
     #[serde(default)]
     trust: FrameTrust,
     #[serde(default)]
@@ -294,7 +294,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         context_line: value.context_line,
         post_context: value.post_context,
         source_link: value.source_link,
-        vars: value.variables,
+        vars: value.vars,
         trust: value.trust,
         registers: Default::default(),
         file_revision: None,
