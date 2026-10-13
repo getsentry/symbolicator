@@ -13,16 +13,39 @@ jobs:
       matrix:
         include:
           - arch: x86_64
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04
           - arch: aarch64
-            runner: ubuntu-22.04-arm
+            runner: ubuntu-24.04-arm
+    # Build in the same OS as before (the old ubuntu-22.04 runner image) so the standalone
+    # release binaries keep their glibc 2.35 baseline instead of inheriting the host's.
+    container:
+      image: ubuntu:22.04
+    # Container jobs default to sh; the steps below (and the host default) use bash.
+    defaults:
+      run:
+        shell: bash -e {0}
 
     steps:
+      # The container is bare: install what the runner image used to provide.
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates gcc g++ make cmake pkg-config libssl-dev curl zip binutils
+
       - name: Checkout sources
         uses: actions/checkout@v7.0.1
 
+      - name: Add git safe directory exception
+        run: git config --global --add safe.directory "$(pwd)"
+
       - name: Install rust stable toolchain
-        run: rustup toolchain install stable --profile minimal --no-self-update
+        env:
+          # Container jobs set HOME=/github/home while running as root, which trips
+          # rustup's sudo check.
+          RUSTUP_INIT_SKIP_SUDO_CHECK: "yes"
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --profile minimal --default-toolchain stable -y
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Run cargo build
         run: cargo build --bins --release --locked
