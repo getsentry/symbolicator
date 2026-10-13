@@ -1,5 +1,7 @@
 //! Module containing logic for extracting variable values from native crashes.
 
+use std::num::NonZeroUsize;
+
 use minidump::CpuContext;
 use scroll::Endian;
 use serde_json::Value;
@@ -244,37 +246,12 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         (Pointer, 8) => get_value!(u64, |v| VariableValue::new().pointer_address(v)),
 
         // Unknown/unhandled data types.
-        //
-        // We pass these through `get_value!` to `get_value_at_address` rather than going through
-        // `get_memory_at_address`, as this allows the bytes to be rendered according to their
-        // endianness on the target system. Doing this requires us to match each separate constant
-        // size specifically.
-        (_, 1) => get_value!([u8; 1], map_raw_bytes_variable_value),
-        (_, 2) => get_value!([u8; 2], map_raw_bytes_variable_value),
-        (_, 3) => get_value!([u8; 3], map_raw_bytes_variable_value),
-        (_, 4) => get_value!([u8; 4], map_raw_bytes_variable_value),
-        (_, 5) => get_value!([u8; 5], map_raw_bytes_variable_value),
-        (_, 6) => get_value!([u8; 6], map_raw_bytes_variable_value),
-        (_, 7) => get_value!([u8; 7], map_raw_bytes_variable_value),
-        (_, 8) => get_value!([u8; 8], map_raw_bytes_variable_value),
-        (_, 9) => get_value!([u8; 9], map_raw_bytes_variable_value),
-        (_, 10) => get_value!([u8; 10], map_raw_bytes_variable_value),
-        (_, 11) => get_value!([u8; 11], map_raw_bytes_variable_value),
-        (_, 12) => get_value!([u8; 12], map_raw_bytes_variable_value),
-        (_, 13) => get_value!([u8; 13], map_raw_bytes_variable_value),
-        (_, 14) => get_value!([u8; 14], map_raw_bytes_variable_value),
-        (_, 15) => get_value!([u8; 15], map_raw_bytes_variable_value),
-        (_, 16) => get_value!([u8; 16], map_raw_bytes_variable_value),
-
-        // We limit the size of memory slice we extract to 16.
-        //
-        // Memory slices with size ≤16 are already handled above. Here, we handle bigger slices by
-        // extracting the sixteen bytes at the address. The rendered byte array will contain a
-        // truncation notice in the appropriate position depending on the endianness of the memory.
-        (_, size) => get_value!([u8; 16], |v| {
-            let bytes = RawBytes::from(v).truncated(size - 16, memory.endian());
-            VariableValue::new().value(bytes)
-        }),
+        // We limit the size of memory slice we extract to 16 via UnknownBytes.
+        (_, size) => size
+            .try_into()
+            .ok()
+            .and_then(|size| memory.get_memory_at_address(addr, size))
+            .map(|v| VariableValue::new().value(UnknownBytes::from(v))),
     }
 }
 
@@ -303,60 +280,41 @@ impl<const N: usize> MemoryAccess for RegisterMemoryAccess<N> {
     }
 }
 
-/// An array of bytes without further meaning.
+/// An array of bytes without further meaning, used for variables when we cannot determine type.
+///
+/// This struct handles truncating the bytes to at most 16.
 ///
 /// This provides a conversion into [`serde_json::Value`]. That conversion maps to an array, where
 /// each element is a string containing the hexadecimal represenation of the byte. It also handles
-/// including information about an amount of values truncated, and the position is according to
-/// the data's endianness.
-struct RawBytes<const N: usize> {
-    inner: [u8; N],
-    /// Whether we truncated the bytes, and if so, what endianness the data has, and how many bytes
-    /// we truncated.
-    truncated: Option<(u64, Endian)>,
+/// including information about an amount of values truncated.
+struct UnknownBytes<'a> {
+    inner: &'a [u8],
+    /// If truncated, how many bytes were truncated.
+    truncated: Option<NonZeroUsize>,
 }
 
-impl<const N: usize> From<[u8; N]> for RawBytes<N> {
-    fn from(value: [u8; N]) -> Self {
-        Self {
-            inner: value,
-            truncated: None,
-        }
+impl<'a> From<&'a [u8]> for UnknownBytes<'a> {
+    fn from(value: &'a [u8]) -> Self {
+        /// Store at most 16 bytes.
+        const MAX_BYTES: usize = 16;
+
+        let inner = value.get(..MAX_BYTES).unwrap_or(value);
+        let truncated = NonZeroUsize::new(value.len().saturating_sub(MAX_BYTES));
+
+        Self { inner, truncated }
     }
 }
 
-impl<const N: usize> RawBytes<N> {
-    fn truncated(mut self, count: u64, endian: Endian) -> Self {
-        self.truncated = Some((count, endian));
-        self
-    }
-}
-
-impl<const N: usize> From<RawBytes<N>> for Value {
-    fn from(value: RawBytes<N>) -> Self {
-        let truncation_notice = |count| {
+impl From<UnknownBytes<'_>> for Value {
+    fn from(value: UnknownBytes<'_>) -> Self {
+        let values = value.inner.iter().map(|b| format!("{b:#04x}"));
+        let truncation_notice = value.truncated.into_iter().map(|count| {
             format!(
                 "... ({count} byte{} truncated) ...",
-                if count > 1 { "s" } else { "" }
+                if count.get() > 1 { "s" } else { "" }
             )
-        };
+        });
 
-        let values = value.inner.into_iter().map(|b| format!("{b:#04x}"));
-        let (start_truncation_notice, end_truncation_notice) = match value.truncated {
-            Some((count, Endian::Little)) => (Some(truncation_notice(count)), None),
-            Some((count, Endian::Big)) => (None, Some(truncation_notice(count))),
-            None => (None, None),
-        };
-
-        start_truncation_notice
-            .into_iter()
-            .chain(values)
-            .chain(end_truncation_notice)
-            .collect()
+        values.chain(truncation_notice).collect()
     }
-}
-
-/// Helper to map a byte array to a [`RawBytes`] [`VariableValue`].
-fn map_raw_bytes_variable_value<const N: usize>(value: [u8; N]) -> VariableValue {
-    VariableValue::new().value(RawBytes::from(value))
 }
