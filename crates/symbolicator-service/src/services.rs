@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 
 use crate::caching::{Caches, SharedCacheRef, SharedCacheService};
+use crate::cogs::Cogs;
 use crate::config::Config;
 
 use crate::caches::SourceFilesCache;
@@ -30,6 +31,8 @@ pub struct SharedServices {
 
 impl SharedServices {
     pub fn new(config: Config, io_pool: tokio::runtime::Handle) -> Result<Self> {
+        Cogs::configure_global(&config.cogs);
+
         let caches = Caches::from_config(&config).context("failed to create local caches")?;
         caches
             .clear_tmp(&config)

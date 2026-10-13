@@ -17,6 +17,7 @@ use tracing::level_filters::LevelFilter;
 use symbolicator_sources::SourceConfig;
 
 use crate::caching::SharedCacheConfig;
+use crate::cogs::CogsConfig;
 
 /// Controls the log format
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize)]
@@ -563,6 +564,9 @@ pub struct Config {
     ///
     /// Defaults to 15GiB.
     pub max_download_size: Option<u64>,
+
+    /// Configuration for COGS measurements.
+    pub cogs: CogsConfig,
 }
 
 impl Config {
@@ -681,6 +685,7 @@ impl Default for Config {
             js_max_sources_size_per_request: Some(2 * 1024 * 1024 * 1024),
             max_unwind_chain_len: Some(128),
             max_download_size: Some(15 * 1024 * 1024 * 1024),
+            cogs: CogsConfig::default(),
         }
     }
 }
