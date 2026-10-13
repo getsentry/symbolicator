@@ -31,6 +31,7 @@ use symbolicator_proguard::interface::{
     CompletedJvmSymbolicationResponse, SymbolicateJvmStacktraces,
 };
 use symbolicator_service::caching::CacheContents;
+use symbolicator_service::cogs::{AppFeature, Cogs};
 use symbolicator_service::config::Config;
 use symbolicator_service::metric;
 use symbolicator_service::objects::ObjectsActor;
@@ -208,6 +209,7 @@ struct RequestServiceInner {
     requests: ComputationMap,
     current_requests: MaxDeferCounter,
     symbolication_taskmon: tokio_metrics::TaskMonitor,
+    cogs: Cogs,
 }
 
 impl RequestService {
@@ -243,6 +245,8 @@ impl RequestService {
             });
         }
 
+        let cogs = Cogs::global();
+
         let max_concurrent_requests = config.max_concurrent_requests;
 
         if let Some(max) = max_concurrent_requests {
@@ -261,6 +265,7 @@ impl RequestService {
             requests: Arc::new(Mutex::new(BTreeMap::new())),
             current_requests: MaxDeferCounter::new(max_concurrent_requests),
             symbolication_taskmon,
+            cogs,
         };
 
         Ok(Self {
@@ -296,12 +301,17 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        self.create_symbolication_request("symbolicate", options, async move {
-            slf.native
-                .symbolicate(request)
-                .await
-                .map(CompletedResponse::Native)
-        })
+        self.create_symbolication_request(
+            "symbolicate",
+            AppFeature::SymbolicateNative,
+            options,
+            async move {
+                slf.native
+                    .symbolicate(request)
+                    .await
+                    .map(CompletedResponse::Native)
+            },
+        )
     }
 
     pub fn symbolicate_js_stacktraces(
@@ -309,9 +319,12 @@ impl RequestService {
         request: SymbolicateJsStacktraces,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
-            Ok(CompletedResponse::Js(slf.js.symbolicate_js(request).await))
-        })
+        self.create_symbolication_request(
+            "symbolicate_js",
+            AppFeature::SymbolicateJs,
+            RequestOptions::default(),
+            async move { Ok(CompletedResponse::Js(slf.js.symbolicate_js(request).await)) },
+        )
     }
 
     pub fn symbolicate_jvm_stacktraces(
@@ -321,6 +334,7 @@ impl RequestService {
         let slf = self.inner.clone();
         self.create_symbolication_request(
             "symbolicate_jvm",
+            AppFeature::SymbolicateJvm,
             RequestOptions::default(),
             async move {
                 Ok(CompletedResponse::Jvm(
@@ -340,12 +354,17 @@ impl RequestService {
         options: RequestOptions,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
-        self.create_symbolication_request("minidump_stackwalk", options, async move {
-            slf.native
-                .process_minidump(request)
-                .await
-                .map(CompletedResponse::Native)
-        })
+        self.create_symbolication_request(
+            "minidump_stackwalk",
+            AppFeature::MinidumpStackwalk,
+            options,
+            async move {
+                slf.native
+                    .process_minidump(request)
+                    .await
+                    .map(CompletedResponse::Native)
+            },
+        )
     }
 
     /// Creates a new request to process an Apple crash report.
@@ -362,18 +381,23 @@ impl RequestService {
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let extract_variables = options.extract_variables;
-        self.create_symbolication_request("parse_apple_crash_report", options, async move {
-            slf.native
-                .process_apple_crash_report(
-                    platform,
-                    scope,
-                    apple_crash_report,
-                    sources,
-                    extract_variables,
-                )
-                .await
-                .map(CompletedResponse::Native)
-        })
+        self.create_symbolication_request(
+            "parse_apple_crash_report",
+            AppFeature::AppleCrashReport,
+            options,
+            async move {
+                slf.native
+                    .process_apple_crash_report(
+                        platform,
+                        scope,
+                        apple_crash_report,
+                        sources,
+                        extract_variables,
+                    )
+                    .await
+                    .map(CompletedResponse::Native)
+            },
+        )
     }
 
     /// Polls the status for a started symbolication task.
@@ -411,6 +435,7 @@ impl RequestService {
     fn create_symbolication_request<F>(
         &self,
         task_name: &'static str,
+        feature: AppFeature,
         options: RequestOptions,
         f: F,
     ) -> Result<RequestId, MaxRequestsError>
@@ -446,6 +471,8 @@ impl RequestService {
         let token = defer(move || {
             requests.lock().unwrap().remove(&request_id);
         });
+
+        let f = self.inner.cogs.timed(feature, f);
 
         let spawn_time = Instant::now();
         let request_future = async move {
