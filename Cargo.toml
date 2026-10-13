@@ -40,6 +40,9 @@ reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/upd
 # This patch adds limited "templated lambdas" demangling support
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches-0.5" }
 
+# This patch returns a parse error instead of panicking on `LF_VFTABLE` records with a malformed name list length (SYMBOLICATOR-65)
+pdb2 = { git = "https://github.com/getsentry/pdb2", branch = "master" }
+
 # For local development: uncomment the following three lines (and adjust the path if necessary)
 # to use a local symbolic checkout everywhere.
 # This only works for the very specific crate listed here, and not for its dependency tree.
