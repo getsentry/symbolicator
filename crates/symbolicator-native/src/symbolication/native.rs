@@ -297,7 +297,7 @@ fn resolve_type_name(
         Type::Pointer(pointer) if pointer.pointee().is_none() => result.push_str("void*"),
         Type::Pointer(pointer) => {
             let ty = pointer.pointee().and_then(|p| cache.lookup_type(p));
-            resolve_type_name(result, cache, ty, depth);
+            resolve_type_name(result, cache, ty, depth + 1);
             result.push('*');
         }
         _ => result.push_str("<not implemented>"),
