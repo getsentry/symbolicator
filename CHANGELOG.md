@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Return a parse error instead of panicking on malformed name list lengths in PDB files. ([#2096](https://github.com/getsentry/symbolicator/pull/2096))
+
 ### Breaking Changes
 
 - (native) Symbolicator no longer fetches remote source files to apply source context.
