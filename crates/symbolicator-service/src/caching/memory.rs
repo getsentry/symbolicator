@@ -13,6 +13,7 @@ use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::caches::CacheVersions;
 use crate::caching::Metadata;
+use crate::cogs::{AppFeature, Cogs};
 use crate::utils::defer::defer;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
@@ -598,6 +599,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             transaction.finish();
         };
+        let task = Cogs::global().timed(AppFeature::CacheRefresh, task);
         tokio::spawn(task.bind_hub(Hub::new_from_top(Hub::current())));
     }
 }
