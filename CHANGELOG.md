@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 26.10.0
 
 ### Fixes
 
