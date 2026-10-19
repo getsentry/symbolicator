@@ -196,7 +196,7 @@ fn process_zip_archive(
         let mut zip = ZipArchive::new(io::Cursor::new(bv))?;
         for index in 0..zip.len() {
             let zip_file = zip.by_index(index)?;
-            let name = zip_file.name().rsplit('/').next().unwrap().to_string();
+            let name = zip_file.name()?.rsplit('/').next().unwrap().to_string();
             let bv = ByteView::read(zip_file)?;
             if Archive::peek(&bv) != FileFormat::Unknown {
                 debug_ids.lock().unwrap().extend(
