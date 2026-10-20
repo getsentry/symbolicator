@@ -13,7 +13,7 @@ use super::metadata::CacheEntry;
 use super::shared_cache::{CacheStoreReason, SharedCacheRef};
 use crate::caches::CacheVersions;
 use crate::caching::Metadata;
-use crate::cogs::{AppFeature, Cogs};
+use crate::cogs::{self, AppFeature, Category, Cogs};
 use crate::utils::defer::defer;
 
 use super::{Cache, CacheContents, CacheError, CacheKey, ExpirationTime, SharedCacheService};
@@ -258,6 +258,19 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// This method does not take care of ensuring the computation only happens once even
     /// for concurrent requests, see the public [`Cacher::compute_memoized`] for this.
     async fn compute(&self, request: T, key: &CacheKey, is_refresh: bool) -> CacheEntry<T::Item> {
+        cogs::categorized(
+            Category::CacheBuild,
+            self.compute_inner(request, key, is_refresh),
+        )
+        .await
+    }
+
+    async fn compute_inner(
+        &self,
+        request: T,
+        key: &CacheKey,
+        is_refresh: bool,
+    ) -> CacheEntry<T::Item> {
         let name = self.config.name();
         let mut temp_file = match self.config.tempfile() {
             Ok(temp_file) => temp_file,
@@ -515,7 +528,10 @@ impl<T: CacheItemRequest> Cacher<T> {
     /// 3. Computes the cache filed.
     async fn lookup_or_compute(&self, request: T, cache_key: &CacheKey) -> InMemoryItem<T::Item> {
         let name = self.config.name();
-        if let Some(value) = self.lookup_local_cache(request.clone(), cache_key) {
+        let local = cogs::categorized_sync(Category::CacheUse, || {
+            self.lookup_local_cache(request.clone(), cache_key)
+        });
+        if let Some(value) = local {
             return value;
         }
 

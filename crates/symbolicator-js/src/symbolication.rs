@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 
 use symbolic::sourcemapcache::{ScopeLookupResult, SourcePosition};
 use symbolicator_service::caching::CacheError;
+use symbolicator_service::cogs::{self, Category};
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::FrameOrder;
 
@@ -18,8 +19,15 @@ use crate::utils::{
 };
 
 impl SourceMapService {
-    #[tracing::instrument(skip_all)]
     pub async fn symbolicate_js(
+        &self,
+        request: SymbolicateJsStacktraces,
+    ) -> CompletedJsSymbolicationResponse {
+        cogs::categorized(Category::Symbolication, self.symbolicate_js_inner(request)).await
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn symbolicate_js_inner(
         &self,
         mut request: SymbolicateJsStacktraces,
     ) -> CompletedJsSymbolicationResponse {

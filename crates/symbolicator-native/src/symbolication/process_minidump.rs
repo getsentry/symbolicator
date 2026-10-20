@@ -17,6 +17,7 @@ use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
 use symbolic::common::{Arch, ByteView};
+use symbolicator_service::cogs::{self, Category};
 use symbolicator_service::metric;
 use symbolicator_service::types::{FrameOrder, ObjectFileStatus, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
@@ -603,7 +604,8 @@ impl SymbolicationActor {
         &self,
         request: ProcessMinidump,
     ) -> Result<CompletedSymbolicationResponse> {
-        let (request, state) = self.stackwalk_minidump(request).await?;
+        let (request, state) =
+            cogs::categorized(Category::Stackwalk, self.stackwalk_minidump(request)).await?;
 
         let mut response = self.symbolicate(request).await?;
         state.merge_into(&mut response);

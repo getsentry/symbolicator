@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use symbolic::common::Name;
 use symbolicator_service::caching::CacheError;
+use symbolicator_service::cogs::{self, Category};
 use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
@@ -89,8 +90,15 @@ impl SymbolicationActor {
         }
     }
 
-    #[tracing::instrument(skip_all)]
     pub async fn symbolicate(
+        &self,
+        request: SymbolicateStacktraces,
+    ) -> anyhow::Result<CompletedSymbolicationResponse> {
+        cogs::categorized(Category::Symbolication, self.symbolicate_inner(request)).await
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn symbolicate_inner(
         &self,
         request: SymbolicateStacktraces,
     ) -> anyhow::Result<CompletedSymbolicationResponse> {

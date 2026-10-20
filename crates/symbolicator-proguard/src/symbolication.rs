@@ -11,6 +11,7 @@ use futures::future;
 use symbolic::debuginfo::ObjectDebugSession;
 use symbolic::debuginfo::sourcebundle::SourceBundleDebugSession;
 use symbolicator_service::caching::CacheError;
+use symbolicator_service::cogs::{self, Category};
 use symbolicator_service::source_context::get_context_lines;
 use symbolicator_service::types::FrameOrder;
 
@@ -31,13 +32,20 @@ impl ProguardService {
     ///
     /// "Symbolicate" here means that exceptions and stack
     /// frames are remapped using proguard files.
+    pub async fn symbolicate_jvm(
+        &self,
+        request: SymbolicateJvmStacktraces,
+    ) -> CompletedJvmSymbolicationResponse {
+        cogs::categorized(Category::Symbolication, self.symbolicate_jvm_inner(request)).await
+    }
+
     #[tracing::instrument(skip_all,
         fields(
             exceptions = request.exceptions.len(),
             frames = request.stacktraces.iter().map(|st| st.frames.len()).sum::<usize>())
         )
     ]
-    pub async fn symbolicate_jvm(
+    async fn symbolicate_jvm_inner(
         &self,
         request: SymbolicateJvmStacktraces,
     ) -> CompletedJvmSymbolicationResponse {
