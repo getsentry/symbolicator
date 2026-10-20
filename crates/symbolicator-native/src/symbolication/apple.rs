@@ -6,6 +6,7 @@ use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
+use symbolicator_service::cogs::{AppFeature, Category, Cogs};
 use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
 use symbolicator_sources::{ObjectType, SourceConfig};
@@ -136,10 +137,27 @@ impl SymbolicationActor {
         sources: Arc<[SourceConfig]>,
         extract_variables: bool,
     ) -> Result<CompletedSymbolicationResponse> {
-        let report = download_attachment(Arc::clone(&self.download_svc), report).await?;
-        let (request, state) =
-            self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)?;
-        let mut response = self.symbolicate(request).await?;
+        let cogs = Cogs::global();
+        let feature = AppFeature::AppleCrashReport;
+        let report = cogs
+            .timed(
+                feature,
+                None,
+                download_attachment(Arc::clone(&self.download_svc), report),
+            )
+            .await?;
+        let (request, state) = cogs
+            .timed(feature, Some(Category::Parse), async {
+                self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)
+            })
+            .await?;
+        let mut response = cogs
+            .timed(
+                feature,
+                Some(Category::Symbolication),
+                self.symbolicate(request),
+            )
+            .await?;
 
         state.merge_into(&mut response);
         Ok(response)

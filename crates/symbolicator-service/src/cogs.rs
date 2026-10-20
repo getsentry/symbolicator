@@ -54,6 +54,25 @@ impl AppFeature {
     }
 }
 
+/// A processing phase, subdividing an [`AppFeature`] measurement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Category {
+    Parse,
+    Stackwalk,
+    Symbolication,
+}
+
+impl Category {
+    /// Returns the string representation of this category.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Parse => "parse",
+            Self::Stackwalk => "stackwalk",
+            Self::Symbolication => "symbolication",
+        }
+    }
+}
+
 static GLOBAL: OnceLock<Cogs> = OnceLock::new();
 
 /// COGS measurement collector.
@@ -88,7 +107,12 @@ impl Cogs {
     ///
     /// The measurement is attributed to `feature` and emitted when the
     /// returned future is dropped.
-    pub fn timed<F>(&self, feature: AppFeature, future: F) -> CogsFuture<F>
+    pub fn timed<F>(
+        &self,
+        feature: AppFeature,
+        category: Option<Category>,
+        future: F,
+    ) -> CogsFuture<F>
     where
         F: Future,
     {
@@ -96,6 +120,7 @@ impl Cogs {
             inner: Box::pin(future),
             poll_time: Duration::ZERO,
             feature,
+            category,
             resource_id: self.resource_id.clone(),
         }
     }
@@ -106,6 +131,7 @@ pub struct CogsFuture<F> {
     inner: Pin<Box<F>>,
     poll_time: Duration,
     feature: AppFeature,
+    category: Option<Category>,
     resource_id: Option<Arc<str>>,
 }
 
@@ -132,7 +158,7 @@ impl<F> Drop for CogsFuture<F> {
             counter("cogs.usage") += micros,
             "resource_id" => resource_id.to_string(),
             "app_feature" => self.feature.as_str(),
-            "category" => "default"
+            "category" => self.category.map_or("default", |c| c.as_str())
         );
     }
 }
@@ -148,7 +174,7 @@ mod tests {
         let snapshotter = recorder.snapshotter();
 
         metrics::with_local_recorder(&recorder, || {
-            let future = cogs.timed(AppFeature::SymbolicateJs, async {
+            let future = cogs.timed(AppFeature::SymbolicateJs, None, async {
                 std::thread::sleep(Duration::from_millis(5));
             });
             futures::executor::block_on(future);

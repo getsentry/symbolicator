@@ -599,7 +599,7 @@ impl<T: CacheItemRequest> Cacher<T> {
 
             transaction.finish();
         };
-        let task = Cogs::global().timed(AppFeature::CacheRefresh, task);
+        let task = Cogs::global().timed(AppFeature::CacheRefresh, None, task);
         tokio::spawn(task.bind_hub(Hub::new_from_top(Hub::current())));
     }
 }
