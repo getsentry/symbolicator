@@ -1,22 +1,30 @@
 from devenv import constants
-from devenv.lib import config, proc, uv
+from devenv.lib import brew, fs, proc, uv
+
+import shutil
 
 
 def main(context: dict[str, str]) -> int:
     reporoot = context["reporoot"]
-    cfg = config.get_repo(reporoot)
 
-    uv.install(
-        cfg["uv"]["version"],
-        cfg["uv"][constants.SYSTEM_MACHINE],
-        cfg["uv"][f"{constants.SYSTEM_MACHINE}_sha256"],
-        reporoot,
-    )
+    # clean up leftover devenv uv install
+    binroot = fs.ensure_binroot(reporoot)
+    uv.uninstall(binroot)
+
+    brew.install()
+
+    if constants.DARWIN:
+        proc.run(
+            (f"{constants.homebrew_bin}/brew", "bundle"),
+            cwd=reporoot,
+        )
 
     print("syncing .venv ...")
-    proc.run(
-        (f"{reporoot}/.devenv/bin/uv", "sync", "--frozen", "--quiet", "--active"),
-    )
+
+    if not shutil.which("uv"):
+        raise SystemExit("uv not on PATH. Did you run `direnv allow`?")
+
+    proc.run(("uv", "sync", "--frozen", "--quiet", "--active"))
 
     print("installing pre-commit hooks ...")
     proc.run((f"{reporoot}/.venv/bin/pre-commit", "install", "--install-hooks"))
