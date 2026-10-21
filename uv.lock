@@ -395,15 +395,15 @@ wheels = [
 
 [[package]]
 name = "sentry-devenv"
-version = "1.22.2"
+version = "1.28.0"
 source = { registry = "https://sfw.security.sentry.io/pypi/simple" }
 dependencies = [
     { name = "sentry-sdk" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://sfw.security.sentry.io/pypi/packages/ce/ef/fb1a005410a81096a90259bb593c1149209ff2bcd58bfa5d6ab5c2f098a7/sentry_devenv-1.22.2.tar.gz", hash = "sha256:b16cb990caa80f665472230646e7937a9e2d3cf4726c01160e8b4cdbfe156fb7", size = 49252, upload-time = "2025-08-12T23:03:22.876Z" }
+sdist = { url = "https://sfw.security.sentry.io/pypi/packages/f9/8d/04c8feef94887db606f6ea4e7cc13e632f5148ddeded83ab05d7b353d6d8/sentry_devenv-1.28.0.tar.gz", hash = "sha256:c8543b6d427423618e3a599047ad6c19dce43a4f451cbbe4a97829dab76a995a", size = 48574, upload-time = "2026-02-13T01:34:57.196Z" }
 wheels = [
-    { url = "https://sfw.security.sentry.io/pypi/packages/30/c5/9d6e52ab338f2b7e1dd60380fc7e694fcb8f037f8ddab343d9d1eacc7d83/sentry_devenv-1.22.2-py3-none-any.whl", hash = "sha256:0ecd7c5793ee44a6fe401991589fae2a53e7d4dd0506d031994a00fe82e22390", size = 67554, upload-time = "2025-08-12T23:03:21.952Z" },
+    { url = "https://sfw.security.sentry.io/pypi/packages/cf/dd/efcbce305916a9e36f0dd4610007affb4f269b3fd994ae59e97d557eec25/sentry_devenv-1.28.0-py3-none-any.whl", hash = "sha256:304b603c561c4a0a206c7d1346aebf8ec44e6175f44ecce0b9c1a5848fb3f7ca", size = 68491, upload-time = "2026-02-13T01:34:55.714Z" },
 ]
 
 [[package]]
@@ -473,7 +473,7 @@ dev = [
     { name = "mkdocs-material", specifier = ">=9.6.17" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pygments", specifier = ">=2.20.0" },
-    { name = "sentry-devenv", specifier = ">=1.22.2" },
+    { name = "sentry-devenv", specifier = ">=1.28.0" },
 ]
 
 [[package]]
