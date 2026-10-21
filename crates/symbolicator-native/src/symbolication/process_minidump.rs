@@ -184,33 +184,6 @@ struct SymbolicatorSymbolProvider {
 }
 
 impl SymbolicatorSymbolProvider {
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "https://github.com/getsentry/symbolicator/issues/2002"
-    )]
-    pub fn new(
-        scope: Scope,
-        sources: Arc<[SourceConfig]>,
-        cficache_actor: CfiCacheActor,
-        symcache_actor: SymCacheActor,
-        object_type: ObjectType,
-        first_module_debug_id: Option<DebugId>,
-        rewrite_first_module: RewriteRules,
-        extract_variables: bool,
-    ) -> Self {
-        Self {
-            scope,
-            sources,
-            cficache_actor,
-            symcache_actor,
-            object_type,
-            first_module_debug_id,
-            rewrite_first_module,
-            cficaches: Default::default(),
-            extract_variables,
-        }
-    }
-
     fn object_id_from_module(&self, module: &dyn Module) -> ObjectId {
         let code_file = non_empty_file_name(&module.code_file());
         let mut debug_file = module.debug_file().as_deref().and_then(non_empty_file_name);
@@ -478,16 +451,17 @@ async fn stackwalk(
                 let m = modules.by_addr().next()?;
                 m.debug_identifier()
             });
-    let provider = SymbolicatorSymbolProvider::new(
+    let provider = SymbolicatorSymbolProvider {
         scope,
         sources,
-        cficaches,
-        symcaches,
-        ty,
+        object_type: ty,
+        cficache_actor: cficaches,
+        symcache_actor: symcaches,
         first_module_debug_id,
         rewrite_first_module,
+        cficaches: Default::default(),
         extract_variables,
-    );
+    };
     let process_state = minidump_processor::process_minidump(minidump, &provider).await?;
     let duration = duration.elapsed();
 
