@@ -140,19 +140,19 @@ impl SymbolicationActor {
         let cogs = Cogs::global();
         let feature = AppFeature::AppleCrashReport;
         let report = cogs
-            .timed(
+            .measure_cpu_time(
                 feature,
                 None,
                 download_attachment(Arc::clone(&self.download_svc), report),
             )
             .await?;
         let (request, state) = cogs
-            .timed(feature, Some(Category::Parse), async {
+            .measure_cpu_time(feature, Some(Category::Parse), async {
                 self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)
             })
             .await?;
         let mut response = cogs
-            .timed(
+            .measure_cpu_time(
                 feature,
                 Some(Category::Symbolication),
                 self.symbolicate(request),

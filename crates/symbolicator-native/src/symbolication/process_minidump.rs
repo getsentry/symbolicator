@@ -607,7 +607,7 @@ impl SymbolicationActor {
         let cogs = Cogs::global();
         let feature = AppFeature::MinidumpStackwalk;
         let (request, state) = cogs
-            .timed(
+            .measure_cpu_time(
                 feature,
                 Some(Category::Stackwalk),
                 self.stackwalk_minidump(request),
@@ -615,7 +615,7 @@ impl SymbolicationActor {
             .await?;
 
         let mut response = cogs
-            .timed(
+            .measure_cpu_time(
                 feature,
                 Some(Category::Symbolication),
                 self.symbolicate(request),

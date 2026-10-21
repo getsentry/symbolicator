@@ -107,7 +107,7 @@ impl Cogs {
     ///
     /// The measurement is attributed to `feature` and emitted when the
     /// returned future is dropped.
-    pub fn timed<F>(
+    pub fn measure_cpu_time<F>(
         &self,
         feature: AppFeature,
         category: Option<Category>,
@@ -174,7 +174,7 @@ mod tests {
         let snapshotter = recorder.snapshotter();
 
         metrics::with_local_recorder(&recorder, || {
-            let future = cogs.timed(AppFeature::SymbolicateJs, None, async {
+            let future = cogs.measure_cpu_time(AppFeature::SymbolicateJs, None, async {
                 std::thread::sleep(Duration::from_millis(5));
             });
             futures::executor::block_on(future);

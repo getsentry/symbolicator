@@ -299,7 +299,7 @@ impl RequestService {
         let slf = self.inner.clone();
         self.create_symbolication_request("symbolicate", options, async move {
             Cogs::global()
-                .timed(
+                .measure_cpu_time(
                     AppFeature::SymbolicateNative,
                     None,
                     slf.native.symbolicate(request),
@@ -316,7 +316,7 @@ impl RequestService {
         let slf = self.inner.clone();
         self.create_symbolication_request("symbolicate_js", RequestOptions::default(), async move {
             let response = Cogs::global()
-                .timed(
+                .measure_cpu_time(
                     AppFeature::SymbolicateJs,
                     None,
                     slf.js.symbolicate_js(request),
@@ -336,7 +336,7 @@ impl RequestService {
             RequestOptions::default(),
             async move {
                 let response = Cogs::global()
-                    .timed(
+                    .measure_cpu_time(
                         AppFeature::SymbolicateJvm,
                         None,
                         slf.jvm.symbolicate_jvm(request),
