@@ -11,7 +11,7 @@ dev = [
     "mkdocs-material>=9.6.17",
     "pre-commit>=4.2.0",
     "pygments>=2.20.0",
-    "sentry-devenv>=1.22.2",
+    "sentry-devenv>=1.28.0",
 ]
 
 [tool.uv]
