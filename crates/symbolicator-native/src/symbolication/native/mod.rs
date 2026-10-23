@@ -1,3 +1,5 @@
+mod variables;
+
 use symbolic::common::{InstructionInfo, Language, split_path};
 use symbolic::symcache::SymCache;
 use symbolicator_service::metric;
@@ -10,7 +12,6 @@ use crate::memory::MemoryAccess;
 
 use super::demangle::DemangleCache;
 use super::module_lookup::CacheLookupResult;
-use super::native_variables;
 
 #[allow(clippy::too_many_arguments)]
 pub fn symbolicate_native_frame(
@@ -66,7 +67,7 @@ pub fn symbolicate_native_frame(
         };
 
         let vars = memory.map_or_default(|memory| {
-            native_variables::do_extract(&source_location, symcache, &frame.registers, memory)
+            variables::do_extract(&source_location, symcache, &frame.registers, memory)
         });
 
         rv.push(SymbolicatedFrame {
