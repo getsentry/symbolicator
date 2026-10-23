@@ -1,6 +1,6 @@
 //! Contains types for representing variable values.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use symbolic::debuginfo::VariableKind as SymbolicVariableKind;
@@ -8,7 +8,7 @@ use symbolic::debuginfo::VariableKind as SymbolicVariableKind;
 /// Variables keyed by their names.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Variables(HashMap<String, Variable>);
+pub struct Variables(BTreeMap<String, Variable>);
 
 impl Variables {
     pub fn is_empty(&self) -> bool {
@@ -32,8 +32,10 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variable {
     kind: VariableKind,
+    #[serde(rename = "type")]
+    ty: String,
     #[serde(flatten)]
-    value: TypedValue,
+    value: Value,
 }
 
 /// The variable's kind (e.g. local or parameter).
@@ -44,33 +46,11 @@ pub enum VariableKind {
     Parameter,
 }
 
-/// A [`Value`] with a type.
-///
-/// Constructed via [`Value::ty`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct TypedValue {
-    #[serde(rename = "type")]
-    ty: String,
-    #[serde(flatten)]
-    value: Value,
-}
-
-impl TypedValue {
-    /// Convert this [`TypedValue`] into a [`Variable`] with the given kind.
-    pub fn kind<K>(self, kind: K) -> Variable
-    where
-        K: Into<VariableKind>,
-    {
-        let kind = kind.into();
-        Variable { kind, value: self }
-    }
-}
-
 /// A value of a variable or field within a variable (e.g. list item, pointee, struct field).
 ///
 /// This struct allows for multiple co-existing representations.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Value {
+pub struct Value {
     /// A fully-formatted, source-specific representation of a variable value.
     ///
     /// This should typically be used for primitive types like integers, booleans, chars.
@@ -87,17 +67,20 @@ impl Value {
     ///
     /// This should typically be used for primitive types like integers, booleans, and chars.
     pub fn value(self, value: Option<String>) -> Self {
-        #[expect(clippy::needless_update, reason = "we will add other representations")]
-        Self { value, ..self }
+        Self { value }
     }
 
-    /// Convert this [`Value`] to a [`TypedValue`] with the given type.
-    pub fn ty<T>(self, ty: T) -> TypedValue
+    /// Convert this [`Value`] into a [`Variable`] with the given type and kind.
+    pub fn into_variable<T, K>(self, ty: T, kind: K) -> Variable
     where
         T: Into<String>,
+        K: Into<VariableKind>,
     {
-        let ty = ty.into();
-        TypedValue { ty, value: self }
+        Variable {
+            kind: kind.into(),
+            ty: ty.into(),
+            value: self,
+        }
     }
 }
 

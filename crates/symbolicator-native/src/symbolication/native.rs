@@ -198,8 +198,7 @@ fn do_extract_variables<'data, 'cache>(
 
             let interface_variable = VariableValue::new()
                 .value(value)
-                .ty(ty)
-                .kind(variable.kind());
+                .into_variable(ty, variable.kind());
 
             Some((name, interface_variable))
         })
