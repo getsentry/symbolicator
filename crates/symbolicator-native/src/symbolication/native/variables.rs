@@ -157,8 +157,6 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         };
     }
 
-    // Actual beginning of the function is here, everything above are helper type and macro defs.
-
     let TypeSize::Bytes(size) = match &ty {
         Type::Primitive(ty) => ty.size(),
         Type::Pointer(ty) => ty.size(),
@@ -228,7 +226,7 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         (Primitive(Float), 4) => get_value!(f32),
         (Primitive(Float), 8) => get_value!(f64),
 
-        // TODO: Is it correct to extract both signed and unsigned chars as u8 in this way?
+        // 1-byte characters. Multibyte characters handled as integers.
         (Primitive(SignedChar | UnsignedChar), 1) => {
             get_value!(u8, |v| format_variable!("'{}'", v.escape_ascii()))
         }
