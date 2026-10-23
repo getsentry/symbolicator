@@ -137,7 +137,7 @@ impl From<u64> for PointerAddress {
 }
 
 #[derive(Debug, Error)]
-pub(crate) enum PointerAddressParseError {
+pub enum PointerAddressParseError {
     #[error("The address had an unexpected legnth.")]
     UnexpectedLength,
     #[error("The address was missing the 0x prefix.")]
