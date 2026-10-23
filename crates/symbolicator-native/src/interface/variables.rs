@@ -119,7 +119,7 @@ impl From<SymbolicVariableKind> for VariableKind {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum PointerAddress {
+pub enum PointerAddress {
     ThirtyTwoBit(u32),
     SixtyFourBit(u64),
 }
