@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use symbolic::debuginfo::VariableKind as SymbolicVariableKind;
 
 /// Variables keyed by their names.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Variables(BTreeMap<String, Variable>);
 
@@ -29,7 +29,7 @@ where
 }
 
 /// A variable extracted from a memory dump.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Variable {
     kind: VariableKind,
     #[serde(rename = "type")]
@@ -39,7 +39,7 @@ pub struct Variable {
 }
 
 /// The variable's kind (e.g. local or parameter).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VariableKind {
     Local,
@@ -49,7 +49,7 @@ pub enum VariableKind {
 /// A value of a variable or field within a variable (e.g. list item, pointee, struct field).
 ///
 /// This struct allows for multiple co-existing representations.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Value {
     /// A fully-formatted, source-specific representation of a variable value.
     ///

@@ -8,7 +8,7 @@ use symbolicator_js::interface::{
 };
 use symbolicator_native::interface::{
     AddrMode, CompleteObjectInfo, FrameTrust, RawFrame, RawStacktrace, Signal, StacktraceOrigin,
-    SymbolicateStacktraces, Variables,
+    SymbolicateStacktraces,
 };
 use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope, ScrapingConfig};
 use symbolicator_service::utils::hex::HexValue;
@@ -268,8 +268,6 @@ struct Frame {
     module: Option<String>,
     source_link: Option<String>,
     #[serde(default)]
-    vars: Variables,
-    #[serde(default)]
     trust: FrameTrust,
     #[serde(default)]
     data: JsFrameData,
@@ -294,7 +292,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         context_line: value.context_line,
         post_context: value.post_context,
         source_link: value.source_link,
-        vars: value.vars,
+        vars: Default::default(),
         trust: value.trust,
         registers: Default::default(),
         file_revision: None,
