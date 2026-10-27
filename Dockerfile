@@ -1,7 +1,7 @@
-FROM gcr.io/distroless/cc-debian12:nonroot
+FROM gcr.io/distroless/cc-debian13:nonroot
 
-COPY --from=gcr.io/distroless/cc-debian12:nonroot --chown=nonroot:nonroot /home/nonroot /etc/symbolicator
-COPY --from=gcr.io/distroless/cc-debian12:nonroot --chown=nonroot:nonroot /home/nonroot /data
+COPY --from=gcr.io/distroless/cc-debian13:nonroot --chown=nonroot:nonroot /home/nonroot /etc/symbolicator
+COPY --from=gcr.io/distroless/cc-debian13:nonroot --chown=nonroot:nonroot /home/nonroot /data
 
 VOLUME ["/etc/symbolicator", "/data"]
 EXPOSE 3021
