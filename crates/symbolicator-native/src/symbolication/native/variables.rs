@@ -27,9 +27,8 @@ pub(super) fn do_extract<'data, 'cache>(
 ) -> Variables {
     source_location
         .variables()
-        .flat_map(|variable| {
-            let name = variable.name()?;
-
+        .flat_map(|variable| Some((variable.name()?, variable)))
+        .map(|(name, variable)| {
             let mut ty = String::new();
             resolve_type_name(&mut ty, cache, variable.ty(), 0);
 
@@ -42,7 +41,7 @@ pub(super) fn do_extract<'data, 'cache>(
 
             let interface_variable = value.into_variable(ty, variable.kind());
 
-            Some((name, interface_variable))
+            (name, interface_variable)
         })
         .collect()
 }
