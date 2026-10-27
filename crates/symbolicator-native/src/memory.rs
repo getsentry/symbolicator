@@ -30,6 +30,20 @@ impl MemoryAccess for Minidump<'static, ByteView<'static>> {
     }
 }
 
+/// [`MemoryAccess`] for crashes without any captured memory.
+#[derive(Debug)]
+pub struct NoMemory;
+
+impl MemoryAccess for NoMemory {
+    fn get_memory_at_address(&self, _addr: u64, _size: usize) -> Option<&'_ [u8]> {
+        None
+    }
+
+    fn endian(&self) -> scroll::Endian {
+        scroll::Endian::Little
+    }
+}
+
 /// Extension trait for [`MemoryAccess`].
 pub trait MemoryAccessExt: MemoryAccess {
     /// Helper which accesses the memory of a dump and converts the memory to the specified type.

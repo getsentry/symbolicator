@@ -17,7 +17,7 @@ use crate::interface::{
     FrameStatus, FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
     SymbolicatedFrame,
 };
-use crate::memory::MemoryAccess;
+use crate::memory::{MemoryAccess, NoMemory};
 use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
 
 use super::demangle::DemangleCache;
@@ -140,7 +140,8 @@ impl SymbolicationActor {
                     &module_lookup,
                     &mut metrics,
                     signal,
-                    memory.as_deref().filter(|_| extract_variables),
+                    // Without memory, variables are still extracted, just without memory-backed values.
+                    extract_variables.then(|| memory.as_deref().unwrap_or(&NoMemory)),
                     apply_source_server_info,
                 )
             })
