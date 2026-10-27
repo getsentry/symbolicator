@@ -54,7 +54,7 @@ jobs:
 
     env:
       FEATURES: "symbolicator-crash"
-      # Link libstdc++ statically, the hardened base image does not ship it.
+      # Link libstdc++ statically for transitive dependencies like `symbolic-demangle` as the base image does not contain it.
       CXXSTDLIB_STATIC: "1"
       RUST_TARGET: |-
         ${{fromJson('{
