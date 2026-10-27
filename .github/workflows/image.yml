@@ -54,6 +54,8 @@ jobs:
 
     env:
       FEATURES: "symbolicator-crash"
+      # Link libstdc++ statically, the hardened base image does not ship it.
+      CXXSTDLIB_STATIC: "1"
       RUST_TARGET: |-
         ${{fromJson('{
           "amd64": "x86_64-unknown-linux-gnu",
