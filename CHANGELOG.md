@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Switch the container base image from distroless to docker hardened. ([#2132](https://github.com/getsentry/symbolicator/pull/2132))
+
 ## 26.10.0
 
 ### Fixes

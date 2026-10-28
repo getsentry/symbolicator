@@ -1,7 +1,12 @@
-FROM gcr.io/distroless/cc-debian13:nonroot
+FROM us-docker.pkg.dev/sentryio/dhi-mirror/static:20250419-glibc-debian13 AS builder
 
-COPY --from=gcr.io/distroless/cc-debian13:nonroot --chown=nonroot:nonroot /home/nonroot /etc/symbolicator
-COPY --from=gcr.io/distroless/cc-debian13:nonroot --chown=nonroot:nonroot /home/nonroot /data
+FROM us-docker.pkg.dev/sentryio/dhi-mirror/static:20250419-glibc-debian13
+
+# The base image does not have a shell available, which means we cannot
+# `mkdir` the volume directories. As an alternative we can use the empty
+# home directory instead.
+COPY --from=builder --chown=nonroot:nonroot /home/nonroot /etc/symbolicator
+COPY --from=builder --chown=nonroot:nonroot /home/nonroot /data
 
 VOLUME ["/etc/symbolicator", "/data"]
 EXPOSE 3021

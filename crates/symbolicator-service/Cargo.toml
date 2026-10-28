@@ -41,6 +41,7 @@ reqwest = { workspace = true, features = [
     "stream",
     "hickory-dns",
     "socks",
+    "native-tls-vendored",
 ] }
 sentry = { workspace = true }
 serde = { workspace = true }
