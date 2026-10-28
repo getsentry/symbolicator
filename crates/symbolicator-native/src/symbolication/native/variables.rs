@@ -18,6 +18,7 @@ use crate::memory::{MemoryAccess, MemoryAccessExt as _};
 /// Perform variable extraction.
 ///
 /// This function extracts all the variables we can based on the information provided.
+/// Variables whose value cannot be determined are still included, without a value.
 pub(super) fn do_extract<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
@@ -26,19 +27,21 @@ pub(super) fn do_extract<'data, 'cache>(
 ) -> Variables {
     source_location
         .variables()
-        .flat_map(|variable| {
-            let name = variable.name()?;
-
+        .flat_map(|variable| Some((variable.name()?, variable)))
+        .map(|(name, variable)| {
             let mut ty = String::new();
             resolve_type_name(&mut ty, cache, variable.ty(), 0);
 
-            let value = variable.locations().find_map(|loc| {
-                resolve_variable_value(cache, registers, memory, loc, variable.ty())
-            })?;
+            let value = variable
+                .locations()
+                .find_map(|loc| {
+                    resolve_variable_value(cache, registers, memory, loc, variable.ty())
+                })
+                .unwrap_or_default();
 
             let interface_variable = value.into_variable(ty, variable.kind());
 
-            Some((name, interface_variable))
+            (name, interface_variable)
         })
         .collect()
 }
