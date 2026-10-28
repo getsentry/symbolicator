@@ -3477,7 +3477,7 @@ dependencies = [
 
 [[package]]
 name = "process-event"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4846,7 +4846,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4885,7 +4885,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-crash"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "minidumper-child",
  "sentry",
@@ -4894,7 +4894,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-js"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "data-url",
  "futures",
@@ -4920,7 +4920,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-native"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "apple-crash-report-parser",
@@ -4954,7 +4954,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-proguard"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "futures",
  "insta",
@@ -4972,7 +4972,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-service"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -5028,7 +5028,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-sources"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "aws-types",
@@ -5044,7 +5044,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-stress"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -5067,7 +5067,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicator-test"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "axum",
  "humantime",
@@ -5086,7 +5086,7 @@ dependencies = [
 
 [[package]]
 name = "symbolicli"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -5116,7 +5116,7 @@ dependencies = [
 
 [[package]]
 name = "symsorter"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -5923,7 +5923,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-split"
-version = "26.10.0"
+version = "26.10.1"
 dependencies = [
  "anyhow",
  "clap",
