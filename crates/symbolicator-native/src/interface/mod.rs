@@ -360,7 +360,9 @@ pub struct RawFrame {
     /// Mapping of local variables and expression names that were available in this frame.
     ///
     /// Current format is heavily work in progress.
-    #[serde(default, skip_serializing_if = "Variables::is_empty")]
+    ///
+    /// This field is not read from Sentry, only sent, hence why we skip deserializing.
+    #[serde(skip_serializing_if = "Variables::is_empty", skip_deserializing)]
     pub vars: Variables,
 
     /// Information about how the raw frame was created.
