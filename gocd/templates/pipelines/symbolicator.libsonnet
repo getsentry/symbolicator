@@ -1,4 +1,3 @@
-local getsentry = import 'github.com/getsentry/gocd-jsonnet/libs/getsentry.libsonnet';
 local gocdtasks = import 'github.com/getsentry/gocd-jsonnet/libs/gocd-tasks.libsonnet';
 
 local sentry_create_env_vars(region) = {
@@ -81,9 +80,6 @@ function(region) {
   ] + deploy_canary_stage(region) + [
     {
       'deploy-primary': {
-        [if getsentry.is_st(region) then null else 'approval']: {
-          type: 'manual',
-        },
         fetch_materials: true,
         jobs: {
           create_sentry_release: {
