@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- Linux binaries are now built on Ubuntu 24.04 and require glibc 2.39 or newer. ([#2135](https://github.com/getsentry/symbolicator/pull/2135))
+
 ## 26.10.1
 
 ### Features
