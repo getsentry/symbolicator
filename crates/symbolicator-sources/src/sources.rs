@@ -224,9 +224,9 @@ pub enum DirectoryLayoutType {
     /// A simple symbol source using the `{code_id}/symbols` as its search path.
     #[serde(rename = "slashsymbols")]
     SlashSymbols,
-    /// Uses the conventions of Nintendo's `NXSymStore.exe` symbol sorting tool.
-    #[serde(rename = "nxsymstore")]
-    NxSymStore,
+    /// Uses the conventions of Nintendo's `NintendoSymbolStore.exe` and `NXSymStore.exe` symbol store tools.
+    #[serde(rename = "nnsymstore")]
+    NnSymStore,
 }
 
 /// Casing of filenames on the symbol server
