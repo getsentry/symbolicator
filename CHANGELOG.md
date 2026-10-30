@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Linux binaries are now built on Ubuntu 24.04 and require glibc 2.39 or newer. ([#2135](https://github.com/getsentry/symbolicator/pull/2135))
+- Rename the `nxsymstore` source layout to `nnsymstore`, after Nintendo's `NintendoSymbolStore.exe` tool. The layout still supports `NXSymStore.exe` stores. ([#2136](https://github.com/getsentry/symbolicator/pull/2136))
 
 ## 26.10.1
 
