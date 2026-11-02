@@ -6,6 +6,10 @@
 
 - Linux binaries are now built on Ubuntu 24.04 and require glibc 2.39 or newer. ([#2135](https://github.com/getsentry/symbolicator/pull/2135))
 
+### Fixes
+
+- Trigger build for updated debian image.
+
 ## 26.10.1
 
 ### Features
