@@ -8,7 +8,7 @@
 
 ### Fixes
 
-- Trigger build for updated debian image.
+- Trigger build for updated debian image. ([#2140](https://github.com/getsentry/symbolicator/pull/2140))
 
 ## 26.10.1
 
