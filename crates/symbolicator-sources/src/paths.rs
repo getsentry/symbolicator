@@ -434,7 +434,7 @@ fn get_slashsymbols_paths(identifier: &ObjectId) -> Vec<String> {
     ]
 }
 
-fn get_nxsymstore_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
+fn get_nnsymstore_paths(filetype: FileType, identifier: &ObjectId) -> Vec<String> {
     if !matches!(filetype, FileType::ElfDebug | FileType::ElfCode) {
         return Vec::new();
     }
@@ -480,7 +480,7 @@ pub fn get_directory_paths(
             get_unified_path(filetype, identifier).into_iter().collect()
         }
         DirectoryLayoutType::SlashSymbols => get_slashsymbols_paths(identifier),
-        DirectoryLayoutType::NxSymStore => get_nxsymstore_paths(filetype, identifier),
+        DirectoryLayoutType::NnSymStore => get_nnsymstore_paths(filetype, identifier),
     };
 
     for path in paths.iter_mut() {
@@ -789,9 +789,9 @@ mod tests {
     }
 
     #[test]
-    fn test_nxsymstore() {
+    fn test_nnsymstore() {
         let layout = DirectoryLayout {
-            ty: DirectoryLayoutType::NxSymStore,
+            ty: DirectoryLayoutType::NnSymStore,
             ..Default::default()
         };
         let id = |id| ObjectId {
