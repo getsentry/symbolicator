@@ -41,7 +41,7 @@ reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/upd
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches-0.5" }
 
 # This patch returns a parse error instead of panicking on `LF_VFTABLE` records with a malformed name list length (SYMBOLICATOR-65)
-pdb2 = { git = "https://github.com/getsentry/pdb2", branch = "master" }
+pdb2 = { git = "https://github.com/getsentry/pdb2", rev = "47b1880d8046f4bdb7c84f4b6c3a673fcf642601" }
 
 # All the swc-related crates to patch to get our memory bounding in.
 swc_ecma_visit = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d" }
