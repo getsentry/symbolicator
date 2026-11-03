@@ -44,9 +44,7 @@ cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "se
 pdb2 = { git = "https://github.com/getsentry/pdb2", branch = "master" }
 
 # All the swc-related crates to patch to get our memory bounding in.
-swc_ecma_visit = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d", features = [
-    "path",
-] }
+swc_ecma_visit = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d" }
 swc_common = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d" }
 swc_ecma_parser = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d" }
 
