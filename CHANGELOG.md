@@ -11,6 +11,7 @@
 
 - Trigger build for updated debian image. ([#2140](https://github.com/getsentry/symbolicator/pull/2140))
 - Use sentry swc repo. ([#2142](https://github.com/getsentry/symbolicator/pull/2142))
+- Don't apply source context to frames with line number 0. ([#2147](https://github.com/getsentry/symbolicator/pull/2147))
 
 ## 26.10.1
 

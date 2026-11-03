@@ -15,6 +15,11 @@ pub fn get_context_lines(
     trim_to_column: usize,
     context_lines: Option<usize>,
 ) -> Option<(Vec<String>, String, Vec<String>)> {
+    // Line numbers are 1-based, `0` means that the line is unknown.
+    if lineno == 0 {
+        return None;
+    }
+
     let context_lines = context_lines.unwrap_or(DEFAULT_CONTEXT_LINES);
 
     let start_line = lineno.saturating_sub(context_lines).saturating_sub(1);
@@ -125,6 +130,10 @@ Netus et malesuada fames ac turpis egestas. Id eu nisl nunc mi ipsum faucibus vi
 
 Consequat ac felis donec et odio pellentesque diam volutpat commodo. Pulvinar elementum integer enim neque volutpat ac. Mollis aliquam ut porttitor leo a diam sollicitudin. Velit ut tortor pretium viverra suspendisse potenti nullam. Viverra tellus in hac habitasse platea dictumst vestibulum rhoncus. Dictum non consectetur a erat nam at lectus urna duis. Condimentum vitae sapien pellentesque habitant morbi tristique senectus et. Tempus urna et pharetra pharetra massa massa ultricies. Integer malesuada nunc vel risus commodo viverra maecenas. Neque viverra justo nec ultrices dui sapien. Fermentum leo vel orci porta non. A diam maecenas sed enim ut sem viverra aliquet eget. Tincidunt ornare massa eget egestas purus. Curabitur gravida arcu ac tortor dignissim convallis aenean.
 ";
+
+        // line number 0 means "no line information"
+        assert_eq!(get_context_lines(source, 0, 0, None), None);
+        assert_eq!(get_context_lines(source, 0, 0, Some(2)), None);
 
         // trim to column 0
         let (before, line, after) = get_context_lines(source, 3, 0, Some(2)).unwrap();
