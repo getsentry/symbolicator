@@ -1,18 +1,19 @@
 //! Module containing logic for extracting variable values from native crashes.
 
+use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use minidump::CpuContext;
 use scroll::Endian;
 use serde_json::Value;
 use symbolic::common::CpuFamily;
+use symbolic::common::register::{Amd64Register, Arm64Register, Register};
 use symbolic::symcache::{
     PrimitiveTypeEncoding, SourceLocation, SymCache, Type, TypeSize, VariableLocation,
     VariableLocationInfo,
 };
 use symbolicator_service::utils::hex::HexValue;
 
-use crate::interface::{Registers, VariableValue, Variables};
+use crate::interface::{VariableValue, Variables};
 use crate::memory::{MemoryAccess, MemoryAccessExt as _};
 
 /// Perform variable extraction.
@@ -22,7 +23,7 @@ use crate::memory::{MemoryAccess, MemoryAccessExt as _};
 pub(super) fn do_extract<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
-    registers: &Registers,
+    registers: &BTreeMap<Register, HexValue>,
     memory: &dyn MemoryAccess,
 ) -> Variables {
     source_location
@@ -48,7 +49,7 @@ pub(super) fn do_extract<'data, 'cache>(
 
 fn resolve_variable_value(
     cache: &SymCache<'_>,
-    registers: &Registers,
+    registers: &BTreeMap<Register, HexValue>,
     memory: &dyn MemoryAccess,
     location: VariableLocationInfo,
     ty: Option<Type<'_>>,
@@ -56,27 +57,18 @@ fn resolve_variable_value(
     let ty = ty?;
 
     match location.location {
-        VariableLocation::Register { id } => {
-            // Temporary hack, `symbolic` will need an abstraction over registers, which allows
-            // mapping register names to the gimli register ids.
-            match cache.arch().cpu_family() {
-                CpuFamily::Amd64 => minidump::format::CONTEXT_AMD64::REGISTERS,
-                CpuFamily::Arm64 => minidump::format::CONTEXT_ARM64::REGISTERS,
-                _ => &[],
-            }
-            .get(id as usize)
-            .and_then(|&reg| registers.get(reg))
+        VariableLocation::Register { register } => registers
+            .get(&register)
             .copied()
             .map(RegisterMemoryAccess::from_hex_value)
-            .and_then(|reg_mem| format_value(&reg_mem, 0, ty))
-        }
+            .and_then(|reg_mem| format_value(&reg_mem, 0, ty)),
         VariableLocation::FrameOffset { offset } => {
             let &HexValue(frame_base) = match cache.arch().cpu_family() {
-                CpuFamily::Amd64 => Some("rbp"),
-                CpuFamily::Arm64 => Some("fp"),
+                CpuFamily::Amd64 => Some(Amd64Register::Rbp.into()),
+                CpuFamily::Arm64 => Some(Arm64Register::X29.into()),
                 _ => None,
             }
-            .and_then(|reg| registers.get(reg))?;
+            .and_then(|reg| registers.get(&reg))?;
 
             let addr = u64::try_from(i64::try_from(frame_base).ok()? + offset).ok()?;
 

@@ -16,7 +16,8 @@ use minidump_unwind::{
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
 use serde::{Deserialize, Serialize};
-use symbolic::common::{Arch, ByteView};
+use symbolic::common::register::Register;
+use symbolic::common::{Arch, ByteView, CpuFamily};
 use symbolicator_service::cogs::{AppFeature, Category, Cogs};
 use symbolicator_service::metric;
 use symbolicator_service::types::{FrameOrder, ObjectFileStatus, RawObjectInfo, Scope};
@@ -467,6 +468,7 @@ async fn stackwalk(
     let duration = duration.elapsed();
 
     let minidump_state = MinidumpState::from_process_state(&process_state);
+    let cpu_family = minidump_state.system_info.cpu_arch.cpu_family();
 
     // Finally iterate through the threads and build the stacktraces to
     // return, marking modules as used when they are referenced by a frame.
@@ -494,7 +496,13 @@ async fn stackwalk(
                     instruction_addr: HexValue(frame.resume_address),
                     package,
                     trust: frame.trust.into(),
-                    registers: map_symbolic_registers(&frame.context),
+                    registers: frame
+                        .context
+                        .valid_registers()
+                        .filter_map(|(name, value)| {
+                            Some((typed_register(cpu_family, name)?, HexValue(value)))
+                        })
+                        .collect(),
                     ..RawFrame::default()
                 }
             })
@@ -727,4 +735,19 @@ fn non_empty_file_name(file_name: &str) -> Option<String> {
         return None;
     }
     Some(file_name.to_owned())
+}
+
+/// Get the [`Register`] from a register name for a given CPU family.
+///
+/// This basically just calls [`Register::try_from_name`] and logs errors.
+fn typed_register(cpu_family: CpuFamily, name: &str) -> Option<Register> {
+    match Register::try_from_name(cpu_family, name) {
+        Ok(register) => Some(register),
+        Err(e) => {
+            tracing::error!(
+                "failed to parse register {name:?} for cpu family {cpu_family:?}: {e:#}"
+            );
+            None
+        }
+    }
 }
