@@ -3223,7 +3223,7 @@ dependencies = [
 [[package]]
 name = "pdb2"
 version = "0.10.2"
-source = "git+https://github.com/getsentry/pdb2?branch=master#47b1880d8046f4bdb7c84f4b6c3a673fcf642601"
+source = "git+https://github.com/getsentry/pdb2?rev=47b1880d8046f4bdb7c84f4b6c3a673fcf642601#47b1880d8046f4bdb7c84f4b6c3a673fcf642601"
 dependencies = [
  "fallible-iterator",
  "scroll 0.12.0",
