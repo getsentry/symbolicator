@@ -34,6 +34,15 @@ incremental = true
 codegen-units = 256
 
 [patch.crates-io]
+symbolic-cfi = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-common = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-debuginfo = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-demangle = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-il2cpp = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-ppdb = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-sourcemapcache = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+symbolic-symcache = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
+
 # This patch adds an `ip_filter` able to filter out internal IP addresses in DNS resolution
 reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/update-restricted-connector" }
 
@@ -138,7 +147,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "412dc4d4581c52ada8f5712f55720fc31b0ad23e" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", branch = "szokeasaurusrex/symbol-47-arm-register-mapping" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }

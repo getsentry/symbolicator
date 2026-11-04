@@ -991,8 +991,8 @@ dependencies = [
  "compression-core",
  "flate2",
  "memchr",
- "zstd",
- "zstd-safe",
+ "zstd 0.13.3",
+ "zstd-safe 7.2.4",
 ]
 
 [[package]]
@@ -4697,8 +4697,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -4712,8 +4712,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-cfi"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -4722,20 +4722,21 @@ dependencies = [
 
 [[package]]
 name = "symbolic-common"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "debugid",
  "memmap2",
  "serde",
  "stable_deref_trait",
+ "thiserror 2.0.17",
  "uuid",
 ]
 
 [[package]]
 name = "symbolic-debuginfo"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "debugid",
  "elementtree",
@@ -4760,13 +4761,13 @@ dependencies = [
  "thiserror 2.0.17",
  "wasmparser",
  "zip",
- "zstd",
+ "zstd 0.14.3",
 ]
 
 [[package]]
 name = "symbolic-demangle"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "bitflags",
  "cc",
@@ -4779,8 +4780,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-il2cpp"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -4790,8 +4791,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-ppdb"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "flate2",
  "indexmap",
@@ -4805,8 +4806,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-sourcemapcache"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "itertools",
  "js-source-scopes",
@@ -4819,8 +4820,8 @@ dependencies = [
 
 [[package]]
 name = "symbolic-symcache"
-version = "14.0.0-alpha.4"
-source = "git+https://github.com/getsentry/symbolic.git?rev=412dc4d4581c52ada8f5712f55720fc31b0ad23e#412dc4d4581c52ada8f5712f55720fc31b0ad23e"
+version = "14.0.0-alpha.5"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fsymbol-47-arm-register-mapping#30121080a24cdec9d2fa65f25f920c8a97b7991a"
 dependencies = [
  "indexmap",
  "symbolic-common",
@@ -4936,7 +4937,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -5010,7 +5011,7 @@ dependencies = [
  "url",
  "uuid",
  "zip",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -5116,7 +5117,7 @@ dependencies = [
  "symbolic",
  "walkdir",
  "zip",
- "zstd",
+ "zstd 0.13.3",
 ]
 
 [[package]]
@@ -6557,7 +6558,16 @@ version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e91ee311a569c327171651566e07972200e76fcfe2242a4fa446149a3881c08a"
 dependencies = [
- "zstd-safe",
+ "zstd-safe 7.2.4",
+]
+
+[[package]]
+name = "zstd"
+version = "0.14.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db3ae9bf90af6e40197bef767eeefc46ad6397420fe873830bd85e5fbbfb3c70"
+dependencies = [
+ "zstd-safe 8.2.0",
 ]
 
 [[package]]
@@ -6570,10 +6580,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "zstd-sys"
-version = "2.0.16+zstd.1.5.7"
+name = "zstd-safe"
+version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e19ebc2adc8f83e43039e79776e3fda8ca919132d68a1fed6a5faca2683748"
+checksum = "ded520f16b29e1a9b771c722221b2b0a0398c2316d9bb3c42b458a5414d7434b"
+dependencies = [
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "2.1.2+zstd.1.5.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "481ada9c543b2323cbb7bbdbb5249177fbf0188ed959ed2c15e4b22421c84ed3"
 dependencies = [
  "cc",
  "pkg-config",
