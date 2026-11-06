@@ -152,8 +152,7 @@ async fn test_sourcemap_source_expansion() {
         "abs_path": "http://example.com/index.html",
         "filename": "index.html",
         "lineno": 283,
-        "colno": 17,
-        "in_app": false
+        "colno": 17
     }, {
         "abs_path": "http://example.com/file.min.js",
         "filename": "file.min.js",
@@ -192,8 +191,7 @@ async fn test_sourcemap_embedded_source_expansion() {
         "abs_path": "http://example.com/index.html",
         "filename": "index.html",
         "lineno": 283,
-        "colno": 17,
-        "in_app": false
+        "colno": 17
     }, {
         "abs_path": "http://example.com/embedded.js",
         "filename": "embedded.js",
@@ -540,8 +538,7 @@ async fn test_no_source_contents() {
         "abs_path": "http://example.com/index.html",
         "filename": "index.html",
         "lineno": 283,
-        "colno": 17,
-        "in_app": false
+        "colno": 17
     }, {
         "abs_path": "http://example.com/embedded.js",
         "filename": "embedded.js",
@@ -802,8 +799,7 @@ async fn test_manual_processing() {
         "filename": "x",
         "abs_path": "x",
         "lineno": 1,
-        "colno": 1,
-        "in_app": true
+        "colno": 1
     }]"#;
     let modules = r#"[{
         "code_file": "x",

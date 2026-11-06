@@ -53,7 +53,6 @@ Content-Type: application/json
             "uuid": "05d96b1c-1786-477c-8615-d3cf83e027c7"
         }
     ],
-    "release_package": "some_release",
     "classes": [],
     "options": {
         "apply_source_context": true,
@@ -82,7 +81,6 @@ Content-Type: application/json
   - `exception`: (_optional_) The stacktrace exception which will have its module and type fields remapped. Necessary for applying [rewrite rules](https://r8.googlesource.com/r8/+/refs/heads/main/doc/retrace.md#rewriteframe-introduced-at-version-2_0).
   - `frames`: A list of frames with corresponding `abs_path`, `lineno`,
     and other optional fields like `colno` or minified `function` name. This list is assumed to be ordered according to the `frame_order` option (see below).
-- `release_package`: Name of Sentry `release` for the processed request.
 - `classes`: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.
 - `options`: Symbolication-specific options which control the endpoint's behavior.
   - `apply_source_context`: Whether to apply source context for the stack frames.
