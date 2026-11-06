@@ -212,7 +212,6 @@ a list of processed stack traces, exceptions and classes as well as an optional 
           "module": "io.sentry.samples.instrumentation.ui.EditActivity$$InternalSyntheticLambda$1$ebaa538726b99bb77e0f5e7c86443911af17d6e5be2b8771952ae0caa4ff2ac7$0",
           "abs_path": "EditActivity",
           "lineno": 0,
-          "in_app": true,
           "index": 18
         },
         {
@@ -234,7 +233,6 @@ a list of processed stack traces, exceptions and classes as well as an optional 
             "",
             "                val transaction = Sentry.startTransaction("
           ],
-          "in_app": true,
           "index": 18
         }
       ]

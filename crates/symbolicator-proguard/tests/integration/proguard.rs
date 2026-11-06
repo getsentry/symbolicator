@@ -17,7 +17,6 @@ fn make_jvm_request(
     exception: &str,
     frames: &str,
     modules: &str,
-    release_package: impl Into<Option<String>>,
 ) -> SymbolicateJvmStacktraces {
     let exceptions = vec![serde_json::from_str(exception).unwrap()];
     let frames: Vec<JvmFrame> = serde_json::from_str(frames).unwrap();
@@ -32,7 +31,6 @@ fn make_jvm_request(
         scope: Scope::Global,
         sources: Arc::new([source]),
         apply_source_context: true,
-        release_package: release_package.into(),
 
         exceptions,
         stacktraces,
@@ -121,7 +119,6 @@ async fn test_remap_exception() {
         r#"{"type": "g$a", "module": "org.a.b"}"#,
         "[]",
         r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;
@@ -173,7 +170,6 @@ async fn test_resolving_inline() {
         r#"{"type": "g$a", "module": "org.a.b"}"#,
         frames,
         r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;
@@ -257,7 +253,6 @@ async fn test_basic_source_lookup() {
         r#"{"type": "RuntimeException", "module": "io.sentry.samples"}"#,
         frames,
         r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "source"}]"#,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;
@@ -449,7 +444,6 @@ async fn test_source_lookup_with_proguard() {
         "function": "onMenuItemClick",
         "module": "io.sentry.samples.instrumentation.ui.g",
         "lineno": 40,
-        "in_app": true,
         "index": 18
     }]"#;
 
@@ -474,7 +468,6 @@ async fn test_source_lookup_with_proguard() {
         r#"{"type": "RuntimeException", "module": "java.lang"}"#,
         frames,
         &modules,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;
@@ -539,7 +532,6 @@ async fn test_rewrite_frames() {
         r#"{"type": "NullPointerException", "module": "java.lang"}"#,
         frames_npe,
         r#"[{"uuid": "550e8400-e29b-41d4-a716-446655440000", "type": "proguard"}]"#,
-        None,
     );
 
     let response_npe = symbolication.symbolicate_jvm(request_npe).await;
@@ -596,7 +588,6 @@ async fn test_no_line_info_mapping() {
         r#"{"type": "RuntimeException", "module": "java.lang"}"#,
         frames,
         r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;
@@ -650,7 +641,6 @@ async fn test_compose_stacktrace_group_keys() {
         r#"{"type": "DiagnosticComposeException", "module": "androidx.compose.runtime.tooling"}"#,
         frames,
         r#"[{"uuid": "246fb328-fc4e-406a-87ff-fc35f6149d8f", "type": "proguard"}]"#,
-        None,
     );
 
     let response = symbolication.symbolicate_jvm(request).await;

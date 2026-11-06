@@ -25,7 +25,6 @@ Content-Type: application/json
           "abs_path": "x",
           "lineno": 1,
           "colno": 1,
-          "in_app": true
         }
       ]
     }

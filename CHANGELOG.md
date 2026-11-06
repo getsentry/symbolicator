@@ -6,6 +6,8 @@
 
 - Linux binaries are now built on Ubuntu 24.04 and require glibc 2.39 or newer. ([#2135](https://github.com/getsentry/symbolicator/pull/2135))
 - Rename the `nxsymstore` source layout to `nnsymstore`, after Nintendo's `NintendoSymbolStore.exe` tool. The layout still supports `NXSymStore.exe` stores. ([#2136](https://github.com/getsentry/symbolicator/pull/2136))
+- Symbolicator no longer handles the `in_app` field of JVM frames. This is now the responsibility of Sentry. Consequently, `release_package` is no longer
+  an argument on JVM symbolication requests. ([#2153](https://github.com/getsentry/symbolicator/pull/2153))
 
 ### Fixes
 

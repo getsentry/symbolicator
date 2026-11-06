@@ -1,6 +1,5 @@
 ---
 source: crates/symbolicator-proguard/tests/integration/proguard.rs
-assertion_line: 482
 expression: response
 ---
 exceptions:
@@ -118,7 +117,6 @@ stacktraces:
           - "                }"
           - ""
           - "                val transaction = Sentry.startTransaction("
-        in_app: true
         index: 18
       - function: helloThere
         filename: SomeService.java
@@ -137,7 +135,6 @@ stacktraces:
           - "    class InnerClassOfSomeService {"
           - "        fun helloInner() {"
           - "            AnotherClassInSameFile().helloOther()"
-        in_app: true
         index: 18
       - function: helloInner
         filename: SomeService.java
@@ -157,28 +154,24 @@ stacktraces:
           - "}"
           - ""
           - "class AnotherClassInSameFile {"
-        in_app: true
         index: 18
       - function: helloOther
         filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
         abs_path: AnotherClassInSameFile.java
         lineno: 17
-        in_app: true
         index: 18
       - function: otherFun
         filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile
         abs_path: AnotherClassInSameFile.java
         lineno: 21
-        in_app: true
         index: 18
       - function: helloOtherInner
         filename: AnotherClassInSameFile.java
         module: io.sentry.samples.instrumentation.ui.AnotherClassInSameFile$AnotherInnerClass
         abs_path: AnotherClassInSameFile.java
         lineno: 26
-        in_app: true
         index: 18
 classes: {}
 errors:
