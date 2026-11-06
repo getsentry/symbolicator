@@ -867,7 +867,6 @@
 <span class="w">            </span><span class="nt">&quot;uuid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;05d96b1c-1786-477c-8615-d3cf83e027c7&quot;</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">    </span><span class="p">],</span>
-<span class="w">    </span><span class="nt">&quot;release_package&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;some_release&quot;</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">&quot;classes&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
 <span class="w">    </span><span class="nt">&quot;options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">&quot;apply_source_context&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
@@ -895,7 +894,6 @@
 <li><code>exception</code>: (<em>optional</em>) The stacktrace exception which will have its module and type fields remapped. Necessary for applying <a href="https://r8.googlesource.com/r8/+/refs/heads/main/doc/retrace.md#rewriteframe-introduced-at-version-2_0">rewrite rules</a>.</li>
 <li><code>frames</code>: A list of frames with corresponding <code>abs_path</code>, <code>lineno</code>,
     and other optional fields like <code>colno</code> or minified <code>function</code> name. This list is assumed to be ordered according to the <code>frame_order</code> option (see below).</li>
-<li><code>release_package</code>: Name of Sentry <code>release</code> for the processed request.</li>
 <li><code>classes</code>: A list of classes which will have their names remapped and returned in the form of a map. Allows for deobfuscation of view hierarchies.</li>
 <li><code>options</code>: Symbolication-specific options which control the endpoint's behavior.</li>
 <li><code>apply_source_context</code>: Whether to apply source context for the stack frames.</li>
