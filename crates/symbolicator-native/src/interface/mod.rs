@@ -10,6 +10,7 @@ use regex::Regex;
 use serde::de::{self, Deserializer, Error};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
+use symbolic::common::register::Register;
 use symbolic::common::{Arch, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
 use symbolicator_service::types::{FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope};
@@ -371,7 +372,7 @@ pub struct RawFrame {
 
     /// Values of CPU registers in this frame.
     #[serde(skip)]
-    pub registers: Registers,
+    pub registers: BTreeMap<Register, HexValue>,
 
     /// The value of the source revision of the frame's file.
     ///
