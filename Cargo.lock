@@ -4937,7 +4937,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
- "zstd 0.13.3",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -5011,7 +5011,7 @@ dependencies = [
  "url",
  "uuid",
  "zip",
- "zstd 0.13.3",
+ "zstd 0.14.3",
 ]
 
 [[package]]
@@ -5117,7 +5117,7 @@ dependencies = [
  "symbolic",
  "walkdir",
  "zip",
- "zstd 0.13.3",
+ "zstd 0.14.3",
 ]
 
 [[package]]
