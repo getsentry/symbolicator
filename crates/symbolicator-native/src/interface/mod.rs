@@ -376,6 +376,14 @@ pub struct RawFrame {
     #[serde(skip)]
     pub registers: BTreeMap<Register, HexValue>,
 
+    /// The Canonical Frame Address (CFA) of this frame, i.e. the caller's stack pointer at the
+    /// call site.
+    ///
+    /// Only set for frames stackwalked from a minidump, and only when the caller frame was
+    /// unwound using CFI.
+    #[serde(skip)]
+    pub cfa: Option<u64>,
+
     /// The value of the source revision of the frame's file.
     ///
     /// This is only set if [`SymbolicateStacktraces::apply_source_server_info`]
