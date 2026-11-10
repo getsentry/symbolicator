@@ -100,6 +100,7 @@ pub fn symbolicate_native_frame(
                 vars,
                 trust: frame.trust,
                 registers: Default::default(),
+                cfa: None,
                 file_revision,
             },
         });
