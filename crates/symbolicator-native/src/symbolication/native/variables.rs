@@ -108,6 +108,8 @@ fn resolve_type_name(
             resolve_type_name(result, cache, ty, depth + 1);
             result.push('*');
         }
+        Type::TypeDef(typedef) => result.push_str(typedef.name()),
+        Type::StructureType(st) => result.push_str(st.name().unwrap_or("<anonymous>")),
         _ => result.push_str("<not implemented>"),
     }
 }
