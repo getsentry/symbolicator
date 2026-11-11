@@ -88,27 +88,57 @@ fn resolve_type_name(
     cache: &SymCache<'_>,
     ty: Option<Type<'_>>,
     depth: usize,
-) {
+) -> bool {
     let Some(ty) = ty else {
         result.push_str("<unknown>");
-        return;
+        return true;
     };
 
     // This really is just temporary but necessary as a Symcache can serialize cyclic/recursive types.
     // With more changes we'll have to solve this properly.
     if depth > 10 {
-        return;
+        return false;
     }
 
     match ty {
-        Type::Primitive(primitive) => result.push_str(primitive.name().unwrap_or("")),
-        Type::Pointer(pointer) if pointer.pointee().is_none() => result.push_str("void*"),
-        Type::Pointer(pointer) => {
-            let ty = pointer.pointee().and_then(|p| cache.lookup_type(p));
-            resolve_type_name(result, cache, ty, depth + 1);
-            result.push('*');
+        Type::Primitive(primitive) => {
+            result.push_str(primitive.name().unwrap_or(""));
+            true
         }
-        _ => result.push_str("<not implemented>"),
+        Type::Pointer(pointer) => {
+            match pointer.pointee() {
+                None => result.push_str("void"),
+                Some(ty) => {
+                    resolve_type_name(result, cache, cache.lookup_type(ty), depth + 1);
+                }
+            };
+            result.push('*');
+            true
+        }
+        Type::TypeDef(typedef) => match typedef.ty() {
+            Some(ty) => {
+                let has_name = resolve_type_name(result, cache, cache.lookup_type(ty), depth + 1);
+                if !has_name {
+                    // The typedef may be linking to an anonymous struct, in which case we want to
+                    // use the typedef name instead.
+                    result.push_str(typedef.name());
+                }
+                true
+            }
+            None => {
+                result.push_str(typedef.name());
+                true
+            }
+        },
+        Type::StructureType(st) if let Some(name) = st.name() => {
+            result.push_str(name);
+            true
+        }
+        Type::StructureType(_) => false,
+        _ => {
+            result.push_str("<not implemented>");
+            true
+        }
     }
 }
 
