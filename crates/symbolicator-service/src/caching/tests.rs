@@ -1266,3 +1266,85 @@ async fn test_failing_cache_write() {
         .join(key.cache_path(FailingTestCacheItem::VERSIONS.current));
     assert!(fs::exists(cache_file_path).unwrap());
 }
+
+/// Every persistable [`CacheError`] variant, with payloads that exercise the size bound
+/// (oversized and multi-byte strings) as well as the trivial cases.
+fn persistable_cache_errors() -> Vec<CacheError> {
+    // Multi-byte chars straddling the truncation point make sure we cut on a char boundary.
+    let oversized = "ü".repeat(super::cache_error::MAX_ERROR_PAYLOAD_SIZE);
+    let mut errors = Vec::new();
+    for payload in ["", "unsupported object file format", oversized.as_str()] {
+        errors.push(CacheError::Malformed(payload.to_owned()));
+        errors.push(CacheError::PermissionDenied(payload.to_owned()));
+        errors.push(CacheError::DownloadError(payload.to_owned()));
+        errors.push(CacheError::Unsupported(payload.to_owned()));
+    }
+    errors.push(CacheError::NotFound);
+    errors.push(CacheError::Timeout(Duration::from_secs(30)));
+    errors.push(CacheError::Timeout(Duration::MAX));
+
+    // Fail to compile when a new variant is added, as a reminder to extend the list above.
+    for e in &errors {
+        match e {
+            CacheError::NotFound
+            | CacheError::PermissionDenied(_)
+            | CacheError::Timeout(_)
+            | CacheError::DownloadError(_)
+            | CacheError::Malformed(_)
+            | CacheError::Unsupported(_)
+            | CacheError::InternalError => {}
+        }
+    }
+
+    errors
+}
+
+/// Ensures that the cheap prefix-based classification used by cleanup agrees with the
+/// full parse via [`CacheError::from_bytes`], and that persisted errors respect the size
+/// bound that cleanup's stat-only fast path relies on.
+#[tokio::test]
+async fn test_expiration_strategy_from_file_matches_from_bytes() -> Result<()> {
+    use super::cache_error::{
+        CACHE_ERROR_STRINGS, MAX_ERROR_PAYLOAD_SIZE, expiration_strategy_from_file,
+    };
+
+    let max_error_file_len =
+        CACHE_ERROR_STRINGS.iter().map(|m| m.len()).max().unwrap() + MAX_ERROR_PAYLOAD_SIZE;
+
+    let dir = tempdir()?;
+
+    for (i, error) in persistable_cache_errors().into_iter().enumerate() {
+        let path = dir.path().join(format!("error{i}"));
+        let mut file = tokio::fs::File::from_std(File::create(&path)?);
+        error.write(&mut file).await?;
+        drop(file);
+
+        let len = fs::metadata(&path)?.len() as usize;
+        assert!(
+            len <= max_error_file_len,
+            "{error:?} persisted as {len} bytes, exceeding the bound of {max_error_file_len}"
+        );
+
+        let fast = expiration_strategy_from_file(&path)?;
+        let slow = expiration_strategy(&path)?;
+        assert_eq!(fast, slow, "strategy mismatch for {error:?}");
+        assert_ne!(fast, ExpirationStrategy::None, "{error:?} classified as Ok");
+    }
+
+    // Valid (non-error) contents, including ones that look like truncated markers or
+    // are shorter than the longest marker.
+    let mut long_ok = b"x".repeat(max_error_file_len + 1);
+    long_ok[..4].copy_from_slice(b"\0asm");
+    let ok_contents: [&[u8]; 6] = [b"toot", b"malform", b"dler", b"timeou", b"\0", &long_ok];
+    for (i, contents) in ok_contents.iter().enumerate() {
+        let path = dir.path().join(format!("ok{i}"));
+        fs::write(&path, contents)?;
+
+        let fast = expiration_strategy_from_file(&path)?;
+        let slow = expiration_strategy(&path)?;
+        assert_eq!(fast, slow, "strategy mismatch for {contents:?}");
+        assert_eq!(fast, ExpirationStrategy::None, "{contents:?} misclassified");
+    }
+
+    Ok(())
+}
