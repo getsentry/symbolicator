@@ -7,8 +7,8 @@ use serde_json::Value;
 use symbolic::common::CpuFamily;
 use symbolic::common::register::{Amd64Register, Arm64Register, Register};
 use symbolic::symcache::{
-    PrimitiveTypeEncoding, SourceLocation, SymCache, Type, TypeSize, VariableLocation,
-    VariableLocationInfo,
+    PointerType, PrimitiveType, PrimitiveTypeEncoding, SourceLocation, SymCache, Type, TypeSize,
+    VariableLocation, VariableLocationInfo,
 };
 use symbolicator_service::utils::hex::HexValue;
 
@@ -19,7 +19,7 @@ use crate::memory::{ArrayMemoryAccess, Endian, MemoryAccess, MemoryAccessExt};
 ///
 /// This function extracts all the variables we can based on the information provided.
 /// Variables whose value cannot be determined are still included, without a value.
-pub(super) fn do_extract<'data, 'cache>(
+pub fn do_extract<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
     registers: &BTreeMap<Register, HexValue>,
@@ -118,16 +118,39 @@ fn format_value(
     value: AddrOrValue,
     ty: Type<'_>,
 ) -> Option<VariableValue> {
-    use PrimitiveTypeEncoding::*;
-    use TypeEncoding::*;
-
-    /// Helper enum for the match statement.
-    enum TypeEncoding {
-        Primitive(PrimitiveTypeEncoding),
-        /// A primitive with an unknown/unavailable encoding.
-        UnknownPrimitive,
-        Pointer,
+    match ty {
+        Type::Pointer(ty) => format_value_pointer(memory, value, ty),
+        Type::Primitive(ty) => format_value_primitive(memory, value, ty),
+        _ => None,
     }
+}
+
+fn format_value_pointer(
+    memory: &dyn MemoryAccess,
+    value: AddrOrValue,
+    ty: PointerType,
+) -> Option<VariableValue> {
+    let TypeSize::Bytes(size) = ty.size();
+
+    match size {
+        // Pointers map to `pointer_address`. We assume only 32-bit and 64-bit pointer addresses
+        // exist. We can of course support more if needed.
+        4 => value
+            .get_value::<u32>(memory)
+            .map(|v| VariableValue::new().pointer_address(v)),
+        8 => value
+            .get_value::<u64>(memory)
+            .map(|v| VariableValue::new().pointer_address(v)),
+        _ => None,
+    }
+}
+
+fn format_value_primitive(
+    memory: &dyn MemoryAccess,
+    value: AddrOrValue,
+    ty: PrimitiveType<'_>,
+) -> Option<VariableValue> {
+    use PrimitiveTypeEncoding::*;
 
     /// Helper to convert the memory at addr to the provided type, and map this to a VariableValue.
     macro_rules! get_value {
@@ -162,19 +185,9 @@ fn format_value(
         };
     }
 
-    let TypeSize::Bytes(size) = match &ty {
-        Type::Primitive(ty) => ty.size(),
-        Type::Pointer(ty) => ty.size(),
-        _ => return None,
-    };
+    let TypeSize::Bytes(size) = ty.size();
 
-    let encoding = match &ty {
-        Type::Primitive(ty) => ty.encoding().map_or(UnknownPrimitive, Primitive),
-        Type::Pointer(_) => Pointer,
-        _ => return None,
-    };
-
-    match (encoding, size) {
+    match (ty.encoding(), size) {
         // Not sure this is realistic, but size 0 probably should map to an empty value.
         // Returning `None` could also make sense.
         (_, 0) => Some(VariableValue::new()),
@@ -183,20 +196,20 @@ fn format_value(
         //
         // These need to be handled together because bool cannot be read directly from memory; we
         // instead read the Unsigned integer type and compare against 0 when this is a Boolean.
-        (Primitive(encoding @ (Boolean | UnsignedInt)), 1) => {
+        (Some(encoding @ (Boolean | UnsignedInt)), 1) => {
             get_value!(u8, map_bool_unsigned!(encoding))
         }
         // Characters more than one byte are handled as integers.
-        (Primitive(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 2) => {
+        (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 2) => {
             get_value!(u16, map_bool_unsigned!(encoding))
         }
-        (Primitive(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 4) => {
+        (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 4) => {
             get_value!(u32, map_bool_unsigned!(encoding))
         }
-        (Primitive(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 8) => {
+        (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 8) => {
             get_value!(u64, map_bool_unsigned!(encoding))
         }
-        (Primitive(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 16) => {
+        (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 16) => {
             get_value!(u128, |v| match encoding {
                 Boolean => VariableValue::new().value(v > 0),
                 // Serializing u128 as a number is possible, but because other parts of Sentry may
@@ -211,11 +224,11 @@ fn format_value(
         }
 
         // Signed integers. This is pretty simple, just get the value from memory.
-        (Primitive(SignedInt), 1) => get_value!(i8),
-        (Primitive(SignedInt | SignedChar), 2) => get_value!(i16),
-        (Primitive(SignedInt | SignedChar), 4) => get_value!(i32),
-        (Primitive(SignedInt | SignedChar), 8) => get_value!(i64),
-        (Primitive(SignedInt | SignedChar), 16) => {
+        (Some(SignedInt), 1) => get_value!(i8),
+        (Some(SignedInt | SignedChar), 2) => get_value!(i16),
+        (Some(SignedInt | SignedChar), 4) => get_value!(i32),
+        (Some(SignedInt | SignedChar), 8) => get_value!(i64),
+        (Some(SignedInt | SignedChar), 16) => {
             // Serializing i128 as a number is possible, but because other parts of Sentry may
             // not handle it gracefully due to the fact that the `arbitrary_precision` serde
             // feature is required, so we serialize i128's that cannot be represented as i64 as
@@ -228,25 +241,20 @@ fn format_value(
 
         // Floating-point types. Reading f128 from memory is currently not supported, so we don't
         // handle it for now.
-        (Primitive(Float), 4) => get_value!(f32),
-        (Primitive(Float), 8) => get_value!(f64),
+        (Some(Float), 4) => get_value!(f32),
+        (Some(Float), 8) => get_value!(f64),
 
         // 1-byte characters. Multibyte characters handled as integers.
-        (Primitive(SignedChar | UnsignedChar), 1) => {
+        (Some(SignedChar | UnsignedChar), 1) => {
             get_value!(u8, |v| format_variable!("'{}'", v.escape_ascii()))
         }
 
         // Handle memory addresses by rending to a hexadecimal string.
-        (Primitive(Address), 1) => get_value!(u8, |v| format_variable!("{v:#04x}")),
-        (Primitive(Address), 2) => get_value!(u16, |v| format_variable!("{v:#06x}")),
-        (Primitive(Address), 4) => get_value!(u32, |v| format_variable!("{v:#010x}")),
-        (Primitive(Address), 8) => get_value!(u64, |v| format_variable!("{v:#018x}")),
-        (Primitive(Address), 16) => get_value!(u128, |v| format_variable!("{v:#034x}")),
-
-        // Pointers map to `pointer_address`. We assume only 32-bit and 64-bit pointer addresses
-        // exist. We can of course support more if needed.
-        (Pointer, 4) => get_value!(u32, |v| VariableValue::new().pointer_address(v)),
-        (Pointer, 8) => get_value!(u64, |v| VariableValue::new().pointer_address(v)),
+        (Some(Address), 1) => get_value!(u8, |v| format_variable!("{v:#04x}")),
+        (Some(Address), 2) => get_value!(u16, |v| format_variable!("{v:#06x}")),
+        (Some(Address), 4) => get_value!(u32, |v| format_variable!("{v:#010x}")),
+        (Some(Address), 8) => get_value!(u64, |v| format_variable!("{v:#018x}")),
+        (Some(Address), 16) => get_value!(u128, |v| format_variable!("{v:#034x}")),
 
         // Unknown/unhandled data types.
         // We limit the size of memory slice we extract to 16 via UnknownBytes.

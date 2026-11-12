@@ -1,5 +1,3 @@
-mod variables;
-
 use symbolic::common::{InstructionInfo, Language, split_path};
 use symbolic::symcache::SymCache;
 use symbolicator_service::metric;
@@ -9,9 +7,10 @@ use crate::interface::{
     AdjustInstructionAddr, FrameStatus, RawFrame, Registers, Signal, SymbolicatedFrame,
 };
 use crate::memory::MemoryAccess;
+use crate::symbolication::demangle::DemangleCache;
+use crate::symbolication::module_lookup::CacheLookupResult;
 
-use super::demangle::DemangleCache;
-use super::module_lookup::CacheLookupResult;
+mod variables;
 
 #[allow(clippy::too_many_arguments)]
 pub fn symbolicate_native_frame(
