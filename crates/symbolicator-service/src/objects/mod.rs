@@ -5,7 +5,7 @@ use futures::future;
 use sentry::{Hub, SentryFutureExt};
 
 use symbolic::debuginfo::ParseObjectOptions;
-use symbolicator_sources::{FileType, ObjectId, RemoteFile, RemoteFileUri, SourceConfig, SourceId};
+use symbolicator_sources::{FileType, ObjectId, RemoteFile, SourceConfig, SourceId};
 
 use crate::caching::{Cache, CacheContents, CacheError, CacheKey, Cacher, SharedCacheRef};
 use crate::download::{self, DownloadService, SourceIndexService};
@@ -292,7 +292,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
     for source_id in source_ids {
         let info = ObjectCandidate {
             source: source_id,
-            location: RemoteFileUri::new("No object files listed on this source"),
+            location: CandidateLocation::new("No object files listed on this source"),
             download: ObjectDownloadInfo::NotFound,
             unwind: Default::default(),
             debug: Default::default(),
@@ -307,7 +307,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
 /// Build the [`ObjectCandidate`] info for the provided meta lookup result.
 fn create_candidate_info(meta_lookup: &FoundMeta) -> ObjectCandidate {
     let source = meta_lookup.file_source.source_id().clone();
-    let location = meta_lookup.file_source.uri();
+    let location = CandidateLocation::from(meta_lookup.file_source.uri());
     let download = match &meta_lookup.handle {
         Ok(handle) => ObjectDownloadInfo::Ok {
             features: handle.features(),

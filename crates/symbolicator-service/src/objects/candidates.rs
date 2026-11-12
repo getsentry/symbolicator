@@ -1,8 +1,68 @@
 //! Implementations for the types describing DIF object files.
 
+use std::fmt;
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use symbolicator_sources::{RemoteFileUri, SourceId};
+
+/// The location of an [`ObjectCandidate`].
+///
+/// This is derived from the [`RemoteFileUri`] but this truncates, by replacing
+/// the middle of locations longer than 512 bytes with `...`.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CandidateLocation(Arc<str>);
+
+impl CandidateLocation {
+    /// Maximum size in bytes of a location.
+    const MAX_LEN: usize = 512;
+
+    /// Marker inserted in place of the removed middle part of a truncated location.
+    const ELLIPSIS: &str = "...";
+
+    /// Number of bytes kept from the start of a truncated location.
+    ///
+    /// Value chosen to preserve more of the file info (at the end) than of the source (at the start).
+    const HEAD_LEN: usize = 128;
+
+    /// Number of bytes kept from the end of a truncated location.
+    const TAIL_LEN: usize = Self::MAX_LEN - Self::HEAD_LEN - Self::ELLIPSIS.len();
+
+    /// Creates a new [`CandidateLocation`], truncating `location` if it is too long.
+    ///
+    /// Cuts are moved to `char` boundaries, so the result is always valid UTF-8 and may be a few
+    /// bytes shorter than the maximum.
+    pub fn new(location: &str) -> Self {
+        if location.len() <= Self::MAX_LEN {
+            return Self(location.into());
+        }
+
+        let head_end = location.floor_char_boundary(Self::HEAD_LEN);
+        let tail_start = location.ceil_char_boundary(location.len() - Self::TAIL_LEN);
+
+        let truncated = format!(
+            "{}{}{}",
+            &location[..head_end],
+            Self::ELLIPSIS,
+            &location[tail_start..]
+        );
+        Self(truncated.into())
+    }
+}
+
+impl From<RemoteFileUri> for CandidateLocation {
+    fn from(uri: RemoteFileUri) -> Self {
+        Self::new(&uri.as_str())
+    }
+}
+
+impl fmt::Display for CandidateLocation {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// The VCS type extracted from PDB SRCSRV streams.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -95,8 +155,9 @@ pub struct ObjectCandidate {
     /// The location of this DIF on the object source.
     ///
     /// This is generally a URI which makes sense for the source type, however no guarantees
-    /// are given and it could be any string.
-    pub location: RemoteFileUri,
+    /// are given and it could be any string. Long locations are truncated in the middle, see
+    /// [`CandidateLocation`].
+    pub location: CandidateLocation,
     /// Information about fetching or downloading this DIF object.
     ///
     /// This section is always present and will at least have a `status` field.
@@ -213,16 +274,18 @@ impl AllObjectCandidates {
         &mut self,
         candidate_status: CandidateStatus,
         source: &SourceId,
-        uri: &RemoteFileUri,
+        location: &CandidateLocation,
         info: ObjectUseInfo,
     ) {
         if candidate_status == CandidateStatus::None {
             return;
         }
 
-        let found_pos = self.0.binary_search_by_key(&(source, uri), |candidate| {
-            (&candidate.source, &candidate.location)
-        });
+        let found_pos = self
+            .0
+            .binary_search_by_key(&(source, location), |candidate| {
+                (&candidate.source, &candidate.location)
+            });
         match found_pos {
             Ok(index) => {
                 if let Some(candidate) = self.0.get_mut(index) {
@@ -331,11 +394,43 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_candidate_location_short_is_unchanged() {
+        let uri = "https://symbols.example.com/foo.pdb/ABC123/foo.pdb";
+        let location = CandidateLocation::from(RemoteFileUri::new(uri));
+        assert_eq!(location, CandidateLocation::new(uri));
+    }
+
+    #[test]
+    fn test_candidate_location_long_is_truncated() {
+        let host = "a".repeat(2000);
+        let uri = format!("https://{host}.invalid/foo.pdb/ABC123/foo.pdb");
+        let location = CandidateLocation::new(&uri);
+
+        let expected = format!(
+            "https://{}...{}.invalid/foo.pdb/ABC123/foo.pdb",
+            "a".repeat(120),
+            "a".repeat(350)
+        );
+        assert_eq!(location, CandidateLocation::new(&expected));
+    }
+
+    #[test]
+    fn test_candidate_location_truncation_respects_char_boundaries() {
+        let location = CandidateLocation::new(&"ä".repeat(400));
+        let expected = format!("{}...{}", "ä".repeat(64), "ä".repeat(190));
+        assert_eq!(location, CandidateLocation::new(&expected));
+
+        let location = CandidateLocation::new(&"€".repeat(300));
+        let expected = format!("{}...{}", "€".repeat(42), "€".repeat(127));
+        assert_eq!(location, CandidateLocation::new(&expected));
+    }
+
+    #[test]
     fn test_all_object_info_merge_insert_new() {
         // If a candidate didn't exist yet it should be inserted in order.
         let src_a = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteFileUri::new("a"),
+            location: CandidateLocation::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -344,7 +439,7 @@ mod tests {
         };
         let src_b = ObjectCandidate {
             source: SourceId::new("B"),
-            location: RemoteFileUri::new("b"),
+            location: CandidateLocation::new("b"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -353,7 +448,7 @@ mod tests {
         };
         let src_c = ObjectCandidate {
             source: SourceId::new("C"),
-            location: RemoteFileUri::new("c"),
+            location: CandidateLocation::new("c"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -373,7 +468,7 @@ mod tests {
     fn test_all_object_info_merge_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteFileUri::new("a"),
+            location: CandidateLocation::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -382,7 +477,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteFileUri::new("a"),
+            location: CandidateLocation::new("a"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -404,7 +499,7 @@ mod tests {
     fn test_all_object_info_merge_no_overwrite() {
         let src0 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteFileUri::new("uri://dummy"),
+            location: CandidateLocation::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
@@ -413,7 +508,7 @@ mod tests {
         };
         let src1 = ObjectCandidate {
             source: SourceId::new("A"),
-            location: RemoteFileUri::new("uri://dummy"),
+            location: CandidateLocation::new("uri://dummy"),
             download: ObjectDownloadInfo::Ok {
                 features: Default::default(),
             },
