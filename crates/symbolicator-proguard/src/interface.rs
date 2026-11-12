@@ -30,10 +30,6 @@ pub struct SymbolicateJvmStacktraces {
     pub modules: Vec<JvmModule>,
     /// Whether to apply source context for the stack frames.
     pub apply_source_context: bool,
-    /// The package name of the release this event belongs to.
-    ///
-    /// This is used to set a remapped frame's `in_app` field.
-    pub release_package: Option<String>,
     /// An list of additional class names that should be remapped.
     pub classes: Vec<Arc<str>>,
     /// The order of frames within stacktraces (innermost frame first or last).
@@ -89,10 +85,6 @@ pub struct JvmFrame {
     /// Post context after the context line
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub post_context: Vec<String>,
-
-    /// Whether the frame is related to app-code (rather than libraries/dependencies).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub in_app: Option<bool>,
 
     /// The index of the frame in the stacktrace before filtering and sending to Symbolicator.
     ///

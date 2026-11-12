@@ -48,7 +48,6 @@ impl ProguardService {
             exceptions,
             mut stacktraces,
             modules,
-            release_package,
             apply_source_context,
             classes,
             frame_order,
@@ -159,7 +158,6 @@ impl ProguardService {
                 let mut frames = Self::map_stacktrace(
                     &mappers,
                     &raw_stacktrace.frames,
-                    release_package.as_deref(),
                     exception.as_ref(),
                     &mut stats,
                 );
@@ -213,7 +211,6 @@ impl ProguardService {
     fn map_stacktrace(
         mappers: &[&proguard::ProguardCache],
         stacktrace: &[JvmFrame],
-        release_package: Option<&str>,
         exception: Option<&JvmException>,
         stats: &mut SymbolicationStats,
     ) -> Vec<JvmFrame> {
@@ -326,15 +323,6 @@ impl ProguardService {
                 }
 
                 for mapped_frame in frames {
-                    // mark the frame as in_app after deobfuscation based on the release package name
-                    // only if it's not present
-                    if let Some(package) = release_package
-                        && mapped_frame.module.starts_with(package)
-                        && mapped_frame.in_app.is_none()
-                    {
-                        mapped_frame.in_app = Some(true);
-                    }
-
                     // Also count the frames as symbolicated at this point
                     *stats
                         .symbolicated_frames
@@ -566,15 +554,13 @@ mod tests {
 
     fn remap_stacktrace_caller_first(
         proguard_source: &[u8],
-        release_package: Option<&str>,
         frames: &mut [JvmFrame],
     ) -> Vec<JvmFrame> {
-        remap_stacktrace_caller_first_with_exception(proguard_source, release_package, None, frames)
+        remap_stacktrace_caller_first_with_exception(proguard_source, None, frames)
     }
 
     fn remap_stacktrace_caller_first_with_exception(
         proguard_source: &[u8],
-        release_package: Option<&str>,
         exception: Option<&JvmException>,
         frames: &mut [JvmFrame],
     ) -> Vec<JvmFrame> {
@@ -588,7 +574,6 @@ mod tests {
         let mut remapped_frames = ProguardService::map_stacktrace(
             &[&cache],
             frames,
-            release_package,
             exception,
             &mut SymbolicationStats::default(),
         );
@@ -724,7 +709,7 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
             },
         ];
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: onClick
@@ -772,85 +757,6 @@ io.sentry.sample.MainActivity -> io.sentry.sample.MainActivity:
         "###);
     }
 
-    // based on the Python test `test_sets_inapp_after_resolving`.
-    #[test]
-    fn sets_in_app_after_resolving() {
-        let proguard_source = b"org.slf4j.helpers.Util$ClassContextSecurityManager -> org.a.b.g$a:
-    65:65:void <init>() -> <init>
-    67:67:java.lang.Class[] getClassContext() -> a
-    69:69:java.lang.Class[] getExtraClassContext() -> a
-    68:68:java.lang.Class[] getContext() -> a
-    65:65:void <init>(org.slf4j.helpers.Util$1) -> <init>
-org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
-    65:65:void <init>() -> <init>
-";
-
-        let mut frames = [
-            JvmFrame {
-                function: "a".to_owned(),
-                module: "org.a.b.g$a".to_owned(),
-                lineno: Some(67),
-                ..Default::default()
-            },
-            JvmFrame {
-                function: "a".to_owned(),
-                module: "org.a.b.g$a".to_owned(),
-                lineno: Some(69),
-                in_app: Some(false),
-                ..Default::default()
-            },
-            JvmFrame {
-                function: "a".to_owned(),
-                module: "org.a.b.g$a".to_owned(),
-                lineno: Some(68),
-                in_app: Some(true),
-                ..Default::default()
-            },
-            JvmFrame {
-                function: "init".to_owned(),
-                module: "com.android.Zygote".to_owned(),
-                lineno: Some(62),
-                ..Default::default()
-            },
-            JvmFrame {
-                function: "a".to_owned(),
-                module: "org.a.b.g$b".to_owned(),
-                lineno: Some(70),
-                ..Default::default()
-            },
-        ];
-
-        let mapped_frames =
-            remap_stacktrace_caller_first(proguard_source, Some("org.slf4j"), &mut frames);
-
-        assert_eq!(mapped_frames[0].in_app, Some(true));
-        assert_eq!(mapped_frames[1].in_app, Some(false));
-        assert_eq!(mapped_frames[2].in_app, Some(true));
-
-        // According to the Python test, this should be `Some(false)`, but
-        // based just on the code in this file, this is not possible. We never set `in_app` to `false`,
-        // this must happen somewhere else in `sentry`.
-        // assert_eq!(mapped_frames[3].in_app, Some(false));
-        assert_eq!(mapped_frames[4].in_app, Some(true));
-    }
-
-    #[test]
-    fn doesnt_set_in_app_if_not_resolved() {
-        let frame = JvmFrame {
-            function: "main".into(),
-            module: "android.app.ActivityThread".into(),
-            lineno: Some(8918),
-            ..Default::default()
-        };
-
-        let remapped = remap_stacktrace_caller_first(b"", Some("android"), &mut [frame]);
-
-        assert_eq!(remapped.len(), 1);
-        // The frame didn't get mapped, so we shouldn't set `in_app` even though
-        // the condition is satisfied.
-        assert!(remapped[0].in_app.is_none());
-    }
-
     #[test]
     fn line_0_1() {
         let proguard_source = br#"com.example.App -> com.example.App:
@@ -884,7 +790,7 @@ org.slf4j.helpers.Util$ClassContext -> org.a.b.g$b:
             ..Default::default()
         };
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &mut [frame]);
         // The frame has neither a line number nor a signature, so no mapping entry can be
         // selected. Only the outermost entry is reported, matching `retrace`.
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
@@ -926,7 +832,7 @@ y.b -> y.b:
             ..Default::default()
         };
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut [frame]);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &mut [frame]);
 
         // The mapped frame `run$bridge` has `method_synthesized: true`, but the
         // original frame had no line number, so synthesized filtering is skipped
@@ -1049,7 +955,7 @@ io.wzieba.r8fullmoderenamessources.R -> a.d:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: foo
@@ -1151,7 +1057,7 @@ com.mycompany.android.Delegate -> b80.h:
         )
         .unwrap();
 
-        let mapped_frames = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
+        let mapped_frames = remap_stacktrace_caller_first(proguard_source, &mut frames);
 
         insta::assert_yaml_snapshot!(mapped_frames, @r###"
         - function: render
@@ -1219,7 +1125,7 @@ some.Class -> b:
             },
         ];
 
-        let remapped = remap_stacktrace_caller_first(proguard_source, None, &mut frames);
+        let remapped = remap_stacktrace_caller_first(proguard_source, &mut frames);
 
         insta::assert_yaml_snapshot!(remapped, @r###"
         - function: outlineCaller
@@ -1349,8 +1255,7 @@ some.Class -> b:
         )
         .unwrap();
 
-        let remapped_frames =
-            remap_stacktrace_caller_first(MAPPING_OUTLINE_COMPLEX, None, &mut frames);
+        let remapped_frames = remap_stacktrace_caller_first(MAPPING_OUTLINE_COMPLEX, &mut frames);
 
         insta::assert_yaml_snapshot!(
             remapped_frames,
@@ -1976,11 +1881,8 @@ some.Class -> b:
         )
         .unwrap();
 
-        let mut mapped_frames = remap_stacktrace_caller_first(
-            MAPPING_SYNTHESIZED_FRAMES,
-            Some("com.example"),
-            &mut frames,
-        );
+        let mut mapped_frames =
+            remap_stacktrace_caller_first(MAPPING_SYNTHESIZED_FRAMES, &mut frames);
 
         // Output in callee-first order (standard Java stacktrace convention)
         // to make it easier to compare with retrace / remap_stacktrace output.
@@ -1992,28 +1894,24 @@ some.Class -> b:
           module: com.example.card.googlepay.AddGooglePayUiKt
           abs_path: AddGooglePayUi.kt
           lineno: 29
-          in_app: true
           index: 0
         - function: Screen
           filename: CardDynamicFlowCustomStageRegistryEntry.kt
           module: com.example.card.CardDynamicFlowCustomStageRegistryEntry
           abs_path: CardDynamicFlowCustomStageRegistryEntry.kt
           lineno: 60
-          in_app: true
           index: 1
         - function: CustomStageScreen
           filename: DynamicFlowCustomStageRegistry.kt
           module: com.example.dynamicflow.RealDynamicFlowCustomStageRegistry
           abs_path: DynamicFlowCustomStageRegistry.kt
           lineno: 63
-          in_app: true
           index: 1
         - function: DynamicFlowScreen$lambda$1
           filename: DynamicFlowScreen.kt
           module: com.example.dynamicflow.ui.DynamicFlowScreenKt
           abs_path: DynamicFlowScreen.kt
           lineno: 73
-          in_app: true
           index: 1
         - function: invoke
           filename: ComposableLambda.kt
@@ -2032,7 +1930,6 @@ some.Class -> b:
           module: com.example.commonscreensui.coordinator.base.CoordinatorScreenKt
           abs_path: coordinatorScreen.kt
           lineno: 256
-          in_app: true
           index: 1
         - function: invoke
           filename: ComposableLambda.kt
@@ -2057,7 +1954,6 @@ some.Class -> b:
           module: com.example.commonscreensui.coordinator.base.CoordinatorScreenKt
           abs_path: coordinatorScreen.kt
           lineno: 238
-          in_app: true
           index: 1
         - function: invoke
           filename: ComposableLambda.kt

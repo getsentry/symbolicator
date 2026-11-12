@@ -41,7 +41,7 @@ reqwest = { git = "https://github.com/getsentry/reqwest", branch = "swatinem/upd
 cpp_demangle = { git = "https://github.com/getsentry/cpp_demangle", branch = "sentry-patches-0.5" }
 
 # This patch returns a parse error instead of panicking on `LF_VFTABLE` records with a malformed name list length (SYMBOLICATOR-65)
-pdb2 = { git = "https://github.com/getsentry/pdb2", branch = "master" }
+pdb2 = { git = "https://github.com/getsentry/pdb2", rev = "47b1880d8046f4bdb7c84f4b6c3a673fcf642601" }
 
 # All the swc-related crates to patch to get our memory bounding in.
 swc_ecma_visit = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce614a20c7cc9b5373b61355b70ffa1d" }
@@ -138,7 +138,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "412dc4d4581c52ada8f5712f55720fc31b0ad23e" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "d819c578af0091ad2b44752c2f4317a9fb66df93" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }
@@ -165,4 +165,4 @@ uuid = { version = "1.0.0", features = ["v4", "serde"] }
 walkdir = "2.3.1"
 wasmbin = { version = "0.8.1", features = ["exception-handling"] }
 zip = { version = "9.0.0", default-features = false, features = ["deflate"] }
-zstd = "0.13.0"
+zstd = "0.14.3"
