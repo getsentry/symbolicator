@@ -54,7 +54,7 @@ impl CandidateLocation {
 
 impl From<RemoteFileUri> for CandidateLocation {
     fn from(uri: RemoteFileUri) -> Self {
-        Self::new(&uri.as_str())
+        Self::new(uri.as_str())
     }
 }
 
