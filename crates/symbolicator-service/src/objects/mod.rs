@@ -307,7 +307,7 @@ fn create_candidates(sources: &[SourceConfig], lookups: &[FoundMeta]) -> AllObje
 /// Build the [`ObjectCandidate`] info for the provided meta lookup result.
 fn create_candidate_info(meta_lookup: &FoundMeta) -> ObjectCandidate {
     let source = meta_lookup.file_source.source_id().clone();
-    let location = CandidateLocation::from(meta_lookup.file_source.uri());
+    let location = CandidateLocation::new(meta_lookup.file_source.uri().as_str());
     let download = match &meta_lookup.handle {
         Ok(handle) => ObjectDownloadInfo::Ok {
             features: handle.features(),

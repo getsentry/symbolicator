@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use symbolicator_sources::{RemoteFileUri, SourceId};
+use symbolicator_sources::SourceId;
 
 /// The location of an [`ObjectCandidate`].
 ///
-/// This is derived from the [`RemoteFileUri`] but this truncates, by replacing
+/// This is derived from the [`RemoteFileUri`](symbolicator_sources::RemoteFileUri) but this truncates, by replacing
 /// the middle of locations longer than 512 bytes with `...`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -49,12 +49,6 @@ impl CandidateLocation {
             &location[tail_start..]
         );
         Self(truncated.into())
-    }
-}
-
-impl From<RemoteFileUri> for CandidateLocation {
-    fn from(uri: RemoteFileUri) -> Self {
-        Self::new(uri.as_str())
     }
 }
 
@@ -396,7 +390,7 @@ mod tests {
     #[test]
     fn test_candidate_location_short_is_unchanged() {
         let uri = "https://symbols.example.com/foo.pdb/ABC123/foo.pdb";
-        let location = CandidateLocation::from(RemoteFileUri::new(uri));
+        let location = CandidateLocation::new(uri);
         assert_eq!(location, CandidateLocation::new(uri));
     }
 

@@ -80,7 +80,7 @@ where
     };
 
     let source_id = meta.file_source.source_id();
-    let location = CandidateLocation::from(meta.file_source.uri());
+    let location = CandidateLocation::new(meta.file_source.uri().as_str());
     candidates.set_status(candidate_status, source_id, &location, object_info);
 
     DerivedCache {
