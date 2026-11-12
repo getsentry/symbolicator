@@ -3,70 +3,118 @@
 use std::num::NonZeroUsize;
 
 use serde_json::Value;
-use symbolic::symcache::{PointerType, PrimitiveType, PrimitiveTypeEncoding, Type, TypeSize};
+use symbolic::symcache::{
+    PointerType, PrimitiveType, PrimitiveTypeEncoding, SymCache, Type, TypeSize,
+};
 
-use crate::interface::VariableValue;
+use crate::interface::{PointerAddress, VariableValue};
 use crate::memory::MemoryAccess;
 use crate::symbolication::native::variables::AddrOrValue;
+
+/// The absolute depth limit for type traversal.
+const TYPE_FORMAT_DEPTH_LIMIT: usize = 10;
 
 /// Formats `value` according to `ty`.
 ///
 /// This is a shorthand for creating a [`TypeFormatter`] and calling [`TypeFormatter::format`].
 pub fn format(
+    cache: &SymCache<'_>,
     memory: &dyn MemoryAccess,
     value: AddrOrValue,
     ty: Type<'_>,
 ) -> Option<VariableValue> {
-    TypeFormatter { memory, value }.format(ty)
+    TypeFormatter {
+        cache,
+        memory,
+        remaining_depth: TYPE_FORMAT_DEPTH_LIMIT,
+    }
+    .format(value, ty)
 }
 
 /// Formats a value from memory or a register according to its type.
 struct TypeFormatter<'a> {
+    cache: &'a SymCache<'a>,
     memory: &'a dyn MemoryAccess,
-    value: AddrOrValue,
+    remaining_depth: usize,
 }
 
 impl TypeFormatter<'_> {
-    fn format(&self, ty: Type<'_>) -> Option<VariableValue> {
-        match ty {
-            Type::Pointer(ty) => self.format_pointer(ty),
-            Type::Primitive(ty) => self.format_primitive(ty),
+    fn format(&mut self, value: AddrOrValue, ty: Type<'_>) -> Option<VariableValue> {
+        self.remaining_depth = self.remaining_depth.checked_sub(1)?;
+
+        let result = match ty {
+            Type::Pointer(ty) => self.format_pointer(value, ty),
+            Type::Primitive(ty) => self.format_primitive(value, ty),
             _ => None,
-        }
+        };
+
+        self.remaining_depth += 1;
+        result
     }
 
-    fn format_pointer(&self, ty: PointerType) -> Option<VariableValue> {
-        let TypeSize::Bytes(size) = ty.size();
+    fn format_pointer(&mut self, value: AddrOrValue, ty: PointerType) -> Option<VariableValue> {
+        let addr = self.read_pointer(value, &ty)?;
 
-        match size {
-            // Pointers map to `pointer_address`. We assume only 32-bit and 64-bit pointer addresses
-            // exist. We can of course support more if needed.
-            4 => self
-                .value
-                .get_value::<u32>(self.memory)
-                .map(|v| VariableValue::new().pointer_address(v)),
-            8 => self
-                .value
-                .get_value::<u64>(self.memory)
-                .map(|v| VariableValue::new().pointer_address(v)),
-            _ => None,
+        // Currently multi-level pointers directly resolve to their final value, if de-referencing
+        // fails on the way the final value/pointee is just not set. We could be doing better here
+        // and serializing the entire chain. Either always or only if we can't resolve the final value.
+
+        let mut lookups = 0;
+        let mut pointee = ty.pointee();
+        let mut pointee_addr = dereferenceable(addr.into());
+        let (base_name, pointee) = loop {
+            lookups += 1;
+
+            let Some(pointee_id) = pointee else {
+                break ("void", None);
+            };
+
+            if lookups > self.remaining_depth {
+                break ("<unknown>", None);
+            }
+
+            match self.cache.lookup_type(pointee_id) {
+                Some(Type::Pointer(ptr)) => {
+                    pointee = ptr.pointee();
+                    pointee_addr = pointee_addr
+                        .and_then(|addr| self.read_pointer(AddrOrValue::Addr(addr), &ptr))
+                        .map(u64::from)
+                        .and_then(dereferenceable);
+                }
+                Some(ty) => break (type_name(&ty), Some(ty)),
+                None => break ("<unknown>", None),
+            }
+        };
+
+        let name = format!("{base_name}{:*<lookups$}", "");
+        let mut result = VariableValue::new(name).pointer_address(addr);
+
+        let pointee = pointee
+            .zip(pointee_addr)
+            .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty));
+        if let Some(pointee) = pointee {
+            result = result.pointee(pointee);
         }
+
+        Some(result)
     }
 
-    fn format_primitive(&self, ty: PrimitiveType<'_>) -> Option<VariableValue> {
+    fn format_primitive(&self, value: AddrOrValue, ty: PrimitiveType<'_>) -> Option<VariableValue> {
         use PrimitiveTypeEncoding::*;
+
+        let name = ty.name().unwrap_or("<unknown>");
 
         /// Helper to convert the memory at addr to the provided type, and map this to a VariableValue.
         macro_rules! get_value {
             // If we just get a type, map this to a formatted variable value.
             ($ty:ty) => {
-                get_value!($ty, |v| VariableValue::new().value(v))
+                get_value!($ty, |v| VariableValue::new(name).value(v))
             };
 
             // Also allow a custom mapping from value to VariableValue, as not everything will map
             // directly.
             ($ty:ty, $($mapping:tt)*) => {
-                self.value.get_value::<$ty>(self.memory).map($($mapping)*)
+                value.get_value::<$ty>(self.memory).map($($mapping)*)
             };
         }
 
@@ -76,8 +124,8 @@ impl TypeFormatter<'_> {
         macro_rules! map_bool_unsigned {
             ($encoding:ident) => {
                 |v| match $encoding {
-                    Boolean => VariableValue::new().value(v > 0),
-                    _ => VariableValue::new().value(v),
+                    Boolean => VariableValue::new(name).value(v > 0),
+                    _ => VariableValue::new(name).value(v),
                 }
             };
         }
@@ -85,7 +133,7 @@ impl TypeFormatter<'_> {
         /// Create a formatted [`VariableValue`] according to the specified formatting.
         macro_rules! format_variable {
             ($($tt:tt)*) => {
-                VariableValue::new().value(format!($($tt)*))
+                VariableValue::new(name).value(format!($($tt)*))
             };
         }
 
@@ -94,7 +142,7 @@ impl TypeFormatter<'_> {
         match (ty.encoding(), size) {
             // Not sure this is realistic, but size 0 probably should map to an empty value.
             // Returning `None` could also make sense.
-            (_, 0) => Some(VariableValue::new()),
+            (_, 0) => Some(VariableValue::new(name)),
 
             // Booleans and Unsigned ints.
             //
@@ -115,13 +163,13 @@ impl TypeFormatter<'_> {
             }
             (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 16) => {
                 get_value!(u128, |v| match encoding {
-                    Boolean => VariableValue::new().value(v > 0),
+                    Boolean => VariableValue::new(name).value(v > 0),
                     // Serializing u128 as a number is possible, but because other parts of Sentry may
                     // not handle it gracefully due to the fact that the `arbitrary_precision` serde
                     // feature is required, so we serialize u128's that cannot be represented as u64 as
                     // a string instead.
                     _ => match u64::try_from(v) {
-                        Ok(v_u64) => VariableValue::new().value(v_u64),
+                        Ok(v_u64) => VariableValue::new(name).value(v_u64),
                         Err(_) => format_variable!("{v}"),
                     },
                 })
@@ -138,7 +186,7 @@ impl TypeFormatter<'_> {
                 // feature is required, so we serialize i128's that cannot be represented as i64 as
                 // a string instead.
                 get_value!(i128, |v| match i64::try_from(v) {
-                    Ok(v_i64) => VariableValue::new().value(v_i64),
+                    Ok(v_i64) => VariableValue::new(name).value(v_i64),
                     Err(_) => format_variable!("{v}"),
                 })
             }
@@ -165,9 +213,45 @@ impl TypeFormatter<'_> {
             (_, size) => size
                 .try_into()
                 .ok()
-                .and_then(|size| self.value.get_memory(self.memory, size))
-                .map(|v| VariableValue::new().value(UnknownBytes::from(v))),
+                .and_then(|size| value.get_memory(self.memory, size))
+                .map(|v| VariableValue::new(name).value(UnknownBytes::from(v))),
         }
+    }
+
+    /// Reads the address stored in the pointer `ty` located at `value`.
+    fn read_pointer(&self, value: AddrOrValue, ty: &PointerType) -> Option<PointerAddress> {
+        let TypeSize::Bytes(size) = ty.size();
+
+        match size {
+            // Pointers map to `pointer_address`. We assume only 32-bit and 64-bit pointer addresses
+            // exist. We can of course support more if needed.
+            4 => value.get_value::<u32>(self.memory).map(Into::into),
+            8 => value.get_value::<u64>(self.memory).map(Into::into),
+            _ => None,
+        }
+    }
+}
+
+/// Returns `addr` if it can be dereferenced.
+fn dereferenceable(addr: u64) -> Option<u64> {
+    /// Size of the first page, which is never mapped.
+    const FIRST_PAGE: u64 = 0x1000;
+
+    // There are more architecture specific rules we can implement here, these are implemented in
+    // the minidump crate.
+
+    (addr >= FIRST_PAGE).then_some(addr)
+}
+
+/// Returns the name of a type.
+///
+/// This returns the name contained on the [`Type`] and does not recurse to construct a name.
+fn type_name<'data>(ty: &Type<'data>) -> &'data str {
+    match ty {
+        Type::Primitive(ty) => ty.name().unwrap_or("<unknown>"),
+        Type::TypeDef(ty) => ty.name(),
+        Type::StructureType(ty) => ty.name().unwrap_or("<anonymous>"),
+        _ => "<not implemented>",
     }
 }
 

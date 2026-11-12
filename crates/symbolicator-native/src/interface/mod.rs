@@ -19,12 +19,14 @@ use symbolicator_sources::SourceConfig;
 use thiserror::Error;
 use url::Url;
 
-pub(crate) use self::variables::Value as VariableValue;
-pub use self::variables::{Variable, VariableKind, Variables};
 use crate::memory::MemoryAccess;
+
+pub(crate) use self::variables::Value as VariableValue;
 pub use crate::metrics::StacktraceOrigin;
 
 mod variables;
+
+pub use self::variables::{PointerAddress, Variable, VariableKind, Variables};
 
 #[derive(Debug, Clone)]
 /// A request for symbolication of multiple stack traces.
