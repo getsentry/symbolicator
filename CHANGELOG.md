@@ -13,6 +13,7 @@
 
 - Trigger build for updated debian image. ([#2140](https://github.com/getsentry/symbolicator/pull/2140))
 - Use sentry swc repo. ([#2142](https://github.com/getsentry/symbolicator/pull/2142))
+- Truncate long debug file candidate locations. ([#2164](https://github.com/getsentry/symbolicator/pull/2164))
 
 ## 26.10.1
 
@@ -316,6 +317,7 @@
 ## 25.12.0
 
 ### Various fixes & improvements
+
 - The default of `max_download_timeout` is reduced to 5 minutes. (#1839) by @loewenheim
 - Histogram-like metrics are replaced with distributions. (#1840) by @loewenheim
 
@@ -330,15 +332,15 @@
   - The `https` feature on the crates `symbolicator` and `symbolicator-service`
   - The config options `bind_https`, `server_config.https.certificate_path`, and
     `server_config.https.key_path`
-  (#1838) by @loewenheim
+    (#1838) by @loewenheim
 
 ### Various fixes & improvements
 
-- Added config options `crash_file_body_max_bytes` and `symbolicate_body_max_bytes` controlling  the maximum body size for requests to crash file and general symbolication endpoints,
+- Added config options `crash_file_body_max_bytes` and `symbolicate_body_max_bytes` controlling the maximum body size for requests to crash file and general symbolication endpoints,
   respectively. The default values are:
   - `crash_file_body_max_bytes`: 250 MiB
   - `symbolicate_body_max_bytes`: 10 MiB
-  (#1827) by @loewenheim
+    (#1827) by @loewenheim
 - CAB files are now extracted in-process, removing the dependency on the external
   `cabextract` binary (#1834) by @loewenheim
 
@@ -384,6 +386,7 @@
   - [diff](https://github.com/getsentry/sentry-native/compare/0.9.1...0.10.1)
 
 ### Various fixes & improvements
+
 - Added support for + in SymSorter Bundle ID's. ([#1772](https://github.com/getsentry/symbolicator/pull/1772))
 
 ## 25.8.0
@@ -505,8 +508,8 @@
 
 - fix: rectify symsorter `--ignore-errors` handling for ZIP archives. ([#1621](https://github.com/getsentry/symbolicator/pull/1621))
 - feat: Added a setting `retry_missing_after_public` to downloaded and derived cache configs.
-      The effect of this setting is to control the time after which negative (missing, failed download, &c.)
-      cache entries from public sources. The default value is 24h. ([#1623](https://github.com/getsentry/symbolicator/pull/1623))
+  The effect of this setting is to control the time after which negative (missing, failed download, &c.)
+  cache entries from public sources. The default value is 24h. ([#1623](https://github.com/getsentry/symbolicator/pull/1623))
 
 ### Dependencies
 
@@ -760,6 +763,7 @@
 - JS source mapping URLs are now read without query strings or fragments. ([#1294](https://github.com/getsentry/symbolicator/pull/1294))
 
 ### Dependencies
+
 - Bump `symbolic` from 12.3.0 to 12.4.0. ([#1294](https://github.com/getsentry/symbolicator/pull/1294))
 
 ## 23.8.0

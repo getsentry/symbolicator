@@ -398,6 +398,11 @@ impl RemoteFileUri {
                 RemoteFileUri::new(format!("{scheme}://{host}/{path}"))
             })
     }
+
+    /// Returns the URI as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 impl<T> From<T> for RemoteFileUri

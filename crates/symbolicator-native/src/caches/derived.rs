@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use symbolicator_service::caching::{CacheContents, CacheError};
 use symbolicator_service::objects::{
-    AllObjectCandidates, CandidateStatus, FindResult, ObjectFeatures, ObjectMetaHandle,
-    ObjectUseInfo,
+    AllObjectCandidates, CandidateLocation, CandidateStatus, FindResult, ObjectFeatures,
+    ObjectMetaHandle, ObjectUseInfo,
 };
 
 /// This is the result of fetching a derived cache file.
@@ -80,8 +80,8 @@ where
     };
 
     let source_id = meta.file_source.source_id();
-    let uri = meta.file_source.uri();
-    candidates.set_status(candidate_status, source_id, &uri, object_info);
+    let location = CandidateLocation::new(meta.file_source.uri().as_str());
+    candidates.set_status(candidate_status, source_id, &location, object_info);
 
     DerivedCache {
         cache,

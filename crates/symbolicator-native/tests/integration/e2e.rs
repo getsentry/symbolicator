@@ -7,11 +7,11 @@ use symbolicator_native::interface::{
     AttachmentFile, FrameStatus, ProcessMinidump, SymbolicateStacktraces,
 };
 use symbolicator_service::caching::Metadata;
-use symbolicator_service::objects::ObjectDownloadInfo;
+use symbolicator_service::objects::{CandidateLocation, ObjectDownloadInfo};
 use symbolicator_service::types::{ObjectFileStatus, Scope};
 use symbolicator_sources::{
     CommonSourceConfig, DirectoryLayout, DirectoryLayoutType, FileType, FilesystemSourceConfig,
-    HttpSourceConfig, RemoteFileUri, SentrySourceConfig, SentryToken, SourceConfig, SourceId,
+    HttpSourceConfig, SentrySourceConfig, SentryToken, SourceConfig, SourceId,
 };
 use symbolicator_test::read_fixture;
 use tempfile::tempfile;
@@ -382,7 +382,7 @@ async fn test_redirects() {
         .url("/redirect/msdl/wkernel32.pdb/FF9F9F7841DB88F0CDEDA9E1E9BFF3B51/wkernel32.pdb");
     assert_eq!(
         candidate.location,
-        RemoteFileUri::from(expected_url.as_str())
+        CandidateLocation::new(expected_url.as_str())
     );
     assert!(matches!(candidate.download, ObjectDownloadInfo::Ok { .. }));
 }
