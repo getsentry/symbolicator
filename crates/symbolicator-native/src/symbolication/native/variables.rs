@@ -62,15 +62,21 @@ fn resolve_variable_value(
             .copied()
             .map(RegisterMemoryAccess::from_hex_value)
             .and_then(|reg_mem| format_value(&reg_mem, 0, ty)),
+        VariableLocation::RegisterOffset { register, offset } => {
+            let &HexValue(base) = registers.get(&register)?;
+            let addr = base.checked_add_signed(offset)?;
+
+            format_value(memory, addr, ty)
+        }
         VariableLocation::FrameOffset { offset } => {
-            let &HexValue(frame_base) = match cache.arch().cpu_family() {
+            let register = match cache.arch().cpu_family() {
                 CpuFamily::Amd64 => Some(Amd64Register::Rbp.into()),
                 CpuFamily::Arm64 => Some(Arm64Register::X29.into()),
                 _ => None,
-            }
-            .and_then(|reg| registers.get(&reg))?;
+            }?;
 
-            let addr = u64::try_from(i64::try_from(frame_base).ok()? + offset).ok()?;
+            let &HexValue(base) = registers.get(&register)?;
+            let addr = base.checked_add_signed(offset)?;
 
             format_value(memory, addr, ty)
         }
@@ -88,9 +94,8 @@ fn resolve_type_name(
         return;
     };
 
-    // This really is just temporary and not even necessary, the current depth limit in symbolic is 5.
-    // With more changes we'll have to solve this properly. As we're also going to have to resolve
-    // the variable contents, not just a type name.
+    // This really is just temporary but necessary as a Symcache can serialize cyclic/recursive types.
+    // With more changes we'll have to solve this properly.
     if depth > 10 {
         return;
     }
@@ -103,6 +108,8 @@ fn resolve_type_name(
             resolve_type_name(result, cache, ty, depth + 1);
             result.push('*');
         }
+        Type::TypeDef(typedef) => result.push_str(typedef.name()),
+        Type::StructureType(st) => result.push_str(st.name().unwrap_or("<anonymous>")),
         _ => result.push_str("<not implemented>"),
     }
 }
