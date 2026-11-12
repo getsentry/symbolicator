@@ -261,14 +261,14 @@ fn format_value(
 enum AddrOrValue {
     /// The value is stored at a specific address.
     Addr(u64),
-    /// A little endian static value.
-    Static([u8; 8]),
+    /// A little endian value.
+    Value([u8; 8]),
 }
 
 impl AddrOrValue {
     /// Creates a [`AddrOrValue`] from a register value.
     fn from_register(HexValue(reg): HexValue) -> Self {
-        Self::Static(reg.to_le_bytes())
+        Self::Value(reg.to_le_bytes())
     }
 
     /// Returns `size` bytes from the underlying memory.
@@ -277,7 +277,7 @@ impl AddrOrValue {
     fn get_memory<'a>(&'a self, memory: &'a dyn MemoryAccess, size: usize) -> Option<&'a [u8]> {
         match self {
             Self::Addr(addr) => memory.get_memory_at_address(*addr, size),
-            Self::Static(array) => array.get(..size),
+            Self::Value(array) => array.get(..size),
         }
     }
 
@@ -291,7 +291,7 @@ impl AddrOrValue {
     {
         match self {
             Self::Addr(addr) => memory.get_value_at_address(*addr),
-            Self::Static(array) => {
+            Self::Value(array) => {
                 ArrayMemoryAccess::new(*array, Endian::Little).get_value_at_address(0)
             }
         }
