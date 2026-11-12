@@ -1,4 +1,5 @@
-minVersion: "2.15.0"
+minVersion: "3.9.0"
+preReleaseCommand: bash scripts/bump-version.sh
 changelog:
   policy: auto
 targets:
