@@ -7,6 +7,9 @@ use filetime::FileTime;
 use symbolic::common::ByteView;
 use tempfile::NamedTempFile;
 
+use crate::caching::cache_error::{
+    CACHE_ERROR_STRINGS, MAX_ERROR_PAYLOAD_SIZE, expiration_strategy_from_file,
+};
 use crate::config::{CacheConfig, Config};
 use crate::types::Scope;
 use crate::utils::defer::MaxDeferCounter;
@@ -57,6 +60,9 @@ pub struct Cache {
     /// Limits the maximum number of concurrent lazy refreshes of this cache.
     lazy_refreshes: MaxDeferCounter,
 
+    /// The maximum file-size for a error cache entry.
+    max_error_file_len: u64,
+
     /// The capacity (in bytes) of the in-memory cache.
     pub(super) in_memory_capacity: u64,
 }
@@ -76,6 +82,13 @@ impl Cache {
             std::fs::create_dir_all(dir)?;
         }
 
+        let max_error_file_len = CACHE_ERROR_STRINGS
+            .iter()
+            .map(|b| b.len() as u64)
+            .max()
+            .unwrap_or_default()
+            + MAX_ERROR_PAYLOAD_SIZE as u64;
+
         Ok(Cache {
             name,
             cache_dir,
@@ -84,6 +97,8 @@ impl Cache {
             cache_config,
             lazy_refreshes,
             in_memory_capacity,
+
+            max_error_file_len,
         })
     }
 
@@ -104,14 +119,30 @@ impl Cache {
     /// If cache should not be used, `Err(io::ErrorKind::NotFound)` is returned.
     /// If cache is usable, `Ok(x)` is returned with the opened [`ByteView`], and
     /// an [`ExpirationTime`] that indicates whether the file should be touched before using.
-    pub(super) fn check_expiry(
-        &self,
-        path: &Path,
-    ) -> io::Result<(CacheEntry<ByteView<'static>>, ExpirationTime)> {
+    pub(super) fn get_expiration(&self, path: &Path) -> io::Result<ExpirationTime> {
         let fs_metadata = path.metadata()?;
         tracing::trace!("File `{}` length: {}", path.display(), fs_metadata.len());
 
-        // Open the metadata file if possible
+        let atime = fs_metadata.modified()?;
+
+        let file_len = fs_metadata.len();
+
+        // Fast path: If the file in question is larger than the largest possible cache error
+        // marker string and payload, then we know it cannot be an error marker.  This saves
+        // us from having to read the file.
+        if file_len > self.max_error_file_len {
+            return self.expiration_for_file(atime.elapsed().unwrap_or_default());
+        }
+
+        // Slower path: open the cache file itself; don't use mmap to avoid some big-ish
+        // read-aheads (128KB on an access.)
+        let expiration_strategy = expiration_strategy_from_file(path)?;
+
+        if let ExpirationStrategy::None = expiration_strategy {
+            return self.expiration_for_file(atime.elapsed().unwrap_or_default());
+        }
+
+        // Slow path: read the metadata file, parse the json.
         let external_metadata = match self.read_metadata(path) {
             Ok(external_metadata) => external_metadata,
             Err(e) => {
@@ -125,29 +156,23 @@ impl Cache {
             }
         };
 
-        let (atime, ctime) = {
-            // If the `ctime` from the external metadata is available, we use it. Otherwise
-            // we use `mtime` to keep track of both "cache last used" and "cache created" depending on
-            // whether the file is a negative cache item or not, because literally every other
-            // filesystem attribute is unreliable.
-            //
-            // * creation time does not exist pre-Linux 4.11
-            // * most filesystems are mounted with noatime
-            let mtime = fs_metadata.modified()?;
-            let ctime = external_metadata
-                .as_ref()
-                .map_or(mtime, |md| md.time_created);
-            (mtime, ctime)
-        };
-
-        // Open the cache file itself
-        let bv = ByteView::open(path)?;
-        let contents = cache_contents_from_bytes(bv);
+        // If the `ctime` from the external metadata is available, we use it. Otherwise
+        // we use `mtime` to keep track of both "cache last used" and "cache created" depending on
+        // whether the file is a negative cache item or not, because literally every other
+        // filesystem attribute is unreliable.
+        //
+        // * creation time does not exist pre-Linux 4.11
+        // * most filesystems are mounted with noatime
+        let ctime = external_metadata
+            .as_ref()
+            .map_or(atime, |md| md.time_created);
+        let ctime_elapsed = ctime.elapsed().unwrap_or_default();
 
         // A cache entry is considered "public" if it came from a request with global scope.
         let is_public = external_metadata
             .as_ref()
             .is_some_and(|md| md.scope == Scope::Global);
+
         // States a cache item can be in:
         // * negative/empty: An empty file. Represents a failed download. ctime is used to indicate
         //   when the failed download happened (when the file was created)
@@ -155,50 +180,7 @@ impl Cache {
         //   conversion. ctime indicates when we attempted to convert.
         // * ok (don't really have a name): File has any other content, mtime is used to keep track
         //   of last use.
-        let expiration_time = self.compute_expiration_time(&contents, atime, ctime, is_public)?;
-
-        Ok((
-            CacheEntry {
-                metadata: external_metadata,
-                contents,
-            },
-            expiration_time,
-        ))
-    }
-
-    /// Computes an [`ExpirationTime`] for a given [`CacheContents`]
-    /// which was last accessed at `atime` and originally written at `ctime`.
-    ///
-    /// The returned `ExpirationTime` determines when the cache contents should
-    /// be touched to keep them alive or recomputed entirely.
-    ///
-    /// Negative cache entries for "public" files have a different (typically longer)
-    /// lifetime than "private" (project-specific) ones. This is because public symbol
-    /// sources are expected to change much more slowly.
-    ///
-    /// If the file is expired, this returns [`io::ErrorKind::NotFound`].
-    fn compute_expiration_time<T>(
-        &self,
-        contents: &CacheContents<T>,
-        atime: SystemTime,
-        ctime: SystemTime,
-        is_public: bool,
-    ) -> io::Result<ExpirationTime> {
-        let atime_elapsed = atime.elapsed().unwrap_or_default();
-        let ctime_elapsed = ctime.elapsed().unwrap_or_default();
-
-        match expiration_strategy(contents) {
-            ExpirationStrategy::None => {
-                let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
-
-                if atime_elapsed > max_unused_for {
-                    return Err(io::ErrorKind::NotFound.into());
-                }
-
-                // we want to touch good caches once every `TOUCH_EVERY`
-                let touch_in = TOUCH_EVERY.saturating_sub(atime_elapsed);
-                Ok(ExpirationTime::TouchIn(touch_in))
-            }
+        match expiration_strategy {
             ExpirationStrategy::Negative => {
                 let retry_misses_after = if is_public {
                     self.cache_config
@@ -235,7 +217,20 @@ impl Cache {
 
                 Ok(ExpirationTime::RefreshIn(expires_in))
             }
+            ExpirationStrategy::None => unreachable!("checked above"),
         }
+    }
+
+    fn expiration_for_file(&self, atime_elapsed: Duration) -> Result<ExpirationTime, io::Error> {
+        let max_unused_for = self.cache_config.max_unused_for().unwrap_or(Duration::MAX);
+
+        if atime_elapsed > max_unused_for {
+            return Err(io::ErrorKind::NotFound.into());
+        }
+
+        // we want to touch good caches once every `TOUCH_EVERY`
+        let touch_in = TOUCH_EVERY.saturating_sub(atime_elapsed);
+        Ok(ExpirationTime::TouchIn(touch_in))
     }
 
     /// Validates `cachefile` against expiration config and open a [`ByteView`] on it.
@@ -252,7 +247,13 @@ impl Cache {
         // of those can indicate a cache miss as cache cleanup can run inbetween. Only when we have
         // an open ByteView we can be sure to have a cache hit.
         catch_not_found(|| {
-            let (cache_entry, mut expiration) = self.check_expiry(path)?;
+            let mut expiration = self.get_expiration(path)?;
+            let bv = ByteView::open(path)?;
+            let contents = cache_contents_from_bytes(bv);
+            let cache_entry = CacheEntry {
+                metadata: self.read_metadata(path)?,
+                contents,
+            };
 
             let should_touch = matches!(expiration, ExpirationTime::TouchIn(Duration::ZERO));
             if should_touch {

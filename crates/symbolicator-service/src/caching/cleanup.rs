@@ -227,7 +227,7 @@ impl Cache {
         let metadata_size =
             catch_not_found(|| metadata_path.metadata())?.map_or(0, |metadata| metadata.len());
 
-        if catch_not_found(|| self.check_expiry(path))?.is_none() {
+        if catch_not_found(|| self.get_expiration(path))?.is_none() {
             tracing::debug!("Removing file `{}`", path.display());
             if !dry_run {
                 catch_not_found(|| remove_file(path))?;

@@ -1,5 +1,6 @@
 use std::borrow::Cow;
-use std::io;
+use std::io::{self, Read};
+use std::path::Path;
 use std::time::Duration;
 
 use humantime_serde::re::humantime::{format_duration, parse_duration};
@@ -8,6 +9,8 @@ use symbolic::common::ByteView;
 use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+use crate::caching::ExpirationStrategy;
 
 /// An error that happens when fetching an object from a remote location.
 ///
@@ -71,12 +74,27 @@ impl From<serde_json::Error> for CacheError {
     }
 }
 
+pub(super) const CACHE_ERROR_STRINGS: [&[u8]; 5] = [
+    b"malformed",
+    b"permissiondenied",
+    b"timeout",
+    b"downloaderror",
+    b"unsupported",
+];
+
+pub(super) const MAX_ERROR_PAYLOAD_SIZE: usize = 256;
+
+fn bound_string(s: &str, idx: usize) -> &str {
+    let idx = s.floor_char_boundary(idx);
+    &s[..idx]
+}
+
 impl CacheError {
-    pub(super) const MALFORMED_MARKER: &'static [u8] = b"malformed";
-    pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = b"permissiondenied";
-    pub(super) const TIMEOUT_MARKER: &'static [u8] = b"timeout";
-    pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = b"downloaderror";
-    pub(super) const UNSUPPORTED_MARKER: &'static [u8] = b"unsupported";
+    pub(super) const MALFORMED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[0];
+    pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[1];
+    pub(super) const TIMEOUT_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[2];
+    pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[3];
+    pub(super) const UNSUPPORTED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[4];
 
     /// Writes error markers and details to a file.
     ///
@@ -97,24 +115,35 @@ impl CacheError {
             }
             CacheError::Malformed(details) => {
                 file.write_all(Self::MALFORMED_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
+
+                file.write_all(bound_string(details, MAX_ERROR_PAYLOAD_SIZE).as_bytes())
+                    .await?;
             }
             CacheError::PermissionDenied(details) => {
                 file.write_all(Self::PERMISSION_DENIED_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
+                file.write_all(bound_string(details, MAX_ERROR_PAYLOAD_SIZE).as_bytes())
+                    .await?;
             }
             CacheError::Timeout(duration) => {
                 file.write_all(Self::TIMEOUT_MARKER).await?;
-                file.write_all(format_duration(*duration).to_string().as_bytes())
-                    .await?;
+                file.write_all(
+                    bound_string(
+                        &format_duration(*duration).to_string(),
+                        MAX_ERROR_PAYLOAD_SIZE,
+                    )
+                    .as_bytes(),
+                )
+                .await?;
             }
             CacheError::DownloadError(details) => {
                 file.write_all(Self::DOWNLOAD_ERROR_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
+                file.write_all(bound_string(details, MAX_ERROR_PAYLOAD_SIZE).as_bytes())
+                    .await?;
             }
             CacheError::Unsupported(details) => {
                 file.write_all(Self::UNSUPPORTED_MARKER).await?;
-                file.write_all(details.as_bytes()).await?;
+                file.write_all(bound_string(details, MAX_ERROR_PAYLOAD_SIZE).as_bytes())
+                    .await?;
             }
             CacheError::InternalError => {
                 unreachable!("this was already handled above");
@@ -137,7 +166,7 @@ impl CacheError {
             let err_msg = utf8_message(raw_message);
             Some(Self::PermissionDenied(err_msg.into_owned()))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
-            let raw_duration = utf8_message(raw_duration);
+            let raw_duration: Cow<'_, str> = utf8_message(raw_duration);
             match parse_duration(&raw_duration) {
                 Ok(duration) => Some(Self::Timeout(duration)),
                 Err(e) => {
@@ -189,4 +218,46 @@ pub type CacheContents<T = ()> = Result<T, CacheError>;
 /// Parses a [`CacheContents`] from a [`ByteView`].
 pub fn cache_contents_from_bytes(bytes: ByteView<'static>) -> CacheContents<ByteView<'static>> {
     CacheError::from_bytes(&bytes).map(Err).unwrap_or(Ok(bytes))
+}
+
+const MAX_MARKER_LEN: usize = {
+    let mut max = 0;
+    let mut i = 0;
+    while i < CACHE_ERROR_STRINGS.len() {
+        if CACHE_ERROR_STRINGS[i].len() > max {
+            max = CACHE_ERROR_STRINGS[i].len();
+        }
+        i += 1;
+    }
+    max
+};
+
+/// Given a file, read enough bytes from it in order to tell what kind of expiration strategy
+/// applies to it.
+pub fn expiration_strategy_from_file<P: AsRef<Path>>(path: P) -> io::Result<ExpirationStrategy> {
+    let mut f = std::fs::File::open(path)?;
+    let mut buf = [0u8; MAX_MARKER_LEN];
+
+    let mut num_read = 0;
+    while num_read < buf.len() {
+        match f.read(&mut buf[num_read..]) {
+            Ok(0) => break,
+            Ok(n) => num_read += n,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    let prefix = &buf[..num_read];
+
+    let result = if prefix.is_empty() {
+        ExpirationStrategy::Negative
+    } else if prefix.starts_with(CacheError::MALFORMED_MARKER) {
+        ExpirationStrategy::Malformed
+    } else if CACHE_ERROR_STRINGS.iter().any(|m| prefix.starts_with(m)) {
+        ExpirationStrategy::Negative
+    } else {
+        ExpirationStrategy::None
+    };
+
+    Ok(result)
 }
