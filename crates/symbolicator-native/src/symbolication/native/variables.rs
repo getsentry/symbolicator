@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroUsize;
 
-use scroll::Endian;
 use serde_json::Value;
 use symbolic::common::CpuFamily;
 use symbolic::common::register::{Amd64Register, Arm64Register, Register};
@@ -14,7 +13,7 @@ use symbolic::symcache::{
 use symbolicator_service::utils::hex::HexValue;
 
 use crate::interface::{VariableValue, Variables};
-use crate::memory::{MemoryAccess, MemoryAccessExt as _};
+use crate::memory::{ArrayMemoryAccess, Endian, MemoryAccess, MemoryAccessExt};
 
 /// Perform variable extraction.
 ///
@@ -60,19 +59,25 @@ fn resolve_variable_value(
         VariableLocation::Register { register } => registers
             .get(&register)
             .copied()
-            .map(RegisterMemoryAccess::from_hex_value)
-            .and_then(|reg_mem| format_value(&reg_mem, 0, ty)),
+            .map(AddrOrValue::from_register)
+            .and_then(|v| format_value(memory, v, ty)),
+        VariableLocation::RegisterOffset { register, offset } => {
+            let &HexValue(base) = registers.get(&register)?;
+            let addr = base.checked_add_signed(offset)?;
+
+            format_value(memory, AddrOrValue::Addr(addr), ty)
+        }
         VariableLocation::FrameOffset { offset } => {
-            let &HexValue(frame_base) = match cache.arch().cpu_family() {
+            let register = match cache.arch().cpu_family() {
                 CpuFamily::Amd64 => Some(Amd64Register::Rbp.into()),
                 CpuFamily::Arm64 => Some(Arm64Register::X29.into()),
                 _ => None,
-            }
-            .and_then(|reg| registers.get(&reg))?;
+            }?;
 
-            let addr = u64::try_from(i64::try_from(frame_base).ok()? + offset).ok()?;
+            let &HexValue(base) = registers.get(&register)?;
+            let addr = base.checked_add_signed(offset)?;
 
-            format_value(memory, addr, ty)
+            format_value(memory, AddrOrValue::Addr(addr), ty)
         }
     }
 }
@@ -88,9 +93,8 @@ fn resolve_type_name(
         return;
     };
 
-    // This really is just temporary and not even necessary, the current depth limit in symbolic is 5.
-    // With more changes we'll have to solve this properly. As we're also going to have to resolve
-    // the variable contents, not just a type name.
+    // This really is just temporary but necessary as a Symcache can serialize cyclic/recursive types.
+    // With more changes we'll have to solve this properly.
     if depth > 10 {
         return;
     }
@@ -103,11 +107,17 @@ fn resolve_type_name(
             resolve_type_name(result, cache, ty, depth + 1);
             result.push('*');
         }
+        Type::TypeDef(typedef) => result.push_str(typedef.name()),
+        Type::StructureType(st) => result.push_str(st.name().unwrap_or("<anonymous>")),
         _ => result.push_str("<not implemented>"),
     }
 }
 
-fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<VariableValue> {
+fn format_value(
+    memory: &dyn MemoryAccess,
+    value: AddrOrValue,
+    ty: Type<'_>,
+) -> Option<VariableValue> {
     use PrimitiveTypeEncoding::*;
     use TypeEncoding::*;
 
@@ -129,7 +139,7 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         // Also allow a custom mapping from value to VariableValue, as not everything will map
         // directly.
         ($ty:ty, $($mapping:tt)*) => {
-            memory.get_value_at_address::<$ty>(addr).map($($mapping)*)
+            value.get_value::<$ty>(memory).map($($mapping)*)
         };
     }
 
@@ -243,33 +253,50 @@ fn format_value(memory: &dyn MemoryAccess, addr: u64, ty: Type<'_>) -> Option<Va
         (_, size) => size
             .try_into()
             .ok()
-            .and_then(|size| memory.get_memory_at_address(addr, size))
+            .and_then(|size| value.get_memory(memory, size))
             .map(|v| VariableValue::new().value(UnknownBytes::from(v))),
     }
 }
 
+/// An address into the crash's memory or a static value, in for example a register.
 #[derive(Debug)]
-struct RegisterMemoryAccess<const N: usize> {
-    memory: [u8; N],
+enum AddrOrValue {
+    /// The value is stored at a specific address.
+    Addr(u64),
+    /// A little endian value.
+    Value([u8; 8]),
 }
 
-impl RegisterMemoryAccess<8> {
-    fn from_hex_value(value: HexValue) -> Self {
-        let memory = value.0.to_le_bytes();
-        Self { memory }
-    }
-}
-
-impl<const N: usize> MemoryAccess for RegisterMemoryAccess<N> {
-    fn get_memory_at_address(&self, addr: u64, size: usize) -> Option<&'_ [u8]> {
-        let start: usize = addr.try_into().ok()?;
-        let end = start.checked_add(size)?;
-
-        self.memory.get(start..end)
+impl AddrOrValue {
+    /// Creates a [`AddrOrValue`] from a register value.
+    fn from_register(HexValue(reg): HexValue) -> Self {
+        Self::Value(reg.to_le_bytes())
     }
 
-    fn endian(&self) -> Endian {
-        Endian::Little
+    /// Returns `size` bytes from the underlying memory.
+    ///
+    /// See also: [`MemoryAccess::get_memory_at_address`].
+    fn get_memory<'a>(&'a self, memory: &'a dyn MemoryAccess, size: usize) -> Option<&'a [u8]> {
+        match self {
+            Self::Addr(addr) => memory.get_memory_at_address(*addr, size),
+            Self::Value(array) => array.get(..size),
+        }
+    }
+
+    /// Attempts to parse `T` from the underlying memory.
+    ///
+    /// See also: [`MemoryAccessExt::get_value_at_address`].
+    fn get_value<T>(&self, memory: &dyn MemoryAccess) -> Option<T>
+    where
+        T: scroll::ctx::SizeWith<Endian>,
+        for<'a> T: scroll::ctx::TryFromCtx<'a, Endian>,
+    {
+        match self {
+            Self::Addr(addr) => memory.get_value_at_address(*addr),
+            Self::Value(array) => {
+                ArrayMemoryAccess::new(*array, Endian::Little).get_value_at_address(0)
+            }
+        }
     }
 }
 
