@@ -65,7 +65,7 @@ pub struct Value {
     #[serde(skip_serializing_if = "Option::is_none")]
     pointer_address: Option<PointerAddress>,
 
-    /// The value
+    /// The value after the pointer has been dereferenced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pointee: Option<Box<Value>>,
 }
