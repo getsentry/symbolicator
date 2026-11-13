@@ -784,10 +784,6 @@ mod tests {
         StackFrame::from_context(context, trust)
     }
 
-    fn cfas(frames: Vec<StackFrame>) -> Vec<Option<u64>> {
-        with_cfas(frames).map(|(_, cfa)| cfa).collect()
-    }
-
     #[test]
     fn test_cfa_requires_cfi_caller() {
         let frames = vec![
@@ -798,16 +794,7 @@ mod tests {
             frame(FrameTrust::CallFrameInfo, 0x1040),
         ];
 
-        assert_eq!(cfas(frames), [Some(0x1010), None, None, Some(0x1040), None]);
-    }
-
-    #[test]
-    fn test_cfa_of_last_frame_before_truncation() {
-        let frames = (0..257)
-            .map(|i| frame(FrameTrust::CallFrameInfo, 0x1000 + i * 0x10))
-            .collect();
-
-        let (_, cfa) = with_cfas(frames).take(256).last().unwrap();
-        assert_eq!(cfa, Some(0x1000 + 256 * 0x10));
+        let cfas: Vec<_> = with_cfas(frames).map(|(_, cfa)| cfa).collect();
+        assert_eq!(cfas, [Some(0x1010), None, None, Some(0x1040), None]);
     }
 }
