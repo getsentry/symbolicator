@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 
 use serde_json::Value;
 use symbolic::symcache::{
-    PointerType, PrimitiveType, PrimitiveTypeEncoding, SymCache, Type, TypeSize,
+    PointerType, PrimitiveType, PrimitiveTypeEncoding, SymCache, Type, TypeDefType, TypeSize,
 };
 
 use crate::interface::{PointerAddress, VariableValue};
@@ -45,6 +45,7 @@ impl TypeFormatter<'_> {
         let result = match ty {
             Type::Pointer(ty) => self.format_pointer(value, ty),
             Type::Primitive(ty) => self.format_primitive(value, ty),
+            Type::TypeDef(ty) => self.format_typedef(value, ty),
             _ => None,
         };
 
@@ -216,6 +217,15 @@ impl TypeFormatter<'_> {
                 .and_then(|size| value.get_memory(self.memory, size))
                 .map(|v| VariableValue::new(name).value(UnknownBytes::from(v))),
         }
+    }
+
+    fn format_typedef(&mut self, value: AddrOrValue, ty: TypeDefType<'_>) -> Option<VariableValue> {
+        let name = ty.name();
+        let Some(target) = ty.ty().and_then(|ty| self.cache.lookup_type(ty)) else {
+            return Some(VariableValue::new(name));
+        };
+
+        self.format(value, target).map(|value| value.ty(name))
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.

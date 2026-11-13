@@ -82,6 +82,15 @@ impl Value {
         }
     }
 
+    /// Sets the type name of this [`Value`].
+    pub fn ty<T>(mut self, name: T) -> Self
+    where
+        T: Into<String>,
+    {
+        self.ty = name.into();
+        self
+    }
+
     /// Provide a fully-formatted, source-specific representation of the [`Value`].
     ///
     /// This should typically be used for primitive types like integers, booleans, and chars.
