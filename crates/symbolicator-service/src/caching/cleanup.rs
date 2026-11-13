@@ -8,6 +8,8 @@ use anyhow::{Result, anyhow};
 use rand::seq::SliceRandom;
 use rayon::prelude::*;
 
+use crate::caching::ExpirationStrategy;
+use crate::caching::cache_error::expiration_strategy_from_file;
 use crate::caching::fs::{METADATA_EXTENSION, metadata_path};
 use crate::config::Config;
 
@@ -217,17 +219,54 @@ impl Cache {
     /// If `dry_run` is `true`, the file will not actually be deleted.
     fn try_cleanup_path(&self, path: &Path, dry_run: bool) -> Result<bool> {
         tracing::trace!("Checking file `{}`", path.display());
-        let Some(metadata) = catch_not_found(|| path.metadata())? else {
+        let Some(fs_metadata) = catch_not_found(|| path.metadata())? else {
             return Ok(true);
         };
-        anyhow::ensure!(metadata.is_file(), "not a file");
-        let size = metadata.len();
+        anyhow::ensure!(fs_metadata.is_file(), "not a file");
+        let size = fs_metadata.len();
+
+        let mut mtime = fs_metadata.modified()?;
 
         let metadata_path = metadata_path(path);
         let metadata_size =
             catch_not_found(|| metadata_path.metadata())?.map_or(0, |metadata| metadata.len());
 
-        if catch_not_found(|| self.get_expiration(path))?.is_none() {
+        tracing::trace!("File `{}` length: {}", path.display(), size);
+
+        let (strategy, cache_metadata) = {
+            if size > self.max_error_file_len {
+                // Fast path: If the file in question is larger than the largest possible cache error
+                // marker string and payload, then we know it cannot be an error marker.  This saves
+                // us from having to read the file.
+                (ExpirationStrategy::None, None)
+            } else {
+                // Slower path: open the cache file itself; don't use mmap, since we're
+                // only reading a few bytes.
+
+                // Explicitly open the file here, to ensure the metadata/mtime we read belongs
+                // to the exact same file we've opened, instead of what we stat'd above.
+                let Some(strategy) = catch_not_found(|| {
+                    let mut f = std::fs::File::open(path)?;
+                    mtime = f.metadata()?.modified()?;
+                    expiration_strategy_from_file(&mut f)
+                })?
+                else {
+                    // The file just disappeared, so skip it.
+                    return Ok(true);
+                };
+
+                if let ExpirationStrategy::None = strategy {
+                    (strategy, None)
+                } else {
+                    // Slowest path: we have a cache error file, so read its JSON metadata.
+                    (strategy, self.read_and_prune_metadata(path))
+                }
+            }
+        };
+
+        let expiration = self.compute_expiration(strategy, mtime, cache_metadata.as_ref());
+
+        if expiration.is_err() {
             tracing::debug!("Removing file `{}`", path.display());
             if !dry_run {
                 catch_not_found(|| remove_file(path))?;

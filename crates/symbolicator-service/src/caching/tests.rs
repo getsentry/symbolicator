@@ -565,6 +565,117 @@ fn test_open_cachefile() -> Result<()> {
     Ok(())
 }
 
+/// Creates an `objects` cache with explicit retention windows, so the tests below don't
+/// depend on the defaults.
+fn open_cachefile_test_cache(dir: &Path) -> Result<Cache> {
+    let config = Config {
+        cache_dir: Some(dir.to_path_buf()),
+        ..Default::default()
+    };
+    Ok(Cache::from_config(
+        CacheName::Objects,
+        &config,
+        CacheConfig::Downloaded(DownloadedCacheConfig {
+            max_unused_for: Some(Duration::from_secs(3600 * 24)),
+            retry_misses_after: Some(Duration::from_secs(3600 * 2)),
+            retry_misses_after_public: Some(Duration::from_secs(3600 * 2)),
+            retry_malformed_after: Some(Duration::from_secs(3600 * 24)),
+            ..Default::default()
+        }),
+        Default::default(),
+        1024,
+    )?)
+}
+
+/// Writes `contents` to `path` (without a metadata sidecar, so ctime falls back to mtime)
+/// and backdates its mtime by `age`.
+fn write_backdated(path: &Path, contents: &[u8], age: Duration) -> Result<SystemTime> {
+    fs::create_dir_all(path.parent().unwrap())?;
+    File::create(path)?.write_all(contents)?;
+    let mtime = SystemTime::now() - age;
+    filetime::set_file_mtime(path, FileTime::from_system_time(mtime))?;
+    Ok(fs::metadata(path)?.modified()?)
+}
+
+#[test]
+fn test_open_cachefile_expired() -> Result<()> {
+    let tempdir = tempdir()?;
+    let cache = open_cachefile_test_cache(tempdir.path())?;
+
+    let cases: [(&str, &[u8], Duration); 4] = [
+        // `NotFound`, older than `retry_misses_after`.
+        ("notfound", b"", Duration::from_secs(3600 * 2 + 15)),
+        // Other negative error, older than `retry_misses_after`.
+        (
+            "downloaderror",
+            b"downloaderrorboom",
+            Duration::from_secs(3600 * 2 + 15),
+        ),
+        // `Malformed`, older than `retry_malformed_after`.
+        (
+            "malformed",
+            b"malformedbroken",
+            Duration::from_secs(3600 * 24 + 15),
+        ),
+        // A valid entry, unused for longer than `max_unused_for`.
+        ("ok", b"world", Duration::from_secs(3600 * 24 + 15)),
+    ];
+
+    for (name, contents, age) in cases {
+        let path = tempdir.path().join("objects").join(name);
+        write_backdated(&path, contents, age)?;
+
+        let entry = cache.open_cachefile(&path)?;
+        assert!(entry.is_none(), "expired `{name}` entry was returned");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn test_open_cachefile_does_not_touch_errors() -> Result<()> {
+    // Error entries expire based on when they were created, so opening them must never bump
+    // their mtime, even when it's older than `TOUCH_EVERY` (which would be touched for an
+    // `Ok` entry). Otherwise a frequently requested error would never be retried.
+    let tempdir = tempdir()?;
+    let cache = open_cachefile_test_cache(tempdir.path())?;
+
+    // Older than `TOUCH_EVERY` (1h), but within `retry_misses_after` (2h).
+    let age = Duration::from_secs(3600 + 15);
+    let cases: [(&str, &[u8]); 3] = [
+        ("notfound", b""),
+        ("downloaderror", b"downloaderrorboom"),
+        // Larger than the error size bound, so it would be misclassified as `Ok` by a
+        // size-only check.
+        (
+            "oversized",
+            &[b"downloaderror".as_slice(), &[b'x'; 1024]].concat(),
+        ),
+    ];
+
+    for (name, contents) in cases {
+        let path = tempdir.path().join("objects").join(name);
+        let old_mtime = write_backdated(&path, contents, age)?;
+
+        let (entry, expiration) = cache
+            .open_cachefile(&path)?
+            .unwrap_or_else(|| panic!("fresh `{name}` entry was not returned"));
+        assert!(
+            entry.contents().is_err(),
+            "`{name}` was not read as an error"
+        );
+        assert!(
+            matches!(expiration, ExpirationTime::RefreshIn(_)),
+            "`{name}` got {expiration:?}"
+        );
+
+        let new_mtime = fs::metadata(&path)?.modified()?;
+        assert_eq!(old_mtime, new_mtime, "`{name}` was touched");
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_cleanup() {
     test::setup();
@@ -1325,7 +1436,7 @@ async fn test_expiration_strategy_from_file_matches_from_bytes() -> Result<()> {
             "{error:?} persisted as {len} bytes, exceeding the bound of {max_error_file_len}"
         );
 
-        let fast = expiration_strategy_from_file(&path)?;
+        let fast = expiration_strategy_from_file(&mut File::open(&path)?)?;
         let slow = expiration_strategy(&path)?;
         assert_eq!(fast, slow, "strategy mismatch for {error:?}");
         assert_ne!(fast, ExpirationStrategy::None, "{error:?} classified as Ok");
@@ -1340,7 +1451,7 @@ async fn test_expiration_strategy_from_file_matches_from_bytes() -> Result<()> {
         let path = dir.path().join(format!("ok{i}"));
         fs::write(&path, contents)?;
 
-        let fast = expiration_strategy_from_file(&path)?;
+        let fast = expiration_strategy_from_file(&mut File::open(&path)?)?;
         let slow = expiration_strategy(&path)?;
         assert_eq!(fast, slow, "strategy mismatch for {contents:?}");
         assert_eq!(fast, ExpirationStrategy::None, "{contents:?} misclassified");

@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::io::{self, Read};
-use std::path::Path;
 use std::time::Duration;
 
 use humantime_serde::re::humantime::{format_duration, parse_duration};
@@ -166,7 +165,7 @@ impl CacheError {
             let err_msg = utf8_message(raw_message);
             Some(Self::PermissionDenied(err_msg.into_owned()))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
-            let raw_duration: Cow<'_, str> = utf8_message(raw_duration);
+            let raw_duration = utf8_message(raw_duration);
             match parse_duration(&raw_duration) {
                 Ok(duration) => Some(Self::Timeout(duration)),
                 Err(e) => {
@@ -234,8 +233,7 @@ const MAX_MARKER_LEN: usize = {
 
 /// Given a file, read enough bytes from it in order to tell what kind of expiration strategy
 /// applies to it.
-pub fn expiration_strategy_from_file<P: AsRef<Path>>(path: P) -> io::Result<ExpirationStrategy> {
-    let mut f = std::fs::File::open(path)?;
+pub fn expiration_strategy_from_file(f: &mut std::fs::File) -> io::Result<ExpirationStrategy> {
     let mut buf = [0u8; MAX_MARKER_LEN];
 
     let mut num_read = 0;
