@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::iter;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -11,7 +12,8 @@ use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::ProcessState;
 use minidump_unwind::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, StackFrame, SymbolProvider,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameTrust, FrameWalker, StackFrame,
+    SymbolProvider,
 };
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
@@ -714,11 +716,11 @@ fn merge_clientside_with_processed_stacktraces(
 /// so the CFA is `None`. The outermost frame has no caller, and thus no CFA.
 fn with_cfas(frames: Vec<StackFrame>) -> impl Iterator<Item = (StackFrame, Option<u64>)> {
     let mut frames = frames.into_iter().peekable();
-    std::iter::from_fn(move || {
+    iter::from_fn(move || {
         let frame = frames.next()?;
         let cfa = frames
             .peek()
-            .filter(|caller| caller.trust == minidump_unwind::FrameTrust::CallFrameInfo)
+            .filter(|caller| caller.trust == FrameTrust::CallFrameInfo)
             .map(|caller| caller.context.get_stack_pointer());
         Some((frame, cfa))
     })
@@ -771,7 +773,6 @@ fn typed_register(cpu_family: CpuFamily, name: &str) -> Option<Register> {
 mod tests {
     use minidump::MinidumpRawContext;
     use minidump::format::CONTEXT_AMD64;
-    use minidump_unwind::FrameTrust;
 
     use super::*;
 
