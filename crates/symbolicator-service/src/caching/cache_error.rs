@@ -162,10 +162,12 @@ impl CacheError {
     /// * Otherwise `None` is returned.
     fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if let Some(raw_message) = bytes.strip_prefix(Self::PERMISSION_DENIED_MARKER) {
-            let err_msg = utf8_message(raw_message);
+            let max_len = raw_message.len().min(MAX_ERROR_PAYLOAD_SIZE);
+            let err_msg = utf8_message(&raw_message[..max_len]);
             Some(Self::PermissionDenied(err_msg.into_owned()))
         } else if let Some(raw_duration) = bytes.strip_prefix(Self::TIMEOUT_MARKER) {
-            let raw_duration = utf8_message(raw_duration);
+            let max_len = raw_duration.len().min(MAX_ERROR_PAYLOAD_SIZE);
+            let raw_duration = utf8_message(&raw_duration[..max_len]);
             match parse_duration(&raw_duration) {
                 Ok(duration) => Some(Self::Timeout(duration)),
                 Err(e) => {
@@ -174,13 +176,16 @@ impl CacheError {
                 }
             }
         } else if let Some(raw_message) = bytes.strip_prefix(Self::DOWNLOAD_ERROR_MARKER) {
-            let err_msg = utf8_message(raw_message);
+            let max_len = raw_message.len().min(MAX_ERROR_PAYLOAD_SIZE);
+            let err_msg = utf8_message(&raw_message[..max_len]);
             Some(Self::DownloadError(err_msg.into_owned()))
         } else if let Some(raw_message) = bytes.strip_prefix(Self::MALFORMED_MARKER) {
-            let err_msg = utf8_message(raw_message);
+            let max_len = raw_message.len().min(MAX_ERROR_PAYLOAD_SIZE);
+            let err_msg = utf8_message(&raw_message[..max_len]);
             Some(Self::Malformed(err_msg.into_owned()))
         } else if let Some(raw_message) = bytes.strip_prefix(Self::UNSUPPORTED_MARKER) {
-            let err_msg = utf8_message(raw_message);
+            let max_len = raw_message.len().min(MAX_ERROR_PAYLOAD_SIZE);
+            let err_msg = utf8_message(&raw_message[..max_len]);
             Some(Self::Unsupported(err_msg.into_owned()))
         } else if bytes.is_empty() {
             Some(Self::NotFound)
