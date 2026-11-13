@@ -295,6 +295,7 @@ fn to_raw_frame(value: Frame) -> Option<RawFrame> {
         vars: Default::default(),
         trust: value.trust,
         registers: Default::default(),
+        cfa: None,
         file_revision: None,
     })
 }

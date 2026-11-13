@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::iter;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -11,7 +12,8 @@ use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
 use minidump_processor::ProcessState;
 use minidump_unwind::{
-    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameWalker, SymbolProvider,
+    FileError, FileKind, FillSymbolError, FrameSymbolizer, FrameTrust, FrameWalker, StackFrame,
+    SymbolProvider,
 };
 use sentry::types::DebugId;
 use sentry::{Hub, SentryFutureExt};
@@ -483,11 +485,9 @@ async fn stackwalk(
 
         // We trim stack traces to 256 frames from the top. A similar limit is also in place in
         // relay / store normalization, so any excess frames will be thrown away by Sentry anyway.
-        let frames = thread
-            .frames
-            .into_iter()
+        let frames = with_cfas(thread.frames)
             .take(256)
-            .map(|frame| {
+            .map(|(frame, cfa)| {
                 let package = frame
                     .module
                     .and_then(|module| non_empty_file_name(&module.code_file()));
@@ -503,6 +503,7 @@ async fn stackwalk(
                             Some((typed_register(cpu_family, name)?, HexValue(value)))
                         })
                         .collect(),
+                    cfa,
                     ..RawFrame::default()
                 }
             })
@@ -707,6 +708,24 @@ fn merge_clientside_with_processed_stacktraces(
     }
 }
 
+/// Pairs each frame with its Canonical Frame Address (CFA).
+///
+/// The CFA of a frame is the caller's stack pointer at the call site. When the caller was unwound
+/// using CFI, rust-minidump sets the caller's stack pointer to the evaluated CFA, so we can read
+/// it from the caller's context. For other trust levels, the caller's stack pointer is a guess,
+/// so the CFA is `None`. The outermost frame has no caller, and thus no CFA.
+fn with_cfas(frames: Vec<StackFrame>) -> impl Iterator<Item = (StackFrame, Option<u64>)> {
+    let mut frames = frames.into_iter().peekable();
+    iter::from_fn(move || {
+        let frame = frames.next()?;
+        let cfa = frames
+            .peek()
+            .filter(|caller| caller.trust == FrameTrust::CallFrameInfo)
+            .map(|caller| caller.context.get_stack_pointer());
+        Some((frame, cfa))
+    })
+}
+
 fn map_symbolic_registers(context: &MinidumpContext) -> BTreeMap<String, HexValue> {
     context
         .valid_registers()
@@ -748,4 +767,34 @@ fn typed_register(cpu_family: CpuFamily, name: &str) -> Option<Register> {
     }
 
     register
+}
+
+#[cfg(test)]
+mod tests {
+    use minidump::MinidumpRawContext;
+    use minidump::format::CONTEXT_AMD64;
+
+    use super::*;
+
+    fn frame(trust: FrameTrust, rsp: u64) -> StackFrame {
+        let context = MinidumpContext::from_raw(MinidumpRawContext::Amd64(CONTEXT_AMD64 {
+            rsp,
+            ..Default::default()
+        }));
+        StackFrame::from_context(context, trust)
+    }
+
+    #[test]
+    fn test_cfa_requires_cfi_caller() {
+        let frames = vec![
+            frame(FrameTrust::Context, 0x1000),
+            frame(FrameTrust::CallFrameInfo, 0x1010),
+            frame(FrameTrust::FramePointer, 0x1020),
+            frame(FrameTrust::Scan, 0x1030),
+            frame(FrameTrust::CallFrameInfo, 0x1040),
+        ];
+
+        let cfas: Vec<_> = with_cfas(frames).map(|(_, cfa)| cfa).collect();
+        assert_eq!(cfas, [Some(0x1010), None, None, Some(0x1040), None]);
+    }
 }
