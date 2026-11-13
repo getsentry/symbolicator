@@ -143,18 +143,7 @@ impl Cache {
         }
 
         // Slow path: read the metadata file, parse the json.
-        let external_metadata = match self.read_metadata(path) {
-            Ok(external_metadata) => external_metadata,
-            Err(e) => {
-                tracing::error!(
-                    path = %path.display(),
-                    error = &e as &dyn std::error::Error,
-                    "Failed to parse cache metadata file",
-                );
-                let _ = std::fs::remove_file(metadata_path(path));
-                None
-            }
-        };
+        let external_metadata = self.read_and_prune_metadata(path);
 
         // If the `ctime` from the external metadata is available, we use it. Otherwise
         // we use `mtime` to keep track of both "cache last used" and "cache created" depending on
@@ -251,7 +240,7 @@ impl Cache {
             let bv = ByteView::open(path)?;
             let contents = cache_contents_from_bytes(bv);
             let cache_entry = CacheEntry {
-                metadata: self.read_metadata(path)?,
+                metadata: self.read_and_prune_metadata(path),
                 contents,
             };
 
@@ -269,16 +258,30 @@ impl Cache {
 
     /// Reads [`Metadata`] for the cache entry in `path` from the file at `path.metadata`.
     ///
-    /// If the metadata file doesn't exist, this returns `Ok(None)`.
-    pub fn read_metadata(&self, path: &Path) -> io::Result<Option<Metadata>> {
+    /// If the metadata file is corrupt, it is removed, and None is returned.
+    /// If the metadata file doesn't exist, None is returned.
+    pub fn read_and_prune_metadata(&self, path: &Path) -> Option<Metadata> {
         let md_path = metadata_path(path);
 
-        catch_not_found(|| {
+        let result = catch_not_found(|| {
             let file = File::open(&md_path)?;
             let reader = BufReader::new(file);
             serde_json::from_reader(reader)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
-        })
+        });
+
+        match result {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!(
+                    path = %path.display(),
+                    error = &e as &dyn std::error::Error,
+                    "Failed to parse cache metadata file",
+                );
+                let _ = std::fs::remove_file(metadata_path(path));
+                None
+            }
+        }
     }
 
     /// Create a new temporary file to use in the cache.
