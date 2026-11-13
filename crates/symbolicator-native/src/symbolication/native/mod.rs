@@ -66,7 +66,13 @@ pub fn symbolicate_native_frame(
         };
 
         let vars = memory.map_or_default(|memory| {
-            variables::do_extract(&source_location, symcache, &frame.registers, memory)
+            variables::do_extract(
+                &source_location,
+                symcache,
+                &frame.registers,
+                frame.cfa,
+                memory,
+            )
         });
 
         rv.push(SymbolicatedFrame {

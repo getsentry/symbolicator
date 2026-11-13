@@ -2,8 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use symbolic::common::CpuFamily;
-use symbolic::common::register::{Amd64Register, Arm64Register, Register};
+use symbolic::common::register::Register;
 use symbolic::symcache::{SourceLocation, SymCache, Type, VariableLocation, VariableLocationInfo};
 use symbolicator_service::utils::hex::HexValue;
 
@@ -16,10 +15,14 @@ mod formatting;
 ///
 /// This function extracts all the variables we can based on the information provided.
 /// Variables whose value cannot be determined are still included, without a value.
+///
+/// `cfa` is the Canonical Frame Address of the frame. Variables located relative to the CFA have
+/// no value when it is `None`.
 pub fn do_extract<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
     registers: &BTreeMap<Register, HexValue>,
+    cfa: Option<u64>,
     memory: &dyn MemoryAccess,
 ) -> Variables {
     source_location
@@ -29,7 +32,7 @@ pub fn do_extract<'data, 'cache>(
             let value = variable
                 .locations()
                 .find_map(|loc| {
-                    resolve_variable_value(cache, registers, memory, loc, variable.ty())
+                    resolve_variable_value(cache, registers, cfa, memory, loc, variable.ty())
                 })
                 .unwrap_or_default();
 
@@ -43,6 +46,7 @@ pub fn do_extract<'data, 'cache>(
 fn resolve_variable_value(
     cache: &SymCache<'_>,
     registers: &BTreeMap<Register, HexValue>,
+    cfa: Option<u64>,
     memory: &dyn MemoryAccess,
     location: VariableLocationInfo,
     ty: Option<Type<'_>>,
@@ -58,15 +62,8 @@ fn resolve_variable_value(
             let &HexValue(base) = registers.get(&register)?;
             AddrOrValue::Addr(base.checked_add_signed(offset)?)
         }
-        VariableLocation::FrameOffset { offset } => {
-            let register = match cache.arch().cpu_family() {
-                CpuFamily::Amd64 => Some(Amd64Register::Rbp.into()),
-                CpuFamily::Arm64 => Some(Arm64Register::X29.into()),
-                _ => None,
-            }?;
-
-            let &HexValue(base) = registers.get(&register)?;
-            AddrOrValue::Addr(base.checked_add_signed(offset)?)
+        VariableLocation::CfaOffset { offset } => {
+            AddrOrValue::Addr(cfa?.checked_add_signed(offset)?)
         }
     };
 
