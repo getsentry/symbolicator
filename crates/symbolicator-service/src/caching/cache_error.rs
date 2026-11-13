@@ -75,26 +75,26 @@ impl From<serde_json::Error> for CacheError {
 }
 
 pub(super) const CACHE_ERROR_STRINGS: [&[u8]; 5] = [
-    b"malformed",
-    b"permissiondenied",
-    b"timeout",
-    b"downloaderror",
-    b"unsupported",
+    CacheError::MALFORMED_MARKER,
+    CacheError::PERMISSION_DENIED_MARKER,
+    CacheError::TIMEOUT_MARKER,
+    CacheError::DOWNLOAD_ERROR_MARKER,
+    CacheError::UNSUPPORTED_MARKER,
 ];
 
 pub(super) const MAX_ERROR_PAYLOAD_SIZE: usize = 256;
 
-fn bound_string(s: &str, idx: usize) -> &str {
-    let idx = s.floor_char_boundary(idx);
+fn bound_string(s: &str, len: usize) -> &str {
+    let idx = s.floor_char_boundary(len);
     &s[..idx]
 }
 
 impl CacheError {
-    pub(super) const MALFORMED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[0];
-    pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[1];
-    pub(super) const TIMEOUT_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[2];
-    pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[3];
-    pub(super) const UNSUPPORTED_MARKER: &'static [u8] = CACHE_ERROR_STRINGS[4];
+    pub(super) const MALFORMED_MARKER: &'static [u8] = b"malformed";
+    pub(super) const PERMISSION_DENIED_MARKER: &'static [u8] = b"permissiondenied";
+    pub(super) const TIMEOUT_MARKER: &'static [u8] = b"timeout";
+    pub(super) const DOWNLOAD_ERROR_MARKER: &'static [u8] = b"downloaderror";
+    pub(super) const UNSUPPORTED_MARKER: &'static [u8] = b"unsupported";
 
     /// Writes error markers and details to a file.
     ///
