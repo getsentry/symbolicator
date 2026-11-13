@@ -34,8 +34,6 @@ where
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Variable {
     kind: VariableKind,
-    #[serde(rename = "type")]
-    ty: String,
     #[serde(flatten)]
     value: Value,
 }
@@ -53,6 +51,10 @@ pub enum VariableKind {
 /// This struct allows for multiple co-existing representations.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Value {
+    /// The type name.
+    #[serde(rename = "type")]
+    ty: String,
+
     /// A fully-formatted, source-specific representation of a variable value.
     ///
     /// This should typically be used for primitive types like integers, booleans, chars.
@@ -62,12 +64,22 @@ pub struct Value {
     /// A pointer address.
     #[serde(skip_serializing_if = "Option::is_none")]
     pointer_address: Option<PointerAddress>,
+
+    /// The value after the pointer has been dereferenced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pointee: Option<Box<Value>>,
 }
 
 impl Value {
-    /// Create a new empty [`Value`].
-    pub fn new() -> Self {
-        Self::default()
+    /// Create a new named [`Value`].
+    pub fn new<T>(ty: T) -> Self
+    where
+        T: Into<String>,
+    {
+        Self {
+            ty: ty.into(),
+            ..Default::default()
+        }
     }
 
     /// Provide a fully-formatted, source-specific representation of the [`Value`].
@@ -83,6 +95,7 @@ impl Value {
         }
     }
 
+    /// Sets the pointer address on this [`Value`].
     pub fn pointer_address<V>(mut self, address: V) -> Self
     where
         V: Into<PointerAddress>,
@@ -91,15 +104,24 @@ impl Value {
         self
     }
 
-    /// Convert this [`Value`] into a [`Variable`] with the given type and kind.
-    pub fn into_variable<T, K>(self, ty: T, kind: K) -> Variable
+    /// Sets the pointee on this [`Value`].
+    ///
+    /// Can be set to include the dereferenced variable value of a pointer.
+    pub fn pointee<T>(mut self, pointee: T) -> Self
     where
-        T: Into<String>,
+        T: Into<Box<Self>>,
+    {
+        self.pointee = Some(pointee.into());
+        self
+    }
+
+    /// Convert this [`Value`] into a [`Variable`] with the given kind.
+    pub fn into_variable<K>(self, kind: K) -> Variable
+    where
         K: Into<VariableKind>,
     {
         Variable {
             kind: kind.into(),
-            ty: ty.into(),
             value: self,
         }
     }
@@ -129,6 +151,15 @@ impl From<u32> for PointerAddress {
 impl From<u64> for PointerAddress {
     fn from(value: u64) -> Self {
         Self::SixtyFourBit(value)
+    }
+}
+
+impl From<PointerAddress> for u64 {
+    fn from(value: PointerAddress) -> Self {
+        match value {
+            PointerAddress::ThirtyTwoBit(v) => v.into(),
+            PointerAddress::SixtyFourBit(v) => v,
+        }
     }
 }
 

@@ -26,9 +26,6 @@ pub fn do_extract<'data, 'cache>(
         .variables()
         .flat_map(|variable| Some((variable.name()?, variable)))
         .map(|(name, variable)| {
-            let mut ty = String::new();
-            resolve_type_name(&mut ty, cache, variable.ty(), 0);
-
             let value = variable
                 .locations()
                 .find_map(|loc| {
@@ -36,7 +33,7 @@ pub fn do_extract<'data, 'cache>(
                 })
                 .unwrap_or_default();
 
-            let interface_variable = value.into_variable(ty, variable.kind());
+            let interface_variable = value.into_variable(variable.kind());
 
             (name, interface_variable)
         })
@@ -52,17 +49,14 @@ fn resolve_variable_value(
 ) -> Option<VariableValue> {
     let ty = ty?;
 
-    match location.location {
+    let aov = match location.location {
         VariableLocation::Register { register } => registers
             .get(&register)
             .copied()
-            .map(AddrOrValue::from_register)
-            .and_then(|value| formatting::format(memory, value, ty)),
+            .map(AddrOrValue::from_register)?,
         VariableLocation::RegisterOffset { register, offset } => {
             let &HexValue(base) = registers.get(&register)?;
-            let addr = base.checked_add_signed(offset)?;
-
-            formatting::format(memory, AddrOrValue::Addr(addr), ty)
+            AddrOrValue::Addr(base.checked_add_signed(offset)?)
         }
         VariableLocation::FrameOffset { offset } => {
             let register = match cache.arch().cpu_family() {
@@ -72,46 +66,15 @@ fn resolve_variable_value(
             }?;
 
             let &HexValue(base) = registers.get(&register)?;
-            let addr = base.checked_add_signed(offset)?;
-
-            formatting::format(memory, AddrOrValue::Addr(addr), ty)
+            AddrOrValue::Addr(base.checked_add_signed(offset)?)
         }
-    }
-}
-
-fn resolve_type_name(
-    result: &mut String,
-    cache: &SymCache<'_>,
-    ty: Option<Type<'_>>,
-    depth: usize,
-) {
-    let Some(ty) = ty else {
-        result.push_str("<unknown>");
-        return;
     };
 
-    // This really is just temporary but necessary as a Symcache can serialize cyclic/recursive types.
-    // With more changes we'll have to solve this properly.
-    if depth > 10 {
-        return;
-    }
-
-    match ty {
-        Type::Primitive(primitive) => result.push_str(primitive.name().unwrap_or("")),
-        Type::Pointer(pointer) if pointer.pointee().is_none() => result.push_str("void*"),
-        Type::Pointer(pointer) => {
-            let ty = pointer.pointee().and_then(|p| cache.lookup_type(p));
-            resolve_type_name(result, cache, ty, depth + 1);
-            result.push('*');
-        }
-        Type::TypeDef(typedef) => result.push_str(typedef.name()),
-        Type::StructureType(st) => result.push_str(st.name().unwrap_or("<anonymous>")),
-        _ => result.push_str("<not implemented>"),
-    }
+    formatting::format(cache, memory, aov, ty)
 }
 
 /// An address into the crash's memory or a static value, in for example a register.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum AddrOrValue {
     /// The value is stored at a specific address.
     Addr(u64),
