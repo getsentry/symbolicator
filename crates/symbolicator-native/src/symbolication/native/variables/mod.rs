@@ -16,8 +16,13 @@ mod formatting;
 /// This function extracts all the variables we can based on the information provided.
 /// Variables whose value cannot be determined are still included, without a value.
 ///
-/// `cfa` is the Canonical Frame Address of the frame. Variables located relative to the CFA have
-/// no value when it is `None`.
+/// - `source_location`: The symcache lookup result for the frame, which provides the variables.
+/// - `cache`: The symcache the `source_location` belongs to, used to resolve variable types.
+/// - `registers`: The register values of the frame. Variables located in or relative to a
+///   register that is missing here have no value.
+/// - `cfa`: The Canonical Frame Address of the frame. Variables located relative to the CFA have
+///   no value when it is `None`.
+/// - `memory`: The crash's memory, read for variables that are located in memory.
 pub fn do_extract<'data, 'cache>(
     source_location: &SourceLocation<'data, 'cache>,
     cache: &SymCache<'cache>,
