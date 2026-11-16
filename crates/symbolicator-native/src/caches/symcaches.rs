@@ -193,6 +193,9 @@ impl SymCacheActor {
                 builder.write_str("\nil2cpp:\n").unwrap();
                 builder.write_file_meta(&handle.file).unwrap();
             }
+            if request.extract_variables {
+                builder.write_str("\nextract_variables").unwrap();
+            }
 
             let cache_key = builder.build();
 
