@@ -8,7 +8,7 @@ use symbolic::symcache::{SourceLocation, SymCache, Type, VariableLocation, Varia
 use symbolicator_service::utils::hex::HexValue;
 
 use crate::interface::{VariableValue, Variables};
-use crate::memory::{ArrayMemoryAccess, Endian, MemoryAccess, MemoryAccessExt};
+use crate::memory::{Endian, MemoryAccess, MemoryAccessExt};
 
 mod formatting;
 
@@ -49,11 +49,13 @@ fn resolve_variable_value(
 ) -> Option<VariableValue> {
     let ty = ty?;
 
+    let register_bytes;
     let aov = match location.location {
-        VariableLocation::Register { register } => registers
-            .get(&register)
-            .copied()
-            .map(AddrOrValue::from_register)?,
+        VariableLocation::Register { register } => {
+            let &HexValue(value) = registers.get(&register)?;
+            register_bytes = value.to_le_bytes();
+            AddrOrValue::Value(&register_bytes)
+        }
         VariableLocation::RegisterOffset { register, offset } => {
             let &HexValue(base) = registers.get(&register)?;
             AddrOrValue::Addr(base.checked_add_signed(offset)?)
@@ -75,26 +77,35 @@ fn resolve_variable_value(
 
 /// An address into the crash's memory or a static value, in for example a register.
 #[derive(Debug, Clone, Copy)]
-enum AddrOrValue {
+enum AddrOrValue<'a> {
     /// The value is stored at a specific address.
     Addr(u64),
     /// A little endian value.
-    Value([u8; 8]),
+    Value(&'a [u8]),
 }
 
-impl AddrOrValue {
-    /// Creates a [`AddrOrValue`] from a register value.
-    fn from_register(HexValue(reg): HexValue) -> Self {
-        Self::Value(reg.to_le_bytes())
+impl<'a> AddrOrValue<'a> {
+    /// Offsets this [`AddrOrValue`] by `offset` bytes.
+    fn offset(self, offset: u64) -> Self {
+        match self {
+            Self::Addr(addr) => Self::Addr(addr.saturating_add(offset)),
+            Self::Value(bytes) => {
+                let start = usize::try_from(offset).unwrap_or(usize::MAX);
+                Self::Value(bytes.get(start..).unwrap_or(&[]))
+            }
+        }
     }
 
     /// Returns `size` bytes from the underlying memory.
     ///
     /// See also: [`MemoryAccess::get_memory_at_address`].
-    fn get_memory<'a>(&'a self, memory: &'a dyn MemoryAccess, size: usize) -> Option<&'a [u8]> {
+    fn get_memory<'m>(&self, memory: &'m dyn MemoryAccess, size: usize) -> Option<&'m [u8]>
+    where
+        'a: 'm,
+    {
         match self {
             Self::Addr(addr) => memory.get_memory_at_address(*addr, size),
-            Self::Value(array) => array.get(..size),
+            Self::Value(bytes) => bytes.get(..size),
         }
     }
 
@@ -104,13 +115,13 @@ impl AddrOrValue {
     fn get_value<T>(&self, memory: &dyn MemoryAccess) -> Option<T>
     where
         T: scroll::ctx::SizeWith<Endian>,
-        for<'a> T: scroll::ctx::TryFromCtx<'a, Endian>,
+        for<'b> T: scroll::ctx::TryFromCtx<'b, Endian>,
     {
         match self {
             Self::Addr(addr) => memory.get_value_at_address(*addr),
-            Self::Value(array) => {
-                ArrayMemoryAccess::new(*array, Endian::Little).get_value_at_address(0)
-            }
+            Self::Value(bytes) => T::try_from_ctx(bytes, Endian::Little)
+                .ok()
+                .map(|(value, _)| value),
         }
     }
 }

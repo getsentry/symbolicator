@@ -49,29 +49,3 @@ pub trait MemoryAccessExt: MemoryAccess {
 }
 
 impl<T: MemoryAccess + ?Sized> MemoryAccessExt for T {}
-
-/// A [`MemoryAccess`] which is backed by an array.
-#[derive(Debug)]
-pub struct ArrayMemoryAccess<const N: usize> {
-    memory: [u8; N],
-    endian: Endian,
-}
-
-impl<const N: usize> ArrayMemoryAccess<N> {
-    pub fn new(memory: [u8; N], endian: Endian) -> Self {
-        Self { memory, endian }
-    }
-}
-
-impl<const N: usize> MemoryAccess for ArrayMemoryAccess<N> {
-    fn get_memory_at_address(&self, addr: u64, size: usize) -> Option<&'_ [u8]> {
-        let start: usize = addr.try_into().ok()?;
-        let end = start.checked_add(size)?;
-
-        self.memory.get(start..end)
-    }
-
-    fn endian(&self) -> Endian {
-        self.endian
-    }
-}

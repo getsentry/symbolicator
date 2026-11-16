@@ -68,6 +68,13 @@ pub struct Value {
     /// The value after the pointer has been dereferenced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pointee: Option<Box<Value>>,
+
+    /// Members of a structure, in declaration order.
+    #[serde(
+        skip_serializing_if = "Vec::is_empty",
+        serialize_with = "vec_tuple_as_object"
+    )]
+    members: Vec<(String, Value)>,
 }
 
 impl Value {
@@ -121,6 +128,15 @@ impl Value {
         T: Into<Box<Self>>,
     {
         self.pointee = Some(pointee.into());
+        self
+    }
+
+    /// Adds a structure member to this [`Value`].
+    pub fn member<N>(mut self, name: N, value: Self) -> Self
+    where
+        N: Into<String>,
+    {
+        self.members.push((name.into(), value));
         self
     }
 
@@ -188,4 +204,12 @@ impl Serialize for PointerAddress {
     {
         self.to_string().serialize(serializer)
     }
+}
+
+fn vec_tuple_as_object<S, T>(v: &[(String, T)], s: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: Serialize,
+{
+    s.collect_map(v.iter().map(|(k, v)| (k, v)))
 }

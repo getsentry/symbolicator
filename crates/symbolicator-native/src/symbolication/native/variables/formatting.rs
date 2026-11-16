@@ -4,7 +4,8 @@ use std::num::NonZeroUsize;
 
 use serde_json::Value;
 use symbolic::symcache::{
-    PointerType, PrimitiveType, PrimitiveTypeEncoding, SymCache, Type, TypeDefType, TypeSize,
+    MemberOffset, PointerType, PrimitiveType, PrimitiveTypeEncoding, StructureType, SymCache, Type,
+    TypeDefType, TypeSize,
 };
 
 use crate::interface::{PointerAddress, VariableValue};
@@ -20,7 +21,7 @@ const TYPE_FORMAT_DEPTH_LIMIT: usize = 10;
 pub fn format(
     cache: &SymCache<'_>,
     memory: &dyn MemoryAccess,
-    value: AddrOrValue,
+    value: AddrOrValue<'_>,
     ty: Type<'_>,
 ) -> Option<VariableValue> {
     TypeFormatter {
@@ -39,13 +40,14 @@ struct TypeFormatter<'a> {
 }
 
 impl TypeFormatter<'_> {
-    fn format(&mut self, value: AddrOrValue, ty: Type<'_>) -> Option<VariableValue> {
+    fn format(&mut self, value: AddrOrValue<'_>, ty: Type<'_>) -> Option<VariableValue> {
         self.remaining_depth = self.remaining_depth.checked_sub(1)?;
 
         let result = match ty {
             Type::Pointer(ty) => self.format_pointer(value, ty),
             Type::Primitive(ty) => self.format_primitive(value, ty),
             Type::TypeDef(ty) => self.format_typedef(value, ty),
+            Type::StructureType(ty) => self.format_structure(value, ty),
             _ => None,
         };
 
@@ -53,7 +55,7 @@ impl TypeFormatter<'_> {
         result
     }
 
-    fn format_pointer(&mut self, value: AddrOrValue, ty: PointerType) -> Option<VariableValue> {
+    fn format_pointer(&mut self, value: AddrOrValue<'_>, ty: PointerType) -> Option<VariableValue> {
         let addr = self.read_pointer(value, &ty)?;
 
         // Currently multi-level pointers directly resolve to their final value, if de-referencing
@@ -100,7 +102,11 @@ impl TypeFormatter<'_> {
         Some(result)
     }
 
-    fn format_primitive(&self, value: AddrOrValue, ty: PrimitiveType<'_>) -> Option<VariableValue> {
+    fn format_primitive(
+        &self,
+        value: AddrOrValue<'_>,
+        ty: PrimitiveType<'_>,
+    ) -> Option<VariableValue> {
         use PrimitiveTypeEncoding::*;
 
         let name = ty.name().unwrap_or("<unknown>");
@@ -219,7 +225,11 @@ impl TypeFormatter<'_> {
         }
     }
 
-    fn format_typedef(&mut self, value: AddrOrValue, ty: TypeDefType<'_>) -> Option<VariableValue> {
+    fn format_typedef(
+        &mut self,
+        value: AddrOrValue<'_>,
+        ty: TypeDefType<'_>,
+    ) -> Option<VariableValue> {
         let name = ty.name();
         let Some(target) = ty.ty().and_then(|ty| self.cache.lookup_type(ty)) else {
             return Some(VariableValue::new(name));
@@ -228,8 +238,33 @@ impl TypeFormatter<'_> {
         self.format(value, target).map(|value| value.ty(name))
     }
 
+    fn format_structure(
+        &mut self,
+        value: AddrOrValue<'_>,
+        ty: StructureType<'_>,
+    ) -> Option<VariableValue> {
+        let mut result = VariableValue::new(ty.name().unwrap_or("<anonymous>"));
+        for member in ty.members() {
+            let offset = match member.offset() {
+                MemberOffset::Bytes(offset) => offset,
+                // Currently not correctly implemented in symbolic.
+                MemberOffset::Bits(_) => continue,
+            };
+
+            let ty = self
+                .cache
+                .lookup_type(member.ty())
+                .and_then(|ty| self.format(value.offset(offset), ty))
+                .unwrap_or_default();
+
+            result = result.member(member.name().unwrap_or("<anonymous>"), ty);
+        }
+
+        Some(result)
+    }
+
     /// Reads the address stored in the pointer `ty` located at `value`.
-    fn read_pointer(&self, value: AddrOrValue, ty: &PointerType) -> Option<PointerAddress> {
+    fn read_pointer(&self, value: AddrOrValue<'_>, ty: &PointerType) -> Option<PointerAddress> {
         let TypeSize::Bytes(size) = ty.size();
 
         match size {
