@@ -691,7 +691,7 @@ impl Default for Config {
             max_unwind_chain_len: Some(128),
             max_download_size: Some(15 * 1024 * 1024 * 1024),
             cogs: CogsConfig::default(),
-            enable_http2: false,
+            enable_http2: true,
         }
     }
 }
