@@ -711,9 +711,16 @@ fn merge_clientside_with_processed_stacktraces(
 /// Pairs each frame with its Canonical Frame Address (CFA).
 ///
 /// The CFA of a frame is the caller's stack pointer at the call site. When the caller was unwound
-/// using CFI, rust-minidump sets the caller's stack pointer to the evaluated CFA, so we can read
-/// it from the caller's context. For other trust levels, the caller's stack pointer is a guess,
-/// so the CFA is `None`. The outermost frame has no caller, and thus no CFA.
+/// using CFI, rust-minidump evaluates the CFI's `.cfa` rule and stores the result as the caller's
+/// stack pointer, so we can read it from the caller's context.
+///
+/// Frame pointer unwinding and stack scanning only run when no CFI is available. They set the
+/// caller's stack pointer from an assumed stack layout instead, e.g. `fp + 16` on arm64. AAPCS64
+/// does not specify where the frame record sits within a stack frame, and GCC places it at the
+/// bottom, so `fp + 16` is then too low by the frame size minus 16 bytes. A wrong CFA would
+/// silently produce wrong variable values, so for these trust levels the CFA is `None`.
+///
+/// The outermost frame has no caller, and thus no CFA.
 fn with_cfas(frames: Vec<StackFrame>) -> impl Iterator<Item = (StackFrame, Option<u64>)> {
     let mut frames = frames.into_iter().peekable();
     iter::from_fn(move || {
