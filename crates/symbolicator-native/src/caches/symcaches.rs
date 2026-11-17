@@ -15,8 +15,7 @@ use symbolicator_service::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
-    CandidateStatus, FindObject, FoundMeta, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
-    ObjectsActor,
+    CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
 };
 use symbolicator_service::types::Scope;
 use symbolicator_service::utils::sentry::ConfigureScope;
@@ -158,16 +157,14 @@ impl SymCacheActor {
             })
             .await;
 
-        let debug_file_name = if request.object_type == ObjectType::Macho
-            && request.identifier.debug_file.is_none()
-            && let Some(FoundMeta {
-                file_source: RemoteFile::Sentry(file),
-                ..
-            }) = &found_object.meta
-        {
-            file.object_basename().map(str::to_owned)
-        } else {
-            None
+        let debug_file_name = match found_object.meta.as_ref().map(|meta| &meta.file_source) {
+            Some(RemoteFile::Sentry(file))
+                if request.object_type == ObjectType::Macho
+                    && request.identifier.debug_file.is_none() =>
+            {
+                file.object_basename().map(str::to_owned)
+            }
+            _ => None,
         };
 
         derive_from_object_handle(found_object, CandidateStatus::Debug, |handle| async move {

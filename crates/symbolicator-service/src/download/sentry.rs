@@ -338,33 +338,7 @@ fn authenticate(builder: RequestBuilder, credentials: &SentryCredentials) -> Req
 mod tests {
     use super::*;
 
-    use serde_json::json;
     use symbolicator_sources::{RemoteFileUri, SentryToken, SourceId};
-
-    #[test]
-    fn test_dsym_name() {
-        for (file_type, kind, expected_name) in [
-            ("macho", Some("dbg"), Some("Hello")),
-            ("macho", Some("exe"), None),
-            ("macho", None, None),
-            ("elf", Some("dbg"), None),
-        ] {
-            let mut result = json!({
-                "id": "abc123",
-                "symbolType": file_type,
-                "objectName": "Hello",
-            });
-            if let Some(kind) = kind {
-                result["data"] = json!({"type": kind});
-            }
-            let result: SearchResult = serde_json::from_value(result).unwrap();
-            assert_eq!(
-                result.dsym_name().as_deref(),
-                expected_name,
-                "{file_type} {kind:?}"
-            );
-        }
-    }
 
     #[test]
     fn test_download_url() {

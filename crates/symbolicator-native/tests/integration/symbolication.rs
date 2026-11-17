@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use symbolicator_native::interface::AttachmentFile;
+use symbolicator_native::interface::{AttachmentFile, FrameStatus};
 use symbolicator_service::types::Scope;
 use symbolicator_sources::SourceConfig;
 use symbolicator_test::sentry_server;
@@ -52,43 +52,35 @@ async fn test_add_bucket() {
 #[tokio::test]
 async fn test_macho_debug_file_from_sentry() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_server, source) = sentry_server(fixture("symbols"), |_, query| {
-        if query.get("debug_id").map(String::as_str) == Some("502fc0a5-1ec1-3e47-9998-684fa139dca7")
-        {
+    for (kind, debug_file, expected_name) in [
+        (Some("dbg"), None, Some("Hello")),
+        (Some("dbg"), Some("/sdk/Hello"), Some("/sdk/Hello")),
+        (Some("exe"), None, None),
+        (None, None, None),
+    ] {
+        let (_server, source) = sentry_server(fixture("symbols"), move |_, _| {
             json!([{
                 "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
                 "symbolType": "macho",
                 "objectName": "/uploads/Hello",
-                "data": {"type": "dbg"}
+                "data": kind.map(|kind| json!({"type": kind})),
             }])
-        } else {
-            json!([])
-        }
-    });
-    let source = SourceConfig::Sentry(Arc::new(source));
+        });
+        let mut request = example_request(vec![SourceConfig::Sentry(Arc::new(source))]);
+        request.modules[0].raw.image_size = None;
+        request.modules[0].raw.debug_file = debug_file.map(str::to_owned);
+        let frames = &mut request.stacktraces[0].frames;
+        let mut unresolved = frames[0].clone();
+        unresolved.instruction_addr.0 = 0x100001000;
+        frames.push(unresolved);
 
-    let mut request = make_symbolication_request(
-        vec![source],
-        r#"[{
-          "type":"macho",
-          "debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7",
-          "image_addr":"0x100000000"
-        }]"#,
-        r#"[{"frames":[
-          {"instruction_addr":"0x100000fa0"},
-          {"instruction_addr":"0x100001000"}
-        ]}]"#,
-    );
-    let response = symbolication.symbolicate(request.clone()).await;
-
-    assert_snapshot!(response.unwrap());
-
-    request.modules[0].raw.debug_file = Some("/sdk/Hello".into());
-    let response = symbolication.symbolicate(request).await.unwrap();
-    assert_eq!(
-        response.modules[0].raw.debug_file.as_deref(),
-        Some("/sdk/Hello")
-    );
+        let response = symbolication.symbolicate(request).await.unwrap();
+        let frames = &response.stacktraces[0].frames;
+        assert_eq!(frames[0].status, FrameStatus::Symbolicated);
+        assert_eq!(frames[1].status, FrameStatus::MissingSymbol);
+        assert!(frames.iter().all(|frame| frame.raw.package.is_none()));
+        assert_eq!(response.modules[0].raw.debug_file.as_deref(), expected_name);
+    }
 }
 
 #[tokio::test]
