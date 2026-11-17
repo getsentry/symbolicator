@@ -59,16 +59,17 @@ async fn get_metadata(
     sources: Arc<[SourceConfig]>,
 ) -> Result<Json<SystemInfo>, ResponseError> {
     params.configure_scope();
-    let (storage_url, storage_token, rewrite_first_module) = match req {
+
+    let (storage_url, storage_token, rewrite_first_module, is_minidump) = match req {
         SymbolicationRequest::Minidump {
             storage_url,
             storage_token,
             rewrite_first_module,
-        } => (storage_url, storage_token, rewrite_first_module),
+        } => (storage_url, storage_token, rewrite_first_module, true),
         SymbolicationRequest::AppleCrashreport {
             storage_url,
             storage_token,
-        } => (storage_url, storage_token, RewriteRules::default()),
+        } => (storage_url, storage_token, RewriteRules::default(), false),
     };
 
     // Make sure we download _and_ cache the attachment, as a download can happen more than once with
@@ -87,16 +88,26 @@ async fn get_metadata(
         Err(e) => return Err(anyhow::anyhow!("Could not download attachment: {e}").into()),
     };
 
-    let pm = ProcessMinidump {
-        platform,
-        scope: params.scope,
-        minidump_file: AttachmentFile::Mapped(byteview),
-        sources,
-        rewrite_first_module,
-        extract_variables: false,
-        apply_source_server_info: false,
+    let request_id = if is_minidump {
+        let pm = ProcessMinidump {
+            platform,
+            scope: params.scope,
+            minidump_file: AttachmentFile::Mapped(byteview),
+            sources,
+            rewrite_first_module,
+            extract_variables: false,
+            apply_source_server_info: false,
+        };
+        service.process_minidump(pm, RequestOptions::default())?
+    } else {
+        service.process_apple_crash_report(
+            platform,
+            params.scope,
+            AttachmentFile::Mapped(byteview),
+            sources,
+            RequestOptions::default(),
+        )?
     };
-    let request_id = service.process_minidump(pm, RequestOptions::default())?;
 
     let result = match service.get_response(request_id, None).await {
         Some(response) => Ok::<SymbolicationResponse, ResponseError>(response),
