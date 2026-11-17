@@ -85,6 +85,20 @@ async fn test_macho_package_from_sentry_debug_file() {
 }
 
 #[tokio::test]
+async fn test_macho_package_without_debug_file_name() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_server, source) = symbol_server();
+    let mut request = example_request(vec![source]);
+    request.stacktraces[0].frames[0].package = Some("FromFrame".into());
+
+    let response = symbolication.symbolicate(request).await.unwrap();
+    let frame = &response.stacktraces[0].frames[0];
+
+    assert_eq!(frame.raw.function.as_deref(), Some("main"));
+    assert_eq!(frame.raw.package.as_deref(), Some("FromFrame"));
+}
+
+#[tokio::test]
 async fn test_apple_crash_report() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_symsrv, source) = symbol_server();
