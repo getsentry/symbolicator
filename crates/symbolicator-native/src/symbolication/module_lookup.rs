@@ -196,7 +196,7 @@ impl ModuleLookup {
         }
     }
 
-    /// Returns the original `CompleteObjectInfo` list in its original sorting order.
+    /// Returns the completed modules in the order in which they were provided.
     pub fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
         // Restore the original name of the first module's debug file, if there
         // was a replacement.
@@ -209,7 +209,15 @@ impl ModuleLookup {
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules
             .into_iter()
-            .map(|entry| entry.object_info)
+            .map(|mut entry| {
+                // Publish the companion name after all lookups have finished.
+                if entry.object_info.raw.debug_file.is_none()
+                    && let Ok(CacheFileEntry::SymCache(symcache)) = entry.cache
+                {
+                    entry.object_info.raw.debug_file = symcache.debug_file_name;
+                }
+                entry.object_info
+            })
             .collect()
     }
 

@@ -10,6 +10,7 @@ use reqwest::RequestBuilder;
 use sentry::SentryFutureExt;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use symbolic::debuginfo::ObjectKind;
 use url::Url;
 
 use symbolicator_sources::{
@@ -30,6 +31,25 @@ struct SearchResult {
     id: SentryFileId,
     symbol_type: SentryFileType,
     object_name: Option<Arc<str>>,
+    data: Option<SearchResultData>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SearchResultData {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+}
+
+impl SearchResult {
+    fn dsym_name(&self) -> Option<Arc<str>> {
+        // The format alone also includes Mach-O executables and libraries.
+        let kind = self.data.as_ref().and_then(|data| data.kind.as_deref());
+        if self.symbol_type == SentryFileType::MachO && kind == Some(ObjectKind::Debug.name()) {
+            self.object_name.clone()
+        } else {
+            None
+        }
+    }
 }
 
 /// The is almost the same as [`FileType`], except it does not treat MachO, Elf and Wasm
@@ -249,13 +269,8 @@ impl SentryDownloader {
             .iter()
             .filter(|file| file.symbol_type.matches(file_types))
             .map(|file| {
-                // The basename of a Mach-O dSYM's DWARF file can identify the binary.
-                let object_name = match file.symbol_type {
-                    SentryFileType::MachO => file.object_name.clone(),
-                    _ => None,
-                };
                 SentryRemoteFile::new(source.clone(), true, file.id.clone(), None)
-                    .with_object_name(object_name)
+                    .with_object_name(file.dsym_name())
                     .into()
             })
             .collect();
@@ -323,7 +338,33 @@ fn authenticate(builder: RequestBuilder, credentials: &SentryCredentials) -> Req
 mod tests {
     use super::*;
 
+    use serde_json::json;
     use symbolicator_sources::{RemoteFileUri, SentryToken, SourceId};
+
+    #[test]
+    fn test_dsym_name() {
+        for (file_type, kind, expected_name) in [
+            ("macho", Some("dbg"), Some("Hello")),
+            ("macho", Some("exe"), None),
+            ("macho", None, None),
+            ("elf", Some("dbg"), None),
+        ] {
+            let mut result = json!({
+                "id": "abc123",
+                "symbolType": file_type,
+                "objectName": "Hello",
+            });
+            if let Some(kind) = kind {
+                result["data"] = json!({"type": kind});
+            }
+            let result: SearchResult = serde_json::from_value(result).unwrap();
+            assert_eq!(
+                result.dsym_name().as_deref(),
+                expected_name,
+                "{file_type} {kind:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_download_url() {

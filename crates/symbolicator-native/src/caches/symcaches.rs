@@ -31,8 +31,8 @@ type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 #[derive(Clone, Debug)]
 pub struct FetchedSymCache {
     symcache: OwnedSymCache,
-    /// A name supplied by the selected debug file source for a Mach-O module.
-    pub binary_name: Option<Arc<str>>,
+    /// The selected dSYM's basename when the Mach-O module has no debug filename.
+    pub debug_file_name: Option<String>,
 }
 
 impl FetchedSymCache {
@@ -158,14 +158,14 @@ impl SymCacheActor {
             })
             .await;
 
-        let binary_name = if request.object_type == ObjectType::Macho
-            && request.identifier.code_file.is_none()
+        let debug_file_name = if request.object_type == ObjectType::Macho
+            && request.identifier.debug_file.is_none()
             && let Some(FoundMeta {
                 file_source: RemoteFile::Sentry(file),
                 ..
             }) = &found_object.meta
         {
-            file.object_basename().map(Arc::from)
+            file.object_basename().map(str::to_owned)
         } else {
             None
         };
@@ -243,7 +243,7 @@ impl SymCacheActor {
                 // Use the selected source's name even when the SymCache was already cached.
                 .map(|symcache| FetchedSymCache {
                     symcache,
-                    binary_name,
+                    debug_file_name,
                 })
         })
         .await

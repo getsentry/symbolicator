@@ -50,7 +50,7 @@ async fn test_add_bucket() {
 }
 
 #[tokio::test]
-async fn test_macho_package_from_sentry_debug_file() {
+async fn test_macho_debug_file_from_sentry() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let (_server, source) = sentry_server(fixture("symbols"), |_, query| {
         if query.get("debug_id").map(String::as_str) == Some("502fc0a5-1ec1-3e47-9998-684fa139dca7")
@@ -58,7 +58,8 @@ async fn test_macho_package_from_sentry_debug_file() {
             json!([{
                 "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
                 "symbolType": "macho",
-                "objectName": "/uploads/Hello"
+                "objectName": "/uploads/Hello",
+                "data": {"type": "dbg"}
             }])
         } else {
             json!([])
@@ -66,36 +67,28 @@ async fn test_macho_package_from_sentry_debug_file() {
     });
     let source = SourceConfig::Sentry(Arc::new(source));
 
-    let request = make_symbolication_request(
+    let mut request = make_symbolication_request(
         vec![source],
-        r#"[
-          {"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7"},
-          {"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7","code_file":"/bin/Hello"}
-        ]"#,
+        r#"[{
+          "type":"macho",
+          "debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7",
+          "image_addr":"0x100000000"
+        }]"#,
         r#"[{"frames":[
-          {"instruction_addr":"0xfa0","addr_mode":"rel:0"},
-          {"instruction_addr":"0x1000","addr_mode":"rel:0"},
-          {"instruction_addr":"0xfa0","addr_mode":"rel:0","package":"FromFrame"},
-          {"instruction_addr":"0xfa0","addr_mode":"rel:1","package":"FromFrame"}
+          {"instruction_addr":"0x100000fa0"},
+          {"instruction_addr":"0x100001000"}
         ]}]"#,
     );
-    let response = symbolication.symbolicate(request).await;
+    let response = symbolication.symbolicate(request.clone()).await;
 
     assert_snapshot!(response.unwrap());
-}
 
-#[tokio::test]
-async fn test_macho_package_without_debug_file_name() {
-    let (symbolication, _cache_dir) = setup_service(|_| ());
-    let (_server, source) = symbol_server();
-    let mut request = example_request(vec![source]);
-    request.stacktraces[0].frames[0].package = Some("FromFrame".into());
-
+    request.modules[0].raw.debug_file = Some("/sdk/Hello".into());
     let response = symbolication.symbolicate(request).await.unwrap();
-    let frame = &response.stacktraces[0].frames[0];
-
-    assert_eq!(frame.raw.function.as_deref(), Some("main"));
-    assert_eq!(frame.raw.package.as_deref(), Some("FromFrame"));
+    assert_eq!(
+        response.modules[0].raw.debug_file.as_deref(),
+        Some("/sdk/Hello")
+    );
 }
 
 #[tokio::test]

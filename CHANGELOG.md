@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Fill in missing Mach-O frame binary names from matching Sentry debug files. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
+- Fill in missing Mach-O debug filenames from matching Sentry dSYMs. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
 
 ## 26.11.0
 
