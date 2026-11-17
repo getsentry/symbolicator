@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Error, Result, anyhow};
 use futures::{Future, TryStreamExt};
 use gcp_auth::{CustomServiceAccount, Token, TokenProvider};
-use reqwest::{Body, Client, StatusCode};
+use reqwest::{Body, Client, ClientBuilder, StatusCode};
 use sentry::protocol::Context;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -27,7 +27,6 @@ use tokio_util::io::{ReaderStream, StreamReader};
 use crate::download::MeasureSourceDownloadGuard;
 use crate::utils::futures::CancelOnDrop;
 use crate::utils::gcs;
-use crate::utils::http::ClientSettings;
 
 use super::CacheName;
 
@@ -140,17 +139,12 @@ impl GcsState {
             None => initialize_token_provider().await?,
         };
 
-        let client = crate::utils::http::create_client(&ClientSettings {
-            timeouts: crate::config::DownloadTimeouts {
-                connect: Duration::from_secs(10),
-                head: Duration::from_secs(10),
-                max_download: Duration::from_hours(1),
-            },
-            connect_to_reserved_ips: true,
-            accept_invalid_certs: false,
-            compression: true,
-            enable_http2,
-        });
+        let mut client = ClientBuilder::new();
+        if !enable_http2 {
+            client = client.http1_only();
+        }
+
+        let client = client.build()?;
 
         Ok(Self {
             config,
