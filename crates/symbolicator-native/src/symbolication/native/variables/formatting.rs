@@ -92,9 +92,15 @@ impl TypeFormatter<'_> {
         let name = format!("{base_name}{:*<lookups$}", "");
         let mut result = VariableValue::new(name).pointer_address(addr);
 
-        let pointee = pointee
-            .zip(pointee_addr)
-            .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty));
+        // Only single-level pointers are formatted as strings, `char**` keeps the default formatting.
+        let pointee = pointee.zip(pointee_addr).and_then(|(ty, addr)| {
+            let string = if lookups == 1 {
+                self.format_c_string(addr, &ty)
+            } else {
+                None
+            };
+            string.or_else(|| self.format(AddrOrValue::Addr(addr), ty))
+        });
         if let Some(pointee) = pointee {
             result = result.pointee(pointee);
         }
@@ -263,6 +269,35 @@ impl TypeFormatter<'_> {
         Some(result)
     }
 
+    /// Formats the NUL-terminated string at `addr`, if `ty` is a single-byte character type.
+    ///
+    /// Returns `None` if `ty` is not a single-byte character type, or if the memory at `addr` is
+    /// not a valid UTF-8 string.
+    fn format_c_string(&self, addr: u64, ty: &Type<'_>) -> Option<VariableValue> {
+        /// The maximum number of bytes read for a NUL-terminated string.
+        ///
+        /// The value is chosen arbitrarily. A string without a NUL terminator within this many
+        /// bytes is reported as truncated.
+        const MAX_BYTES: usize = 512;
+
+        let Type::Primitive(ty) = ty else {
+            return None;
+        };
+        let TypeSize::Bytes(size) = ty.size();
+        let is_char = matches!(
+            ty.encoding(),
+            Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
+        );
+        if !is_char || size != 1 {
+            return None;
+        }
+
+        let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
+        let string = CStringValue::parse(bytes, MAX_BYTES)?;
+
+        Some(VariableValue::new(ty.name().unwrap_or("<unknown>")).value(string))
+    }
+
     /// Reads the address stored in the pointer `ty` located at `value`.
     fn read_pointer(&self, value: AddrOrValue<'_>, ty: &PointerType) -> Option<PointerAddress> {
         let TypeSize::Bytes(size) = ty.size();
@@ -297,6 +332,60 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
         Type::TypeDef(ty) => ty.name(),
         Type::StructureType(ty) => ty.name().unwrap_or("<anonymous>"),
         _ => "<not implemented>",
+    }
+}
+
+/// A UTF-8 string read from memory up to its NUL terminator.
+struct CStringValue<'a> {
+    inner: &'a str,
+    /// Whether the read limit was reached before a NUL terminator was found.
+    truncated: bool,
+}
+
+impl<'a> CStringValue<'a> {
+    /// Parses a string from `bytes`, which start at the string's address and were read with a
+    /// limit of `max_len` bytes.
+    ///
+    /// Returns `None` if the bytes before the NUL terminator are not entirely valid UTF-8. If
+    /// `bytes` contains no NUL terminator, the string is truncated when `bytes` reached `max_len`,
+    /// and an incomplete multibyte character at the end of `bytes` is dropped. Otherwise, the
+    /// memory ended before a NUL terminator, and `None` is returned.
+    fn parse(bytes: &'a [u8], max_len: usize) -> Option<Self> {
+        if let Some(end) = bytes.iter().position(|&b| b == 0) {
+            let inner = std::str::from_utf8(&bytes[..end]).ok()?;
+            return Some(Self {
+                inner,
+                truncated: false,
+            });
+        }
+
+        if bytes.len() < max_len {
+            return None;
+        }
+
+        let inner = match std::str::from_utf8(bytes) {
+            Ok(inner) => inner,
+            // `error_len` is `None` if the error is an incomplete character at the end of `bytes`.
+            Err(error) if error.error_len().is_none() => {
+                std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
+            }
+            Err(_) => return None,
+        };
+
+        Some(Self {
+            inner,
+            truncated: true,
+        })
+    }
+}
+
+impl From<CStringValue<'_>> for Value {
+    fn from(value: CStringValue<'_>) -> Self {
+        if value.truncated {
+            format!("{}... (truncated)", value.inner).into()
+        } else {
+            value.inner.into()
+        }
     }
 }
 
@@ -336,5 +425,62 @@ impl From<UnknownBytes<'_>> for Value {
         });
 
         values.chain(truncation_notice).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MAX_LEN: usize = 8;
+
+    fn parse(bytes: &[u8]) -> Option<(&str, bool)> {
+        CStringValue::parse(bytes, MAX_LEN).map(|s| (s.inner, s.truncated))
+    }
+
+    #[test]
+    fn test_c_string_terminated() {
+        assert_eq!(parse(b"hello\0wo"), Some(("hello", false)));
+        assert_eq!(parse(b"\0"), Some(("", false)));
+        assert_eq!(
+            parse("gr\u{fc}\u{df}e\0".as_bytes()),
+            Some(("gr\u{fc}\u{df}e", false))
+        );
+    }
+
+    #[test]
+    fn test_c_string_invalid_utf8() {
+        assert_eq!(parse(b"ab\xffcd\0"), None);
+        // An incomplete character before the terminator is invalid.
+        assert_eq!(parse(b"ab\xc3\0"), None);
+        // Invalid bytes after the terminator are ignored.
+        assert_eq!(parse(b"ab\0\xff"), Some(("ab", false)));
+    }
+
+    #[test]
+    fn test_c_string_unterminated() {
+        // The memory ends before the read limit without a terminator.
+        assert_eq!(parse(b"hello"), None);
+        assert_eq!(parse(b"ab\xe2\x82"), None);
+    }
+
+    #[test]
+    fn test_c_string_truncated() {
+        assert_eq!(parse(b"abcdefgh"), Some(("abcdefgh", true)));
+        // An incomplete character at the read limit is dropped.
+        assert_eq!(parse(b"abcdef\xe2\x82"), Some(("abcdef", true)));
+        assert_eq!(parse(b"abc\xffdefg"), None);
+    }
+
+    #[test]
+    fn test_c_string_value() {
+        let terminated = CStringValue::parse(b"hello\0", MAX_LEN).unwrap();
+        assert_eq!(Value::from(terminated), Value::from("hello"));
+
+        let truncated = CStringValue::parse(b"abcdefgh", MAX_LEN).unwrap();
+        assert_eq!(
+            Value::from(truncated),
+            Value::from("abcdefgh... (truncated)")
+        );
     }
 }
