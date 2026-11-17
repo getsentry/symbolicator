@@ -148,7 +148,7 @@ impl GcsState {
             },
             connect_to_reserved_ips: true,
             accept_invalid_certs: false,
-            compression: false,
+            compression: true,
             enable_http2,
         });
 
