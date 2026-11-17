@@ -21,6 +21,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: multiply
         filename: file2.js
         module: file2
@@ -42,6 +44,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - filename: indexed.min.js
@@ -54,6 +58,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=indexed.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: indexed.min.js
         abs_path: "http://example.com/indexed.min.js"
         lineno: 2
@@ -65,6 +71,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=indexed.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 scraping_attempts:
   - url: "http://example.com/file1.js"
     status: not_attempted

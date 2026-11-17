@@ -32,6 +32,8 @@ stacktraces:
                   abs_path: "app:///_next/server/pages/test.min.js.map"
           resolved_with: release
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - function: e
@@ -43,6 +45,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 scraping_attempts:
   - url: "app:///_next/server/pages/_error.js"
     status: not_attempted

@@ -10,12 +10,16 @@ stacktraces:
         colno: 0
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: foo.js
         abs_path: "http://localhost:<port>/assets/missing_bar.js"
         lineno: 4
         colno: 0
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - filename: foo.js
@@ -24,12 +28,16 @@ raw_stacktraces:
         colno: 0
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: foo.js
         abs_path: "http://localhost:<port>/assets/missing_bar.js"
         lineno: 4
         colno: 0
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 errors:
   - abs_path: "http://localhost:<port>/assets/missing_bar.js"
     type: missing_source

@@ -27,6 +27,8 @@ stacktraces:
                   debug_id: 2f259f80-58b7-44cb-d7cd-de1505e7e718
           resolved_with: debug-id
           symbolicated: true
+          minified_source_found_by_debug_id: true
+          sourcemap_found_by_debug_id: true
 raw_stacktraces:
   - frames:
       - function: Object.<anonymous>
@@ -48,6 +50,8 @@ raw_stacktraces:
           - ""
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: true
+          sourcemap_found_by_debug_id: true
 scraping_attempts:
   - url: /Users/lucaforstner/code/github/getsentry/sentry-javascript-bundler-plugins/packages/playground/öut path/rollup/entrypoint1.js
     status: not_attempted

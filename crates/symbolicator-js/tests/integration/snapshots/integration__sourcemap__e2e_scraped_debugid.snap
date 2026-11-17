@@ -32,6 +32,8 @@ stacktraces:
                   debug_id: 2f259f80-58b7-44cb-d7cd-de1505e7e718
           resolved_with: debug-id
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: true
 raw_stacktraces:
   - frames:
       - abs_path: "http://localhost:<port>/files/app.js"
@@ -42,6 +44,8 @@ raw_stacktraces:
           - "//# debugId=2f259f80-58b7-44cb-d7cd-de1505e7e718"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: true
 scraping_attempts:
   - url: "http://localhost:<port>/files/app.js"
     status: success
