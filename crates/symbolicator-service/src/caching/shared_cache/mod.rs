@@ -984,7 +984,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
             .unwrap();
 
@@ -1009,7 +1009,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
@@ -1038,7 +1038,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
             .unwrap();
 
@@ -1077,7 +1077,7 @@ mod tests {
     async fn test_gcs_exists() {
         symbolicator_test::setup();
         let credentials = symbolicator_test::gcs_credentials!();
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
             .unwrap();
 
@@ -1105,7 +1105,7 @@ mod tests {
 
         let key = format!("{}/some_item", Uuid::new_v4());
 
-        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials), false)
+        let state = GcsState::try_new(GcsSharedCacheConfig::from(credentials))
             .await
             .unwrap();
         let token = state.get_token().await.unwrap();

@@ -1370,7 +1370,7 @@ mod tests {
 
         let config = Config::default();
         let caches = Caches::from_config(&config).unwrap();
-        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current(), false);
+        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let source_index_svc =
             SourceIndexService::new(caches.source_index, shared_cache, Arc::clone(&svc));
