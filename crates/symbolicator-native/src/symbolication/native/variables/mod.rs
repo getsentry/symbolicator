@@ -92,7 +92,7 @@ impl<'a> AddrOrValue<'a> {
 
     /// Returns `size` bytes from the underlying memory.
     ///
-    /// See also: [`MemoryAccess::get_memory_at_address`].
+    /// See also: [`MemoryAccessExt::get_memory_at_address`].
     fn get_memory<'m>(&self, memory: &'m dyn MemoryAccess, size: usize) -> Option<&'m [u8]>
     where
         'a: 'm,
