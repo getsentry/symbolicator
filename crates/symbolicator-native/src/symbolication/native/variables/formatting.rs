@@ -275,8 +275,8 @@ impl TypeFormatter<'_> {
     fn format_c_string(&self, addr: u64, ty: &Type<'_>) -> Option<VariableValue> {
         /// The maximum number of bytes read for a NUL-terminated string.
         ///
-        /// The value is chosen arbitrarily. A string without a NUL terminator within this many
-        /// bytes is reported as truncated.
+        /// The value is chosen arbitrarily. A string without a NUL terminator in the bytes read is
+        /// reported as truncated.
         const MAX_BYTES: usize = 512;
 
         let Type::Primitive(ty) = ty else {
@@ -338,13 +338,12 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
 /// A UTF-8 string read from memory up to its NUL terminator.
 struct CStringValue<'a> {
     inner: &'a str,
-    /// Whether the read limit was reached before a NUL terminator was found.
+    /// Whether the bytes read contain no NUL terminator.
     truncated: bool,
 }
 
 impl<'a> CStringValue<'a> {
-    /// Parses a string from `bytes`, which start at the string's address and were read with a
-    /// limit of `max_len` bytes.
+    /// Parses a string from `bytes`, which start at the string's address.
     ///
     /// Returns `None` if the bytes before the NUL terminator are not entirely valid UTF-8. If
     /// `bytes` contains no NUL terminator, we attempt to parse the bytes as UTF-8, ignoring any
@@ -443,18 +442,11 @@ mod tests {
     }
 
     #[test]
-    fn test_c_string_unterminated() {
-        // The memory ends before the read limit without a terminator.
-        assert_eq!(parse(b"hello"), None);
-        assert_eq!(parse(b"ab\xe2\x82"), None);
-    }
-
-    #[test]
     fn test_c_string_truncated() {
-        assert_eq!(parse(b"abcdefgh"), Some(("abcdefgh", true)));
-        // An incomplete character at the read limit is dropped.
-        assert_eq!(parse(b"abcdef\xe2\x82"), Some(("abcdef", true)));
-        assert_eq!(parse(b"abc\xffdefg"), None);
+        assert_eq!(parse(b"hello"), Some(("hello", true)));
+        // An incomplete character at the end is dropped.
+        assert_eq!(parse(b"ab\xe2\x82"), Some(("ab", true)));
+        assert_eq!(parse(b"ab\xffcd"), None);
     }
 
     #[test]
@@ -462,10 +454,7 @@ mod tests {
         let terminated = CStringValue::parse(b"hello\0").unwrap();
         assert_eq!(Value::from(terminated), Value::from("hello"));
 
-        let truncated = CStringValue::parse(b"abcdefgh").unwrap();
-        assert_eq!(
-            Value::from(truncated),
-            Value::from("abcdefgh... (truncated)")
-        );
+        let truncated = CStringValue::parse(b"hello").unwrap();
+        assert_eq!(Value::from(truncated), Value::from("hello... (truncated)"));
     }
 }
