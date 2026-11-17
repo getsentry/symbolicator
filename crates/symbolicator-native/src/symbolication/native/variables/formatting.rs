@@ -92,14 +92,13 @@ impl TypeFormatter<'_> {
         let name = format!("{base_name}{:*<lookups$}", "");
         let mut result = VariableValue::new(name).pointer_address(addr);
 
-        // Only single-level pointers are formatted as strings, `char**` keeps the default formatting.
         let pointee = pointee.zip(pointee_addr).and_then(|(ty, addr)| {
-            let string = if lookups == 1 {
-                self.format_c_string(addr, &ty)
-            } else {
-                None
-            };
-            string.or_else(|| self.format(AddrOrValue::Addr(addr), ty))
+            // Attempt to parse only single-level pointers as strings.
+            let as_string = (lookups == 1)
+                .then(|| self.format_c_string(addr, &ty))
+                .flatten();
+
+            as_string.or_else(|| self.format(AddrOrValue::Addr(addr), ty))
         });
         if let Some(pointee) = pointee {
             result = result.pointee(pointee);
@@ -283,17 +282,18 @@ impl TypeFormatter<'_> {
         let Type::Primitive(ty) = ty else {
             return None;
         };
-        let TypeSize::Bytes(size) = ty.size();
-        let is_char = matches!(
-            ty.encoding(),
-            Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
-        );
-        if !is_char || size != 1 {
+
+        if !(matches!(ty.size(), TypeSize::Bytes(1))
+            && matches!(
+                ty.encoding(),
+                Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
+            ))
+        {
             return None;
         }
 
         let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        let string = CStringValue::parse(bytes, MAX_BYTES)?;
+        let string = CStringValue::parse(bytes)?;
 
         Some(VariableValue::new(ty.name().unwrap_or("<unknown>")).value(string))
     }
@@ -347,35 +347,22 @@ impl<'a> CStringValue<'a> {
     /// limit of `max_len` bytes.
     ///
     /// Returns `None` if the bytes before the NUL terminator are not entirely valid UTF-8. If
-    /// `bytes` contains no NUL terminator, the string is truncated when `bytes` reached `max_len`,
-    /// and an incomplete multibyte character at the end of `bytes` is dropped. Otherwise, the
-    /// memory ended before a NUL terminator, and `None` is returned.
-    fn parse(bytes: &'a [u8], max_len: usize) -> Option<Self> {
-        if let Some(end) = bytes.iter().position(|&b| b == 0) {
-            let inner = std::str::from_utf8(&bytes[..end]).ok()?;
-            return Some(Self {
-                inner,
-                truncated: false,
-            });
-        }
+    /// `bytes` contains no NUL terminator, we attempt to parse the bytes as UTF-8, ignoring any
+    /// truncated multibyte character at the end, and indicate the string as truncated.
+    fn parse(bytes: &'a [u8]) -> Option<Self> {
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        let truncated = end == bytes.len();
 
-        if bytes.len() < max_len {
-            return None;
-        }
-
-        let inner = match std::str::from_utf8(bytes) {
+        let inner = match std::str::from_utf8(&bytes[..end]) {
             Ok(inner) => inner,
             // `error_len` is `None` if the error is an incomplete character at the end of `bytes`.
-            Err(error) if error.error_len().is_none() => {
+            Err(error) if truncated && error.error_len().is_none() => {
                 std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
             }
             Err(_) => return None,
         };
 
-        Some(Self {
-            inner,
-            truncated: true,
-        })
+        Some(Self { inner, truncated })
     }
 }
 
@@ -432,10 +419,8 @@ impl From<UnknownBytes<'_>> for Value {
 mod tests {
     use super::*;
 
-    const MAX_LEN: usize = 8;
-
     fn parse(bytes: &[u8]) -> Option<(&str, bool)> {
-        CStringValue::parse(bytes, MAX_LEN).map(|s| (s.inner, s.truncated))
+        CStringValue::parse(bytes).map(|s| (s.inner, s.truncated))
     }
 
     #[test]
@@ -474,10 +459,10 @@ mod tests {
 
     #[test]
     fn test_c_string_value() {
-        let terminated = CStringValue::parse(b"hello\0", MAX_LEN).unwrap();
+        let terminated = CStringValue::parse(b"hello\0").unwrap();
         assert_eq!(Value::from(terminated), Value::from("hello"));
 
-        let truncated = CStringValue::parse(b"abcdefgh", MAX_LEN).unwrap();
+        let truncated = CStringValue::parse(b"abcdefgh").unwrap();
         assert_eq!(
             Value::from(truncated),
             Value::from("abcdefgh... (truncated)")
