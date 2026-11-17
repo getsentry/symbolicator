@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, Error, Result, anyhow};
 use futures::{Future, TryStreamExt};
 use gcp_auth::{CustomServiceAccount, Token, TokenProvider};
-use reqwest::{Body, Client, ClientBuilder, StatusCode};
+use reqwest::{Body, Client, StatusCode};
 use sentry::protocol::Context;
 use sentry::{Hub, SentryFutureExt};
 use symbolic::common::ByteView;
@@ -130,7 +130,7 @@ async fn initialize_token_provider() -> Result<Arc<dyn TokenProvider>, anyhow::E
 }
 
 impl GcsState {
-    pub async fn try_new(config: GcsSharedCacheConfig, enable_http2: bool) -> Result<Self> {
+    pub async fn try_new(config: GcsSharedCacheConfig) -> Result<Self> {
         let token_provider = match config.service_account_path {
             Some(ref path) => {
                 let service_account = CustomServiceAccount::from_file(path)?;
@@ -139,12 +139,7 @@ impl GcsState {
             None => initialize_token_provider().await?,
         };
 
-        let mut client = ClientBuilder::new();
-        if !enable_http2 {
-            client = client.http1_only();
-        }
-
-        let client = client.build()?;
+        let client = Client::new();
 
         Ok(Self {
             config,
@@ -463,10 +458,10 @@ impl SharedCacheBackend {
     /// Creates the backend.
     ///
     /// If the backend can not be created the error will already be reported.
-    async fn maybe_new(cfg: SharedCacheBackendConfig, enable_http2: bool) -> Option<Self> {
+    async fn maybe_new(cfg: SharedCacheBackendConfig) -> Option<Self> {
         match cfg {
             SharedCacheBackendConfig::Gcs(cfg) => {
-                match GcsState::try_new(cfg, enable_http2)
+                match GcsState::try_new(cfg)
                     .await
                     .context("Failed to initialise GCS backend for shared cache")
                 {
@@ -542,16 +537,10 @@ impl SharedCacheService {
     pub fn new(
         config: Option<SharedCacheConfig>,
         runtime: tokio::runtime::Handle,
-        enable_http2: bool,
     ) -> SharedCacheRef {
         let cache = SharedCacheRef::default();
         if let Some(config) = config {
-            runtime.spawn(Self::init(
-                runtime.clone(),
-                cache.clone(),
-                config,
-                enable_http2,
-            ));
+            runtime.spawn(Self::init(runtime.clone(), cache.clone(), config));
         }
         cache
     }
@@ -560,10 +549,9 @@ impl SharedCacheService {
         runtime: tokio::runtime::Handle,
         cache: SharedCacheRef,
         config: SharedCacheConfig,
-        enable_http2: bool,
     ) {
         let (tx, rx) = mpsc::channel(config.max_upload_queue_size);
-        if let Some(backend) = SharedCacheBackend::maybe_new(config.backend, enable_http2).await {
+        if let Some(backend) = SharedCacheBackend::maybe_new(config.backend).await {
             let backend = Arc::new(backend);
             tokio::spawn(
                 Self::upload_worker(rx, backend.clone(), config.max_concurrent_uploads)
@@ -888,7 +876,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
         // This mimics how Cacher::compute creates this file.
@@ -916,7 +904,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
         let temp_file = NamedTempFile::new_in(&dir).unwrap();
@@ -943,7 +931,7 @@ mod tests {
                 path: dir.path().to_path_buf(),
             }),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
         let recv = svc.store(
@@ -975,7 +963,7 @@ mod tests {
             max_upload_queue_size: 10,
             backend: SharedCacheBackendConfig::Gcs(GcsSharedCacheConfig::from(credentials)),
         };
-        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current(), false);
+        let svc = SharedCacheService::new(Some(cfg), tokio::runtime::Handle::current());
         let svc = wait_init(&svc).await;
 
         let dir = symbolicator_test::tempdir();

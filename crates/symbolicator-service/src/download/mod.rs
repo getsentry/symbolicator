@@ -161,7 +161,6 @@ impl DownloadService {
             connect_to_reserved_ips: config.connect_to_reserved_ips,
             accept_invalid_certs: false,
             compression: false,
-            enable_http2: config.enable_http2,
         };
         let trusted_client = ClientSettings {
             connect_to_reserved_ips: true,
