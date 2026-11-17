@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use symbolic::common::ByteView;
 use symbolicator_service::{
-    caches::versions::SYMCACHE_VERSIONS,
+    caches::versions::ATTACHMENTS_CACHE_VERSIONS,
     caching::{CacheContents, CacheItemRequest, CacheKey, Cacher},
     download::{DownloadService, fetch_file},
     services::SharedServices,
@@ -19,7 +19,7 @@ struct AttachmentDownload {
 impl CacheItemRequest for AttachmentDownload {
     type Item = ByteView<'static>;
 
-    const VERSIONS: symbolicator_service::caches::CacheVersions = SYMCACHE_VERSIONS;
+    const VERSIONS: symbolicator_service::caches::CacheVersions = ATTACHMENTS_CACHE_VERSIONS;
 
     fn compute<'a>(
         &'a self,
@@ -43,6 +43,10 @@ impl CacheItemRequest for AttachmentDownload {
         data: symbolic::common::ByteView<'static>,
     ) -> symbolicator_service::caching::CacheContents<Self::Item> {
         Ok(data)
+    }
+
+    fn use_shared_cache(&self) -> bool {
+        false
     }
 }
 

@@ -326,3 +326,12 @@ pub const SYMSTORE_INDEX_VERSIONS: CacheVersions = CacheVersions {
     fallbacks: &[],
     previous: &[],
 };
+
+/// Attachments cache, with the following version:
+///
+/// - `1`: Initial version.
+pub const ATTACHMENTS_CACHE_VERSIONS: CacheVersions = CacheVersions {
+    current: CacheVersion::new(1, CachePathFormat::V2),
+    fallbacks: &[],
+    previous: &[],
+};
