@@ -210,11 +210,14 @@ impl ModuleLookup {
         self.modules
             .into_iter()
             .map(|mut entry| {
-                // Publish the companion name after all lookups have finished.
-                if entry.object_info.raw.debug_file.is_none()
+                // Name modules the SDK left without any file name after their dSYM.
+                // This runs after symbolication, so frame packages and grouping stay
+                // unchanged.
+                if entry.object_info.raw.code_file.is_none()
+                    && entry.object_info.raw.debug_file.is_none()
                     && let Ok(CacheFileEntry::SymCache(symcache)) = entry.cache
                 {
-                    entry.object_info.raw.debug_file = symcache.debug_file_name;
+                    entry.object_info.raw.debug_file = symcache.dsym_name;
                 }
                 entry.object_info
             })

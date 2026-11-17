@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Fill in missing Mach-O debug filenames from matching Sentry dSYMs. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
+- Name Mach-O modules that have no code or debug filename after their matching Sentry dSYM. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
 
 ## 26.11.0
 

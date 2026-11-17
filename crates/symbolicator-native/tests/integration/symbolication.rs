@@ -52,11 +52,12 @@ async fn test_add_bucket() {
 #[tokio::test]
 async fn test_macho_debug_file_from_sentry() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    for (kind, debug_file, expected_name) in [
-        (Some("dbg"), None, Some("Hello")),
-        (Some("dbg"), Some("/sdk/Hello"), Some("/sdk/Hello")),
-        (Some("exe"), None, None),
-        (None, None, None),
+    for (kind, code_file, debug_file, expected_name) in [
+        (Some("dbg"), None, None, Some("Hello")),
+        (Some("dbg"), None, Some("/sdk/Hello"), Some("/sdk/Hello")),
+        (Some("dbg"), Some("/sdk/Hello"), None, None),
+        (Some("exe"), None, None, None),
+        (None, None, None, None),
     ] {
         let (_server, source) = sentry_server(fixture("symbols"), move |_, _| {
             json!([{
@@ -68,6 +69,7 @@ async fn test_macho_debug_file_from_sentry() {
         });
         let mut request = example_request(vec![SourceConfig::Sentry(Arc::new(source))]);
         request.modules[0].raw.image_size = None;
+        request.modules[0].raw.code_file = code_file.map(str::to_owned);
         request.modules[0].raw.debug_file = debug_file.map(str::to_owned);
         let frames = &mut request.stacktraces[0].frames;
         let mut unresolved = frames[0].clone();
@@ -78,7 +80,11 @@ async fn test_macho_debug_file_from_sentry() {
         let frames = &response.stacktraces[0].frames;
         assert_eq!(frames[0].status, FrameStatus::Symbolicated);
         assert_eq!(frames[1].status, FrameStatus::MissingSymbol);
-        assert!(frames.iter().all(|frame| frame.raw.package.is_none()));
+        assert!(
+            frames
+                .iter()
+                .all(|frame| frame.raw.package.as_deref() == code_file)
+        );
         assert_eq!(response.modules[0].raw.debug_file.as_deref(), expected_name);
     }
 }
