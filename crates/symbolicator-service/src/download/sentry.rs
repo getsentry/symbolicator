@@ -10,7 +10,6 @@ use reqwest::RequestBuilder;
 use sentry::SentryFutureExt;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use symbolic::debuginfo::ObjectKind;
 use url::Url;
 
 use symbolicator_sources::{
@@ -30,26 +29,8 @@ use crate::utils::futures::{CancelOnDrop, m, measure};
 struct SearchResult {
     id: SentryFileId,
     symbol_type: SentryFileType,
+    /// The name the file was uploaded with.
     object_name: Option<Arc<str>>,
-    data: Option<SearchResultData>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct SearchResultData {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-}
-
-impl SearchResult {
-    fn dsym_name(&self) -> Option<Arc<str>> {
-        // The format alone also includes Mach-O executables and libraries.
-        let kind = self.data.as_ref().and_then(|data| data.kind.as_deref());
-        if self.symbol_type == SentryFileType::MachO && kind == Some(ObjectKind::Debug.name()) {
-            self.object_name.clone()
-        } else {
-            None
-        }
-    }
 }
 
 /// The is almost the same as [`FileType`], except it does not treat MachO, Elf and Wasm
@@ -270,7 +251,7 @@ impl SentryDownloader {
             .filter(|file| file.symbol_type.matches(file_types))
             .map(|file| {
                 SentryRemoteFile::new(source.clone(), true, file.id.clone(), None)
-                    .with_object_name(file.dsym_name())
+                    .with_object_name(file.object_name.clone())
                     .into()
             })
             .collect();

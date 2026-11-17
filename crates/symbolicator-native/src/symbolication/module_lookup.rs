@@ -196,7 +196,7 @@ impl ModuleLookup {
         }
     }
 
-    /// Returns the completed modules in the order in which they were provided.
+    /// Returns the original `CompleteObjectInfo` list in its original sorting order.
     pub fn into_inner(mut self) -> Vec<CompleteObjectInfo> {
         // Restore the original name of the first module's debug file, if there
         // was a replacement.
@@ -210,14 +210,14 @@ impl ModuleLookup {
         self.modules
             .into_iter()
             .map(|mut entry| {
-                // Name modules the SDK left without any file name after their dSYM.
-                // This runs after symbolication, so frame packages and grouping stay
+                // Name modules the SDK sent without any file name after their uploaded debug
+                // file. This runs after symbolication, so frame packages and grouping stay
                 // unchanged.
                 if entry.object_info.raw.code_file.is_none()
                     && entry.object_info.raw.debug_file.is_none()
                     && let Ok(CacheFileEntry::SymCache(symcache)) = entry.cache
                 {
-                    entry.object_info.raw.debug_file = symcache.dsym_name;
+                    entry.object_info.raw.debug_file = symcache.object_name;
                 }
                 entry.object_info
             })

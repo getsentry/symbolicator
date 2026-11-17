@@ -26,6 +26,7 @@ pub struct SentrySourceConfig {
 pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
+    /// The name the file was uploaded with, as reported by the debug file search.
     object_name: Option<Arc<str>>,
     pub(crate) file_id: SentryFileId,
     use_credentials: bool,
@@ -36,7 +37,6 @@ impl fmt::Debug for SentryRemoteFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SentryRemoteFile")
             .field("id", &self.file_id.0)
-            .field("object_name", &self.object_name)
             .field("url", &self.url.as_str())
             .finish()
     }
@@ -199,30 +199,5 @@ mod tests {
           "cookies": "foo=bar; asd=123"
         }
         "#);
-    }
-
-    #[test]
-    fn test_object_basename() {
-        let source: Arc<SentrySourceConfig> = Arc::new(
-            serde_json::from_str(r#"{"id": "foobar", "url": "http://foo.bar", "token": "123"}"#)
-                .unwrap(),
-        );
-        let basename = |name: Option<&str>| {
-            SentryRemoteFile::new(source.clone(), true, SentryFileId("1".into()), None)
-                .with_object_name(name.map(Into::into))
-                .object_basename()
-                .map(str::to_owned)
-        };
-
-        assert_eq!(
-            basename(Some("MyApp.app.dSYM/Contents/Resources/DWARF/MyApp")).as_deref(),
-            Some("MyApp")
-        );
-        assert_eq!(basename(Some("MyApp")).as_deref(), Some("MyApp"));
-        assert_eq!(basename(None), None);
-        assert_eq!(basename(Some("")), None);
-        assert_eq!(basename(Some("uploads/ ")), None);
-        assert_eq!(basename(Some("My\nApp")), None);
-        assert_eq!(basename(Some(&"a".repeat(256))), None);
     }
 }

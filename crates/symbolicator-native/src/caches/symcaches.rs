@@ -30,8 +30,8 @@ type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 #[derive(Clone, Debug)]
 pub struct FetchedSymCache {
     symcache: OwnedSymCache,
-    /// The basename of the dSYM this SymCache was built from, if it came from a Sentry source.
-    pub dsym_name: Option<String>,
+    /// The name the selected debug file was uploaded to Sentry with, for Mach-O modules.
+    pub object_name: Option<String>,
 }
 
 impl FetchedSymCache {
@@ -157,9 +157,12 @@ impl SymCacheActor {
             })
             .await;
 
-        // The Sentry downloader only attaches names to Mach-O dSYMs.
-        let dsym_name = match found_object.meta.as_ref().map(|meta| &meta.file_source) {
-            Some(RemoteFile::Sentry(file)) => file.object_basename().map(str::to_owned),
+        // Only Sentry knows the name a debug file was uploaded with. It belongs to the same
+        // binary since it matched by debug ID, so MetricKit images without file names can use it.
+        let object_name = match found_object.meta.as_ref().map(|meta| &meta.file_source) {
+            Some(RemoteFile::Sentry(file)) if request.object_type == ObjectType::Macho => {
+                file.object_basename().map(str::to_owned)
+            }
             _ => None,
         };
 
@@ -236,7 +239,7 @@ impl SymCacheActor {
                 // Use the selected source's name even when the SymCache was already cached.
                 .map(|symcache| FetchedSymCache {
                     symcache,
-                    dsym_name,
+                    object_name,
                 })
         })
         .await

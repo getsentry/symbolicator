@@ -52,25 +52,24 @@ async fn test_add_bucket() {
 #[tokio::test]
 async fn test_macho_debug_file_from_sentry() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
-    for (kind, code_file, debug_file, expected_name) in [
-        (Some("dbg"), None, None, Some("Hello")),
-        (Some("dbg"), None, Some("/sdk/Hello"), Some("/sdk/Hello")),
-        (Some("dbg"), Some("/sdk/Hello"), None, None),
-        (Some("exe"), None, None, None),
-        (None, None, None, None),
+    // Only modules the SDK sent without any file name take the uploaded name.
+    for (code_file, debug_file, expected_name) in [
+        (None, None, Some("Hello")),
+        (None, Some("/sdk/Hello"), Some("/sdk/Hello")),
+        (Some("/sdk/Hello"), None, None),
     ] {
         let (_server, source) = sentry_server(fixture("symbols"), move |_, _| {
             json!([{
                 "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
                 "symbolType": "macho",
                 "objectName": "/uploads/Hello",
-                "data": kind.map(|kind| json!({"type": kind})),
             }])
         });
         let mut request = example_request(vec![SourceConfig::Sentry(Arc::new(source))]);
         request.modules[0].raw.image_size = None;
         request.modules[0].raw.code_file = code_file.map(str::to_owned);
         request.modules[0].raw.debug_file = debug_file.map(str::to_owned);
+        // Also add a frame in the same module that has no symbol.
         let frames = &mut request.stacktraces[0].frames;
         let mut unresolved = frames[0].clone();
         unresolved.instruction_addr.0 = 0x100001000;
