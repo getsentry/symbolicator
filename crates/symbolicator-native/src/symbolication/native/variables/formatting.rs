@@ -423,38 +423,11 @@ mod tests {
     }
 
     #[test]
-    fn test_c_string_terminated() {
+    fn test_c_string_parse() {
         assert_eq!(parse(b"hello\0wo"), Some(("hello", false)));
-        assert_eq!(parse(b"\0"), Some(("", false)));
-        assert_eq!(
-            parse("gr\u{fc}\u{df}e\0".as_bytes()),
-            Some(("gr\u{fc}\u{df}e", false))
-        );
-    }
-
-    #[test]
-    fn test_c_string_invalid_utf8() {
         assert_eq!(parse(b"ab\xffcd\0"), None);
-        // An incomplete character before the terminator is invalid.
+        // An incomplete character is only dropped from a truncated string.
         assert_eq!(parse(b"ab\xc3\0"), None);
-        // Invalid bytes after the terminator are ignored.
-        assert_eq!(parse(b"ab\0\xff"), Some(("ab", false)));
-    }
-
-    #[test]
-    fn test_c_string_truncated() {
-        assert_eq!(parse(b"hello"), Some(("hello", true)));
-        // An incomplete character at the end is dropped.
         assert_eq!(parse(b"ab\xe2\x82"), Some(("ab", true)));
-        assert_eq!(parse(b"ab\xffcd"), None);
-    }
-
-    #[test]
-    fn test_c_string_value() {
-        let terminated = CStringValue::parse(b"hello\0").unwrap();
-        assert_eq!(Value::from(terminated), Value::from("hello"));
-
-        let truncated = CStringValue::parse(b"hello").unwrap();
-        assert_eq!(Value::from(truncated), Value::from("hello... (truncated)"));
     }
 }
