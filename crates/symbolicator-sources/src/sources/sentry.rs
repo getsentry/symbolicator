@@ -25,6 +25,8 @@ pub struct SentrySourceConfig {
 pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
+    /// Binary name provided by the debug file lookup for Mach-O uploads.
+    pub object_name: Option<Arc<str>>,
     pub(crate) file_id: SentryFileId,
     use_credentials: bool,
     url: Url,
@@ -61,6 +63,7 @@ impl SentryRemoteFile {
 
         Self {
             source,
+            object_name: None,
             file_id,
             use_credentials,
             url,

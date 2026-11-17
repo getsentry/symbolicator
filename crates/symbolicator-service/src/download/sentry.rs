@@ -29,6 +29,7 @@ use crate::utils::futures::{CancelOnDrop, m, measure};
 struct SearchResult {
     id: SentryFileId,
     symbol_type: SentryFileType,
+    object_name: Option<Arc<str>>,
 }
 
 /// The is almost the same as [`FileType`], except it does not treat MachO, Elf and Wasm
@@ -247,7 +248,18 @@ impl SentryDownloader {
         let file_ids = entries
             .iter()
             .filter(|file| file.symbol_type.matches(file_types))
-            .map(|file| SentryRemoteFile::new(source.clone(), true, file.id.clone(), None).into())
+            .map(|file| {
+                let mut remote_file =
+                    SentryRemoteFile::new(source.clone(), true, file.id.clone(), None);
+                if file.symbol_type == SentryFileType::MachO {
+                    remote_file.object_name = file
+                        .object_name
+                        .as_ref()
+                        .filter(|name| !name.trim().is_empty())
+                        .cloned();
+                }
+                remote_file.into()
+            })
             .collect();
         Ok(file_ids)
     }

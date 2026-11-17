@@ -80,7 +80,7 @@ pub fn symbolicate_native_frame(
             original_index: Some(index),
             raw: RawFrame {
                 platform: frame.platform.clone(),
-                package: lookup_result.object_info.raw.code_file.clone(),
+                package: frame.package.clone(),
                 addr_mode: lookup_result.preferred_addr_mode(),
                 instruction_addr,
                 adjust_instruction_addr: frame.adjust_instruction_addr,

@@ -5,6 +5,7 @@ use symbolicator_service::objects::{
     AllObjectCandidates, CandidateLocation, CandidateStatus, FindResult, ObjectFeatures,
     ObjectMetaHandle, ObjectUseInfo,
 };
+use symbolicator_sources::RemoteFile;
 
 /// This is the result of fetching a derived cache file.
 ///
@@ -15,6 +16,8 @@ pub struct DerivedCache<T> {
     pub cache: CacheContents<T>,
     pub candidates: AllObjectCandidates,
     pub features: ObjectFeatures,
+    /// The selected debug file's name, when provided by the source.
+    pub object_name: Option<Arc<str>>,
 }
 
 /// Derives a [`DerivedCache`] from the provided object handle and derive function.
@@ -40,6 +43,7 @@ where
             cache: Err(CacheError::NotFound),
             candidates,
             features: ObjectFeatures::default(),
+            object_name: None,
         };
     };
 
@@ -83,9 +87,15 @@ where
     let location = CandidateLocation::new(meta.file_source.uri().as_str());
     candidates.set_status(candidate_status, source_id, &location, object_info);
 
+    let object_name = match &meta.file_source {
+        RemoteFile::Sentry(file) if cache.is_ok() => file.object_name.clone(),
+        _ => None,
+    };
+
     DerivedCache {
         cache,
         candidates,
         features,
+        object_name,
     }
 }

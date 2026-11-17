@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use symbolicator_native::interface::AttachmentFile;
+use serde_json::json;
+use symbolicator_native::interface::{AttachmentFile, FrameStatus};
 use symbolicator_service::types::Scope;
+use symbolicator_sources::SourceConfig;
+use symbolicator_test::sentry_server;
 
 use crate::{
     assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
@@ -44,6 +47,45 @@ async fn test_add_bucket() {
     let response = symbolication.symbolicate(request).await;
 
     assert_snapshot!(response.unwrap());
+}
+
+#[tokio::test]
+async fn test_macho_package_from_sentry_debug_file() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let (_server, source) = sentry_server(fixture("symbols"), |_, query| {
+        if query.get("debug_id").map(String::as_str) == Some("502fc0a5-1ec1-3e47-9998-684fa139dca7")
+        {
+            json!([{
+                "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
+                "symbolType": "macho",
+                "objectName": "Hello"
+            }])
+        } else {
+            json!([])
+        }
+    });
+    let source = SourceConfig::Sentry(Arc::new(source));
+
+    for (code_file, package, expected) in [
+        (None, None, "Hello"),
+        (None, Some("FromFrame"), "FromFrame"),
+        (Some("/bin/Hello"), Some("FromFrame"), "/bin/Hello"),
+    ] {
+        let mut request = make_symbolication_request(
+            vec![source.clone()],
+            r#"[{"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7"}]"#,
+            r#"[{"frames":[{"instruction_addr":"0xfa0","addr_mode":"rel:0"}]}]"#,
+        );
+        request.modules[0].raw.code_file = code_file.map(str::to_owned);
+        request.stacktraces[0].frames[0].package = package.map(str::to_owned);
+
+        let response = symbolication.symbolicate(request).await.unwrap();
+        let frame = &response.stacktraces[0].frames[0];
+        assert_eq!(frame.status, FrameStatus::Symbolicated);
+        assert_eq!(frame.raw.function.as_deref(), Some("main"));
+        assert_eq!(frame.raw.package.as_deref(), Some(expected));
+        assert_eq!(response.modules[0].raw.code_file.as_deref(), code_file);
+    }
 }
 
 #[tokio::test]

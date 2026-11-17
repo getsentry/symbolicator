@@ -6,6 +6,7 @@ use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
 use symbolicator_service::types::FrameOrder;
+use symbolicator_sources::ObjectType;
 
 use crate::caches::bitcode::BitcodeService;
 use crate::caches::cficaches::CfiCacheActor;
@@ -346,12 +347,19 @@ fn symbolicate_frame(
         .lookup_cache(frame.instruction_addr.0, frame.addr_mode)
         .ok_or(FrameStatus::UnknownImage)?;
 
-    frame
-        .package
-        .clone_from(&lookup_result.object_info.raw.code_file);
+    let module = &lookup_result.object_info.raw;
+    if module.code_file.is_some() || module.ty != ObjectType::Macho {
+        frame.package.clone_from(&module.code_file);
+    }
 
     match lookup_result.cache {
-        Ok(CacheFileEntry::SymCache(symcache)) => {
+        Ok(CacheFileEntry::SymCache {
+            symcache,
+            object_name,
+        }) => {
+            if module.ty == ObjectType::Macho && frame.package.is_none() {
+                frame.package = object_name.as_deref().map(str::to_owned);
+            }
             let symcache = symcache.get();
             let relative_addr = get_relative_caller_addr(
                 symcache,
