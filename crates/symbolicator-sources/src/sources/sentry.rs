@@ -4,6 +4,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::types::valid_file_name;
 use crate::{RemoteFile, RemoteFileUri, SourceId};
 
 /// Configuration for the Sentry-internal debug files endpoint.
@@ -25,8 +26,7 @@ pub struct SentrySourceConfig {
 pub struct SentryRemoteFile {
     /// The underlying [`SentrySourceConfig`].
     pub source: Arc<SentrySourceConfig>,
-    /// Binary name provided by the debug file lookup for Mach-O uploads.
-    pub object_name: Option<Arc<str>>,
+    object_name: Option<Arc<str>>,
     pub(crate) file_id: SentryFileId,
     use_credentials: bool,
     url: Url,
@@ -68,6 +68,17 @@ impl SentryRemoteFile {
             use_credentials,
             url,
         }
+    }
+
+    /// Attaches the name reported by the debug file lookup.
+    pub fn with_object_name(mut self, object_name: Option<Arc<str>>) -> Self {
+        self.object_name = object_name;
+        self
+    }
+
+    /// Returns a validated basename for the debug file.
+    pub fn object_basename(&self) -> Option<&str> {
+        valid_file_name(self.object_name.as_deref()?).filter(|name| !name.trim().is_empty())
     }
 
     /// Gives a synthetic [`RemoteFileUri`] for this file.

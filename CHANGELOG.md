@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Fill in missing Mach-O frame binary names from matching Sentry debug files. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
+
 ## 26.11.0
 
 ### Breaking Changes

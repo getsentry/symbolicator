@@ -161,7 +161,7 @@ impl ObjectId {
 /// The basename is valid if:
 /// - it is not longer than 255 bytes and
 /// - does not contain a control character
-fn valid_file_name(file_name: &str) -> Option<&str> {
+pub(crate) fn valid_file_name(file_name: &str) -> Option<&str> {
     let basename = split_path(file_name).1;
     if basename.len() < 256 && !basename.contains(|c: char| c.is_control()) {
         return Some(basename);

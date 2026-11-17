@@ -15,17 +15,31 @@ use symbolicator_service::caching::{
     Cache, CacheContents, CacheError, CacheItemRequest, Cacher, SharedCacheRef,
 };
 use symbolicator_service::objects::{
-    CandidateStatus, FindObject, ObjectHandle, ObjectMetaHandle, ObjectPurpose, ObjectsActor,
+    CandidateStatus, FindObject, FoundMeta, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
+    ObjectsActor,
 };
 use symbolicator_service::types::Scope;
 use symbolicator_service::utils::sentry::ConfigureScope;
-use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
+use symbolicator_sources::{FileType, ObjectId, ObjectType, RemoteFile, SourceConfig};
 
 use super::bitcode::{BcSymbolMapHandle, BitcodeService};
 use super::derived::{DerivedCache, derive_from_object_handle};
 use super::il2cpp::{Il2cppHandle, Il2cppService};
 
-pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
+type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
+
+#[derive(Clone, Debug)]
+pub struct FetchedSymCache {
+    symcache: OwnedSymCache,
+    /// A name supplied by the selected debug file source for a Mach-O module.
+    pub binary_name: Option<Arc<str>>,
+}
+
+impl FetchedSymCache {
+    pub fn get(&self) -> &SymCache<'_> {
+        self.symcache.get()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct SymCacheActor {
@@ -132,7 +146,7 @@ pub struct FetchSymCache {
 }
 
 impl SymCacheActor {
-    pub async fn fetch(&self, request: FetchSymCache) -> DerivedCache<OwnedSymCache> {
+    pub async fn fetch(&self, request: FetchSymCache) -> DerivedCache<FetchedSymCache> {
         let found_object = self
             .objects
             .find(FindObject {
@@ -143,6 +157,18 @@ impl SymCacheActor {
                 purpose: ObjectPurpose::Debug,
             })
             .await;
+
+        let binary_name = if request.object_type == ObjectType::Macho
+            && request.identifier.code_file.is_none()
+            && let Some(FoundMeta {
+                file_source: RemoteFile::Sentry(file),
+                ..
+            }) = &found_object.meta
+        {
+            file.object_basename().map(Arc::from)
+        } else {
+            None
+        };
 
         derive_from_object_handle(found_object, CandidateStatus::Debug, |handle| async move {
             // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
@@ -214,6 +240,11 @@ impl SymCacheActor {
                 .compute_memoized(request, cache_key)
                 .await
                 .into_contents()
+                // Use the selected source's name even when the SymCache was already cached.
+                .map(|symcache| FetchedSymCache {
+                    symcache,
+                    binary_name,
+                })
         })
         .await
     }

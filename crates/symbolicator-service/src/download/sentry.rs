@@ -249,16 +249,14 @@ impl SentryDownloader {
             .iter()
             .filter(|file| file.symbol_type.matches(file_types))
             .map(|file| {
-                let mut remote_file =
-                    SentryRemoteFile::new(source.clone(), true, file.id.clone(), None);
-                if file.symbol_type == SentryFileType::MachO {
-                    remote_file.object_name = file
-                        .object_name
-                        .as_ref()
-                        .filter(|name| !name.trim().is_empty())
-                        .cloned();
-                }
-                remote_file.into()
+                // The basename of a Mach-O dSYM's DWARF file can identify the binary.
+                let object_name = match file.symbol_type {
+                    SentryFileType::MachO => file.object_name.clone(),
+                    _ => None,
+                };
+                SentryRemoteFile::new(source.clone(), true, file.id.clone(), None)
+                    .with_object_name(object_name)
+                    .into()
             })
             .collect();
         Ok(file_ids)

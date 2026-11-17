@@ -19,7 +19,7 @@ use crate::caches::derived::DerivedCache;
 use crate::caches::ppdb_caches::{
     FetchPortablePdbCache, OwnedPortablePdbCache, PortablePdbCacheActor,
 };
-use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
+use crate::caches::symcaches::{FetchSymCache, FetchedSymCache, SymCacheActor};
 use crate::interface::{
     AddrMode, CompleteObjectInfo, CompleteStacktrace, RawFrame, RawStacktrace, RewriteRules,
 };
@@ -59,10 +59,7 @@ pub fn object_file_status_from_cache_contents<T>(
 
 #[derive(Debug, Clone)]
 pub enum CacheFileEntry {
-    SymCache {
-        symcache: OwnedSymCache,
-        object_name: Option<Arc<str>>,
-    },
+    SymCache(FetchedSymCache),
     PortablePdbCache(OwnedPortablePdbCache),
 }
 
@@ -266,7 +263,6 @@ impl ModuleLookup {
                                 cache,
                                 candidates,
                                 features,
-                                ..
                             } = ppdb_cache_actor.fetch(request).await;
 
                             let cache_file = CacheFile {
@@ -290,14 +286,10 @@ impl ModuleLookup {
                                 cache,
                                 candidates,
                                 features,
-                                object_name,
                             } = symcache_actor.fetch(request).await;
 
                             let cache_file = CacheFile {
-                                file: cache.map(|symcache| CacheFileEntry::SymCache {
-                                    symcache,
-                                    object_name,
-                                }),
+                                file: cache.map(CacheFileEntry::SymCache),
                                 candidates,
                                 features,
                             };
@@ -323,7 +315,7 @@ impl ModuleLookup {
                 entry.object_info.candidates.merge(&candidates);
                 entry.object_info.debug_status = object_file_status_from_cache_contents(&file);
 
-                if let Ok(CacheFileEntry::SymCache { ref symcache, .. }) = file {
+                if let Ok(CacheFileEntry::SymCache(ref symcache)) = file {
                     entry.object_info.arch = symcache.get().arch();
                 }
 

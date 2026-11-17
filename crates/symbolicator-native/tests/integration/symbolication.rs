@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use symbolicator_native::interface::{AttachmentFile, FrameStatus};
+use symbolicator_native::interface::AttachmentFile;
 use symbolicator_service::types::Scope;
 use symbolicator_sources::SourceConfig;
 use symbolicator_test::sentry_server;
@@ -58,7 +58,7 @@ async fn test_macho_package_from_sentry_debug_file() {
             json!([{
                 "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
                 "symbolType": "macho",
-                "objectName": "Hello"
+                "objectName": "/uploads/Hello"
             }])
         } else {
             json!([])
@@ -66,26 +66,22 @@ async fn test_macho_package_from_sentry_debug_file() {
     });
     let source = SourceConfig::Sentry(Arc::new(source));
 
-    for (code_file, package, expected) in [
-        (None, None, "Hello"),
-        (None, Some("FromFrame"), "FromFrame"),
-        (Some("/bin/Hello"), Some("FromFrame"), "/bin/Hello"),
-    ] {
-        let mut request = make_symbolication_request(
-            vec![source.clone()],
-            r#"[{"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7"}]"#,
-            r#"[{"frames":[{"instruction_addr":"0xfa0","addr_mode":"rel:0"}]}]"#,
-        );
-        request.modules[0].raw.code_file = code_file.map(str::to_owned);
-        request.stacktraces[0].frames[0].package = package.map(str::to_owned);
+    let request = make_symbolication_request(
+        vec![source],
+        r#"[
+          {"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7"},
+          {"type":"macho","debug_id":"502fc0a5-1ec1-3e47-9998-684fa139dca7","code_file":"/bin/Hello"}
+        ]"#,
+        r#"[{"frames":[
+          {"instruction_addr":"0xfa0","addr_mode":"rel:0"},
+          {"instruction_addr":"0x1000","addr_mode":"rel:0"},
+          {"instruction_addr":"0xfa0","addr_mode":"rel:0","package":"FromFrame"},
+          {"instruction_addr":"0xfa0","addr_mode":"rel:1","package":"FromFrame"}
+        ]}]"#,
+    );
+    let response = symbolication.symbolicate(request).await;
 
-        let response = symbolication.symbolicate(request).await.unwrap();
-        let frame = &response.stacktraces[0].frames[0];
-        assert_eq!(frame.status, FrameStatus::Symbolicated);
-        assert_eq!(frame.raw.function.as_deref(), Some("main"));
-        assert_eq!(frame.raw.package.as_deref(), Some(expected));
-        assert_eq!(response.modules[0].raw.code_file.as_deref(), code_file);
-    }
+    assert_snapshot!(response.unwrap());
 }
 
 #[tokio::test]
