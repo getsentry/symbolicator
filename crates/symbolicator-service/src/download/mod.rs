@@ -161,7 +161,6 @@ impl DownloadService {
             connect_to_reserved_ips: config.connect_to_reserved_ips,
             accept_invalid_certs: false,
             compression: false,
-            enable_http2: config.enable_http2,
         };
         let trusted_client = ClientSettings {
             connect_to_reserved_ips: true,
@@ -1371,7 +1370,7 @@ mod tests {
 
         let config = Config::default();
         let caches = Caches::from_config(&config).unwrap();
-        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current(), false);
+        let shared_cache = SharedCacheService::new(None, tokio::runtime::Handle::current());
         let svc = DownloadService::new(&config, tokio::runtime::Handle::current());
         let source_index_svc =
             SourceIndexService::new(caches.source_index, shared_cache, Arc::clone(&svc));
