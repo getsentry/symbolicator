@@ -764,7 +764,7 @@ fn typed_register(cpu_family: CpuFamily, name: &str) -> Option<Register> {
     let register = Register::try_from_name(cpu_family, name);
 
     if register.is_none() {
-        tracing::error!("failed to parse register {name:?} for cpu family {cpu_family:?}");
+        tracing::debug!("failed to parse register {name:?} for cpu family {cpu_family:?}");
     }
 
     register
