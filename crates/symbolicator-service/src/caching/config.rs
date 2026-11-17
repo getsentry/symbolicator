@@ -15,6 +15,7 @@ pub enum CacheName {
     Diagnostics,
     Proguard,
     SourceIndex,
+    Attachments,
 }
 
 impl CacheName {
@@ -32,6 +33,7 @@ impl CacheName {
             Self::Diagnostics => "diagnostics",
             Self::Proguard => "proguard",
             Self::SourceIndex => "source_index",
+            Self::Attachments => "attachments",
         }
     }
 }

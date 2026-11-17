@@ -201,6 +201,8 @@ pub struct Caches {
     pub proguard: Cache,
     /// Source index files.
     pub source_index: Cache,
+    /// Attachments (minidumps) cache.
+    pub attachments: Cache,
 }
 
 impl Caches {
@@ -303,8 +305,15 @@ impl Caches {
                 CacheName::SourceIndex,
                 config,
                 config.caches.index.into(),
-                lazy_redownloads,
+                lazy_redownloads.clone(),
                 in_memory.source_index_capacity,
+            )?,
+            attachments: Cache::from_config(
+                CacheName::Attachments,
+                config,
+                config.caches.downloaded.into(),
+                lazy_redownloads,
+                default_cap,
             )?,
         })
     }

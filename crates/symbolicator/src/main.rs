@@ -21,6 +21,7 @@ static GLOBAL: Jemalloc = Jemalloc;
 
 pub use symbolicator_service::{config, metric, utils};
 
+mod attachments;
 mod cli;
 mod endpoints;
 mod healthcheck;

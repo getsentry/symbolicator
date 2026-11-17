@@ -11,7 +11,7 @@ use serde::de::{self, Deserializer, Error};
 use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use symbolic::common::register::Register;
-use symbolic::common::{Arch, CodeId, DebugId, Language};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId, Language};
 use symbolicator_service::objects::{AllObjectCandidates, ObjectFeatures};
 use symbolicator_service::types::{FrameOrder, ObjectFileStatus, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
@@ -81,6 +81,7 @@ pub struct SymbolicateStacktraces {
 
 /// Location of an attachment file, such as a minidump.
 pub enum AttachmentFile {
+    Mapped(ByteView<'static>),
     /// The attachment has been stored on the local system already.
     Local(File),
     /// The attachment needs to be fetched from the remote url.
@@ -93,6 +94,7 @@ pub enum AttachmentFile {
 impl fmt::Debug for AttachmentFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Mapped(_) => f.write_str("Mapped file"),
             Self::Local(file) => f.debug_tuple("Local").field(file).finish(),
             Self::Remote {
                 storage_url,

@@ -1,11 +1,10 @@
-use std::fs::File;
 use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use symbolic::common::{Arch, CodeId, DebugId};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_service::cogs::{AppFeature, Category, Cogs};
 use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
@@ -26,12 +25,12 @@ impl SymbolicationActor {
         &self,
         platform: Option<Platform>,
         scope: Scope,
-        report: File,
+        report: ByteView<'static>,
         sources: Arc<[SourceConfig]>,
         extract_variables: bool,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
-        let report =
-            AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
+        let report = AppleCrashReport::from_reader(report.as_slice())
+            .context("failed to parse apple crash report")?;
         let mut metadata = report.metadata;
 
         let arch = report

@@ -1,6 +1,6 @@
-use std::fs::File;
 use std::sync::Arc;
 
+use symbolic::common::ByteView;
 use symbolicator_service::{
     caching::CacheError,
     download::{DownloadService, fetch_file},
@@ -14,9 +14,10 @@ use crate::interface::AttachmentFile;
 pub async fn download_attachment(
     download_svc: Arc<DownloadService>,
     file: AttachmentFile,
-) -> Result<File, CacheError> {
+) -> Result<ByteView<'static>, CacheError> {
     let (storage_url, storage_token) = match file {
-        AttachmentFile::Local(file) => return Ok(file),
+        AttachmentFile::Mapped(bv) => return Ok(bv),
+        AttachmentFile::Local(file) => return Ok(ByteView::map_file(file)?),
         AttachmentFile::Remote {
             storage_url,
             storage_token,
@@ -32,7 +33,11 @@ pub async fn download_attachment(
 
     fetch_file(download_svc, remote_file.into(), &mut temp_file).await?;
 
-    Ok(temp_file.into_file())
+    let f = temp_file.into_file();
+
+    let bv = ByteView::map_file(f)?;
+
+    Ok(bv)
 }
 
 #[cfg(test)]
@@ -80,11 +85,11 @@ mod tests {
                 storage_url: server.url("/attachment?signature=abc%2F123"),
                 storage_token: token,
             };
-            let mut file = download_attachment(Arc::clone(&download_svc), attachment)
+            let view = download_attachment(Arc::clone(&download_svc), attachment)
                 .await
                 .unwrap();
             let mut contents = String::new();
-            file.read_to_string(&mut contents).unwrap();
+            view.as_slice().read_to_string(&mut contents).unwrap();
             assert_eq!(contents, "attachment contents");
         }
     }

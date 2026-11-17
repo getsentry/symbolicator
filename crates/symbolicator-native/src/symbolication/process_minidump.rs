@@ -623,13 +623,11 @@ impl SymbolicationActor {
             extract_variables,
             apply_source_server_info,
         } = request;
-        let minidump_file =
-            download_attachment(Arc::clone(&self.download_svc), minidump_file).await?;
-        let len = minidump_file.metadata()?.len();
+        let bv = download_attachment(Arc::clone(&self.download_svc), minidump_file).await?;
+        let len = bv.len();
         tracing::debug!("Processing minidump ({} bytes)", len);
         metric!(distribution("minidump.upload.size") = len as f64);
 
-        let bv = ByteView::map_file(minidump_file)?;
         let minidump = Minidump::read(bv)?;
 
         let StackWalkMinidumpResult {
