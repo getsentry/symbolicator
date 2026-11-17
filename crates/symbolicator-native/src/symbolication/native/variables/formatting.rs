@@ -423,9 +423,17 @@ mod tests {
     }
 
     #[test]
-    fn test_c_string_parse() {
+    fn test_c_string_terminated() {
         assert_eq!(parse(b"hello\0wo"), Some(("hello", false)));
+    }
+
+    #[test]
+    fn test_c_string_invalid_utf8() {
         assert_eq!(parse(b"ab\xffcd\0"), None);
+    }
+
+    #[test]
+    fn test_c_string_incomplete_character() {
         // An incomplete character is only dropped from a truncated string.
         assert_eq!(parse(b"ab\xc3\0"), None);
         assert_eq!(parse(b"ab\xe2\x82"), Some(("ab", true)));
