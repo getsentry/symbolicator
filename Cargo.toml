@@ -136,7 +136,7 @@ serde_yaml = "0.9.14"
 sha-1 = "0.10.0"
 sha2 = "0.10.6"
 sketches-ddsketch = "0.3.0"
-symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "3ed4b8ac7850ad5c781ddfa95743e96d81786b5b" }
+symbolic = { git = "https://github.com/getsentry/symbolic.git", rev = "bd5ba34be9a79de6719af1b9dd33960a7026fe4e" }
 symbolicator-crash = { path = "crates/symbolicator-crash" }
 symbolicator-js = { path = "crates/symbolicator-js" }
 symbolicator-native = { path = "crates/symbolicator-native" }

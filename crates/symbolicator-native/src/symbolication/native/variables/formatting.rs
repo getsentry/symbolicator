@@ -3,10 +3,11 @@
 use std::num::NonZeroUsize;
 use std::str;
 
-use serde_json::Value;
+use serde_json::Value as JsonValue;
+use symbolic::debuginfo::ValueBits;
 use symbolic::symcache::{
-    MemberOffset, PointerType, PrimitiveType, PrimitiveTypeEncoding, StructureType, SymCache, Type,
-    TypeDefType, TypeSize,
+    PointerType, PrimitiveType, PrimitiveTypeEncoding, Size, StructureType, SymCache, Type,
+    TypeDefType,
 };
 
 use crate::interface::{PointerAddress, VariableValue};
@@ -117,122 +118,56 @@ impl TypeFormatter<'_> {
         value: AddrOrValue<'_>,
         ty: PrimitiveType<'_>,
     ) -> Option<VariableValue> {
-        use PrimitiveTypeEncoding::*;
-
         let name = ty.name().unwrap_or("<unknown>");
+        let result = VariableValue::new(name);
 
-        /// Helper to convert the memory at addr to the provided type, and map this to a VariableValue.
-        macro_rules! get_value {
-            // If we just get a type, map this to a formatted variable value.
-            ($ty:ty) => {
-                get_value!($ty, |v| VariableValue::new(name).value(v))
+        let ValueBits { size, offset } = ty.value_bits().unwrap_or_else(|| {
+            let size = match ty.size() {
+                Size::Bytes(bytes) => bytes * 8,
+                Size::Bits(bits) => bits,
             };
+            ValueBits { size, offset: 0 }
+        });
 
-            // Also allow a custom mapping from value to VariableValue, as not everything will map
-            // directly.
-            ($ty:ty, $($mapping:tt)*) => {
-                value.get_value::<$ty>(self.memory).map($($mapping)*)
-            };
-        }
+        let Some(bits) = value.get_bits(self.memory, offset, size) else {
+            let value = size
+                .is_multiple_of(8)
+                .then_some(size)
+                .and_then(|size| value.get_memory(self.memory, (size / 8) as usize))
+                .map(UnknownBytes::from);
 
-        /// Helper macro to map a bool or unsigned int to a variable value.
-        ///
-        /// Not convenient to make this a function because the trait bounds are unclear.
-        macro_rules! map_bool_unsigned {
-            ($encoding:ident) => {
-                |v| match $encoding {
-                    Boolean => VariableValue::new(name).value(v > 0),
-                    _ => VariableValue::new(name).value(v),
-                }
-            };
-        }
+            return Some(result.value_opt(value));
+        };
 
-        /// Create a formatted [`VariableValue`] according to the specified formatting.
-        macro_rules! format_variable {
-            ($($tt:tt)*) => {
-                VariableValue::new(name).value(format!($($tt)*))
-            };
-        }
-
-        let TypeSize::Bytes(size) = ty.size();
-
-        match (ty.encoding(), size) {
-            // Not sure this is realistic, but size 0 probably should map to an empty value.
-            // Returning `None` could also make sense.
-            (_, 0) => Some(VariableValue::new(name)),
-
-            // Booleans and Unsigned ints.
-            //
-            // These need to be handled together because bool cannot be read directly from memory; we
-            // instead read the Unsigned integer type and compare against 0 when this is a Boolean.
-            (Some(encoding @ (Boolean | UnsignedInt)), 1) => {
-                get_value!(u8, map_bool_unsigned!(encoding))
+        use PrimitiveTypeEncoding::*;
+        let formatted: JsonValue = match (ty.encoding(), size) {
+            (Some(Boolean), _) => bits.as_bool().into(),
+            (Some(SignedChar | UnsignedChar), 8) => {
+                format!("'{}'", (bits.as_u128() as u8).escape_ascii()).into()
             }
-            // Characters more than one byte are handled as integers.
-            (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 2) => {
-                get_value!(u16, map_bool_unsigned!(encoding))
+            (Some(SignedInt | SignedChar), _) => match i64::try_from(bits.as_i128()) {
+                Ok(int) => int.into(),
+                Err(_) => bits.as_i128().to_string().into(),
+            },
+            (Some(UnsignedInt | UnsignedChar), _) => match u64::try_from(bits.as_u128()) {
+                Ok(int) => int.into(),
+                Err(_) => bits.as_u128().to_string().into(),
+            },
+            (Some(Float), 32) => f32::from_bits(bits.as_u128() as u32).into(),
+            (Some(Float), 64) => f64::from_bits(bits.as_u128() as u64).into(),
+            (Some(Address), _) => {
+                let address = bits.as_u128();
+                let width = size.div_ceil(4) as usize + 2;
+                format!("{address:#0width$x}").into()
             }
-            (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 4) => {
-                get_value!(u32, map_bool_unsigned!(encoding))
+            (Some(Float | ComplexFloat) | None, _) => {
+                let data = bits.as_u128();
+                let width = size as usize;
+                format!("0b{data:0width$b}").into()
             }
-            (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 8) => {
-                get_value!(u64, map_bool_unsigned!(encoding))
-            }
-            (Some(encoding @ (Boolean | UnsignedInt | UnsignedChar)), 16) => {
-                get_value!(u128, |v| match encoding {
-                    Boolean => VariableValue::new(name).value(v > 0),
-                    // Serializing u128 as a number is possible, but because other parts of Sentry may
-                    // not handle it gracefully due to the fact that the `arbitrary_precision` serde
-                    // feature is required, so we serialize u128's that cannot be represented as u64 as
-                    // a string instead.
-                    _ => match u64::try_from(v) {
-                        Ok(v_u64) => VariableValue::new(name).value(v_u64),
-                        Err(_) => format_variable!("{v}"),
-                    },
-                })
-            }
+        };
 
-            // Signed integers. This is pretty simple, just get the value from memory.
-            (Some(SignedInt), 1) => get_value!(i8),
-            (Some(SignedInt | SignedChar), 2) => get_value!(i16),
-            (Some(SignedInt | SignedChar), 4) => get_value!(i32),
-            (Some(SignedInt | SignedChar), 8) => get_value!(i64),
-            (Some(SignedInt | SignedChar), 16) => {
-                // Serializing i128 as a number is possible, but because other parts of Sentry may
-                // not handle it gracefully due to the fact that the `arbitrary_precision` serde
-                // feature is required, so we serialize i128's that cannot be represented as i64 as
-                // a string instead.
-                get_value!(i128, |v| match i64::try_from(v) {
-                    Ok(v_i64) => VariableValue::new(name).value(v_i64),
-                    Err(_) => format_variable!("{v}"),
-                })
-            }
-
-            // Floating-point types. Reading f128 from memory is currently not supported, so we don't
-            // handle it for now.
-            (Some(Float), 4) => get_value!(f32),
-            (Some(Float), 8) => get_value!(f64),
-
-            // 1-byte characters. Multibyte characters handled as integers.
-            (Some(SignedChar | UnsignedChar), 1) => {
-                get_value!(u8, |v| format_variable!("'{}'", v.escape_ascii()))
-            }
-
-            // Handle memory addresses by rending to a hexadecimal string.
-            (Some(Address), 1) => get_value!(u8, |v| format_variable!("{v:#04x}")),
-            (Some(Address), 2) => get_value!(u16, |v| format_variable!("{v:#06x}")),
-            (Some(Address), 4) => get_value!(u32, |v| format_variable!("{v:#010x}")),
-            (Some(Address), 8) => get_value!(u64, |v| format_variable!("{v:#018x}")),
-            (Some(Address), 16) => get_value!(u128, |v| format_variable!("{v:#034x}")),
-
-            // Unknown/unhandled data types.
-            // We limit the size of memory slice we extract to 16 via UnknownBytes.
-            (_, size) => size
-                .try_into()
-                .ok()
-                .and_then(|size| value.get_memory(self.memory, size))
-                .map(|v| VariableValue::new(name).value(UnknownBytes::from(v))),
-        }
+        Some(result.value(formatted))
     }
 
     fn format_typedef(
@@ -255,16 +190,17 @@ impl TypeFormatter<'_> {
     ) -> Option<VariableValue> {
         let mut result = VariableValue::new(ty.name().unwrap_or("<anonymous>"));
         for member in ty.members() {
-            let offset = match member.offset() {
-                MemberOffset::Bytes(offset) => offset,
-                // Currently not correctly implemented in symbolic.
-                MemberOffset::Bits(_) => continue,
-            };
-
             let ty = self
                 .cache
                 .lookup_type(member.ty())
-                .and_then(|ty| self.format(value.offset(offset), ty))
+                .and_then(|ty| {
+                    let offset = match member.offset()? {
+                        Size::Bytes(offset) => offset,
+                        // Currently not supported.
+                        Size::Bits(_) => return None,
+                    };
+                    self.format(value.offset(offset), ty)
+                })
                 .unwrap_or_default();
 
             result = result.member(member.name().unwrap_or("<anonymous>"), ty);
@@ -278,7 +214,7 @@ impl TypeFormatter<'_> {
     ///
     /// Returns `None` if `pointee_type` is not a single-byte character type, or if the memory at
     /// `addr` is not a valid UTF-8 string.
-    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<Value> {
+    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<JsonValue> {
         /// The maximum number of bytes read for a NUL-terminated string.
         ///
         /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
@@ -289,7 +225,7 @@ impl TypeFormatter<'_> {
             return None;
         };
 
-        let pointee_is_char = matches!(pointee_type.size(), TypeSize::Bytes(1))
+        let pointee_is_char = matches!(pointee_type.size(), Size::Bytes(1) | Size::Bits(8))
             && matches!(
                 pointee_type.encoding(),
                 Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
@@ -299,18 +235,16 @@ impl TypeFormatter<'_> {
         }
 
         let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        CStringValue::parse(bytes).map(Value::from)
+        CStringValue::parse(bytes).map(JsonValue::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
     fn read_pointer(&self, value: AddrOrValue<'_>, ty: &PointerType) -> Option<PointerAddress> {
-        let TypeSize::Bytes(size) = ty.size();
-
-        match size {
+        match ty.size() {
             // Pointers map to `pointer_address`. We assume only 32-bit and 64-bit pointer addresses
             // exist. We can of course support more if needed.
-            4 => value.get_value::<u32>(self.memory).map(Into::into),
-            8 => value.get_value::<u64>(self.memory).map(Into::into),
+            Size::Bytes(4) | Size::Bits(32) => value.get_value::<u32>(self.memory).map(Into::into),
+            Size::Bytes(8) | Size::Bits(64) => value.get_value::<u64>(self.memory).map(Into::into),
             _ => None,
         }
     }
@@ -369,7 +303,7 @@ impl<'a> CStringValue<'a> {
     }
 }
 
-impl From<CStringValue<'_>> for Value {
+impl From<CStringValue<'_>> for JsonValue {
     fn from(value: CStringValue<'_>) -> Self {
         if value.truncated {
             format!("{}... (truncated)", value.inner).into()
@@ -404,7 +338,7 @@ impl<'a> From<&'a [u8]> for UnknownBytes<'a> {
     }
 }
 
-impl From<UnknownBytes<'_>> for Value {
+impl From<UnknownBytes<'_>> for JsonValue {
     fn from(value: UnknownBytes<'_>) -> Self {
         let values = value.inner.iter().map(|b| format!("{b:#04x}"));
         let truncation_notice = value.truncated.into_iter().map(|count| {
