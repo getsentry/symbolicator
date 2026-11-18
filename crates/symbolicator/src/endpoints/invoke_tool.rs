@@ -35,7 +35,8 @@ pub async fn invoke_tool(
             minidump,
             sources,
             platform,
-        }) => tools::get_metadata::invoke(service, params, platform, minidump, sources)
+            storage_id,
+        }) => tools::get_metadata::invoke(service, params, platform, minidump, sources, storage_id)
             .await
             .map(IntoResponse::into_response),
     }

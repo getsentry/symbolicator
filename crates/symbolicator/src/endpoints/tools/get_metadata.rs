@@ -16,6 +16,8 @@ use crate::{
 pub struct Request {
     pub minidump: SymbolicationRequest,
 
+    pub storage_id: String,
+
     #[serde(default)]
     pub platform: Option<Platform>,
 
@@ -30,6 +32,7 @@ pub async fn invoke(
     platform: Option<Platform>,
     req: SymbolicationRequest,
     sources: Arc<[SourceConfig]>,
+    storage_id: String,
 ) -> Result<Json<SystemInfo>, ResponseError> {
     params.configure_scope();
 
@@ -45,6 +48,7 @@ pub async fn invoke(
                 minidump_file: AttachmentFile::Remote {
                     storage_url,
                     storage_token,
+                    storage_id: Some(storage_id),
                 },
                 sources,
                 rewrite_first_module,
@@ -57,17 +61,24 @@ pub async fn invoke(
         SymbolicationRequest::AppleCrashreport {
             storage_url,
             storage_token,
-        } => service.process_apple_crash_report(
-            platform,
-            params.scope,
-            AttachmentFile::Remote {
-                storage_url,
-                storage_token,
-            },
-            sources,
-            RequestOptions::default(),
-            true,
-        )?,
+        } => {
+            let mut cache_url = storage_url.clone();
+            cache_url.set_query(None);
+            cache_url.set_fragment(None);
+
+            service.process_apple_crash_report(
+                platform,
+                params.scope,
+                AttachmentFile::Remote {
+                    storage_url,
+                    storage_token,
+                    storage_id: Some(storage_id),
+                },
+                sources,
+                RequestOptions::default(),
+                true,
+            )?
+        }
     };
 
     let result = match service.get_response(request_id, None).await {
