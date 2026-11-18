@@ -19,6 +19,7 @@ mod symbolicate;
 mod symbolicate_any;
 mod symbolicate_js;
 mod symbolicate_jvm;
+mod tools;
 
 pub use error::ResponseError;
 use metrics::MetricsLayer;
