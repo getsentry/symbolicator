@@ -110,6 +110,7 @@ async fn test_minidump_attachment_download() {
             minidump_file: AttachmentFile::Remote {
                 storage_url: attachment_server.url("/the_minidump.dmp"),
                 storage_token: None,
+                storage_id: None,
             },
             sources: Arc::new([source]),
             rewrite_first_module: Default::default(),

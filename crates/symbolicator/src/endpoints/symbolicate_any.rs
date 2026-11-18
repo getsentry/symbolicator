@@ -65,6 +65,7 @@ pub async fn symbolicate_any(
                 minidump_file: AttachmentFile::Remote {
                     storage_url,
                     storage_token,
+                    storage_id: None,
                 },
                 sources: body.sources,
                 rewrite_first_module,
@@ -83,6 +84,7 @@ pub async fn symbolicate_any(
             AttachmentFile::Remote {
                 storage_url,
                 storage_token,
+                storage_id: None,
             },
             body.sources,
             body.options,

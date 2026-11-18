@@ -148,6 +148,8 @@ pub struct AttachmentRemoteFile {
     pub url: Url,
     /// Optional bearer credentials for the attachment.
     pub token: Option<SentryToken>,
+    /// Optional cache key; fallback uses the above URL.
+    pub storage_id: Option<String>,
 }
 
 impl AttachmentRemoteFile {
@@ -309,7 +311,13 @@ impl RemoteFile {
     /// be an `http://` or `https://` URL, for AWS S3 it would be an `s3://` url etc.
     pub fn uri(&self) -> RemoteFileUri {
         match self {
-            Self::Attachment(file) => file.url.as_str().into(),
+            Self::Attachment(file) => {
+                if let Some(id) = &file.storage_id {
+                    RemoteFileUri::from_parts("sentry", "attachments", id)
+                } else {
+                    file.url.as_str().into()
+                }
+            }
             Self::Sentry(file_source) => file_source.uri(),
             Self::Http(file_source) => file_source.uri(),
             Self::S3(file_source) => file_source.uri(),

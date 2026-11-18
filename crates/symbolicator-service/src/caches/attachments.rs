@@ -157,6 +157,7 @@ mod tests {
             let file_source = RemoteFile::Attachment(symbolicator_sources::AttachmentRemoteFile {
                 url: server.url("/attachment?signature=abc%2F123"),
                 token: token.map(SentryToken),
+                storage_id: None,
             });
 
             let view = attachments_svc

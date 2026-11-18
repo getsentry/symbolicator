@@ -185,11 +185,13 @@ impl SymbolicationActor {
             AttachmentFile::Remote {
                 storage_url,
                 storage_token,
+                storage_id,
             } => {
                 let file_source =
                     RemoteFile::Attachment(symbolicator_sources::AttachmentRemoteFile {
                         url: storage_url,
                         token: storage_token.map(SentryToken),
+                        storage_id,
                     });
                 self.attachment_svc
                     .download(scope, file_source, use_cache)

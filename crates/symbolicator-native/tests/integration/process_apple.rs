@@ -32,6 +32,7 @@ async fn test_attachment_download() {
             AttachmentFile::Remote {
                 storage_url: attachment_server.url("/the_crash_report.txt"),
                 storage_token: None,
+                storage_id: None,
             },
             Arc::new([source]),
             false,

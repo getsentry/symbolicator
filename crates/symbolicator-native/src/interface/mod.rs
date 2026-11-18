@@ -89,6 +89,7 @@ pub enum AttachmentFile {
     Remote {
         storage_url: Url,
         storage_token: Option<String>,
+        storage_id: Option<String>,
     },
 }
 
@@ -100,7 +101,12 @@ impl fmt::Debug for AttachmentFile {
             Self::Remote {
                 storage_url,
                 storage_token: _,
-            } => f.debug_tuple("Remote").field(storage_url).finish(),
+                storage_id,
+            } => f
+                .debug_tuple("Remote")
+                .field(storage_url)
+                .field(storage_id)
+                .finish(),
         }
     }
 }
