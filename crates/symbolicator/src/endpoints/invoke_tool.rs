@@ -4,9 +4,9 @@ use axum::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use symbolicator_native::interface::{AttachmentFile, ProcessMinidump, RewriteRules, SystemInfo};
+use symbolicator_native::interface::{AttachmentFile, ProcessMinidump, SystemInfo};
 use symbolicator_service::{types::Platform, utils::sentry::ConfigureScope};
-use symbolicator_sources::{AttachmentRemoteFile, RemoteFile, SentryToken, SourceConfig};
+use symbolicator_sources::SourceConfig;
 
 use crate::{
     endpoints::{ResponseError, symbolicate_any::SymbolicationRequest},
@@ -60,53 +60,41 @@ async fn get_metadata(
 ) -> Result<Json<SystemInfo>, ResponseError> {
     params.configure_scope();
 
-    let (storage_url, storage_token, rewrite_first_module, is_minidump) = match req {
+    let request_id = match req {
         SymbolicationRequest::Minidump {
             storage_url,
             storage_token,
             rewrite_first_module,
-        } => (storage_url, storage_token, rewrite_first_module, true),
+        } => {
+            let pm = ProcessMinidump {
+                platform,
+                scope: params.scope,
+                minidump_file: AttachmentFile::Remote {
+                    storage_url,
+                    storage_token,
+                },
+                sources,
+                rewrite_first_module,
+                extract_variables: false,
+                apply_source_server_info: false,
+                cache_minidump: true,
+            };
+            service.process_minidump(pm, RequestOptions::default())?
+        }
         SymbolicationRequest::AppleCrashreport {
             storage_url,
             storage_token,
-        } => (storage_url, storage_token, RewriteRules::default(), false),
-    };
-
-    // Make sure we download _and_ cache the attachment, as a download can happen more than once with
-    // tool calls.
-    let byteview = match service
-        .download_attachment(
-            &params.scope,
-            RemoteFile::Attachment(AttachmentRemoteFile {
-                url: storage_url,
-                token: storage_token.map(SentryToken),
-            }),
-        )
-        .await
-    {
-        Ok(bv) => bv,
-        Err(e) => return Err(anyhow::anyhow!("Could not download attachment: {e}").into()),
-    };
-
-    let request_id = if is_minidump {
-        let pm = ProcessMinidump {
-            platform,
-            scope: params.scope,
-            minidump_file: AttachmentFile::Mapped(byteview),
-            sources,
-            rewrite_first_module,
-            extract_variables: false,
-            apply_source_server_info: false,
-        };
-        service.process_minidump(pm, RequestOptions::default())?
-    } else {
-        service.process_apple_crash_report(
+        } => service.process_apple_crash_report(
             platform,
             params.scope,
-            AttachmentFile::Mapped(byteview),
+            AttachmentFile::Remote {
+                storage_url,
+                storage_token,
+            },
             sources,
             RequestOptions::default(),
-        )?
+            true,
+        )?,
     };
 
     let result = match service.get_response(request_id, None).await {
