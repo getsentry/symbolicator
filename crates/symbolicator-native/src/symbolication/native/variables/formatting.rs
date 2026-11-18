@@ -275,8 +275,8 @@ impl TypeFormatter<'_> {
     fn format_c_string(&self, addr: u64, ty: &Type<'_>) -> Option<VariableValue> {
         /// The maximum number of bytes read for a NUL-terminated string.
         ///
-        /// The value is chosen arbitrarily. A string without a NUL terminator in the bytes read is
-        /// reported as truncated.
+        /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
+        /// is reported as truncated.
         const MAX_BYTES: usize = 512;
 
         let Type::Primitive(ty) = ty else {
