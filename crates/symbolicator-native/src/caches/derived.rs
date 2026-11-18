@@ -15,6 +15,8 @@ pub struct DerivedCache<T> {
     pub cache: CacheContents<T>,
     pub candidates: AllObjectCandidates,
     pub features: ObjectFeatures,
+    /// The name the primarily used object file was uploaded with, if its source reports one.
+    pub object_name: Option<String>,
 }
 
 /// Derives a [`DerivedCache`] from the provided object handle and derive function.
@@ -40,6 +42,7 @@ where
             cache: Err(CacheError::NotFound),
             candidates,
             features: ObjectFeatures::default(),
+            object_name: None,
         };
     };
 
@@ -87,5 +90,6 @@ where
         cache,
         candidates,
         features,
+        object_name: meta.file_source.object_name().map(str::to_owned),
     }
 }

@@ -19,26 +19,13 @@ use symbolicator_service::objects::{
 };
 use symbolicator_service::types::Scope;
 use symbolicator_service::utils::sentry::ConfigureScope;
-use symbolicator_sources::{FileType, ObjectId, ObjectType, RemoteFile, SourceConfig};
+use symbolicator_sources::{FileType, ObjectId, ObjectType, SourceConfig};
 
 use super::bitcode::{BcSymbolMapHandle, BitcodeService};
 use super::derived::{DerivedCache, derive_from_object_handle};
 use super::il2cpp::{Il2cppHandle, Il2cppService};
 
-type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
-
-#[derive(Clone, Debug)]
-pub struct FetchedSymCache {
-    symcache: OwnedSymCache,
-    /// The name the selected debug file was uploaded to Sentry with, for Mach-O modules.
-    pub object_name: Option<String>,
-}
-
-impl FetchedSymCache {
-    pub fn get(&self) -> &SymCache<'_> {
-        self.symcache.get()
-    }
-}
+pub type OwnedSymCache = SelfCell<ByteView<'static>, SymCache<'static>>;
 
 #[derive(Clone, Debug)]
 pub struct SymCacheActor {
@@ -145,7 +132,7 @@ pub struct FetchSymCache {
 }
 
 impl SymCacheActor {
-    pub async fn fetch(&self, request: FetchSymCache) -> DerivedCache<FetchedSymCache> {
+    pub async fn fetch(&self, request: FetchSymCache) -> DerivedCache<OwnedSymCache> {
         let found_object = self
             .objects
             .find(FindObject {
@@ -156,15 +143,6 @@ impl SymCacheActor {
                 purpose: ObjectPurpose::Debug,
             })
             .await;
-
-        // Only Sentry knows the name a debug file was uploaded with. It belongs to the same
-        // binary since it matched by debug ID, so MetricKit images without file names can use it.
-        let object_name = match found_object.meta.as_ref().map(|meta| &meta.file_source) {
-            Some(RemoteFile::Sentry(file)) if request.object_type == ObjectType::Macho => {
-                file.object_basename().map(str::to_owned)
-            }
-            _ => None,
-        };
 
         derive_from_object_handle(found_object, CandidateStatus::Debug, |handle| async move {
             // TODO: while there is some caching *internally* in the bitcode_svc, the *complete*
@@ -236,11 +214,6 @@ impl SymCacheActor {
                 .compute_memoized(request, cache_key)
                 .await
                 .into_contents()
-                // Use the selected source's name even when the SymCache was already cached.
-                .map(|symcache| FetchedSymCache {
-                    symcache,
-                    object_name,
-                })
         })
         .await
     }

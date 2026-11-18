@@ -77,8 +77,8 @@ impl SentryRemoteFile {
         self
     }
 
-    /// Returns a validated basename for the debug file.
-    pub fn object_basename(&self) -> Option<&str> {
+    /// Returns the validated basename the file was uploaded with.
+    pub fn object_name(&self) -> Option<&str> {
         valid_file_name(self.object_name.as_deref()?).filter(|name| !name.trim().is_empty())
     }
 

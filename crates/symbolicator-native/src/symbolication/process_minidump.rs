@@ -29,7 +29,7 @@ use tokio::sync::Notify;
 
 use crate::caches::cficaches::{CfiCacheActor, CfiModuleInfo, FetchCfiCache, FetchedCfiCache};
 use crate::caches::derived::DerivedCache;
-use crate::caches::symcaches::{FetchSymCache, FetchedSymCache, SymCacheActor};
+use crate::caches::symcaches::{FetchSymCache, OwnedSymCache, SymCacheActor};
 use crate::interface::{
     CompleteObjectInfo, CompletedSymbolicationResponse, ProcessMinidump, RawFrame, RawStacktrace,
     Registers, RewriteRules, SymbolicateStacktraces, SystemInfo,
@@ -267,7 +267,7 @@ impl SymbolicatorSymbolProvider {
     }
 
     /// Fetches debug info for the given module and parses it into a `SymCache`.
-    async fn load_symcache(&self, module: &(dyn Module + Sync)) -> DerivedCache<FetchedSymCache> {
+    async fn load_symcache(&self, module: &(dyn Module + Sync)) -> DerivedCache<OwnedSymCache> {
         let sources = self.sources.clone();
         let scope = self.scope.clone();
         let identifier = self.object_id_from_module(module);
