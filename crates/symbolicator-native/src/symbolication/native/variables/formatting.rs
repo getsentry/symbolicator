@@ -1,6 +1,7 @@
 //! Formatting of variable values based on their types.
 
 use std::num::NonZeroUsize;
+use std::str;
 
 use serde_json::Value;
 use symbolic::symcache::{
@@ -353,11 +354,11 @@ impl<'a> CStringValue<'a> {
         let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
         let truncated = end == bytes.len();
 
-        let inner = match std::str::from_utf8(&bytes[..end]) {
+        let inner = match str::from_utf8(&bytes[..end]) {
             Ok(inner) => inner,
             // `error_len` is `None` if the error is an incomplete character at the end of `bytes`.
             Err(error) if truncated && error.error_len().is_none() => {
-                std::str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
+                str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
             }
             Err(_) => return None,
         };
