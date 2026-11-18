@@ -20,7 +20,6 @@ use futures::future;
 use futures::{FutureExt as _, channel::oneshot};
 use sentry::SentryFutureExt;
 use serde::{Deserialize, Deserializer, Serialize};
-use symbolic::common::ByteView;
 use symbolicator_js::SourceMapService;
 use symbolicator_js::interface::{CompletedJsSymbolicationResponse, SymbolicateJsStacktraces};
 use symbolicator_native::SymbolicationActor;
@@ -41,15 +40,13 @@ use symbolicator_service::types::{FrameOrder, Platform};
 use symbolicator_service::utils::defer::{MaxDeferCounter, defer};
 use symbolicator_service::utils::futures::{m, measure};
 use symbolicator_service::utils::sentry::ConfigureScope;
-use symbolicator_sources::{RemoteFile, SourceConfig};
+use symbolicator_sources::SourceConfig;
 use uuid::Uuid;
 
 pub use symbolicator_service::objects::{
     FindObject, FindResult, ObjectHandle, ObjectMetaHandle, ObjectPurpose,
 };
 pub use symbolicator_service::types::{Scope, ScrapingConfig};
-
-use crate::attachments::AttachmentsService;
 
 /// Symbolication task identifier.
 #[derive(Debug, Clone, Copy, Serialize, Ord, PartialOrd, Eq, PartialEq)]
@@ -208,8 +205,6 @@ struct RequestServiceInner {
     jvm: ProguardService,
     objects: ObjectsActor,
 
-    attachments: AttachmentsService,
-
     cpu_pool: tokio::runtime::Handle,
     requests: ComputationMap,
     current_requests: MaxDeferCounter,
@@ -234,7 +229,6 @@ impl RequestService {
         let native = SymbolicationActor::new(&shared_services);
         let js = SourceMapService::new(&shared_services);
         let jvm = ProguardService::new(&shared_services);
-        let attachments = AttachmentsService::new(&shared_services);
 
         let SharedServices {
             objects, config, ..
@@ -264,7 +258,6 @@ impl RequestService {
             js,
             jvm,
             objects,
-            attachments,
 
             cpu_pool,
             requests: Arc::new(Mutex::new(BTreeMap::new())),
@@ -293,15 +286,6 @@ impl RequestService {
         handle: Arc<ObjectMetaHandle>,
     ) -> CacheContents<Arc<ObjectHandle>> {
         self.inner.objects.fetch(handle).await
-    }
-
-    /// Downloads and caches the specified attachment.
-    pub async fn download_attachment(
-        &self,
-        scope: &Scope,
-        file_source: RemoteFile,
-    ) -> CacheContents<ByteView<'static>> {
-        self.inner.attachments.download(scope, file_source).await
     }
 
     /// Creates a new request to symbolicate stacktraces.
@@ -404,6 +388,7 @@ impl RequestService {
                     apple_crash_report,
                     sources,
                     extract_variables,
+                    false,
                 )
                 .await
                 .map(CompletedResponse::Native)

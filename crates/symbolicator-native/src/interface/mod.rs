@@ -81,6 +81,7 @@ pub struct SymbolicateStacktraces {
 
 /// Location of an attachment file, such as a minidump.
 pub enum AttachmentFile {
+    /// The attachment has been mapped to a ByteView already.
     Mapped(ByteView<'static>),
     /// The attachment has been stored on the local system already.
     Local(File),
@@ -124,6 +125,8 @@ pub struct ProcessMinidump {
     pub extract_variables: bool,
     /// Whether to apply source server information, if available.
     pub apply_source_server_info: bool,
+    /// Whether to cache the downloaded minidump.
+    pub cache_minidump: bool,
 }
 
 /// The symbolicated crash data.

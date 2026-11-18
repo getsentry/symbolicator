@@ -35,6 +35,7 @@ async fn test_attachment_download() {
             },
             Arc::new([source]),
             false,
+            false,
         )
         .await;
 

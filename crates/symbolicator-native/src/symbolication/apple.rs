@@ -16,7 +16,6 @@ use crate::interface::{
 };
 use crate::metrics::StacktraceOrigin;
 
-use super::attachments::download_attachment;
 use super::symbolicate::SymbolicationActor;
 
 impl SymbolicationActor {
@@ -135,16 +134,13 @@ impl SymbolicationActor {
         report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         extract_variables: bool,
+        cache_report: bool,
     ) -> Result<CompletedSymbolicationResponse> {
         let cogs = Cogs::global();
         let feature = AppFeature::AppleCrashReport;
-        let report = cogs
-            .measure_cpu_time(
-                feature,
-                None,
-                download_attachment(Arc::clone(&self.download_svc), report),
-            )
-            .await?;
+
+        let report = self.get_attachment(&scope, report, cache_report).await?;
+
         let (request, state) = cogs
             .measure_cpu_time(feature, Some(Category::Parse), async {
                 self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)

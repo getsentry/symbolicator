@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 
+use crate::caches::attachments::AttachmentsService;
 use crate::caching::{Caches, SharedCacheRef, SharedCacheService};
 use crate::cogs::Cogs;
 use crate::config::Config;
@@ -22,6 +23,7 @@ use crate::objects::ObjectsActor;
 pub struct SharedServices {
     pub config: Config,
     pub caches: Caches,
+    pub attachments_svc: Arc<AttachmentsService>,
     pub download_svc: Arc<DownloadService>,
     pub source_index_svc: Arc<SourceIndexService>,
     pub shared_cache: SharedCacheRef,
@@ -46,6 +48,13 @@ impl SharedServices {
             download_svc.clone(),
         ));
 
+        let attachments_svc = AttachmentsService::new(
+            caches.attachments.clone(),
+            shared_cache.clone(),
+            download_svc.clone(),
+        )
+        .into();
+
         let sourcefiles_cache = Arc::new(SourceFilesCache::new(
             caches.sourcefiles.clone(),
             shared_cache.clone(),
@@ -69,6 +78,7 @@ impl SharedServices {
             shared_cache,
             objects,
             sourcefiles_cache,
+            attachments_svc,
         })
     }
 }

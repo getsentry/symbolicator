@@ -172,6 +172,7 @@ pub async fn process_payload(
                     rewrite_first_module: Default::default(),
                     extract_variables: true,
                     apply_source_server_info: false,
+                    cache_minidump: false,
                 })
                 .await
                 .unwrap();

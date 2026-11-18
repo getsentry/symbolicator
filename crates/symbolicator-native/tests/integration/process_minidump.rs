@@ -32,6 +32,7 @@ async fn stackwalk_minidump(path: &str) -> CompletedSymbolicationResponse {
             rewrite_first_module: Default::default(),
             extract_variables: false,
             apply_source_server_info: false,
+            cache_minidump: false,
         })
         .await
         .unwrap()
@@ -114,6 +115,7 @@ async fn test_minidump_attachment_download() {
             rewrite_first_module: Default::default(),
             extract_variables: false,
             apply_source_server_info: false,
+            cache_minidump: false,
         })
         .await;
 

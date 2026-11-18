@@ -159,6 +159,7 @@ async fn test_minidump_symstore_index() {
             rewrite_first_module: Default::default(),
             extract_variables: false,
             apply_source_server_info: false,
+            cache_minidump: false,
         })
         .await
         .unwrap();

@@ -5159,7 +5159,6 @@ dependencies = [
  "symbolicator-service",
  "symbolicator-sources",
  "symbolicator-test",
- "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "tokio-metrics",

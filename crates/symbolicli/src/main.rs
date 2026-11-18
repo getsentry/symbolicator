@@ -165,6 +165,7 @@ async fn main() -> Result<()> {
                     rewrite_first_module: Default::default(),
                     extract_variables,
                     apply_source_server_info,
+                    cache_minidump: false,
                 })
                 .await?;
             CompletedResponse::NativeSymbolication(res)
@@ -180,6 +181,7 @@ async fn main() -> Result<()> {
                     AttachmentFile::Local(file),
                     dsym_sources,
                     extract_variables,
+                    false,
                 )
                 .await?;
             CompletedResponse::NativeSymbolication(res)

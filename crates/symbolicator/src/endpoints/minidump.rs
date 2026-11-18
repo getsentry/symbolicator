@@ -78,6 +78,7 @@ pub async fn handle_minidump_request(
             rewrite_first_module,
             extract_variables: options.extract_variables,
             apply_source_server_info: options.apply_source_server_info,
+            cache_minidump: false,
         },
         options,
     )?;
