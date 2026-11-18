@@ -268,24 +268,25 @@ impl TypeFormatter<'_> {
         Some(result)
     }
 
-    /// Formats the NUL-terminated string at `addr`, if `ty` is a single-byte character type.
+    /// Formats the NUL-terminated string at `addr`, if `pointee_type` is a single-byte character
+    /// type.
     ///
-    /// Returns `None` if `ty` is not a single-byte character type, or if the memory at `addr` is
-    /// not a valid UTF-8 string.
-    fn format_c_string(&self, addr: u64, ty: &Type<'_>) -> Option<VariableValue> {
+    /// Returns `None` if `pointee_type` is not a single-byte character type, or if the memory at
+    /// `addr` is not a valid UTF-8 string.
+    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<VariableValue> {
         /// The maximum number of bytes read for a NUL-terminated string.
         ///
         /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
         /// is reported as truncated.
         const MAX_BYTES: usize = 512;
 
-        let Type::Primitive(ty) = ty else {
+        let Type::Primitive(pointee_type) = pointee_type else {
             return None;
         };
 
-        let pointee_is_char = matches!(ty.size(), TypeSize::Bytes(1))
+        let pointee_is_char = matches!(pointee_type.size(), TypeSize::Bytes(1))
             && matches!(
-                ty.encoding(),
+                pointee_type.encoding(),
                 Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
             );
         if !pointee_is_char {
@@ -295,7 +296,7 @@ impl TypeFormatter<'_> {
         let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
         let string = CStringValue::parse(bytes)?;
 
-        Some(VariableValue::new(ty.name().unwrap_or("<unknown>")).value(string))
+        Some(VariableValue::new(pointee_type.name().unwrap_or("<unknown>")).value(string))
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
