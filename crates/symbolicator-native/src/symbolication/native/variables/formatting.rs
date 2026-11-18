@@ -93,19 +93,19 @@ impl TypeFormatter<'_> {
         let name = format!("{base_name}{:*<lookups$}", "");
         let mut result = VariableValue::new(name).pointer_address(addr);
 
-        let Some((pointee, pointee_addr)) = pointee.zip(pointee_addr) else {
-            return Some(result);
-        };
-
         // Attempt to parse only single-level pointers as strings. A string becomes the pointer's
         // value instead of its pointee.
         if lookups == 1
-            && let Some(string) = self.format_c_string(pointee_addr, &pointee)
+            && let Some((pointee_type, pointee_addr)) = pointee.as_ref().zip(pointee_addr)
+            && let Some(string) = self.format_c_string(pointee_addr, pointee_type)
         {
             return Some(result.value(string));
         }
 
-        if let Some(pointee) = self.format(AddrOrValue::Addr(pointee_addr), pointee) {
+        let pointee = pointee
+            .zip(pointee_addr)
+            .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty));
+        if let Some(pointee) = pointee {
             result = result.pointee(pointee);
         }
 
