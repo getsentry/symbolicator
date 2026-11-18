@@ -93,15 +93,19 @@ impl TypeFormatter<'_> {
         let name = format!("{base_name}{:*<lookups$}", "");
         let mut result = VariableValue::new(name).pointer_address(addr);
 
-        let pointee = pointee.zip(pointee_addr).and_then(|(ty, addr)| {
-            // Attempt to parse only single-level pointers as strings.
-            let as_string = (lookups == 1)
-                .then(|| self.format_c_string(addr, &ty))
-                .flatten();
+        let Some((pointee, pointee_addr)) = pointee.zip(pointee_addr) else {
+            return Some(result);
+        };
 
-            as_string.or_else(|| self.format(AddrOrValue::Addr(addr), ty))
-        });
-        if let Some(pointee) = pointee {
+        // Attempt to parse only single-level pointers as strings. A string becomes the pointer's
+        // value instead of its pointee.
+        if lookups == 1
+            && let Some(string) = self.format_c_string(pointee_addr, &pointee)
+        {
+            return Some(result.value(string));
+        }
+
+        if let Some(pointee) = self.format(AddrOrValue::Addr(pointee_addr), pointee) {
             result = result.pointee(pointee);
         }
 
@@ -274,7 +278,7 @@ impl TypeFormatter<'_> {
     ///
     /// Returns `None` if `pointee_type` is not a single-byte character type, or if the memory at
     /// `addr` is not a valid UTF-8 string.
-    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<VariableValue> {
+    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<Value> {
         /// The maximum number of bytes read for a NUL-terminated string.
         ///
         /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
@@ -295,9 +299,7 @@ impl TypeFormatter<'_> {
         }
 
         let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        let string = CStringValue::parse(bytes)?;
-
-        Some(VariableValue::new(pointee_type.name().unwrap_or("<unknown>")).value(string))
+        CStringValue::parse(bytes).map(Value::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
