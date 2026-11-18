@@ -283,12 +283,12 @@ impl TypeFormatter<'_> {
             return None;
         };
 
-        if !(matches!(ty.size(), TypeSize::Bytes(1))
+        let pointee_is_char = matches!(ty.size(), TypeSize::Bytes(1))
             && matches!(
                 ty.encoding(),
                 Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
-            ))
-        {
+            );
+        if !pointee_is_char {
             return None;
         }
 
