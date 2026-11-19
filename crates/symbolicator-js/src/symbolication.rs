@@ -140,8 +140,10 @@ async fn symbolicate_js_frame(
     );
 
     // Record this on the raw frame, as it is returned as-is if symbolication fails below.
+    // A file found by debug ID can still fail to load, for example if it is malformed.
+    // The error for the frame tells these cases apart.
     raw_frame.data.minified_source_found_by_debug_id =
-        Some(module.minified_source.found_by_debug_id && module.minified_source.entry.is_ok());
+        Some(module.minified_source.found_by_debug_id);
     raw_frame.data.sourcemap_found_by_debug_id = Some(
         module
             .smcache
