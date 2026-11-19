@@ -63,11 +63,9 @@ pub enum VariableKind {
 /// address is the last entry, and `value` and `members` are not set. As a result, the chain has
 /// fewer entries than the pointer levels in `type` when an inner pointer cannot be dereferenced.
 ///
-/// A single-level pointer to a one-byte character primitive (`char`, `signed char`, or
-/// `unsigned char`) is shown as a string in `value` when the bytes at its address, up to the
-/// NUL terminator, are valid UTF-8. At most 512 bytes are read. If they contain no NUL
-/// terminator, the string ends with `... (truncated)`. If the bytes are not valid UTF-8, the
-/// pointee is shown as a single character.
+/// Where a pointee's type suggests a more useful representation, `value` holds that
+/// representation instead of the plain pointee. For example, a `char*` is often a C string, so
+/// its `value` can be the string at its address instead of a single character.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Value {
     /// The type name.
