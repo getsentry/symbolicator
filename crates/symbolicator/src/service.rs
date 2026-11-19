@@ -229,6 +229,7 @@ impl RequestService {
         let native = SymbolicationActor::new(&shared_services);
         let js = SourceMapService::new(&shared_services);
         let jvm = ProguardService::new(&shared_services);
+
         let SharedServices {
             objects, config, ..
         } = shared_services;
@@ -387,6 +388,7 @@ impl RequestService {
                     apple_crash_report,
                     sources,
                     extract_variables,
+                    false,
                 )
                 .await
                 .map(CompletedResponse::Native)

@@ -67,6 +67,7 @@ impl Caches {
             diagnostics,
             proguard,
             source_index,
+            attachments,
         } = &self;
 
         let mut caches = vec![
@@ -82,6 +83,7 @@ impl Caches {
             diagnostics,
             proguard,
             source_index,
+            attachments,
         ];
         let mut rng = rand::rng();
 

@@ -1,5 +1,4 @@
 mod apple;
-mod attachments;
 mod demangle;
 mod dotnet;
 mod minidump_stacktraces;

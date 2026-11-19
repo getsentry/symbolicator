@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use symbolic::common::Name;
+use symbolic::common::{ByteView, Name};
+use symbolicator_service::caches::attachments::AttachmentsService;
 use symbolicator_service::caching::CacheError;
-use symbolicator_service::download::DownloadService;
 use symbolicator_service::objects::ObjectsActor;
 use symbolicator_service::services::SharedServices;
-use symbolicator_service::types::FrameOrder;
+use symbolicator_service::types::{FrameOrder, Scope};
+use symbolicator_sources::{RemoteFile, SentryToken};
 
 use crate::caches::bitcode::BitcodeService;
 use crate::caches::cficaches::CfiCacheActor;
@@ -13,9 +14,9 @@ use crate::caches::il2cpp::Il2cppService;
 use crate::caches::ppdb_caches::PortablePdbCacheActor;
 use crate::caches::symcaches::SymCacheActor;
 use crate::interface::{
-    AddrMode, AdjustInstructionAddr, CompleteStacktrace, CompletedSymbolicationResponse,
-    FrameStatus, FrameTrust, RawFrame, RawStacktrace, Registers, Signal, SymbolicateStacktraces,
-    SymbolicatedFrame,
+    AddrMode, AdjustInstructionAddr, AttachmentFile, CompleteStacktrace,
+    CompletedSymbolicationResponse, FrameStatus, FrameTrust, RawFrame, RawStacktrace, Registers,
+    Signal, SymbolicateStacktraces, SymbolicatedFrame,
 };
 use crate::memory::MemoryAccess;
 use crate::metrics::{StacktraceMetrics, record_symbolication_metrics};
@@ -34,7 +35,7 @@ pub struct SymbolicationActor {
     pub(crate) symcaches: SymCacheActor,
     pub(crate) cficaches: CfiCacheActor,
     ppdb_caches: PortablePdbCacheActor,
-    pub(crate) download_svc: Arc<DownloadService>,
+    pub(crate) attachment_svc: Arc<AttachmentsService>,
 }
 
 impl SymbolicationActor {
@@ -44,6 +45,8 @@ impl SymbolicationActor {
         let objects = services.objects.clone();
         let download_svc = services.download_svc.clone();
         let source_index_svc = services.source_index_svc.clone();
+
+        let attachment_svc = services.attachments_svc.clone();
 
         let bitcode = BitcodeService::new(
             caches.auxdifs.clone(),
@@ -85,7 +88,7 @@ impl SymbolicationActor {
             symcaches,
             cficaches,
             ppdb_caches,
-            download_svc,
+            attachment_svc,
         }
     }
 
@@ -168,6 +171,34 @@ impl SymbolicationActor {
             modules,
             ..Default::default()
         })
+    }
+
+    pub async fn get_attachment(
+        &self,
+        scope: &Scope,
+        file: AttachmentFile,
+        use_cache: bool,
+    ) -> Result<ByteView<'static>, anyhow::Error> {
+        let view = match file {
+            AttachmentFile::Mapped(byte_view) => byte_view,
+            AttachmentFile::Local(file) => ByteView::map_file(file)?,
+            AttachmentFile::Remote {
+                storage_url,
+                storage_token,
+                storage_id,
+            } => {
+                let file_source =
+                    RemoteFile::Attachment(symbolicator_sources::AttachmentRemoteFile {
+                        url: storage_url,
+                        token: storage_token.map(SentryToken),
+                        storage_id,
+                    });
+                self.attachment_svc
+                    .download(scope, file_source, use_cache)
+                    .await?
+            }
+        };
+        Ok(view)
     }
 }
 

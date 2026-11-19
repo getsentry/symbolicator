@@ -1,11 +1,10 @@
-use std::fs::File;
 use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
 use chrono::{DateTime, Utc};
 use regex::Regex;
-use symbolic::common::{Arch, CodeId, DebugId};
+use symbolic::common::{Arch, ByteView, CodeId, DebugId};
 use symbolicator_service::cogs::{AppFeature, Category, Cogs};
 use symbolicator_service::types::{FrameOrder, Platform, RawObjectInfo, Scope};
 use symbolicator_service::utils::hex::HexValue;
@@ -17,7 +16,6 @@ use crate::interface::{
 };
 use crate::metrics::StacktraceOrigin;
 
-use super::attachments::download_attachment;
 use super::symbolicate::SymbolicationActor;
 
 impl SymbolicationActor {
@@ -26,12 +24,12 @@ impl SymbolicationActor {
         &self,
         platform: Option<Platform>,
         scope: Scope,
-        report: File,
+        report: ByteView<'static>,
         sources: Arc<[SourceConfig]>,
         extract_variables: bool,
     ) -> Result<(SymbolicateStacktraces, AppleCrashReportState)> {
-        let report =
-            AppleCrashReport::from_reader(report).context("failed to parse apple crash report")?;
+        let report = AppleCrashReport::from_reader(report.as_slice())
+            .context("failed to parse apple crash report")?;
         let mut metadata = report.metadata;
 
         let arch = report
@@ -136,16 +134,13 @@ impl SymbolicationActor {
         report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         extract_variables: bool,
+        cache_report: bool,
     ) -> Result<CompletedSymbolicationResponse> {
         let cogs = Cogs::global();
         let feature = AppFeature::AppleCrashReport;
-        let report = cogs
-            .measure_cpu_time(
-                feature,
-                None,
-                download_attachment(Arc::clone(&self.download_svc), report),
-            )
-            .await?;
+
+        let report = self.get_attachment(&scope, report, cache_report).await?;
+
         let (request, state) = cogs
             .measure_cpu_time(feature, Some(Category::Parse), async {
                 self.parse_apple_crash_report(platform, scope, report, sources, extract_variables)
