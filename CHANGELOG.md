@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Name modules that have no code or debug filename after their matching Sentry debug file. ([#2201](https://github.com/getsentry/symbolicator/pull/2201))
+
 ## 26.11.0
 
 ### Breaking Changes

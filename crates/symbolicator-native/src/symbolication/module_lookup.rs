@@ -68,6 +68,7 @@ pub struct CacheFile {
     file: CacheContents<CacheFileEntry>,
     candidates: AllObjectCandidates,
     features: ObjectFeatures,
+    object_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +108,8 @@ struct ModuleEntry {
     object_info: CompleteObjectInfo,
     cache: CacheContents<CacheFileEntry>,
     source_object: CacheContents<Arc<ObjectHandle>>,
+    /// The name the debug file used for this module was uploaded with.
+    object_name: Option<String>,
 }
 
 pub struct ModuleLookup {
@@ -142,6 +145,7 @@ impl ModuleLookup {
                 object_info,
                 cache: Err(CacheError::NotFound),
                 source_object: Err(CacheError::NotFound),
+                object_name: None,
             })
             .collect();
 
@@ -209,7 +213,17 @@ impl ModuleLookup {
         self.modules.sort_by_key(|entry| entry.module_index);
         self.modules
             .into_iter()
-            .map(|entry| entry.object_info)
+            .map(|mut entry| {
+                // Name modules the SDK sent without any file name after their uploaded debug
+                // file. This runs after symbolication, so frame packages and grouping stay
+                // unchanged.
+                if entry.object_info.raw.code_file.is_none()
+                    && entry.object_info.raw.debug_file.is_none()
+                {
+                    entry.object_info.raw.debug_file = entry.object_name;
+                }
+                entry.object_info
+            })
             .collect()
     }
 
@@ -263,12 +277,14 @@ impl ModuleLookup {
                                 cache,
                                 candidates,
                                 features,
+                                object_name,
                             } = ppdb_cache_actor.fetch(request).await;
 
                             let cache_file = CacheFile {
                                 file: cache.map(CacheFileEntry::PortablePdbCache),
                                 candidates,
                                 features,
+                                object_name,
                             };
 
                             (idx, cache_file)
@@ -286,12 +302,14 @@ impl ModuleLookup {
                                 cache,
                                 candidates,
                                 features,
+                                object_name,
                             } = symcache_actor.fetch(request).await;
 
                             let cache_file = CacheFile {
                                 file: cache.map(CacheFileEntry::SymCache),
                                 candidates,
                                 features,
+                                object_name,
                             };
 
                             (idx, cache_file)
@@ -307,6 +325,7 @@ impl ModuleLookup {
                 file,
                 candidates,
                 features,
+                object_name,
             } = cache_file;
 
             if let Some(entry) = self.modules.get_mut(idx) {
@@ -319,6 +338,9 @@ impl ModuleLookup {
                     entry.object_info.arch = symcache.get().arch();
                 }
 
+                if file.is_ok() {
+                    entry.object_name = object_name;
+                }
                 entry.cache = file;
             }
         }

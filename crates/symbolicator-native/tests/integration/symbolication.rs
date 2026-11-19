@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use symbolicator_native::interface::AttachmentFile;
+use serde_json::json;
+use symbolicator_native::interface::{AttachmentFile, FrameStatus};
 use symbolicator_service::types::Scope;
+use symbolicator_sources::SourceConfig;
+use symbolicator_test::sentry_server;
 
 use crate::{
     assert_snapshot, example_request, fixture, make_symbolication_request, setup_service,
@@ -44,6 +47,45 @@ async fn test_add_bucket() {
     let response = symbolication.symbolicate(request).await;
 
     assert_snapshot!(response.unwrap());
+}
+
+#[tokio::test]
+async fn test_macho_debug_file_from_sentry() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    // Only modules the SDK sent without any file name take the uploaded name.
+    for (code_file, debug_file, expected_name) in [
+        (None, None, Some("Hello")),
+        (None, Some("/sdk/Hello"), Some("/sdk/Hello")),
+        (Some("/sdk/Hello"), None, None),
+    ] {
+        let (_server, source) = sentry_server(fixture("symbols"), move |_, _| {
+            json!([{
+                "id": "502F/C0A5/1EC1/3E47/9998/684FA139DCA7",
+                "symbolType": "macho",
+                "objectName": "/uploads/Hello",
+            }])
+        });
+        let mut request = example_request(vec![SourceConfig::Sentry(Arc::new(source))]);
+        request.modules[0].raw.image_size = None;
+        request.modules[0].raw.code_file = code_file.map(str::to_owned);
+        request.modules[0].raw.debug_file = debug_file.map(str::to_owned);
+        // Also add a frame in the same module that has no symbol.
+        let frames = &mut request.stacktraces[0].frames;
+        let mut unresolved = frames[0].clone();
+        unresolved.instruction_addr.0 = 0x100001000;
+        frames.push(unresolved);
+
+        let response = symbolication.symbolicate(request).await.unwrap();
+        let frames = &response.stacktraces[0].frames;
+        assert_eq!(frames[0].status, FrameStatus::Symbolicated);
+        assert_eq!(frames[1].status, FrameStatus::MissingSymbol);
+        assert!(
+            frames
+                .iter()
+                .all(|frame| frame.raw.package.as_deref() == code_file)
+        );
+        assert_eq!(response.modules[0].raw.debug_file.as_deref(), expected_name);
+    }
 }
 
 #[tokio::test]

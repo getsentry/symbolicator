@@ -228,6 +228,16 @@ impl RemoteFile {
         }
     }
 
+    /// The name the file was uploaded with, if the source knows it.
+    ///
+    /// Only Sentry reports names for its debug files.
+    pub fn object_name(&self) -> Option<&str> {
+        match self {
+            Self::Sentry(file) => file.object_name(),
+            _ => None,
+        }
+    }
+
     /// A specific cache key for this [`RemoteFile`].
     pub fn cache_key(&self) -> String {
         match self {
