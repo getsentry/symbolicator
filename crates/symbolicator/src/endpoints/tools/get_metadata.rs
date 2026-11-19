@@ -61,24 +61,18 @@ pub async fn invoke(
         SymbolicationRequest::AppleCrashreport {
             storage_url,
             storage_token,
-        } => {
-            let mut cache_url = storage_url.clone();
-            cache_url.set_query(None);
-            cache_url.set_fragment(None);
-
-            service.process_apple_crash_report(
-                platform,
-                params.scope,
-                AttachmentFile::Remote {
-                    storage_url,
-                    storage_token,
-                    storage_id: Some(storage_id),
-                },
-                sources,
-                RequestOptions::default(),
-                true,
-            )?
-        }
+        } => service.process_apple_crash_report(
+            platform,
+            params.scope,
+            AttachmentFile::Remote {
+                storage_url,
+                storage_token,
+                storage_id: Some(storage_id),
+            },
+            sources,
+            RequestOptions::default(),
+            true,
+        )?,
     };
 
     let result = match service.get_response(request_id, None).await {
