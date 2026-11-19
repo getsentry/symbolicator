@@ -46,9 +46,28 @@ pub enum VariableKind {
     Parameter,
 }
 
-/// A value of a variable or field within a variable (e.g. list item, pointee, struct field).
+/// A value of a variable or field within a variable (e.g. list item, struct field).
 ///
 /// This struct allows for multiple co-existing representations.
+///
+/// # Pointers
+///
+/// A pointer and the values it points to are represented by a single [`Value`]. `type` is the
+/// pointer type (e.g. `Player**`), `pointer_address` holds the pointer chain, and `value` or
+/// `members` hold the final pointee as they would for a variable of the pointee type.
+///
+/// `pointer_address` holds one address per pointer level, outermost first. The first address is
+/// the one stored in the variable, and each following address is read from the memory at the
+/// previous address. The chain ends at the first address that cannot be dereferenced, because
+/// it is null (any address below `0x1000`) or because its memory is not in the memory dump. This
+/// address is the last entry, and `value` and `members` are not set. As a result, the chain has
+/// fewer entries than the pointer levels in `type` when an inner pointer cannot be dereferenced.
+///
+/// A single-level pointer to a one-byte character primitive (`char`, `signed char`, or
+/// `unsigned char`) is shown as a string in `value` when the bytes at its address, up to the
+/// NUL terminator, are valid UTF-8. At most 512 bytes are read. If they contain no NUL
+/// terminator, the string ends with `... (truncated)`. If the bytes are not valid UTF-8, the
+/// pointee is shown as a single character.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Value {
     /// The type name.
@@ -61,13 +80,9 @@ pub struct Value {
     #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<JsonValue>,
 
-    /// A pointer address.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pointer_address: Option<PointerAddress>,
-
-    /// The value after the pointer has been dereferenced.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pointee: Option<Box<Value>>,
+    /// The addresses of a pointer chain, one per pointer level, outermost first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pointer_address: Vec<PointerAddress>,
 
     /// Members of a structure, in declaration order.
     #[serde(
@@ -111,23 +126,13 @@ impl Value {
         }
     }
 
-    /// Sets the pointer address on this [`Value`].
-    pub fn pointer_address<V>(mut self, address: V) -> Self
-    where
-        V: Into<PointerAddress>,
-    {
-        self.pointer_address = Some(address.into());
-        self
-    }
-
-    /// Sets the pointee on this [`Value`].
+    /// Prepends the outer levels of a pointer chain to this [`Value`]'s pointer chain.
     ///
-    /// Can be set to include the dereferenced variable value of a pointer.
-    pub fn pointee<T>(mut self, pointee: T) -> Self
-    where
-        T: Into<Box<Self>>,
-    {
-        self.pointee = Some(pointee.into());
+    /// The pointer chain of a pointee that is itself a pointer (e.g. through a typedef) continues
+    /// the chain of the pointer that points to it.
+    pub fn prepend_pointer_addresses(mut self, mut addresses: Vec<PointerAddress>) -> Self {
+        addresses.append(&mut self.pointer_address);
+        self.pointer_address = addresses;
         self
     }
 
