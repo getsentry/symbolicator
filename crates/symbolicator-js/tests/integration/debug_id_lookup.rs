@@ -1,3 +1,4 @@
+use std::io::{Seek, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -16,6 +17,14 @@ const DEBUG_ID: &str = "22222222-2222-4222-8222-222222222222";
 /// Writes a bundle with a minified source and, if `source_name` is set, a source map.
 fn write_bundle(path: &Path, source_name: Option<&str>, debug_id: &str) {
     let mut bundle = SourceBundleWriter::create(path).unwrap();
+    add_minified_source(&mut bundle, debug_id);
+    if let Some(source_name) = source_name {
+        add_sourcemap(&mut bundle, source_name, debug_id);
+    }
+    bundle.finish().unwrap();
+}
+
+fn add_minified_source<W: Write + Seek>(bundle: &mut SourceBundleWriter<W>, debug_id: &str) {
     let mut source_info = SourceFileInfo::new();
     source_info.set_ty(SourceFileType::MinifiedSource);
     source_info.set_url("~/main.jsbundle".into());
@@ -24,12 +33,13 @@ fn write_bundle(path: &Path, source_name: Option<&str>, debug_id: &str) {
     bundle
         .add_file("main.jsbundle", &b""[..], source_info)
         .unwrap();
+}
 
-    let Some(source_name) = source_name else {
-        bundle.finish().unwrap();
-        return;
-    };
-
+fn add_sourcemap<W: Write + Seek>(
+    bundle: &mut SourceBundleWriter<W>,
+    source_name: &str,
+    debug_id: &str,
+) {
     let sourcemap = json!({
         "version": 3,
         "sources": [source_name],
@@ -48,7 +58,6 @@ fn write_bundle(path: &Path, source_name: Option<&str>, debug_id: &str) {
             map_info,
         )
         .unwrap();
-    bundle.finish().unwrap();
 }
 
 fn request(source: SentrySourceConfig, release: &str) -> SymbolicateJsStacktraces {
@@ -271,4 +280,27 @@ async fn found_by_debug_id_without_sourcemap() {
     assert!(!frame.data.symbolicated);
     assert_eq!(frame.data.minified_source_found_by_debug_id, Some(true));
     assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(false));
+}
+
+#[tokio::test]
+async fn sourcemap_found_by_debug_id_without_minified_source() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let fixtures = symbolicator_test::tempdir();
+    let mut bundle = SourceBundleWriter::create(fixtures.path().join("sourcemap.zip")).unwrap();
+    add_sourcemap(&mut bundle, "current.js", DEBUG_ID);
+    bundle.finish().unwrap();
+    let (_server, source) = symbolicator_test::sourcemap_server(fixtures.path(), |url, _query| {
+        json!([{
+            "type": "bundle", "id": "1",
+            "url": format!("{url}/sourcemap.zip"), "resolved_with": "debug-id",
+        }])
+    });
+    let response = symbolication
+        .symbolicate_js(request(source, "current"))
+        .await;
+    // The minified source fails to download, as scraping is disabled.
+    let frame = &response.stacktraces[0].frames[1];
+    assert!(!frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(false));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(true));
 }

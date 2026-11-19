@@ -1293,6 +1293,10 @@ impl ArtifactFetcher {
             }
         }
 
+        // Record this before building the cache, which can replace the source map entry
+        // with an error from the minified source.
+        let found_by_debug_id = sourcemap.found_by_debug_id && sourcemap.entry.is_ok();
+
         let smcache = match &source.entry {
             Ok(source_entry) => match sourcemap.entry {
                 Ok(sourcemap_entry) => {
@@ -1344,7 +1348,7 @@ impl ArtifactFetcher {
             uri: sourcemap.uri,
             entry: smcache,
             resolved_with: sourcemap.resolved_with,
-            found_by_debug_id: sourcemap.found_by_debug_id,
+            found_by_debug_id,
         }
     }
 

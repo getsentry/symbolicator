@@ -142,9 +142,12 @@ async fn symbolicate_js_frame(
     // Record this on the raw frame, as it is returned as-is if symbolication fails below.
     raw_frame.data.minified_source_found_by_debug_id =
         Some(module.minified_source.found_by_debug_id && module.minified_source.entry.is_ok());
-    raw_frame.data.sourcemap_found_by_debug_id = Some(module.smcache.as_ref().is_some_and(|sm| {
-        sm.found_by_debug_id && matches!(sm.entry, Ok(_) | Err(CacheError::Malformed(_)))
-    }));
+    raw_frame.data.sourcemap_found_by_debug_id = Some(
+        module
+            .smcache
+            .as_ref()
+            .is_some_and(|smcache| smcache.found_by_debug_id),
+    );
 
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
