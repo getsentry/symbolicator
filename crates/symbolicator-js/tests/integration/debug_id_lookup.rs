@@ -1,3 +1,4 @@
+use std::io::{Seek, Write};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -13,8 +14,17 @@ use crate::setup_service;
 
 const DEBUG_ID: &str = "22222222-2222-4222-8222-222222222222";
 
-fn write_bundle(path: &Path, source_name: &str, debug_id: &str) {
+/// Writes a bundle with a minified source and, if `source_name` is set, a source map.
+fn write_bundle(path: &Path, source_name: Option<&str>, debug_id: &str) {
     let mut bundle = SourceBundleWriter::create(path).unwrap();
+    add_minified_source(&mut bundle, debug_id);
+    if let Some(source_name) = source_name {
+        add_sourcemap(&mut bundle, source_name, debug_id);
+    }
+    bundle.finish().unwrap();
+}
+
+fn add_minified_source<W: Write + Seek>(bundle: &mut SourceBundleWriter<W>, debug_id: &str) {
     let mut source_info = SourceFileInfo::new();
     source_info.set_ty(SourceFileType::MinifiedSource);
     source_info.set_url("~/main.jsbundle".into());
@@ -23,7 +33,13 @@ fn write_bundle(path: &Path, source_name: &str, debug_id: &str) {
     bundle
         .add_file("main.jsbundle", &b""[..], source_info)
         .unwrap();
+}
 
+fn add_sourcemap<W: Write + Seek>(
+    bundle: &mut SourceBundleWriter<W>,
+    source_name: &str,
+    debug_id: &str,
+) {
     let sourcemap = json!({
         "version": 3,
         "sources": [source_name],
@@ -42,7 +58,6 @@ fn write_bundle(path: &Path, source_name: &str, debug_id: &str) {
             map_info,
         )
         .unwrap();
-    bundle.finish().unwrap();
 }
 
 fn request(source: SentrySourceConfig, release: &str) -> SymbolicateJsStacktraces {
@@ -86,12 +101,12 @@ async fn debug_id_lookup_before_url_fallback() {
         // The release bundle sorts first in the reverse-order bundle cache lookup.
         write_bundle(
             &fixtures.path().join("02-release.zip"),
-            "old.js",
+            Some("old.js"),
             "11111111-1111-4111-8111-111111111111",
         );
         write_bundle(
             &fixtures.path().join("01-debug-id.zip"),
-            "current.js",
+            Some("current.js"),
             DEBUG_ID,
         );
         let (server, source) =
@@ -126,6 +141,8 @@ async fn debug_id_lookup_before_url_fallback() {
         );
         assert_eq!(frame.data.resolved_with, Some(ResolvedWith::DebugId));
         assert!(frame.data.symbolicated);
+        assert_eq!(frame.data.minified_source_found_by_debug_id, Some(true));
+        assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(true));
         assert_eq!(response.errors.len(), 1);
         assert_eq!(response.errors[0].abs_path, "app:///InternalBytecode.js");
 
@@ -143,7 +160,11 @@ async fn debug_id_lookup_before_url_fallback() {
 async fn debug_id_lookup_before_individual_artifact_fallback() {
     let (symbolication, _cache_dir) = setup_service(|_| ());
     let fixtures = symbolicator_test::tempdir();
-    write_bundle(&fixtures.path().join("current.zip"), "current.js", DEBUG_ID);
+    write_bundle(
+        &fixtures.path().join("current.zip"),
+        Some("current.js"),
+        DEBUG_ID,
+    );
     std::fs::write(fixtures.path().join("main.jsbundle"), "").unwrap();
     std::fs::write(
         fixtures.path().join("main.jsbundle.map"),
@@ -179,6 +200,8 @@ async fn debug_id_lookup_before_individual_artifact_fallback() {
     assert_eq!(frame.filename.as_deref(), Some("current.js"));
     assert_eq!(frame.data.resolved_with, Some(ResolvedWith::DebugId));
     assert!(frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(true));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(true));
 }
 
 #[tokio::test]
@@ -187,7 +210,7 @@ async fn debug_id_lookup_preserves_release_fallback() {
     let fixtures = symbolicator_test::tempdir();
     write_bundle(
         &fixtures.path().join("release.zip"),
-        "old.js",
+        Some("old.js"),
         "11111111-1111-4111-8111-111111111111",
     );
     let (_server, source) = symbolicator_test::sourcemap_server(fixtures.path(), |url, query| {
@@ -207,4 +230,77 @@ async fn debug_id_lookup_preserves_release_fallback() {
     assert_eq!(frame.filename.as_deref(), Some("old.js"));
     assert_eq!(frame.data.resolved_with, Some(ResolvedWith::Release));
     assert!(frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(false));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(false));
+}
+
+#[tokio::test]
+async fn found_by_debug_id_ignores_bundle_resolution() {
+    // Sentry returns this bundle for the debug ID, but the files in it have a different debug ID.
+    // They are matched by URL, so they are not found by debug ID.
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let fixtures = symbolicator_test::tempdir();
+    write_bundle(
+        &fixtures.path().join("bundle.zip"),
+        Some("old.js"),
+        "11111111-1111-4111-8111-111111111111",
+    );
+    let (_server, source) = symbolicator_test::sourcemap_server(fixtures.path(), |url, _query| {
+        json!([{
+            "type": "bundle", "id": "1",
+            "url": format!("{url}/bundle.zip"), "resolved_with": "debug-id",
+        }])
+    });
+    let response = symbolication
+        .symbolicate_js(request(source, "current"))
+        .await;
+    let frame = &response.stacktraces[0].frames[1];
+    assert_eq!(frame.filename.as_deref(), Some("old.js"));
+    assert_eq!(frame.data.resolved_with, Some(ResolvedWith::DebugId));
+    assert!(frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(false));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(false));
+}
+
+#[tokio::test]
+async fn found_by_debug_id_without_sourcemap() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let fixtures = symbolicator_test::tempdir();
+    write_bundle(&fixtures.path().join("current.zip"), None, DEBUG_ID);
+    let (_server, source) = symbolicator_test::sourcemap_server(fixtures.path(), |url, _query| {
+        json!([{
+            "type": "bundle", "id": "1",
+            "url": format!("{url}/current.zip"), "resolved_with": "debug-id",
+        }])
+    });
+    let response = symbolication
+        .symbolicate_js(request(source, "current"))
+        .await;
+    let frame = &response.stacktraces[0].frames[1];
+    assert!(!frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(true));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(false));
+}
+
+#[tokio::test]
+async fn sourcemap_found_by_debug_id_without_minified_source() {
+    let (symbolication, _cache_dir) = setup_service(|_| ());
+    let fixtures = symbolicator_test::tempdir();
+    let mut bundle = SourceBundleWriter::create(fixtures.path().join("sourcemap.zip")).unwrap();
+    add_sourcemap(&mut bundle, "current.js", DEBUG_ID);
+    bundle.finish().unwrap();
+    let (_server, source) = symbolicator_test::sourcemap_server(fixtures.path(), |url, _query| {
+        json!([{
+            "type": "bundle", "id": "1",
+            "url": format!("{url}/sourcemap.zip"), "resolved_with": "debug-id",
+        }])
+    });
+    let response = symbolication
+        .symbolicate_js(request(source, "current"))
+        .await;
+    // The minified source fails to download, as scraping is disabled.
+    let frame = &response.stacktraces[0].frames[1];
+    assert!(!frame.data.symbolicated);
+    assert_eq!(frame.data.minified_source_found_by_debug_id, Some(false));
+    assert_eq!(frame.data.sourcemap_found_by_debug_id, Some(true));
 }

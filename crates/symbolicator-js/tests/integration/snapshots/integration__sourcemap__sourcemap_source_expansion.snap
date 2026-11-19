@@ -11,6 +11,8 @@ stacktraces:
         colno: 17
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: add
         filename: file1.js
         module: file1
@@ -28,6 +30,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release-old
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - function: "function: \"HTMLDocument.<anonymous>\""
@@ -37,6 +41,8 @@ raw_stacktraces:
         colno: 17
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: file.min.js
         abs_path: "http://example.com/file.min.js"
         lineno: 1
@@ -46,6 +52,8 @@ raw_stacktraces:
           - //@ sourceMappingURL=file.min.js.map
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 errors:
   - abs_path: "http://example.com/index.html"
     type: scraping_disabled

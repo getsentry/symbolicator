@@ -263,6 +263,16 @@ pub struct JsFrameData {
     pub resolved_with: Option<ResolvedWith>,
     #[serde(default)]
     pub symbolicated: bool,
+    /// Whether the minified source was found in an artifact bundle by its debug ID.
+    ///
+    /// `None` means that this was not evaluated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minified_source_found_by_debug_id: Option<bool>,
+    /// Whether the source map was found in an artifact bundle by its debug ID.
+    ///
+    /// `None` means that this was not evaluated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sourcemap_found_by_debug_id: Option<bool>,
 }
 
 /// A marker indicating what a File was resolved with.

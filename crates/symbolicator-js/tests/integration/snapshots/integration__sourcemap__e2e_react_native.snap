@@ -21,6 +21,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - abs_path: "app:///index.android.bundle"
@@ -28,6 +30,8 @@ raw_stacktraces:
         colno: 11940
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 scraping_attempts:
   - url: "app:///index.android.bundle"
     status: not_attempted

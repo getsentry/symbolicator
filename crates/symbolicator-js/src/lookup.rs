@@ -418,6 +418,10 @@ pub struct CachedFileEntry<T = CachedFile> {
     pub uri: CachedFileUri,
     pub entry: CacheContents<T>,
     pub resolved_with: ResolvedWith,
+    /// Whether the file was found in an artifact bundle by its own debug ID.
+    ///
+    /// Unlike `resolved_with`, this does not depend on how the containing bundle was found.
+    pub found_by_debug_id: bool,
 }
 
 impl<T> CachedFileEntry<T> {
@@ -427,6 +431,7 @@ impl<T> CachedFileEntry<T> {
             uri: CachedFileUri::IndividualFile(uri),
             entry: Err(CacheError::NotFound),
             resolved_with: ResolvedWith::Unknown,
+            found_by_debug_id: false,
         }
     }
 }
@@ -653,6 +658,7 @@ impl ArtifactFetcher {
                     debug_id,
                 }),
                 resolved_with: minified_source.resolved_with,
+                found_by_debug_id: false,
             },
             // We do have a valid `sourceMappingURL`
             Some(SourceMapUrl::Remote(url)) => {
@@ -774,6 +780,7 @@ impl ArtifactFetcher {
             uri: CachedFileUri::ScrapedFile(RemoteFileUri::new(abs_path)),
             entry: Err(CacheError::DownloadError(err)),
             resolved_with: ResolvedWith::Unknown,
+            found_by_debug_id: false,
         };
 
         let mut url = match Url::parse(abs_path) {
@@ -897,6 +904,7 @@ impl ArtifactFetcher {
             uri,
             entry,
             resolved_with: ResolvedWith::Scraping,
+            found_by_debug_id: false,
         }
     }
 
@@ -952,6 +960,7 @@ impl ArtifactFetcher {
                     uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                     entry: CachedFile::from_descriptor(key.abs_path(), descriptor),
                     resolved_with: ResolvedWith::DebugId,
+                    found_by_debug_id: true,
                 };
                 self.files_in_bundles
                     .insert(bundle_uri, key, ResolvedWith::DebugId, &file_entry);
@@ -986,6 +995,7 @@ impl ArtifactFetcher {
                         uri: CachedFileUri::Bundled(bundle_uri.clone(), key.clone()),
                         entry: CachedFile::from_descriptor(Some(abs_path), descriptor),
                         resolved_with: *resolved_with,
+                        found_by_debug_id: false,
                     };
                     self.files_in_bundles
                         .insert(bundle_uri, key, ResolvedWith::Url, &file_entry);
@@ -1113,6 +1123,7 @@ impl ArtifactFetcher {
                 }
             }),
             resolved_with: artifact.resolved_with,
+            found_by_debug_id: false,
         })
     }
 
@@ -1333,6 +1344,7 @@ impl ArtifactFetcher {
             uri: sourcemap.uri,
             entry: smcache,
             resolved_with: sourcemap.resolved_with,
+            found_by_debug_id: sourcemap.found_by_debug_id,
         }
     }
 

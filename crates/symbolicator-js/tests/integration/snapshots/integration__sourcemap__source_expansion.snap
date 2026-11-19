@@ -18,6 +18,8 @@ stacktraces:
           - " "
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
@@ -35,6 +37,8 @@ stacktraces:
           - r
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - filename: foo.js
@@ -50,6 +54,8 @@ raw_stacktraces:
           - " "
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - filename: foo.js
         abs_path: "http://example.com/foo.js"
         lineno: 4
@@ -67,6 +73,8 @@ raw_stacktraces:
           - r
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 scraping_attempts:
   - url: "http://example.com/foo.js"
     status: not_attempted

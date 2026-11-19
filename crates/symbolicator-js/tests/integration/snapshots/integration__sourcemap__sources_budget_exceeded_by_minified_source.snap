@@ -11,6 +11,8 @@ stacktraces:
         colno: 183
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - function: i
@@ -20,6 +22,8 @@ raw_stacktraces:
         colno: 183
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 errors:
   - abs_path: "http://example.com/test.min.js"
     type: missing_source

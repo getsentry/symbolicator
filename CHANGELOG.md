@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+- Record on JavaScript frames whether the minified source and the source map were found by debug ID. ([#2198](https://github.com/getsentry/symbolicator/pull/2198))
+
 ## 26.11.0
 
 ### Breaking Changes

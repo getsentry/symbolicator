@@ -11,6 +11,8 @@ stacktraces:
         colno: 7
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: test
         filename: test.js
         module: test
@@ -34,6 +36,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: invoke
         filename: test.js
         module: test
@@ -58,6 +62,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: onFailure
         filename: test.js
         module: test
@@ -81,6 +87,8 @@ stacktraces:
           sourcemap_origin: "sentry://project_debug_file/2"
           resolved_with: release
           symbolicated: true
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 raw_stacktraces:
   - frames:
       - function: produceStack
@@ -90,6 +98,8 @@ raw_stacktraces:
         colno: 7
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: i
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -100,6 +110,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: r
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -110,6 +122,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
       - function: e
         filename: test.min.js
         abs_path: "http://example.com/test.min.js"
@@ -120,6 +134,8 @@ raw_stacktraces:
           - "//# sourceMappingURL=test.min.js.map"
         data:
           symbolicated: false
+          minified_source_found_by_debug_id: false
+          sourcemap_found_by_debug_id: false
 errors:
   - abs_path: "http://example.com/index.html"
     type: scraping_disabled

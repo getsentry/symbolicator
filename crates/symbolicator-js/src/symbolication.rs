@@ -139,6 +139,18 @@ async fn symbolicate_js_frame(
         "Module for `abs_path`"
     );
 
+    // Record this on the raw frame, as it is returned as-is if symbolication fails below.
+    // A file found by debug ID can still fail to load, for example if it is malformed.
+    // The error for the frame tells these cases apart.
+    raw_frame.data.minified_source_found_by_debug_id =
+        Some(module.minified_source.found_by_debug_id);
+    raw_frame.data.sourcemap_found_by_debug_id = Some(
+        module
+            .smcache
+            .as_ref()
+            .is_some_and(|smcache| smcache.found_by_debug_id),
+    );
+
     // Apply source context to the raw frame. If it fails, we bail early, as it's not possible
     // to construct a `SourceMapCache` without the minified source anyway.
     let mut frame = match &module.minified_source.entry {
