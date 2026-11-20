@@ -120,8 +120,13 @@ impl<'a> AddrOrValue<'a> {
     }
 
     /// Reads up to 128 bits starting at `offset` in bits.
-    fn get_bits(&self, memory: &dyn MemoryAccess, offset: u64, size: u64) -> Option<RawBits> {
-        if size == 0 || size > 128 {
+    fn get_bits(
+        &self,
+        memory: &dyn MemoryAccess,
+        offset_bits: u64,
+        size_bits: u64,
+    ) -> Option<RawBits> {
+        if size_bits == 0 || size_bits > 128 {
             return None;
         }
 
@@ -130,39 +135,38 @@ impl<'a> AddrOrValue<'a> {
             Self::Value(_) => Endian::Little,
         };
 
-        let byte_offset = offset / 8;
-        let bit_offset = offset % 8;
-
+        let bit_offset_bits = offset_bits % 8;
+        let len_bytes = (bit_offset_bits + size_bits).div_ceil(8);
         let bytes = self
-            .offset(byte_offset)
-            .get_memory(memory, (bit_offset + size).div_ceil(8) as usize)?;
+            .offset(offset_bits / 8)
+            .get_memory(memory, len_bytes as usize)?;
 
-        let mut data = 0;
-        let mut remaining = size;
-        let mut current_bit_offset = bit_offset;
-
-        for &byte in bytes {
-            let width = remaining.min(8 - current_bit_offset);
-            let mask = (1u128 << width) - 1;
-            data = match endian {
-                Endian::Little => {
-                    let bits = u128::from(byte >> current_bit_offset) & mask;
-                    data | (bits << (size - remaining))
-                }
-                Endian::Big => {
-                    let bits = u128::from(byte >> (8 - current_bit_offset - width)) & mask;
-                    (data << width) | bits
-                }
-            };
-            remaining -= width;
-            current_bit_offset = 0;
-        }
+        let data = match endian {
+            Endian::Little => read_le_shifted(bytes.iter(), bit_offset_bits),
+            // Big endian is just little endian over the reversed bytes, with the
+            // unused bits at the end.
+            Endian::Big => {
+                let trailing_bits = len_bytes * 8 - bit_offset_bits - size_bits;
+                read_le_shifted(bytes.iter().rev(), trailing_bits)
+            }
+        };
 
         Some(RawBits {
-            data,
-            size: size as u8,
+            data: data & (u128::MAX >> (128 - size_bits)),
+            size: size_bits as u8,
         })
     }
+}
+
+fn read_le_shifted<'a>(mut bytes: impl Iterator<Item = &'a u8>, shift: u64) -> u128 {
+    let mut data = u128::from(*bytes.next().unwrap_or(&0)) >> shift;
+
+    for (idx, byte) in bytes.enumerate() {
+        let byte = u128::from(*byte);
+        data |= byte << (8 * (idx + 1) as u64 - shift);
+    }
+
+    data
 }
 
 /// Bits read from memory.
