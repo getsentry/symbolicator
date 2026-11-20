@@ -105,8 +105,18 @@ impl Value {
     where
         V: Into<JsonValue>,
     {
+        self.value_opt(Some(value))
+    }
+
+    /// Provide an optional fully-formatted, source-specific representation of the [`Value`].
+    ///
+    /// This should typically be used for primitive types like integers, booleans, and chars.
+    pub fn value_opt<V>(self, value: Option<V>) -> Self
+    where
+        V: Into<JsonValue>,
+    {
         Self {
-            value: Some(value.into()),
+            value: value.map(Into::into),
             ..self
         }
     }

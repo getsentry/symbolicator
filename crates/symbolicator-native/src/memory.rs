@@ -36,6 +36,34 @@ impl MemoryAccess for Minidump<'static, ByteView<'static>> {
     }
 }
 
+/// Slice-backed memory with addresses interpreted as byte offsets.
+#[cfg(test)]
+#[derive(Debug)]
+pub struct SliceMemory<'a> {
+    bytes: &'a [u8],
+    endian: Endian,
+}
+
+#[cfg(test)]
+impl<'a> SliceMemory<'a> {
+    pub fn new(bytes: &'a [u8], endian: Endian) -> Self {
+        Self { bytes, endian }
+    }
+}
+
+#[cfg(test)]
+impl MemoryAccess for SliceMemory<'_> {
+    fn get_memory_up_to(&self, addr: u64, size: usize) -> Option<&[u8]> {
+        let start = usize::try_from(addr).ok()?;
+        let bytes = self.bytes.get(start..)?;
+        bytes.get(..size.min(bytes.len()))
+    }
+
+    fn endian(&self) -> Endian {
+        self.endian
+    }
+}
+
 /// Extension trait for [`MemoryAccess`].
 pub trait MemoryAccessExt: MemoryAccess {
     /// Attempts to lookup a memory range at the specified `addr` with the specified size.

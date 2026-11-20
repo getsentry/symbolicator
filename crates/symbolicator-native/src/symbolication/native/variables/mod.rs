@@ -118,4 +118,166 @@ impl<'a> AddrOrValue<'a> {
                 .map(|(value, _)| value),
         }
     }
+
+    /// Reads up to 128 bits starting at `offset` in bits.
+    fn get_bits(
+        &self,
+        memory: &dyn MemoryAccess,
+        offset_bits: u64,
+        size_bits: u64,
+    ) -> Option<RawBits> {
+        if size_bits == 0 || size_bits > 128 {
+            return None;
+        }
+
+        let endian = match self {
+            Self::Addr(_) => memory.endian(),
+            Self::Value(_) => Endian::Little,
+        };
+
+        let bit_offset_bits = offset_bits % 8;
+        let len_bytes = (bit_offset_bits + size_bits).div_ceil(8);
+        let bytes = self
+            .offset(offset_bits / 8)
+            .get_memory(memory, len_bytes as usize)?;
+
+        let data = match endian {
+            Endian::Little => read_le_shifted(bytes.iter(), bit_offset_bits),
+            // Big endian is just little endian over the reversed bytes, with the
+            // unused bits at the end.
+            Endian::Big => {
+                let trailing_bits = len_bytes * 8 - bit_offset_bits - size_bits;
+                read_le_shifted(bytes.iter().rev(), trailing_bits)
+            }
+        };
+
+        Some(RawBits {
+            data: data & (u128::MAX >> (128 - size_bits)),
+            size: size_bits as u8,
+        })
+    }
+}
+
+fn read_le_shifted<'a>(mut bytes: impl Iterator<Item = &'a u8>, shift: u64) -> u128 {
+    let mut data = u128::from(*bytes.next().unwrap_or(&0)) >> shift;
+
+    for (idx, byte) in bytes.enumerate() {
+        let byte = u128::from(*byte);
+        data |= byte << (8 * (idx + 1) as u64 - shift);
+    }
+
+    data
+}
+
+/// Bits read from memory.
+#[derive(Debug, Copy, Clone)]
+pub struct RawBits {
+    /// The raw bits read from memory.
+    data: u128,
+    /// Size of the bits, must be <= 128.
+    size: u8,
+}
+
+impl RawBits {
+    /// Returns the [`RawBits`] as a `bool`.
+    pub fn as_bool(self) -> bool {
+        self.as_u128() != 0
+    }
+
+    /// Returns the [`RawBits`] as a `u128`.
+    pub fn as_u128(self) -> u128 {
+        self.data
+    }
+
+    /// Returns the [`RawBits`] as a `i128`.
+    pub fn as_i128(self) -> i128 {
+        debug_assert!(self.size <= 128);
+        let shift = 128 - self.size;
+        // This performs a sign extension, for example:
+        // The 5 bit signed integer `0b11101` is 29 unsigned, but -3 signed.
+        ((self.data << shift) as i128) >> shift
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::memory::SliceMemory;
+
+    use super::*;
+
+    #[test]
+    fn test_get_bits_from_address_little_endian() {
+        let value = AddrOrValue::Addr(1);
+        let memory = SliceMemory::new(&[0xff, 0x96, 0x5b, 0xc2], Endian::Little);
+
+        let bits = value.get_bits(&memory, 0, 16).unwrap();
+        assert_eq!(bits.as_u128(), 0x5b96);
+        assert_eq!(bits.size, 16);
+
+        let bits = value.get_bits(&memory, 11, 9).unwrap();
+        assert_eq!(bits.as_u128(), 0x04b);
+        assert_eq!(bits.size, 9);
+    }
+
+    #[test]
+    fn test_get_bits_from_address_big_endian() {
+        let value = AddrOrValue::Addr(1);
+        let memory = SliceMemory::new(&[0xff, 0x96, 0x5b, 0xc2], Endian::Big);
+
+        let bits = value.get_bits(&memory, 0, 16).unwrap();
+        assert_eq!(bits.as_u128(), 0x965b);
+        assert_eq!(bits.size, 16);
+
+        let bits = value.get_bits(&memory, 11, 9).unwrap();
+        assert_eq!(bits.as_u128(), 0x1bc);
+        assert_eq!(bits.size, 9);
+    }
+
+    #[test]
+    fn test_get_bits_from_value_is_little_endian() {
+        let memory = SliceMemory::new(&[], Endian::Big);
+        let value = AddrOrValue::Value(&[0xff, 0x5b, 0xc2]);
+
+        let bits = value.get_bits(&memory, 11, 9).unwrap();
+        assert_eq!(bits.as_u128(), 0x04b);
+        assert_eq!(bits.size, 9);
+    }
+
+    #[test]
+    fn test_get_bits_bounds_from_address() {
+        let memory = SliceMemory::new(&[0xff; 17], Endian::Big);
+        let value = AddrOrValue::Addr(0);
+
+        let bits = value.get_bits(&memory, 1, 128).unwrap();
+        assert_eq!(bits.as_u128(), u128::MAX);
+
+        assert!(value.get_bits(&memory, 0, 0).is_none());
+        assert!(value.get_bits(&memory, 0, 129).is_none());
+        assert!(value.get_bits(&memory, 135, 2).is_none());
+    }
+
+    #[test]
+    fn test_get_bits_bounds_from_value() {
+        let memory = SliceMemory::new(&[], Endian::Big);
+        let value = AddrOrValue::Value(&[0xff; 17]);
+
+        let bits = value.get_bits(&memory, 1, 128).unwrap();
+        assert_eq!(bits.as_u128(), u128::MAX);
+
+        assert!(value.get_bits(&memory, 0, 0).is_none());
+        assert!(value.get_bits(&memory, 0, 129).is_none());
+        assert!(value.get_bits(&memory, 135, 2).is_none());
+    }
+
+    #[test]
+    fn test_raw_bits_signed_unsigned() {
+        let bits = RawBits {
+            data: 0b11101,
+            size: 5,
+        };
+
+        assert!(bits.as_bool());
+        assert_eq!(bits.as_u128(), 29);
+        assert_eq!(bits.as_i128(), -3);
+    }
 }
