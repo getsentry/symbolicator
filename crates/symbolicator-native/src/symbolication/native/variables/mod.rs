@@ -10,6 +10,7 @@ use crate::interface::{VariableValue, Variables};
 use crate::memory::{Endian, MemoryAccess, MemoryAccessExt};
 
 mod formatting;
+mod strings;
 
 /// Perform variable extraction.
 ///
