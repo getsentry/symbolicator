@@ -1,7 +1,6 @@
 //! Formatting of variable values based on their types.
 
 use std::num::NonZeroUsize;
-use std::str;
 
 use serde_json::Value as JsonValue;
 use symbolic::debuginfo::ValueBits;
@@ -13,6 +12,7 @@ use symbolic::symcache::{
 use crate::interface::{PointerAddress, VariableValue};
 use crate::memory::MemoryAccess;
 use crate::symbolication::native::variables::AddrOrValue;
+use crate::symbolication::native::variables::strings::{CStringValue, StringEncoding};
 
 /// The absolute depth limit for type traversal.
 const TYPE_FORMAT_DEPTH_LIMIT: usize = 10;
@@ -209,33 +209,14 @@ impl TypeFormatter<'_> {
         Some(result)
     }
 
-    /// Formats the NUL-terminated string at `addr`, if `pointee_type` is a single-byte character
-    /// type.
+    /// Formats the NUL-terminated string at `addr`, if `pointee_type` is a character type.
     ///
-    /// Returns `None` if `pointee_type` is not a single-byte character type, or if the memory at
-    /// `addr` is not a valid UTF-8 string.
+    /// Returns `None` if `pointee_type` is not a character type, or if the memory at `addr` is not
+    /// a valid string in the encoding for that type.
     fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<JsonValue> {
-        /// The maximum number of bytes read for a NUL-terminated string.
-        ///
-        /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
-        /// is reported as truncated.
-        const MAX_BYTES: usize = 512;
-
-        let Type::Primitive(pointee_type) = pointee_type else {
-            return None;
-        };
-
-        let pointee_is_char = matches!(pointee_type.size(), Size::Bytes(1) | Size::Bits(8))
-            && matches!(
-                pointee_type.encoding(),
-                Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
-            );
-        if !pointee_is_char {
-            return None;
-        }
-
-        let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        CStringValue::parse(bytes).map(JsonValue::from)
+        let encoding = StringEncoding::from_char_type(pointee_type)?;
+        let bytes = self.memory.get_memory_up_to(addr, encoding.max_bytes())?;
+        CStringValue::parse(bytes, encoding).map(JsonValue::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
@@ -270,46 +251,6 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
         Type::TypeDef(ty) => ty.name(),
         Type::StructureType(ty) => ty.name().unwrap_or("<anonymous>"),
         _ => "<not implemented>",
-    }
-}
-
-/// A UTF-8 string read from memory up to its NUL terminator.
-struct CStringValue<'a> {
-    inner: &'a str,
-    /// Whether the bytes read contain no NUL terminator.
-    truncated: bool,
-}
-
-impl<'a> CStringValue<'a> {
-    /// Parses a string from `bytes`, which start at the string's address.
-    ///
-    /// Returns `None` if the bytes before the NUL terminator are not entirely valid UTF-8. If
-    /// `bytes` contains no NUL terminator, we attempt to parse the bytes as UTF-8, ignoring any
-    /// truncated multibyte character at the end, and indicate the string as truncated.
-    fn parse(bytes: &'a [u8]) -> Option<Self> {
-        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-        let truncated = end == bytes.len();
-
-        let inner = match str::from_utf8(&bytes[..end]) {
-            Ok(inner) => inner,
-            // `error_len` is `None` if the error is an incomplete character at the end of `bytes`.
-            Err(error) if truncated && error.error_len().is_none() => {
-                str::from_utf8(&bytes[..error.valid_up_to()]).ok()?
-            }
-            Err(_) => return None,
-        };
-
-        Some(Self { inner, truncated })
-    }
-}
-
-impl From<CStringValue<'_>> for JsonValue {
-    fn from(value: CStringValue<'_>) -> Self {
-        if value.truncated {
-            format!("{}... (truncated)", value.inner).into()
-        } else {
-            value.inner.into()
-        }
     }
 }
 
@@ -349,31 +290,5 @@ impl From<UnknownBytes<'_>> for JsonValue {
         });
 
         values.chain(truncation_notice).collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse(bytes: &[u8]) -> Option<(&str, bool)> {
-        CStringValue::parse(bytes).map(|s| (s.inner, s.truncated))
-    }
-
-    #[test]
-    fn test_c_string_terminated() {
-        assert_eq!(parse(b"hello\0wo"), Some(("hello", false)));
-    }
-
-    #[test]
-    fn test_c_string_invalid_utf8() {
-        assert_eq!(parse(b"ab\xffcd\0"), None);
-    }
-
-    #[test]
-    fn test_c_string_incomplete_character() {
-        // An incomplete character is only dropped from a truncated string.
-        assert_eq!(parse(b"ab\xc3\0"), None);
-        assert_eq!(parse(b"ab\xe2\x82"), Some(("ab", true)));
     }
 }
