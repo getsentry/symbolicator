@@ -214,9 +214,9 @@ impl TypeFormatter<'_> {
     /// Returns `None` if `pointee_type` is not a character type, or if the memory at `addr` is not
     /// a valid string in the encoding for that type.
     fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<JsonValue> {
-        let encoding = StringEncoding::from_char_type(pointee_type)?;
+        let encoding = StringEncoding::from_char_type(self.cache, pointee_type)?;
         let bytes = self.memory.get_memory_up_to(addr, encoding.max_bytes())?;
-        CStringValue::parse(bytes, encoding).map(JsonValue::from)
+        CStringValue::parse(bytes, encoding, self.memory.endian()).map(JsonValue::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
