@@ -49,7 +49,7 @@ pub struct Logging {
 impl Default for Logging {
     fn default() -> Self {
         Logging {
-            level: LevelFilter::INFO,
+            level: LevelFilter::TRACE,
             format: LogFormat::Auto,
             enable_backtraces: true,
         }
