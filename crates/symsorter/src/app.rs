@@ -6,9 +6,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use console::style;
+use jiff::Timestamp;
 use rayon::prelude::*;
 use serde::Serialize;
 use symbolic::common::{Arch, ByteView};
@@ -78,7 +78,7 @@ pub struct DebugIdMeta {
 #[derive(Serialize)]
 pub struct BundleMeta {
     pub name: String,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
     pub debug_ids: Vec<String>,
 }
 
@@ -309,7 +309,7 @@ fn sort_files(sort_config: &SortConfig, paths: Vec<PathBuf>) -> Result<(usize, u
 
         let bundle_meta = BundleMeta {
             name: bundle_id.clone(),
-            timestamp: Utc::now(),
+            timestamp: Timestamp::now(),
             debug_ids,
         };
 

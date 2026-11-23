@@ -15,7 +15,6 @@ aws-smithy-types = { workspace = true }
 aws-smithy-xml = { workspace = true }
 bytes = { workspace = true }
 cab = { workspace = true }
-chrono = { workspace = true }
 filetime = { workspace = true }
 flate2 = { workspace = true }
 futures = { workspace = true }
@@ -24,6 +23,7 @@ humantime = { workspace = true }
 humantime-serde = { workspace = true }
 idna = { workspace = true }
 ipnetwork = { workspace = true }
+jiff = { workspace = true }
 jsonwebtoken = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-dogstatsd = { workspace = true }

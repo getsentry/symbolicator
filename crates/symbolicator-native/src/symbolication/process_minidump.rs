@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use minidump::system_info::Os;
 use minidump::{MinidumpContext, MinidumpModuleList, MinidumpSystemInfo};
 use minidump::{MinidumpModule, Module};
@@ -59,7 +59,7 @@ struct StackWalkMinidumpResult {
 /// A few more convenience methods exist to help with building the symbolication results.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct MinidumpState {
-    timestamp: DateTime<Utc>,
+    timestamp: Timestamp,
     system_info: SystemInfo,
     crashed: bool,
     crash_reason: String,
@@ -87,7 +87,10 @@ impl MinidumpState {
         };
 
         MinidumpState {
-            timestamp: process_state.time.into(),
+            timestamp: process_state
+                .time
+                .try_into()
+                .unwrap_or(Timestamp::UNIX_EPOCH),
             system_info: SystemInfo {
                 os_name: normalize_minidump_os_name(info.os).to_owned(),
                 os_version: info.os_version.clone().unwrap_or_default(),

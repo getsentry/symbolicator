@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 
 use anyhow::{Context, Result};
 use apple_crash_report_parser::AppleCrashReport;
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use regex::Regex;
 use symbolic::common::{Arch, CodeId, DebugId};
 use symbolicator_service::cogs::{AppFeature, Category, Cogs};
@@ -119,8 +119,20 @@ impl SymbolicationActor {
             .or_else(|| metadata.remove("Exception Subtype"))
             .or_else(|| metadata.remove("Exception Codes"));
 
+        let timestamp = report.timestamp.map(|ts| {
+            let ts = ts.timestamp();
+
+            Timestamp::from_second(ts).unwrap_or({
+                if ts < 0 {
+                    Timestamp::MIN
+                } else {
+                    Timestamp::MAX
+                }
+            })
+        });
+
         let state = AppleCrashReportState {
-            timestamp: report.timestamp,
+            timestamp,
             system_info,
             crash_reason,
             crash_details,
@@ -171,7 +183,7 @@ static OS_MACOS_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 
 #[derive(Debug)]
 struct AppleCrashReportState {
-    timestamp: Option<DateTime<Utc>>,
+    timestamp: Option<Timestamp>,
     system_info: SystemInfo,
     crash_reason: Option<String>,
     crash_details: Option<String>,
