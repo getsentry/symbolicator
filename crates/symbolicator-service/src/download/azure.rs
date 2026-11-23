@@ -1,7 +1,8 @@
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
 
-use chrono::{DateTime, Duration, Utc};
+use jiff::Timestamp;
 use serde::Deserialize;
 use symbolicator_sources::{AzureRemoteFile, AzureSourceKey};
 use url::Url;
@@ -14,12 +15,12 @@ use super::Destination;
 
 type AzureTokenCache = moka::future::Cache<Arc<AzureSourceKey>, CacheContents<AzureToken>>;
 
-const TOKEN_EXPIRY_MARGIN: Duration = Duration::minutes(1);
+const TOKEN_EXPIRY_MARGIN: Duration = Duration::from_mins(1);
 
 #[derive(Clone)]
 struct AzureToken {
     access_token: Arc<str>,
-    expires_at: DateTime<Utc>,
+    expires_at: Timestamp,
 }
 
 impl fmt::Debug for AzureToken {
@@ -34,7 +35,7 @@ impl fmt::Debug for AzureToken {
 #[derive(Deserialize)]
 struct AzureTokenResponse {
     access_token: String,
-    expires_in: i64,
+    expires_in: u64,
 }
 
 #[derive(Debug)]
@@ -77,7 +78,8 @@ impl AzureDownloader {
 
         Ok(AzureToken {
             access_token: response.access_token.into(),
-            expires_at: Utc::now() + Duration::seconds(response.expires_in) - TOKEN_EXPIRY_MARGIN,
+            expires_at: jiff::Timestamp::now() + Duration::from_secs(response.expires_in)
+                - TOKEN_EXPIRY_MARGIN,
         })
     }
 
@@ -89,7 +91,9 @@ impl AzureDownloader {
             self.request_new_token(source_key).await
         });
         let replace_if = |entry: &CacheContents<AzureToken>| {
-            entry.as_ref().map_or(true, |t| t.expires_at < Utc::now())
+            entry
+                .as_ref()
+                .map_or(true, |t| t.expires_at < Timestamp::now())
         };
 
         self.token_cache
@@ -160,7 +164,7 @@ mod tests {
     fn test_token_debug_is_redacted() {
         let token = AzureToken {
             access_token: "super-secret-token".into(),
-            expires_at: Utc::now(),
+            expires_at: Timestamp::now(),
         };
         let debug = format!("{token:?}");
         assert!(!debug.contains("super-secret-token"));

@@ -1,6 +1,8 @@
 //! Access to Google Cloud Storeage
 
-use chrono::{DateTime, Duration, Utc};
+use std::time::Duration;
+
+use jiff::Timestamp;
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::errors::Error as JwtError;
 use reqwest::Client;
@@ -16,13 +18,13 @@ use symbolicator_sources::{GcsBearerToken, GcsSourceKey};
 #[derive(Debug, Clone)]
 pub struct CacheableToken {
     bearer_token: GcsBearerToken,
-    expires_at: DateTime<Utc>,
+    expires_at: Timestamp,
 }
 
 impl CacheableToken {
     /// Whether the token is expired or is still valid.
     pub fn is_expired(&self) -> bool {
-        self.expires_at < Utc::now()
+        self.expires_at < Timestamp::now()
     }
 
     /// The token in the HTTP Bearer-header format, header value only.
@@ -135,7 +137,7 @@ fn get_auth_jwt(source_key: &GcsSourceKey, expiration: i64) -> Result<String, Jw
         scope: "https://www.googleapis.com/auth/devstorage.read_only",
         audience: "https://www.googleapis.com/oauth2/v4/token",
         expiration,
-        issued_at: Utc::now().timestamp(),
+        issued_at: Timestamp::now().as_second(),
     };
 
     let key = key_from_string(&source_key.private_key.0)?;
@@ -148,8 +150,8 @@ pub async fn request_new_token(
     client: &Client,
     source_key: &GcsSourceKey,
 ) -> Result<CacheableToken, GcsError> {
-    let expires_at = Utc::now() + Duration::minutes(58);
-    let auth_jwt = get_auth_jwt(source_key, expires_at.timestamp() + 30)?;
+    let expires_at = Timestamp::now() + Duration::from_mins(58);
+    let auth_jwt = get_auth_jwt(source_key, expires_at.as_second() + 30)?;
 
     let request = client
         .post("https://www.googleapis.com/oauth2/v4/token")

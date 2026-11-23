@@ -5,7 +5,7 @@ use std::fs::File;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use regex::Regex;
 use serde::de::{self, Deserializer, Error};
 use serde::ser::Serializer;
@@ -147,9 +147,9 @@ pub struct CompletedSymbolicationResponse {
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "chrono::serde::ts_seconds_option"
+        with = "jiff::fmt::serde::timestamp::second::optional"
     )]
-    pub timestamp: Option<DateTime<Utc>>,
+    pub timestamp: Option<Timestamp>,
 
     /// The signal that caused this crash.
     #[serde(default, skip_serializing_if = "Option::is_none")]
