@@ -47,13 +47,13 @@ jobs:
 
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/pre-commit
+          path: ~/.cache/prek
           key: cache-epoch-1|${{ env.pythonLocation }}|${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}
 
-      - name: Install pre-commit
-        run: pre-commit install-hooks
+      - name: Install prek
+        run: .venv/bin/prek prepare-hooks
 
-      - name: Run pre-commit
+      - name: Run prek
         run: |
           jq '.[]' --raw-output <<< '${{steps.changes.outputs.all_files}}' |
-            xargs pre-commit run --files
+            xargs .venv/bin/prek run --files

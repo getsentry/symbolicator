@@ -9,7 +9,7 @@ dev = [
     "devservices>=1.2.1",
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.17",
-    "pre-commit>=4.2.0",
+    "prek>=0.5.10",
     "pygments>=2.20.0",
     "sentry-devenv>=1.28.0",
 ]
