@@ -6,6 +6,10 @@
 
 - Record on JavaScript frames whether the minified source and the source map were found by debug ID. ([#2198](https://github.com/getsentry/symbolicator/pull/2198))
 
+### Fixes
+
+- Update `zip` to 9.8.2. zip 9.0.5 read the whole archive every time it opened a source or artifact bundle, which multiplied disk reads on JavaScript nodes by about 10×.
+
 ## 26.11.0
 
 ### Breaking Changes
