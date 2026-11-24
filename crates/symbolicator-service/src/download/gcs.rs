@@ -112,6 +112,7 @@ mod tests {
 
     use reqwest::Client;
     use sha1::{Digest as _, Sha1};
+    use tokio::io::AsyncWriteExt;
 
     fn gcs_source(source_key: GcsSourceKey) -> Arc<GcsSourceConfig> {
         Arc::new(GcsSourceConfig {
@@ -145,6 +146,7 @@ mod tests {
 
         assert!(download_status.is_ok());
         assert!(target_path.exists());
+        destination.flush().await.unwrap();
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
         let hash = format!("{hash:x}");

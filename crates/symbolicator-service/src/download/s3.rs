@@ -260,6 +260,7 @@ mod tests {
         CommonSourceConfig, DirectoryLayoutType, RemoteFileUri, S3SecretKey, S3SourceConfig,
         SourceId, SourceLocation,
     };
+    use tokio::io::AsyncWriteExt;
 
     use crate::test;
 
@@ -422,6 +423,7 @@ mod tests {
 
         assert!(download_status.is_ok());
         assert!(target_path.exists());
+        destination.flush().await.unwrap();
 
         let hash = Sha1::digest(std::fs::read(target_path).unwrap());
         let hash = format!("{hash:x}");
