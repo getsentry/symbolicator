@@ -75,6 +75,7 @@ mod tests {
     use super::*;
 
     use symbolicator_sources::{SourceConfig, SourceLocation};
+    use tokio::io::AsyncWriteExt;
 
     use crate::test;
 
@@ -100,6 +101,7 @@ mod tests {
             .await;
 
         assert!(download_status.is_ok());
+        destination.flush().await.unwrap();
 
         let content = std::fs::read_to_string(dest).unwrap();
         assert_eq!(content, "hello world\n");
