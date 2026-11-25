@@ -34,6 +34,8 @@ local deploy_canary_stage(region) =
                 GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
                 GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
                 LABEL_SELECTOR: 'service=symbolicator,deploy_if_canary=true',
+                ARGOCD_ONLY: 'true',
+                ARGOCD_SERVICE: 'symbolicator',
               },
               tasks: [
                 gocdtasks.script(importstr '../bash/deploy.sh'),
@@ -98,10 +100,9 @@ function(region) {
               GITHUB_APP_ID: '{{SECRET:[devinfra-github][app_id]}}',
               GITHUB_APP_PRIVATE_KEY: '{{SECRET:[devinfra-github][private_key]}}',
               LABEL_SELECTOR: 'service=symbolicator',
-            } + (if region == 's4s2' then {
-                   ARGOCD_ONLY: 'true',
-                   ARGOCD_SERVICE: 'symbolicator',
-                 } else {}),
+              ARGOCD_ONLY: 'true',
+              ARGOCD_SERVICE: 'symbolicator',
+            },
             tasks: [
               gocdtasks.script(importstr '../bash/deploy.sh'),
             ],
