@@ -5096,7 +5096,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -5111,7 +5111,7 @@ dependencies = [
 [[package]]
 name = "symbolic-cfi"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -5121,7 +5121,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "debugid",
  "memmap2",
@@ -5134,7 +5134,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "bitflags",
  "debugid",
@@ -5169,7 +5169,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "bitflags",
  "cc",
@@ -5183,7 +5183,7 @@ dependencies = [
 [[package]]
 name = "symbolic-il2cpp"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -5194,7 +5194,7 @@ dependencies = [
 [[package]]
 name = "symbolic-ppdb"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "flate2",
  "indexmap",
@@ -5209,7 +5209,7 @@ dependencies = [
 [[package]]
 name = "symbolic-sourcemapcache"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "itertools",
  "js-source-scopes",
@@ -5223,7 +5223,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bf30fbb12b948ce40a4ea860b86c7517886f8fda#bf30fbb12b948ce40a4ea860b86c7517886f8fda"
+source = "git+https://github.com/getsentry/symbolic.git?branch=szokeasaurusrex%2Fqualifiers-display#9e8d37163e4d5c0d9165d251e28006dfe240eb7f"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",

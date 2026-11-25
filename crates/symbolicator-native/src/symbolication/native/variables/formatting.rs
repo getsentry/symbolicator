@@ -302,23 +302,13 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
     }
 }
 
-/// Returns the names of the qualifiers in `qualifiers`, in the order `const volatile restrict`.
-fn qualifier_names(qualifiers: Qualifiers) -> impl Iterator<Item = &'static str> {
-    [
-        (Qualifiers::CONST, "const"),
-        (Qualifiers::VOLATILE, "volatile"),
-        (Qualifiers::RESTRICT, "restrict"),
-    ]
-    .into_iter()
-    .filter(move |(qualifier, _)| qualifiers.contains(*qualifier))
-    .map(|(_, name)| name)
-}
-
 /// Prefixes the name of a non-pointer type with its qualifiers, for example `const char`.
 fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
-    let mut parts: Vec<&str> = qualifier_names(qualifiers).collect();
-    parts.push(name);
-    parts.join(" ")
+    if qualifiers.is_empty() {
+        name.to_owned()
+    } else {
+        format!("{qualifiers} {name}")
+    }
 }
 
 /// Builds the name of a pointer type from the qualified name of its final pointee and the
@@ -326,11 +316,15 @@ fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
 ///
 /// For example, `const char` with `[empty, CONST]` results in `const char* const*`.
 fn pointer_name(base_name: &str, pointer_qualifiers: &[Qualifiers]) -> String {
-    let levels = pointer_qualifiers.iter().rev().flat_map(|&qualifiers| {
-        iter::once("*").chain(qualifier_names(qualifiers).flat_map(|qualifier| [" ", qualifier]))
+    let levels = pointer_qualifiers.iter().rev().map(|qualifiers| {
+        if qualifiers.is_empty() {
+            "*".to_owned()
+        } else {
+            format!("* {qualifiers}")
+        }
     });
 
-    iter::once(base_name).chain(levels).collect()
+    iter::once(base_name.to_owned()).chain(levels).collect()
 }
 
 /// A UTF-8 string read from memory up to its NUL terminator.
