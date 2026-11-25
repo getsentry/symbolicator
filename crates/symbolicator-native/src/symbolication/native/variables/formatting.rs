@@ -252,6 +252,9 @@ impl TypeFormatter<'_> {
             CharWidth::U8 => {
                 CStringValue::parse_utf8(self.memory.get_memory_up_to(addr, MAX_UNITS)?)
             }
+            CharWidth::U16 => {
+                CStringValue::parse_utf16(self.memory.get_values_up_to(addr, MAX_UNITS)?)
+            }
             CharWidth::U32 => {
                 CStringValue::parse_utf32(self.memory.get_values_up_to(addr, MAX_UNITS)?)
             }
@@ -300,6 +303,8 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
 enum CharWidth {
     /// `char`, UTF-8.
     U8,
+    /// 2-byte `wchar_t`, UTF-16.
+    U16,
     /// 4-byte `wchar_t`, UTF-32.
     U32,
 }
@@ -308,6 +313,7 @@ impl CharWidth {
     /// Returns the width of a `wchar_t` of the given size.
     fn wide(size: Size) -> Option<Self> {
         match size {
+            Size::Bytes(2) | Size::Bits(16) => Some(Self::U16),
             Size::Bytes(4) | Size::Bits(32) => Some(Self::U32),
             _ => None,
         }
@@ -339,6 +345,35 @@ impl<'a> CStringValue<'a> {
             }
             Err(_) => return None,
         };
+
+        Some(Self {
+            inner: inner.into(),
+            truncated,
+        })
+    }
+
+    /// Parses a UTF-16 string from `units`, which start at the string's address.
+    ///
+    /// Like [`Self::parse_utf8`], this returns `None` for invalid UTF-16 before the NUL terminator, and
+    /// ignores an unpaired high surrogate at the end of a truncated string.
+    fn parse_utf16(units: MemoryView<'_, u16>) -> Option<Self> {
+        let end = units.iter().position(|unit| unit == 0);
+        let truncated = end.is_none();
+
+        let mut chars = char::decode_utf16(units.iter().take(end.unwrap_or(usize::MAX))).peekable();
+        let mut inner = String::new();
+        while let Some(char) = chars.next() {
+            match char {
+                Ok(char) => inner.push(char),
+                // A high surrogate at the end of a truncated string may be the start of a
+                // character that was cut off.
+                Err(error)
+                    if truncated
+                        && chars.peek().is_none()
+                        && (0xd800..0xdc00).contains(&error.unpaired_surrogate()) => {}
+                Err(_) => return None,
+            }
+        }
 
         Some(Self {
             inner: inner.into(),
@@ -423,6 +458,13 @@ mod tests {
         Some((string.inner.into_owned(), string.truncated))
     }
 
+    fn parse_utf16(units: &[u16]) -> Option<(String, bool)> {
+        let bytes: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
+        let memory = SliceMemory::new(&bytes, Endian::Little);
+        let string = CStringValue::parse_utf16(memory.get_values_up_to(0, units.len())?)?;
+        Some((string.inner.into_owned(), string.truncated))
+    }
+
     fn parse_utf32(units: &[u32]) -> Option<(String, bool)> {
         let bytes: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
         let memory = SliceMemory::new(&bytes, Endian::Little);
@@ -445,6 +487,20 @@ mod tests {
         // An incomplete character is only dropped from a truncated string.
         assert_eq!(parse_utf8(b"ab\xc3\0"), None);
         assert_eq!(parse_utf8(b"ab\xe2\x82"), Some(("ab".into(), true)));
+    }
+
+    #[test]
+    fn test_utf16_string() {
+        // "a😀" followed by the NUL terminator and unrelated memory.
+        assert_eq!(
+            parse_utf16(&[0x61, 0xd83d, 0xde00, 0, 0x62]),
+            Some(("a😀".into(), false))
+        );
+        assert_eq!(parse_utf16(&[0x61, 0x62]), Some(("ab".into(), true)));
+        // An unpaired surrogate is only dropped from the end of a truncated string.
+        assert_eq!(parse_utf16(&[0x61, 0xd83d, 0x62, 0]), None);
+        assert_eq!(parse_utf16(&[0x61, 0xd83d, 0]), None);
+        assert_eq!(parse_utf16(&[0x61, 0xd83d]), Some(("a".into(), true)));
     }
 
     #[test]
