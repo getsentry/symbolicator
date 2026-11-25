@@ -1,5 +1,6 @@
 //! Formatting of variable values based on their types.
 
+use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::str;
 
@@ -11,7 +12,7 @@ use symbolic::symcache::{
 };
 
 use crate::interface::{PointerAddress, VariableValue};
-use crate::memory::MemoryAccess;
+use crate::memory::{MemoryAccess, MemoryAccessExt, MemoryView};
 use crate::symbolication::native::variables::AddrOrValue;
 
 /// The absolute depth limit for type traversal.
@@ -98,7 +99,8 @@ impl TypeFormatter<'_> {
         // value instead of its pointee.
         if lookups == 1
             && let Some((pointee_type, pointee_addr)) = pointee.as_ref().zip(pointee_addr)
-            && let Some(string) = self.format_c_string(pointee_addr, pointee_type)
+            && let Some(width) = self.char_width(pointee_type)
+            && let Some(string) = self.format_c_string(pointee_addr, width)
         {
             return Some(result.value(string));
         }
@@ -209,33 +211,53 @@ impl TypeFormatter<'_> {
         Some(result)
     }
 
-    /// Formats the NUL-terminated string at `addr`, if `pointee_type` is a single-byte character
-    /// type.
+    /// Returns the width of `ty` if it is a character type of a NUL-terminated string.
     ///
-    /// Returns `None` if `pointee_type` is not a single-byte character type, or if the memory at
-    /// `addr` is not a valid UTF-8 string.
-    fn format_c_string(&self, addr: u64, pointee_type: &Type<'_>) -> Option<JsonValue> {
-        /// The maximum number of bytes read for a NUL-terminated string.
-        ///
-        /// This value was chosen arbitrarily. A string without a NUL terminator in the bytes read
-        /// is reported as truncated.
-        const MAX_BYTES: usize = 512;
+    /// DWARF encodes `wchar_t` as a plain integer, so it is detected by name: a base type in C++,
+    /// a typedef in C.
+    fn char_width(&self, ty: &Type<'_>) -> Option<CharWidth> {
+        match ty {
+            Type::Primitive(ty) if ty.name() == Some("wchar_t") => CharWidth::wide(ty.size()),
+            Type::Primitive(ty) => {
+                let is_char = matches!(ty.size(), Size::Bytes(1) | Size::Bits(8))
+                    && matches!(
+                        ty.encoding(),
+                        Some(
+                            PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar
+                        )
+                    );
+                is_char.then_some(CharWidth::U8)
+            }
+            Type::TypeDef(ty) if ty.name() == "wchar_t" => {
+                match self.cache.lookup_type(ty.ty()?)? {
+                    Type::Primitive(target) => CharWidth::wide(target.size()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
 
-        let Type::Primitive(pointee_type) = pointee_type else {
-            return None;
+    /// Formats the NUL-terminated string at `addr` with characters of the given `width`.
+    ///
+    /// Returns `None` if the memory at `addr` is not a valid string.
+    fn format_c_string(&self, addr: u64, width: CharWidth) -> Option<JsonValue> {
+        /// The maximum number of characters read for a NUL-terminated string.
+        ///
+        /// This value was chosen arbitrarily. A string without a NUL terminator in the characters
+        /// read is reported as truncated.
+        const MAX_UNITS: usize = 512;
+
+        let string = match width {
+            CharWidth::U8 => {
+                CStringValue::parse_utf8(self.memory.get_memory_up_to(addr, MAX_UNITS)?)
+            }
+            CharWidth::U32 => {
+                CStringValue::parse_utf32(self.memory.get_values_up_to(addr, MAX_UNITS)?)
+            }
         };
 
-        let pointee_is_char = matches!(pointee_type.size(), Size::Bytes(1) | Size::Bits(8))
-            && matches!(
-                pointee_type.encoding(),
-                Some(PrimitiveTypeEncoding::SignedChar | PrimitiveTypeEncoding::UnsignedChar)
-            );
-        if !pointee_is_char {
-            return None;
-        }
-
-        let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        CStringValue::parse(bytes).map(JsonValue::from)
+        string.map(JsonValue::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.
@@ -273,20 +295,39 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
     }
 }
 
-/// A UTF-8 string read from memory up to its NUL terminator.
+/// The width of the characters in a NUL-terminated string.
+#[derive(Clone, Copy)]
+enum CharWidth {
+    /// `char`, UTF-8.
+    U8,
+    /// 4-byte `wchar_t`, UTF-32.
+    U32,
+}
+
+impl CharWidth {
+    /// Returns the width of a `wchar_t` of the given size.
+    fn wide(size: Size) -> Option<Self> {
+        match size {
+            Size::Bytes(4) | Size::Bits(32) => Some(Self::U32),
+            _ => None,
+        }
+    }
+}
+
+/// A string read from memory up to its NUL terminator.
 struct CStringValue<'a> {
-    inner: &'a str,
-    /// Whether the bytes read contain no NUL terminator.
+    inner: Cow<'a, str>,
+    /// Whether the characters read contain no NUL terminator.
     truncated: bool,
 }
 
 impl<'a> CStringValue<'a> {
-    /// Parses a string from `bytes`, which start at the string's address.
+    /// Parses a UTF-8 string from `bytes`, which start at the string's address.
     ///
     /// Returns `None` if the bytes before the NUL terminator are not entirely valid UTF-8. If
     /// `bytes` contains no NUL terminator, we attempt to parse the bytes as UTF-8, ignoring any
     /// truncated multibyte character at the end, and indicate the string as truncated.
-    fn parse(bytes: &'a [u8]) -> Option<Self> {
+    fn parse_utf8(bytes: &'a [u8]) -> Option<Self> {
         let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
         let truncated = end == bytes.len();
 
@@ -299,7 +340,27 @@ impl<'a> CStringValue<'a> {
             Err(_) => return None,
         };
 
-        Some(Self { inner, truncated })
+        Some(Self {
+            inner: inner.into(),
+            truncated,
+        })
+    }
+
+    /// Parses a UTF-32 string from `units`, which start at the string's address.
+    ///
+    /// Returns `None` if a unit before the NUL terminator is not a valid character.
+    fn parse_utf32(units: MemoryView<'_, u32>) -> Option<Self> {
+        let end = units.iter().position(|unit| unit == 0);
+        let inner = units
+            .iter()
+            .take(end.unwrap_or(usize::MAX))
+            .map(char::from_u32)
+            .collect::<Option<String>>()?;
+
+        Some(Self {
+            inner: inner.into(),
+            truncated: end.is_none(),
+        })
     }
 }
 
@@ -355,25 +416,44 @@ impl From<UnknownBytes<'_>> for JsonValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::memory::{Endian, SliceMemory};
 
-    fn parse(bytes: &[u8]) -> Option<(&str, bool)> {
-        CStringValue::parse(bytes).map(|s| (s.inner, s.truncated))
+    fn parse_utf8(bytes: &[u8]) -> Option<(String, bool)> {
+        let string = CStringValue::parse_utf8(bytes)?;
+        Some((string.inner.into_owned(), string.truncated))
+    }
+
+    fn parse_utf32(units: &[u32]) -> Option<(String, bool)> {
+        let bytes: Vec<u8> = units.iter().flat_map(|unit| unit.to_le_bytes()).collect();
+        let memory = SliceMemory::new(&bytes, Endian::Little);
+        let string = CStringValue::parse_utf32(memory.get_values_up_to(0, units.len())?)?;
+        Some((string.inner.into_owned(), string.truncated))
     }
 
     #[test]
     fn test_c_string_terminated() {
-        assert_eq!(parse(b"hello\0wo"), Some(("hello", false)));
+        assert_eq!(parse_utf8(b"hello\0wo"), Some(("hello".into(), false)));
     }
 
     #[test]
     fn test_c_string_invalid_utf8() {
-        assert_eq!(parse(b"ab\xffcd\0"), None);
+        assert_eq!(parse_utf8(b"ab\xffcd\0"), None);
     }
 
     #[test]
     fn test_c_string_incomplete_character() {
         // An incomplete character is only dropped from a truncated string.
-        assert_eq!(parse(b"ab\xc3\0"), None);
-        assert_eq!(parse(b"ab\xe2\x82"), Some(("ab", true)));
+        assert_eq!(parse_utf8(b"ab\xc3\0"), None);
+        assert_eq!(parse_utf8(b"ab\xe2\x82"), Some(("ab".into(), true)));
+    }
+
+    #[test]
+    fn test_utf32_string() {
+        assert_eq!(
+            parse_utf32(&[0x61, 0x1f600, 0, 0x62]),
+            Some(("a😀".into(), false))
+        );
+        assert_eq!(parse_utf32(&[0x61, 0x62]), Some(("ab".into(), true)));
+        assert_eq!(parse_utf32(&[0x61, 0xd83d, 0]), None);
     }
 }
