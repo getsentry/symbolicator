@@ -50,6 +50,7 @@ impl TypeFormatter<'_> {
             Type::Primitive(ty) => self.format_primitive(value, ty),
             Type::TypeDef(ty) => self.format_typedef(value, ty),
             Type::StructureType(ty) => self.format_structure(value, ty),
+            Type::Void => Some(VariableValue::new("void")),
             _ => None,
         };
 
@@ -172,11 +173,7 @@ impl TypeFormatter<'_> {
         ty: TypeDefType<'_>,
     ) -> Option<VariableValue> {
         let name = ty.name();
-        let Some(target) = self
-            .cache
-            .lookup_type(ty.ty())
-            .filter(|target| !matches!(target, Type::Void))
-        else {
+        let Some(target) = self.cache.lookup_type(ty.ty()) else {
             return Some(VariableValue::new(name));
         };
 
