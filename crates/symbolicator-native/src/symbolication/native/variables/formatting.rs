@@ -316,10 +316,9 @@ fn qualifier_names(qualifiers: Qualifiers) -> impl Iterator<Item = &'static str>
 
 /// Prefixes the name of a non-pointer type with its qualifiers, for example `const char`.
 fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
-    qualifier_names(qualifiers)
-        .flat_map(|qualifier| [qualifier, " "])
-        .chain([name])
-        .collect()
+    let mut parts: Vec<&str> = qualifier_names(qualifiers).collect();
+    parts.push(name);
+    parts.join(" ")
 }
 
 /// Builds the name of a pointer type from the qualified name of its final pointee and the
