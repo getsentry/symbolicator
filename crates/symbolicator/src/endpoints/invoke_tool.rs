@@ -1,5 +1,5 @@
 use axum::{
-    extract,
+    Json, extract,
     response::{IntoResponse, Response},
 };
 use serde::Deserialize;
@@ -14,6 +14,7 @@ use crate::{
 
 /// An enum of all possible tools invocations for Symbolicator.
 #[derive(Deserialize)]
+#[serde(tag = "type")]
 pub enum ToolRequestKind {
     GetMetadata(tools::get_metadata::Request),
 }
@@ -24,7 +25,7 @@ pub struct ToolRequest {
     request_kind: ToolRequestKind,
 }
 
-/// The entrypopint for all tool invocations.
+/// The entrypoint for all tool invocations.
 pub async fn invoke_tool(
     extract::State(service): extract::State<RequestService>,
     extract::Query(params): extract::Query<RequestQueryParams>,
@@ -38,6 +39,6 @@ pub async fn invoke_tool(
             storage_id,
         }) => tools::get_metadata::invoke(service, params, platform, minidump, sources, storage_id)
             .await
-            .map(IntoResponse::into_response),
+            .map(|v| IntoResponse::into_response(Json(v))),
     }
 }
