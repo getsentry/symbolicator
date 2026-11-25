@@ -6,8 +6,8 @@ use std::str;
 use serde_json::Value as JsonValue;
 use symbolic::debuginfo::ValueBits;
 use symbolic::symcache::{
-    PointerType, PrimitiveType, PrimitiveTypeEncoding, Size, StructureType, SymCache, Type,
-    TypeDefType,
+    PointerType, PrimitiveType, PrimitiveTypeEncoding, Qualifiers, Size, StructureType, SymCache,
+    Type, TypeDefType, TypeId,
 };
 
 use crate::interface::{PointerAddress, VariableValue};
@@ -41,16 +41,28 @@ struct TypeFormatter<'a> {
     remaining_depth: usize,
 }
 
-impl TypeFormatter<'_> {
+impl<'a> TypeFormatter<'a> {
     fn format(&mut self, value: AddrOrValue<'_>, ty: Type<'_>) -> Option<VariableValue> {
+        let (qualifiers, ty) = unqualify(self.cache, ty)?;
+        self.format_unqualified(value, &ty, qualifiers)
+    }
+
+    /// Formats `value` according to `ty`, which is not a [`Type::Qualified`], with the
+    /// `qualifiers` that apply to `ty`.
+    fn format_unqualified(
+        &mut self,
+        value: AddrOrValue<'_>,
+        ty: &Type<'_>,
+        qualifiers: Qualifiers,
+    ) -> Option<VariableValue> {
         self.remaining_depth = self.remaining_depth.checked_sub(1)?;
 
         let result = match ty {
-            Type::Pointer(ty) => self.format_pointer(value, ty),
-            Type::Primitive(ty) => self.format_primitive(value, ty),
-            Type::TypeDef(ty) => self.format_typedef(value, ty),
-            Type::StructureType(ty) => self.format_structure(value, ty),
-            Type::Void => Some(VariableValue::new("void")),
+            Type::Pointer(ty) => self.format_pointer(value, ty, qualifiers),
+            Type::Primitive(ty) => self.format_primitive(value, ty, qualifiers),
+            Type::TypeDef(ty) => self.format_typedef(value, ty, qualifiers),
+            Type::StructureType(ty) => self.format_structure(value, ty, qualifiers),
+            Type::Void => Some(VariableValue::new(qualified_name(qualifiers, "void"))),
             _ => None,
         };
 
@@ -58,43 +70,53 @@ impl TypeFormatter<'_> {
         result
     }
 
-    fn format_pointer(&mut self, value: AddrOrValue<'_>, ty: PointerType) -> Option<VariableValue> {
-        let addr = self.read_pointer(value, &ty)?;
+    fn format_pointer(
+        &mut self,
+        value: AddrOrValue<'_>,
+        ty: &PointerType,
+        qualifiers: Qualifiers,
+    ) -> Option<VariableValue> {
+        let addr = self.read_pointer(value, ty)?;
 
         // Currently multi-level pointers directly resolve to their final value, if de-referencing
         // fails on the way the final value/pointee is just not set. We could be doing better here
         // and serializing the entire chain. Either always or only if we can't resolve the final value.
 
-        let mut lookups = 0;
+        // The qualifiers of each pointer level, starting with the outermost pointer.
+        let mut pointer_qualifiers = vec![qualifiers];
         let mut pointee = ty.pointee();
         let mut pointee_addr = dereferenceable(addr.into());
         let (base_name, pointee) = loop {
-            lookups += 1;
-
-            if lookups > self.remaining_depth {
-                break ("<unknown>", None);
+            if pointer_qualifiers.len() > self.remaining_depth {
+                break ("<unknown>".to_owned(), None);
             }
 
-            match self.cache.lookup_type(pointee) {
-                Some(Type::Pointer(ptr)) => {
+            let Some((pointee_qualifiers, pointee_type)) = self.lookup_type(pointee) else {
+                break ("<unknown>".to_owned(), None);
+            };
+            match &pointee_type {
+                Type::Pointer(ptr) => {
+                    pointer_qualifiers.push(pointee_qualifiers);
                     pointee = ptr.pointee();
                     pointee_addr = pointee_addr
-                        .and_then(|addr| self.read_pointer(AddrOrValue::Addr(addr), &ptr))
+                        .and_then(|addr| self.read_pointer(AddrOrValue::Addr(addr), ptr))
                         .map(u64::from)
                         .and_then(dereferenceable);
                 }
-                Some(ty) => break (type_name(&ty), Some(ty)),
-                None => break ("<unknown>", None),
+                _ => {
+                    let name = qualified_name(pointee_qualifiers, type_name(&pointee_type));
+                    break (name, Some((pointee_qualifiers, pointee_type)));
+                }
             }
         };
 
-        let name = format!("{base_name}{:*<lookups$}", "");
+        let name = pointer_name(base_name, &pointer_qualifiers);
         let mut result = VariableValue::new(name).pointer_address(addr);
 
         // Attempt to parse only single-level pointers as strings. A string becomes the pointer's
         // value instead of its pointee.
-        if lookups == 1
-            && let Some((pointee_type, pointee_addr)) = pointee.as_ref().zip(pointee_addr)
+        if pointer_qualifiers.len() == 1
+            && let Some(((_, pointee_type), pointee_addr)) = pointee.as_ref().zip(pointee_addr)
             && let Some(string) = self.format_c_string(pointee_addr, pointee_type)
         {
             return Some(result.value(string));
@@ -102,7 +124,9 @@ impl TypeFormatter<'_> {
 
         let pointee = pointee
             .zip(pointee_addr)
-            .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty));
+            .and_then(|((qualifiers, ty), addr)| {
+                self.format_unqualified(AddrOrValue::Addr(addr), &ty, qualifiers)
+            });
         if let Some(pointee) = pointee {
             result = result.pointee(pointee);
         }
@@ -113,10 +137,11 @@ impl TypeFormatter<'_> {
     fn format_primitive(
         &self,
         value: AddrOrValue<'_>,
-        ty: PrimitiveType<'_>,
+        ty: &PrimitiveType<'_>,
+        qualifiers: Qualifiers,
     ) -> Option<VariableValue> {
         let name = ty.name().unwrap_or("<unknown>");
-        let result = VariableValue::new(name);
+        let result = VariableValue::new(qualified_name(qualifiers, name));
 
         let ValueBits { size, offset } = ty.value_bits().unwrap_or_else(|| {
             let size = match ty.size() {
@@ -170,33 +195,36 @@ impl TypeFormatter<'_> {
     fn format_typedef(
         &mut self,
         value: AddrOrValue<'_>,
-        ty: TypeDefType<'_>,
+        ty: &TypeDefType<'_>,
+        qualifiers: Qualifiers,
     ) -> Option<VariableValue> {
-        let name = ty.name();
-        let Some(target) = self.cache.lookup_type(ty.ty()) else {
+        let name = qualified_name(qualifiers, ty.name());
+        let Some((target_qualifiers, target)) = self.lookup_type(ty.ty()) else {
             return Some(VariableValue::new(name));
         };
 
-        self.format(value, target).map(|value| value.ty(name))
+        self.format_unqualified(value, &target, target_qualifiers)
+            .map(|value| value.ty(name))
     }
 
     fn format_structure(
         &mut self,
         value: AddrOrValue<'_>,
-        ty: StructureType<'_>,
+        ty: &StructureType<'_>,
+        qualifiers: Qualifiers,
     ) -> Option<VariableValue> {
-        let mut result = VariableValue::new(ty.name().unwrap_or("<anonymous>"));
+        let name = ty.name().unwrap_or("<anonymous>");
+        let mut result = VariableValue::new(qualified_name(qualifiers, name));
         for member in ty.members() {
             let ty = self
-                .cache
                 .lookup_type(member.ty())
-                .and_then(|ty| {
+                .and_then(|(qualifiers, ty)| {
                     let offset = match member.offset()? {
                         Size::Bytes(offset) => offset,
                         // Currently not supported.
                         Size::Bits(_) => return None,
                     };
-                    self.format(value.offset(offset), ty)
+                    self.format_unqualified(value.offset(offset), &ty, qualifiers)
                 })
                 .unwrap_or_default();
 
@@ -235,6 +263,11 @@ impl TypeFormatter<'_> {
         CStringValue::parse(bytes).map(JsonValue::from)
     }
 
+    /// Looks up the type `id` and splits it into its qualifiers and the type they apply to.
+    fn lookup_type(&self, id: TypeId) -> Option<(Qualifiers, Type<'a>)> {
+        unqualify(self.cache, self.cache.lookup_type(id)?)
+    }
+
     /// Reads the address stored in the pointer `ty` located at `value`.
     fn read_pointer(&self, value: AddrOrValue<'_>, ty: &PointerType) -> Option<PointerAddress> {
         match ty.size() {
@@ -244,6 +277,20 @@ impl TypeFormatter<'_> {
             Size::Bytes(8) | Size::Bits(64) => value.get_value::<u64>(self.memory).map(Into::into),
             _ => None,
         }
+    }
+}
+
+/// Splits a [`Type::Qualified`] into its qualifiers and the type they apply to.
+///
+/// Returns other types unchanged with empty qualifiers, and `None` if the qualified type cannot be
+/// resolved.
+fn unqualify<'data>(cache: &SymCache<'data>, ty: Type<'data>) -> Option<(Qualifiers, Type<'data>)> {
+    match ty {
+        Type::Qualified(qualified) => {
+            let ty = cache.lookup_type(qualified.ty())?;
+            Some((qualified.qualifiers(), ty))
+        }
+        ty => Some((Qualifiers::empty(), ty)),
     }
 }
 
@@ -269,6 +316,44 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
         Type::Void => "void",
         _ => "<not implemented>",
     }
+}
+
+/// Returns the names of the qualifiers in `qualifiers`, in the order `const volatile restrict`.
+fn qualifier_names(qualifiers: Qualifiers) -> impl Iterator<Item = &'static str> {
+    [
+        (Qualifiers::CONST, "const"),
+        (Qualifiers::VOLATILE, "volatile"),
+        (Qualifiers::RESTRICT, "restrict"),
+    ]
+    .into_iter()
+    .filter(move |(qualifier, _)| qualifiers.contains(*qualifier))
+    .map(|(_, name)| name)
+}
+
+/// Prefixes the name of a non-pointer type with its qualifiers, for example `const char`.
+fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
+    let mut result = String::new();
+    for qualifier in qualifier_names(qualifiers) {
+        result.push_str(qualifier);
+        result.push(' ');
+    }
+    result.push_str(name);
+    result
+}
+
+/// Builds the name of a pointer type from the qualified name of its final pointee and the
+/// qualifiers of each pointer level, starting with the outermost pointer.
+///
+/// For example, `const char` with `[empty, CONST]` results in `const char* const*`.
+fn pointer_name(mut base_name: String, pointer_qualifiers: &[Qualifiers]) -> String {
+    for &qualifiers in pointer_qualifiers.iter().rev() {
+        base_name.push('*');
+        for qualifier in qualifier_names(qualifiers) {
+            base_name.push(' ');
+            base_name.push_str(qualifier);
+        }
+    }
+    base_name
 }
 
 /// A UTF-8 string read from memory up to its NUL terminator.
@@ -356,6 +441,16 @@ mod tests {
 
     fn parse(bytes: &[u8]) -> Option<(&str, bool)> {
         CStringValue::parse(bytes).map(|s| (s.inner, s.truncated))
+    }
+
+    #[test]
+    fn test_pointer_name_qualifiers() {
+        // `const char* const* volatile`: the innermost pointer level comes last in the slice.
+        let name = pointer_name(
+            qualified_name(Qualifiers::CONST, "char"),
+            &[Qualifiers::VOLATILE, Qualifiers::CONST],
+        );
+        assert_eq!(name, "const char* const* volatile");
     }
 
     #[test]
