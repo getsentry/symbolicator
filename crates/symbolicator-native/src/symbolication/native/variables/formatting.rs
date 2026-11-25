@@ -11,7 +11,7 @@ use symbolic::symcache::{
 };
 
 use crate::interface::{PointerAddress, VariableValue};
-use crate::memory::MemoryAccess;
+use crate::memory::{MemoryAccess, MemoryAccessExt, MemoryView};
 use crate::symbolication::native::variables::AddrOrValue;
 
 /// The absolute depth limit for type traversal.
@@ -234,8 +234,8 @@ impl TypeFormatter<'_> {
             return None;
         }
 
-        let bytes = self.memory.get_memory_up_to(addr, MAX_BYTES)?;
-        CStringValue::parse(bytes).map(JsonValue::from)
+        let chars: MemoryView<u8> = self.memory.get_values_up_to(addr, MAX_BYTES)?;
+        CStringValue::parse(chars.as_bytes()).map(JsonValue::from)
     }
 
     /// Reads the address stored in the pointer `ty` located at `value`.

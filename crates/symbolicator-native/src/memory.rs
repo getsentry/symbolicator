@@ -171,6 +171,13 @@ where
     }
 }
 
+impl<'a> MemoryView<'a, u8> {
+    /// Returns the bytes in the view.
+    pub fn as_bytes(&self) -> &'a [u8] {
+        self.units.as_flattened()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
