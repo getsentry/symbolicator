@@ -1,5 +1,6 @@
 //! Formatting of variable values based on their types.
 
+use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::{iter, mem, str};
 
@@ -91,11 +92,11 @@ impl TypeFormatter<'_> {
             lookups += 1;
 
             if lookups > self.remaining_depth {
-                break ("<unknown>".to_owned(), None);
+                break ("<unknown>".into(), None);
             }
 
             let Some(pointee_type) = self.cache.lookup_type(pointee) else {
-                break ("<unknown>".to_owned(), None);
+                break ("<unknown>".into(), None);
             };
             match pointee_type {
                 Type::Qualified(qualified) => {
@@ -303,11 +304,10 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
 }
 
 /// Prefixes the name of a non-pointer type with its qualifiers, for example `const char`.
-fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
-    if qualifiers.is_empty() {
-        name.to_owned()
-    } else {
-        format!("{qualifiers} {name}")
+fn qualified_name<'a>(qualifiers: Qualifiers, name: &'a str) -> Cow<'a, str> {
+    match qualifiers.is_empty() {
+        true => name.into(),
+        false => format!("{qualifiers} {name}").into(),
     }
 }
 
@@ -316,15 +316,15 @@ fn qualified_name(qualifiers: Qualifiers, name: &str) -> String {
 ///
 /// For example, `const char` with `[empty, CONST]` results in `const char* const*`.
 fn pointer_name(base_name: &str, pointer_qualifiers: &[Qualifiers]) -> String {
-    let levels = pointer_qualifiers.iter().rev().map(|qualifiers| {
-        if qualifiers.is_empty() {
-            "*".to_owned()
-        } else {
-            format!("* {qualifiers}")
-        }
-    });
+    let levels = pointer_qualifiers
+        .iter()
+        .rev()
+        .map(|qualifiers| match qualifiers.is_empty() {
+            true => "*".into(),
+            false => format!("* {qualifiers}").into(),
+        });
 
-    iter::once(base_name.to_owned()).chain(levels).collect()
+    iter::once(Cow::Borrowed(base_name)).chain(levels).collect()
 }
 
 /// A UTF-8 string read from memory up to its NUL terminator.
