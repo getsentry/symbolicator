@@ -5096,7 +5096,7 @@ dependencies = [
 [[package]]
 name = "symbolic"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "symbolic-cfi",
  "symbolic-common",
@@ -5111,7 +5111,7 @@ dependencies = [
 [[package]]
 name = "symbolic-cfi"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "symbolic-common",
  "symbolic-debuginfo",
@@ -5121,7 +5121,7 @@ dependencies = [
 [[package]]
 name = "symbolic-common"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "debugid",
  "memmap2",
@@ -5134,7 +5134,7 @@ dependencies = [
 [[package]]
 name = "symbolic-debuginfo"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "debugid",
  "elementtree",
@@ -5143,6 +5143,7 @@ dependencies = [
  "flate2",
  "gimli 0.33.0",
  "goblin 0.10.7",
+ "hashbrown 0.17.1",
  "indexmap",
  "memchr",
  "nom",
@@ -5167,7 +5168,7 @@ dependencies = [
 [[package]]
 name = "symbolic-demangle"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "bitflags",
  "cc",
@@ -5181,7 +5182,7 @@ dependencies = [
 [[package]]
 name = "symbolic-il2cpp"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "indexmap",
  "serde_json",
@@ -5192,7 +5193,7 @@ dependencies = [
 [[package]]
 name = "symbolic-ppdb"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "flate2",
  "indexmap",
@@ -5207,7 +5208,7 @@ dependencies = [
 [[package]]
 name = "symbolic-sourcemapcache"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "itertools",
  "js-source-scopes",
@@ -5221,7 +5222,7 @@ dependencies = [
 [[package]]
 name = "symbolic-symcache"
 version = "14.0.0-alpha.5"
-source = "git+https://github.com/getsentry/symbolic.git?rev=bd5ba34be9a79de6719af1b9dd33960a7026fe4e#bd5ba34be9a79de6719af1b9dd33960a7026fe4e"
+source = "git+https://github.com/getsentry/symbolic.git?rev=e4b43036fe9d128769903a9ddd055cda937122e6#e4b43036fe9d128769903a9ddd055cda937122e6"
 dependencies = [
  "hashbrown 0.17.1",
  "indexmap",

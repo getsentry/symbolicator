@@ -50,6 +50,7 @@ impl TypeFormatter<'_> {
             Type::Primitive(ty) => self.format_primitive(value, ty),
             Type::TypeDef(ty) => self.format_typedef(value, ty),
             Type::StructureType(ty) => self.format_structure(value, ty),
+            Type::Void => Some(VariableValue::new("void")),
             _ => None,
         };
 
@@ -70,15 +71,11 @@ impl TypeFormatter<'_> {
         let (base_name, pointee) = loop {
             lookups += 1;
 
-            let Some(pointee_id) = pointee else {
-                break ("void", None);
-            };
-
             if lookups > self.remaining_depth {
                 break ("<unknown>", None);
             }
 
-            match self.cache.lookup_type(pointee_id) {
+            match self.cache.lookup_type(pointee) {
                 Some(Type::Pointer(ptr)) => {
                     pointee = ptr.pointee();
                     pointee_addr = pointee_addr
@@ -176,7 +173,7 @@ impl TypeFormatter<'_> {
         ty: TypeDefType<'_>,
     ) -> Option<VariableValue> {
         let name = ty.name();
-        let Some(target) = ty.ty().and_then(|ty| self.cache.lookup_type(ty)) else {
+        let Some(target) = self.cache.lookup_type(ty.ty()) else {
             return Some(VariableValue::new(name));
         };
 
@@ -269,6 +266,7 @@ fn type_name<'data>(ty: &Type<'data>) -> &'data str {
         Type::Primitive(ty) => ty.name().unwrap_or("<unknown>"),
         Type::TypeDef(ty) => ty.name(),
         Type::StructureType(ty) => ty.name().unwrap_or("<anonymous>"),
+        Type::Void => "void",
         _ => "<not implemented>",
     }
 }
