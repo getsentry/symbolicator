@@ -61,10 +61,9 @@ impl TypeFormatter<'_> {
     fn format_pointer(&mut self, value: AddrOrValue<'_>, ty: PointerType) -> Option<VariableValue> {
         let addr = self.read_pointer(value, &ty)?;
 
-        // Currently multi-level pointers directly resolve to their final value, if de-referencing
-        // fails on the way the final value/pointee is just not set. We could be doing better here
-        // and serializing the entire chain. Either always or only if we can't resolve the final value.
-
+        // Multi-level pointers resolve to their final value. The address read at each level is
+        // recorded, and the chain ends at the first address that cannot be dereferenced.
+        let mut addresses = vec![addr];
         let mut lookups = 0;
         let mut pointee = ty.pointee();
         let mut pointee_addr = dereferenceable(addr.into());
@@ -78,10 +77,10 @@ impl TypeFormatter<'_> {
             match self.cache.lookup_type(pointee) {
                 Some(Type::Pointer(ptr)) => {
                     pointee = ptr.pointee();
-                    pointee_addr = pointee_addr
-                        .and_then(|addr| self.read_pointer(AddrOrValue::Addr(addr), &ptr))
-                        .map(u64::from)
-                        .and_then(dereferenceable);
+                    let next_addr = pointee_addr
+                        .and_then(|addr| self.read_pointer(AddrOrValue::Addr(addr), &ptr));
+                    addresses.extend(next_addr);
+                    pointee_addr = next_addr.map(u64::from).and_then(dereferenceable);
                 }
                 Some(ty) => break (type_name(&ty), Some(ty)),
                 None => break ("<unknown>", None),
@@ -89,25 +88,21 @@ impl TypeFormatter<'_> {
         };
 
         let name = format!("{base_name}{:*<lookups$}", "");
-        let mut result = VariableValue::new(name).pointer_address(addr);
 
-        // Attempt to parse only single-level pointers as strings. A string becomes the pointer's
-        // value instead of its pointee.
-        if lookups == 1
+        // Attempt to parse only single-level pointers as strings.
+        let result = if lookups == 1
             && let Some((pointee_type, pointee_addr)) = pointee.as_ref().zip(pointee_addr)
             && let Some(string) = self.format_c_string(pointee_addr, pointee_type)
         {
-            return Some(result.value(string));
-        }
+            VariableValue::default().value(string)
+        } else {
+            pointee
+                .zip(pointee_addr)
+                .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty))
+                .unwrap_or_default()
+        };
 
-        let pointee = pointee
-            .zip(pointee_addr)
-            .and_then(|(ty, addr)| self.format(AddrOrValue::Addr(addr), ty));
-        if let Some(pointee) = pointee {
-            result = result.pointee(pointee);
-        }
-
-        Some(result)
+        Some(result.ty(name).prepend_pointer_addresses(addresses))
     }
 
     fn format_primitive(
