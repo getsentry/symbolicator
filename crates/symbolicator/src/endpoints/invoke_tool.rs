@@ -5,10 +5,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::{
-    endpoints::{
-        ResponseError,
-        tools::{self},
-    },
+    endpoints::{ResponseError, tools},
     service::{RequestQueryParams, RequestService},
 };
 
@@ -33,12 +30,19 @@ pub async fn invoke_tool(
 ) -> Result<Response, ResponseError> {
     match body.request_kind {
         ToolRequestKind::GetMetadata(tools::get_metadata::Request {
-            minidump,
+            minidump_or_report,
             sources,
             platform,
             storage_id,
-        }) => tools::get_metadata::invoke(service, params, platform, minidump, sources, storage_id)
-            .await
-            .map(|v| IntoResponse::into_response(Json(v))),
+        }) => tools::get_metadata::invoke(
+            service,
+            params,
+            platform,
+            minidump_or_report,
+            sources,
+            storage_id,
+        )
+        .await
+        .map(|v| IntoResponse::into_response(Json(v))),
     }
 }

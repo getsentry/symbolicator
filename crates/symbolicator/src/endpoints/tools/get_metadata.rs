@@ -19,7 +19,7 @@ const INVOCATION_TIMEOUT_SECONDS: u64 = 100;
 /// The payload for a GetMetadata request.
 #[derive(Deserialize)]
 pub struct Request {
-    pub minidump: SymbolicationRequest,
+    pub minidump_or_report: SymbolicationRequest,
 
     pub storage_id: String,
 
@@ -44,7 +44,7 @@ fn to_system_info(resp: SymbolicationResponse) -> Result<SystemInfo, ToolError<E
         .ok_or(ToolError::Tool(Error::NoMetadata))
 }
 
-/// A tool to retrieve metadata about a minidump.
+/// A tool to retrieve metadata about a minidump or Apple crash report.
 pub async fn invoke(
     service: RequestService,
     params: RequestQueryParams,
