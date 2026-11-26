@@ -128,7 +128,7 @@ macro_rules! impl_endian_bytes {
     )*};
 }
 
-impl_endian_bytes!(u32 => 4);
+impl_endian_bytes!(u16 => 2, u32 => 4);
 
 /// A view of memory as a sequence of `T` values.
 pub struct MemoryView<'a, T: EndianBytes> {
