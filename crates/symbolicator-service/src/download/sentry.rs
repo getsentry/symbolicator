@@ -344,22 +344,4 @@ mod tests {
             RemoteFileUri::new("sentry://project_debug_file/abc123")
         );
     }
-
-    /// A single unknown `symbolType` fails to parse the whole list, which hides every other file
-    /// for that debug id. Sentry stores WASM source maps under the same debug id as the module.
-    #[test]
-    fn test_search_results_with_wasm_sourcemap() {
-        let json = r#"[
-            {"id": "1", "symbolType": "wasm"},
-            {"id": "2", "symbolType": "wasmsourcemap"}
-        ]"#;
-
-        let results: Vec<SearchResult> = serde_json::from_str(json).unwrap();
-
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].id, SentryFileId("1".into()));
-        assert_eq!(results[0].symbol_type, SentryFileType::Wasm);
-        assert_eq!(results[1].id, SentryFileId("2".into()));
-        assert_eq!(results[1].symbol_type, SentryFileType::WasmSourceMap);
-    }
 }

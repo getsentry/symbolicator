@@ -5,7 +5,6 @@
 ### Features
 
 - Record on JavaScript frames whether the minified source and the source map were found by debug ID. ([#2198](https://github.com/getsentry/symbolicator/pull/2198))
-- Accept WASM source maps (`wasmsourcemap`) in debug file lists from Sentry, so they don't break symbolication once Sentry stores them. ([#2229](https://github.com/getsentry/symbolicator/pull/2229))
 
 ### Fixes
 
