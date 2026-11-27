@@ -61,7 +61,7 @@ swc_ecma_parser = { git = "https://github.com/getsentry/swc", rev = "2a26d98fce6
 
 [workspace.dependencies]
 anyhow = "1.0.66"
-apple-crash-report-parser = "0.6.0"
+apple-crash-report-parser = "0.7.0"
 async-trait = "0.1.53"
 async-compression = "0.4.43"
 aws-config = { version = "1.8.12", features = ["behavior-version-latest"] }
