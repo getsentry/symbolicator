@@ -56,6 +56,7 @@ pub async fn handle_apple_crash_report_request(
         AttachmentFile::Local(report),
         sources,
         options,
+        false,
     )?;
 
     match service.get_response(request_id, params.timeout).await {

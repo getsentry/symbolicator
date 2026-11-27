@@ -4,10 +4,12 @@ use axum::routing::{get, post};
 use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use tower::ServiceBuilder;
 
+use crate::endpoints::invoke_tool::invoke_tool;
 use crate::service::RequestService;
 
 mod applecrashreport;
 mod error;
+mod invoke_tool;
 mod metrics;
 mod minidump;
 mod multipart;
@@ -17,6 +19,7 @@ mod symbolicate;
 mod symbolicate_any;
 mod symbolicate_js;
 mod symbolicate_jvm;
+mod tools;
 
 pub use error::ResponseError;
 use metrics::MetricsLayer;
@@ -41,6 +44,8 @@ pub fn create_app(service: RequestService) -> Router {
         .layer(NewSentryLayer::new_from_top())
         .layer(SentryHttpLayer::new().enable_transaction())
         .layer(MetricsLayer);
+
+    let tool_router = Router::new().route("/invoke_tool", post(invoke_tool));
 
     // Routes for symbolication requests that don't include large files. These can use a lower
     // body size limit.
@@ -71,6 +76,7 @@ pub fn create_app(service: RequestService) -> Router {
         .merge(symbolicate_router)
         .merge(large_file_router)
         .merge(misc_router)
+        .merge(tool_router)
         .with_state(service)
         .layer(middleware)
         // the healthcheck is last, as it will bypass all the middlewares

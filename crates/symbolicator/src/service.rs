@@ -377,6 +377,7 @@ impl RequestService {
         apple_crash_report: AttachmentFile,
         sources: Arc<[SourceConfig]>,
         options: RequestOptions,
+        cache_report: bool,
     ) -> Result<RequestId, MaxRequestsError> {
         let slf = self.inner.clone();
         let extract_variables = options.extract_variables;
@@ -388,7 +389,7 @@ impl RequestService {
                     apple_crash_report,
                     sources,
                     extract_variables,
-                    false,
+                    cache_report,
                 )
                 .await
                 .map(CompletedResponse::Native)

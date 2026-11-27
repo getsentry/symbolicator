@@ -88,6 +88,7 @@ pub async fn symbolicate_any(
             },
             body.sources,
             body.options,
+            false,
         )?,
     };
 
