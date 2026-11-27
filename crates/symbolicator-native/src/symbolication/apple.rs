@@ -117,20 +117,8 @@ impl SymbolicationActor {
             .or_else(|| metadata.remove("Exception Subtype"))
             .or_else(|| metadata.remove("Exception Codes"));
 
-        let timestamp = report.timestamp.map(|ts| {
-            let ts = ts.timestamp();
-
-            Timestamp::from_second(ts).unwrap_or({
-                if ts < 0 {
-                    Timestamp::MIN
-                } else {
-                    Timestamp::MAX
-                }
-            })
-        });
-
         let state = AppleCrashReportState {
-            timestamp,
+            timestamp: report.timestamp,
             system_info,
             crash_reason,
             crash_details,
