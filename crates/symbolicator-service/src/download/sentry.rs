@@ -51,6 +51,7 @@ enum SentryFileType {
     Il2cpp,
     Proguard,
     DartSymbolMap,
+    WasmSourceMap,
 }
 
 impl From<FileType> for SentryFileType {
